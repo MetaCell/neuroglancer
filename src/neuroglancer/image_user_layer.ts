@@ -60,8 +60,9 @@ const CROSS_SECTION_RENDER_SCALE_JSON_KEY = 'crossSectionRenderScale';
 const CHANNEL_DIMENSIONS_JSON_KEY = 'channelDimensions';
 const VOLUME_RENDERING_JSON_KEY = 'volumeRendering';
 const VOLUME_RENDERING_SHADER_JSON_KEY = 'volumeRenderingShader';
-const VOLUME_RENDER_SCALE_JSON_KEY = 'volumeRenderingScale';
 const VOLUME_RENDER_SAMPLING_JSON_KEY = 'volumeRenderingSamplesPerRay';
+const VOLUME_RENDERING_SCALE_JSON_KEY = 'volumeRenderingScale';
+const VOLUME_RENDERING_MODE_JSON_KEY = 'volumeRenderingMode';
 
 export interface ImageLayerSelectionState extends UserLayerSelectionState {
   value: any;
@@ -201,7 +202,7 @@ export class ImageUserLayer extends Base {
     this.channelCoordinateSpace.restoreState(specification[CHANNEL_DIMENSIONS_JSON_KEY]);
     this.volumeRendering.restoreState(specification[VOLUME_RENDERING_JSON_KEY]);
     verifyOptionalObjectProperty(
-        specification, VOLUME_RENDERING_SHADER_JSON_KEY,
+        specification, VOLUME_RENDERING_MODE_JSON_KEY,
         shaderMode => this.volumeRenderingShaderSelection.restoreState(shaderMode));
     this.volumeRenderingSamplesPerRay.restoreState(specification[VOLUME_RENDER_SAMPLING_JSON_KEY]);
   }
@@ -214,8 +215,8 @@ export class ImageUserLayer extends Base {
     x[CROSS_SECTION_RENDER_SCALE_JSON_KEY] = this.sliceViewRenderScaleTarget.toJSON();
     x[CHANNEL_DIMENSIONS_JSON_KEY] = this.channelCoordinateSpace.toJSON();
     x[VOLUME_RENDERING_JSON_KEY] = this.volumeRendering.toJSON();
-    x[VOLUME_RENDERING_SHADER_JSON_KEY] = this.volumeRenderingShaderSelection.toJSON();
     x[VOLUME_RENDER_SAMPLING_JSON_KEY] = this.volumeRenderingSamplesPerRay.toJSON();
+    x[VOLUME_RENDERING_MODE_JSON_KEY] = this.volumeRenderingShaderSelection.toJSON();
     return x;
   }
 
@@ -326,8 +327,8 @@ const LAYER_CONTROLS: LayerControlDefinition<ImageUserLayer>[] = [
     ...checkboxLayerControl(layer => layer.volumeRendering),
   },
   {
-    label: 'Resolution indicator (3D)',
-    toolJson: VOLUME_RENDER_SCALE_JSON_KEY,
+    label: 'Resolution (3d)',
+    toolJson: VOLUME_RENDERING_SCALE_JSON_KEY,
     isValid: layer => layer.volumeRendering,
     ...renderScaleLayerControl(layer => ({
                                  histogram: layer.volumeRenderingRenderScaleHistogram,
@@ -335,8 +336,8 @@ const LAYER_CONTROLS: LayerControlDefinition<ImageUserLayer>[] = [
                                })),
   },
   {
-    label: 'Volume rendering shader',
-    toolJson: VOLUME_RENDERING_SHADER_JSON_KEY,
+    label: 'Volume rendering mode',
+    toolJson: VOLUME_RENDERING_MODE_JSON_KEY,
     isValid: layer => layer.volumeRendering,
     ...enumLayerControl(layer => layer.volumeRenderingShaderSelection),
   },
