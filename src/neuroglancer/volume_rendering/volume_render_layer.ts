@@ -29,8 +29,9 @@ import {ChunkFormat, defineChunkDataShaderAccess, MultiscaleVolumeChunkSource, V
 import {makeCachedDerivedWatchableValue, NestedStateManager, registerNested, WatchableValueInterface} from 'neuroglancer/trackable_value';
 import {getFrustrumPlanes, mat4, vec3} from 'neuroglancer/util/geom';
 import {getObjectId} from 'neuroglancer/util/object_id';
-import {forEachVisibleVolumeRenderingChunk, getVolumeRenderingNearFarBounds, VOLUME_RENDERING_RENDER_LAYER_RPC_ID, VOLUME_RENDERING_RENDER_LAYER_UPDATE_SOURCES_RPC_ID, volumeRenderingDepthSamples} from 'neuroglancer/volume_rendering/base';
+'neuroglancer/volume_rendering/base';
 import {SHADER_FUNCTIONS, SHADER_MODES, TrackableShaderModeValue} from 'neuroglancer/volume_rendering/trackable_shader_mode';
+import {forEachVisibleVolumeRenderingChunk, getVolumeRenderingNearFarBounds, VOLUME_RENDERING_RENDER_LAYER_RPC_ID, VOLUME_RENDERING_RENDER_LAYER_UPDATE_SOURCES_RPC_ID} from 'neuroglancer/volume_rendering/base';
 import {drawBoxes, glsl_getBoxFaceVertexPosition} from 'neuroglancer/webgl/bounding_box';
 import {glsl_COLORMAPS} from 'neuroglancer/webgl/colormaps';
 import {ParameterizedContextDependentShaderGetter, parameterizedContextDependentShaderGetter, ParameterizedShaderGetterResult, shaderCodeWithLineDirective, WatchableShaderError} from 'neuroglancer/webgl/dynamic_shader';
@@ -56,6 +57,7 @@ export interface VolumeRenderingRenderLayerOptions {
   renderScaleTarget: WatchableValueInterface<number>;
   renderScaleHistogram: RenderScaleHistogram;
   shaderSelection: TrackableShaderModeValue;
+  samplesPerRay: WatchableValueInterface<number>;
 }
 
 const tempMat4 = mat4.create();
@@ -75,6 +77,7 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
   renderScaleTarget: WatchableValueInterface<number>;
   renderScaleHistogram: RenderScaleHistogram;
   shaderSelection: TrackableShaderModeValue;
+  samplesPerRay: WatchableValueInterface<number>;
   backend: ChunkRenderLayerFrontend;
   private vertexIdHelper: VertexIdHelper;
 
@@ -104,6 +107,7 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
     this.renderScaleTarget = options.renderScaleTarget;
     this.renderScaleHistogram = options.renderScaleHistogram;
     this.shaderSelection = options.shaderSelection;
+    this.samplesPerRay = options.samplesPerRay;
     this.registerDisposer(this.renderScaleHistogram.visibility.add(this.visibility));
     const extraParameters = this.registerDisposer(makeCachedDerivedWatchableValue(
         (space: CoordinateSpace, selectedShader: SHADER_MODES) =>
@@ -178,6 +182,7 @@ void userMain();
     this.registerDisposer(this.renderScaleTarget.changed.add(this.redrawNeeded.dispatch));
     this.registerDisposer(this.shaderControlState.changed.add(this.redrawNeeded.dispatch));
     this.registerDisposer(this.localPosition.changed.add(this.redrawNeeded.dispatch));
+    this.registerDisposer(this.samplesPerRay.changed.add(this.redrawNeeded.dispatch));
     this.registerDisposer(this.transform.changed.add(this.redrawNeeded.dispatch));
     this.registerDisposer(this.shaderSelection.changed.add(this.redrawNeeded.dispatch));
     this.registerDisposer(
@@ -194,6 +199,9 @@ void userMain();
               .rpcId,
       renderScaleTarget:
           this.registerDisposer(SharedWatchableValue.makeFromExisting(rpc, this.renderScaleTarget))
+              .rpcId,
+      samplesPerRay:
+          this.registerDisposer(SharedWatchableValue.makeFromExisting(rpc, this.samplesPerRay))
               .rpcId,
     });
     this.backend = sharedObject;
@@ -283,7 +291,7 @@ void userMain();
 
     forEachVisibleVolumeRenderingChunk(
         renderContext.projectionParameters, this.localPosition.value, this.renderScaleTarget.value,
-        allSources[0],
+        this.samplesPerRay.value, allSources[0],
         (transformedSource, _, physicalSpacing, pixelSpacing) => {
           curPhysicalSpacing = physicalSpacing;
           curPixelSpacing = pixelSpacing;
@@ -331,14 +339,14 @@ void userMain();
           const {near, far, adjustedNear, adjustedFar} = getVolumeRenderingNearFarBounds(
               clippingPlanes, transformedSource.lowerClipDisplayBound,
               transformedSource.upperClipDisplayBound);
-          const step = (adjustedFar - adjustedNear) / (volumeRenderingDepthSamples - 1);
+          const step = (adjustedFar - adjustedNear) / (this.samplesPerRay.value - 1);
           const brightnessFactor = step / (far - near);
           gl.uniform1f(shader.uniform('uBrightnessFactor'), brightnessFactor);
           const nearLimitFraction = (adjustedNear - near) / (far - near);
           const farLimitFraction = (adjustedFar - near) / (far - near);
           gl.uniform1f(shader.uniform('uNearLimitFraction'), nearLimitFraction);
           gl.uniform1f(shader.uniform('uFarLimitFraction'), farLimitFraction);
-          gl.uniform1i(shader.uniform('uMaxSteps'), volumeRenderingDepthSamples);
+          gl.uniform1i(shader.uniform('uMaxSteps'), this.samplesPerRay.value);
           gl.uniform3fv(shader.uniform('uLowerClipBound'), transformedSource.lowerClipDisplayBound);
           gl.uniform3fv(shader.uniform('uUpperClipBound'), transformedSource.upperClipDisplayBound);
         },
@@ -401,7 +409,7 @@ void userMain();
     let missing = false;
     forEachVisibleVolumeRenderingChunk(
         renderContext.projectionParameters, this.localPosition.value, this.renderScaleTarget.value,
-        allSources[0], () => {}, tsource => {
+        this.samplesPerRay.value, allSources[0], () => {}, tsource => {
           const chunk = tsource.source.chunks.get(tsource.curPositionInChunks.join());
           if (chunk === undefined || chunk.state !== ChunkState.GPU_MEMORY) {
             missing = true;

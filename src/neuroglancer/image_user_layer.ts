@@ -28,12 +28,12 @@ import {defineImageLayerShader, getTrackableFragmentMain, ImageRenderLayer} from
 import {trackableAlphaValue} from 'neuroglancer/trackable_alpha';
 import {trackableBlendModeValue} from 'neuroglancer/trackable_blend';
 import {TrackableBoolean} from 'neuroglancer/trackable_boolean';
-import {makeCachedDerivedWatchableValue, makeCachedLazyDerivedWatchableValue, registerNested, WatchableValue, WatchableValueInterface} from 'neuroglancer/trackable_value';
+import {makeCachedDerivedWatchableValue, makeCachedLazyDerivedWatchableValue, registerNested, TrackableValue, WatchableValue, WatchableValueInterface} from 'neuroglancer/trackable_value';
 import {UserLayerWithAnnotationsMixin} from 'neuroglancer/ui/annotations';
 import {setClipboard} from 'neuroglancer/util/clipboard';
 import {Borrowed} from 'neuroglancer/util/disposable';
 import {makeValueOrError} from 'neuroglancer/util/error';
-import {verifyOptionalObjectProperty} from 'neuroglancer/util/json';
+import {verifyOptionalObjectProperty, verifyPositiveInt} from 'neuroglancer/util/json';
 import {VolumeRenderingRenderLayer} from 'neuroglancer/volume_rendering/volume_render_layer';
 import {trackableShaderModeValue} from 'neuroglancer/volume_rendering/trackable_shader_mode';
 import {makeWatchableShaderError, ParameterizedShaderGetterResult} from 'neuroglancer/webgl/dynamic_shader';
@@ -59,8 +59,9 @@ const SHADER_CONTROLS_JSON_KEY = 'shaderControls';
 const CROSS_SECTION_RENDER_SCALE_JSON_KEY = 'crossSectionRenderScale';
 const CHANNEL_DIMENSIONS_JSON_KEY = 'channelDimensions';
 const VOLUME_RENDERING_JSON_KEY = 'volumeRendering';
-const VOLUME_RENDER_SCALE_JSON_KEY = 'volumeRenderScale';
 const VOLUME_RENDERING_SHADER_JSON_KEY = 'volumeRenderingShader';
+const VOLUME_RENDER_SCALE_JSON_KEY = 'volumeRenderingScale';
+const VOLUME_RENDER_SAMPLING_JSON_KEY = 'volumeRenderingSamplesPerRay';
 
 export interface ImageLayerSelectionState extends UserLayerSelectionState {
   value: any;
@@ -87,6 +88,7 @@ export class ImageUserLayer extends Base {
       this.channelCoordinateSpace));
   volumeRendering = new TrackableBoolean(false, false);
   volumeRenderingShaderSelection = trackableShaderModeValue();
+  volumeRenderingSamplesPerRay = new TrackableValue<number>(64, verifyPositiveInt)
 
   shaderControlState = this.registerDisposer(new ShaderControlState(
       this.fragmentMain,
@@ -129,6 +131,7 @@ export class ImageUserLayer extends Base {
     this.sliceViewRenderScaleTarget.changed.add(this.specificationChanged.dispatch);
     this.volumeRendering.changed.add(this.specificationChanged.dispatch);
     this.volumeRenderingShaderSelection.changed.add(this.specificationChanged.dispatch);
+    this.volumeRenderingSamplesPerRay.changed.add(this.specificationChanged.dispatch);
     this.tabs.add(
         'rendering',
         {label: 'Rendering', order: -100, getter: () => new RenderingOptionsTab(this)});
@@ -170,6 +173,7 @@ export class ImageUserLayer extends Base {
           transform: loadedSubsource.getRenderLayerTransform(this.channelCoordinateSpace),
           renderScaleTarget: this.volumeRenderingRenderScaleTarget,
           renderScaleHistogram: this.volumeRenderingRenderScaleHistogram,
+          samplesPerRay: this.volumeRenderingSamplesPerRay,
           localPosition: this.localPosition,
           channelCoordinateSpace: this.channelCoordinateSpace,
           shaderSelection: this.volumeRenderingShaderSelection,
@@ -199,6 +203,7 @@ export class ImageUserLayer extends Base {
     verifyOptionalObjectProperty(
         specification, VOLUME_RENDERING_SHADER_JSON_KEY,
         shaderMode => this.volumeRenderingShaderSelection.restoreState(shaderMode));
+    this.volumeRenderingSamplesPerRay.restoreState(specification[VOLUME_RENDER_SAMPLING_JSON_KEY]);
   }
   toJSON() {
     const x = super.toJSON();
@@ -210,6 +215,7 @@ export class ImageUserLayer extends Base {
     x[CHANNEL_DIMENSIONS_JSON_KEY] = this.channelCoordinateSpace.toJSON();
     x[VOLUME_RENDERING_JSON_KEY] = this.volumeRendering.toJSON();
     x[VOLUME_RENDERING_SHADER_JSON_KEY] = this.volumeRenderingShaderSelection.toJSON();
+    x[VOLUME_RENDER_SAMPLING_JSON_KEY] = this.volumeRenderingSamplesPerRay.toJSON();
     return x;
   }
 
@@ -331,6 +337,14 @@ const LAYER_CONTROLS: LayerControlDefinition<ImageUserLayer>[] = [
     toolJson: VOLUME_RENDERING_SHADER_JSON_KEY,
     isValid: layer => layer.volumeRendering,
     ...enumLayerControl(layer => layer.volumeRenderingShaderSelection),
+  },
+  {
+    label: 'Samples per ray',
+    toolJson: VOLUME_RENDER_SAMPLING_JSON_KEY,
+    isValid: layer => layer.volumeRendering,
+    ...rangeLayerControl(
+        layer =>
+            ({value: layer.volumeRenderingSamplesPerRay, options: {min: 1, max: 1024, step: 1}})),
   },
   {
     label: 'Opacity',
