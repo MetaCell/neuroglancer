@@ -171,6 +171,12 @@ class VolumeRenderingSamplesPerRayTool(Tool):
 
 
 @export_tool
+class VolumeRenderingModeTool(Tool):
+    __slots__ = ()
+    TOOL_TYPE = 'volumeRenderingMode'
+
+
+@export_tool
 class CrossSectionRenderScaleTool(Tool):
     __slots__ = ()
     TOOL_TYPE = 'crossSectionRenderScale'
@@ -515,6 +521,8 @@ class ImageLayer(Layer, _AnnotationLayerOptions):
     volume_rendering_samples_per_ray = wrapped_property('volumeRenderingSamplesPerRay', optional(int, 64))
     cross_section_render_scale = crossSectionRenderScale = wrapped_property(
         'crossSectionRenderScale', optional(float, 1))
+    volume_rendering_mode = volumeRenderingMode = wrapped_property(
+        'volumeRenderingMode', optional(str))
 
     @staticmethod
     def interpolate(a, b, t):
