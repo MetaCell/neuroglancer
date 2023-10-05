@@ -58,6 +58,25 @@ void main() {
   int endStep = min(uMaxSteps, int(floor((intersectEnd - uNearLimitFraction) / stepSize)) + 1);
 `;
 
+// TODO (skm): implement transfer function as lookup
+// TODO (skm): sample ratio might want to based on the nyquist frequency
+// TODO (skm): ideally the sampleRatio should take into account the ray direction
+const glsl_TRANSFER_FUNCTION = `
+vec4 transferFunction(float value) {
+  float first = 0.0012;
+  float second = 0.045;
+  float clampedValue = clamp(value, first, second);
+  float result = (clampedValue - first) / (second - first);
+  return vec4(1.0, 1.0, 1.0, result);
+}
+
+float sampleRatio(float stepSize) {
+  float max_voxels = max(uChunkDataSize.x, max(uChunkDataSize.y, uChunkDataSize.z));
+  float desiredSamplingRate = 1.0 / (max_voxels);
+  return stepSize / desiredSamplingRate;
+}
+`
+
 const glsl_TRAVERSE_RAYS = `
   outputColor = vec4(0, 0, 0, 0);
   for (int step = startStep; step < endStep; ++step) {
@@ -69,28 +88,22 @@ const glsl_TRAVERSE_RAYS = `
 }
 `;
 
-// TODO (skm): implement transfer function as lookup
-const glsl_TRANSFER_FUNCTION = `
-  vec4 transferFunction(float value) {
-    float first = 0.001;
-    float second = 0.002;
-    float input = clamp(value, first, second);
-    float result = (input - first) / (second - first);
-    return vec4(1.0, 1.0, 1.0, result);
-  }
-`
-
-// Can also use getInterpolatedDataValue
+// TODO (skm): Can also use getInterpolatedDataValue
+// TODO (skm): improve alpha over uBrightnessFactor
 const glsl_FRONT_TO_BACK_COMPOSITING_RAY_TRAVERSAL = `
   outputColor = vec4(0.0, 0.0, 0.0, 0.0);
+  float samplingRatio = sampleRatio(stepSize);
   for (int step = startStep; step < endStep; ++step) {
     vec3 position = mix(nearPoint, farPoint, uNearLimitFraction + float(step) * stepSize);
     curChunkPosition = position - uTranslation;
-    vec4 rgba = transferFunction(getDataValue(0));
-    float alpha = rgba.a * uBrightnessFactor;
-    outputColor.rgb += (1 - outputColor.a) * rgba.rgb * alpha;
-    outputColor.a += (1 - outputColor.a) * alpha;
+    // vec4 rgba = transferFunction(toNormalized(getDataValue(0)));
+    vec4 rgba = transferFunction(toNormalized(getInterpolatedDataValue(0)));
+    float alpha = 1.0 - (pow(clamp(1.0 - rgba.a, 0.0, 1.0), samplingRatio));
+    float alphab = rgba.a;
+    outputColor.rgb += (1.0 - outputColor.a) * alpha * rgba.rgb;
+    outputColor.a += (1.0 - outputColor.a) * alpha;
   }
+  // outputColor = vec4(samplingRatio, samplingRatio, samplingRatio, 1.0);
   emit(outputColor, 0u);
 }
 `
@@ -101,7 +114,8 @@ const glsl_MAX_PROJECTION_RAY_TRAVERSAL = `
   for (int step = startStep; step < endStep; ++step) {
     vec3 position = mix(nearPoint, farPoint, uNearLimitFraction + float(step) * stepSize);
     curChunkPosition = position - uTranslation;
-    float normChunkValue = toNormalized(getDataValue(0));
+    // float normChunkValue = toNormalized(getDataValue(0));
+    float normChunkValue = toNormalized(getInterpolatedDataValue(0));
     if (normChunkValue > maxValue) {
         maxValue = normChunkValue;
     }
