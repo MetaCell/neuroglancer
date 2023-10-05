@@ -69,6 +69,32 @@ const glsl_TRAVERSE_RAYS = `
 }
 `;
 
+// TODO (skm): implement transfer function as lookup
+const glsl_TRANSFER_FUNCTION = `
+  vec4 transferFunction(float value) {
+    float first = 0.001;
+    float second = 0.002;
+    float input = clamp(value, first, second);
+    float result = (input - first) / (second - first);
+    return vec4(1.0, 1.0, 1.0, result);
+  }
+`
+
+// Can also use getInterpolatedDataValue
+const glsl_FRONT_TO_BACK_COMPOSITING_RAY_TRAVERSAL = `
+  outputColor = vec4(0.0, 0.0, 0.0, 0.0);
+  for (int step = startStep; step < endStep; ++step) {
+    vec3 position = mix(nearPoint, farPoint, uNearLimitFraction + float(step) * stepSize);
+    curChunkPosition = position - uTranslation;
+    vec4 rgba = transferFunction(getDataValue(0));
+    float alpha = rgba.a * uBrightnessFactor;
+    outputColor.rgb += (1 - outputColor.a) * rgba.rgb * alpha;
+    outputColor.a += (1 - outputColor.a) * alpha;
+  }
+  emit(outputColor, 0u);
+}
+`
+
 const glsl_MAX_PROJECTION_RAY_TRAVERSAL = `
   outputColor = vec4(0.0, 0.0, 0.0, 1.0);
   maxValue = 0.0;
@@ -94,3 +120,4 @@ const glsl_EMIT_CHUNK_VALUE = `
 export const glsl_USER_DEFINED_RAY_TRAVERSAL = glsl_SETUP_RAYS + glsl_TRAVERSE_RAYS;
 export const glsl_MAX_PROJECTION_SHADER = glsl_SETUP_RAYS + glsl_MAX_PROJECTION_RAY_TRAVERSAL;
 export const glsl_CHUNK_NUMBER_SHADER = glsl_SETUP_RAYS + glsl_EMIT_CHUNK_VALUE;
+export const glsl_FRONT_TO_BACK_COMPOSITING_SHADER = glsl_TRANSFER_FUNCTION + glsl_SETUP_RAYS + glsl_FRONT_TO_BACK_COMPOSITING_RAY_TRAVERSAL;
