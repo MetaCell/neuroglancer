@@ -59,8 +59,6 @@ void main() {
 `;
 
 // TODO (skm): implement transfer function as lookup
-// TODO (skm): sample ratio might want to based on the nyquist frequency
-// TODO (skm): ideally the sampleRatio should take into account the ray direction
 const glsl_TRANSFER_FUNCTION = `
 vec4 transferFunction(float value) {
   float first = 0.0012;
@@ -70,10 +68,19 @@ vec4 transferFunction(float value) {
   return vec4(1.0, 1.0, 1.0, result);
 }
 
-float sampleRatio(float stepSize) {
-  float max_voxels = max(uChunkDataSize.x, max(uChunkDataSize.y, uChunkDataSize.z));
-  float desiredSamplingRate = 1.0 / (max_voxels);
-  return stepSize / desiredSamplingRate;
+float numVoxelsAlongViewDir() {
+  vec4 straightAheadStart = uInvModelViewProjectionMatrix * vec4(0.0, 0.0, -1.0, 1.0);
+  vec4 straightAheadEnd = uInvModelViewProjectionMatrix * vec4(0.0, 0.0, 1.0, 1.0);
+  vec3 straightAheadDir = normalize(straightAheadEnd.xyz / straightAheadEnd.w - straightAheadStart.xyz / straightAheadStart.w);
+  vec3 chunksAlongViewDir = straightAheadDir * uChunkDataSize;
+  float numVoxels = length(chunksAlongViewDir);
+  return numVoxels;
+}
+
+float sampleRatio(float actualSamplingRate) {
+  float numVoxels = numVoxelsAlongViewDir();
+  float referenceSamplingRate = 1.0 / numVoxels;
+  return referenceSamplingRate / actualSamplingRate;
 }
 `
 
@@ -88,8 +95,7 @@ const glsl_TRAVERSE_RAYS = `
 }
 `;
 
-// TODO (skm): Can also use getInterpolatedDataValue
-// TODO (skm): improve alpha over uBrightnessFactor
+// TODO (skm): Provide a switch for getInterpolatedDataValue
 const glsl_FRONT_TO_BACK_COMPOSITING_RAY_TRAVERSAL = `
   outputColor = vec4(0.0, 0.0, 0.0, 0.0);
   float samplingRatio = sampleRatio(stepSize);
@@ -99,7 +105,6 @@ const glsl_FRONT_TO_BACK_COMPOSITING_RAY_TRAVERSAL = `
     // vec4 rgba = transferFunction(toNormalized(getDataValue(0)));
     vec4 rgba = transferFunction(toNormalized(getInterpolatedDataValue(0)));
     float alpha = 1.0 - (pow(clamp(1.0 - rgba.a, 0.0, 1.0), samplingRatio));
-    float alphab = rgba.a;
     outputColor.rgb += (1.0 - outputColor.a) * alpha * rgba.rgb;
     outputColor.a += (1.0 - outputColor.a) * alpha;
   }
@@ -132,6 +137,6 @@ const glsl_EMIT_CHUNK_VALUE = `
 `;
 
 export const glsl_USER_DEFINED_RAY_TRAVERSAL = glsl_SETUP_RAYS + glsl_TRAVERSE_RAYS;
-export const glsl_MAX_PROJECTION_SHADER = glsl_SETUP_RAYS + glsl_MAX_PROJECTION_RAY_TRAVERSAL;
+export const glsl_MAX_PROJECTION_SHADER = glsl_TRANSFER_FUNCTION + glsl_SETUP_RAYS + glsl_MAX_PROJECTION_RAY_TRAVERSAL;
 export const glsl_CHUNK_NUMBER_SHADER = glsl_SETUP_RAYS + glsl_EMIT_CHUNK_VALUE;
 export const glsl_FRONT_TO_BACK_COMPOSITING_SHADER = glsl_TRANSFER_FUNCTION + glsl_SETUP_RAYS + glsl_FRONT_TO_BACK_COMPOSITING_RAY_TRAVERSAL;
