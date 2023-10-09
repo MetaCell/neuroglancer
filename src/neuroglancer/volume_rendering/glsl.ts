@@ -96,6 +96,7 @@ const glsl_TRAVERSE_RAYS = `
 `;
 
 // TODO (skm): Provide a switch for getInterpolatedDataValue
+// TODO (skm): Allow control over the ERT value
 const glsl_FRONT_TO_BACK_COMPOSITING_RAY_TRAVERSAL = `
   outputColor = vec4(0.0, 0.0, 0.0, 0.0);
   float samplingRatio = sampleRatio(stepSize);
@@ -106,6 +107,9 @@ const glsl_FRONT_TO_BACK_COMPOSITING_RAY_TRAVERSAL = `
     float alpha = 1.0 - (pow(clamp(1.0 - rgba.a, 0.0, 1.0), samplingRatio));
     outputColor.rgb += (1.0 - outputColor.a) * alpha * rgba.rgb;
     outputColor.a += (1.0 - outputColor.a) * alpha;
+    if (outputColor.a >= 0.999) {
+      break;
+    }
   }
   emit(outputColor, 0u);
 }
