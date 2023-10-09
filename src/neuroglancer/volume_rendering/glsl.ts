@@ -102,24 +102,22 @@ const glsl_FRONT_TO_BACK_COMPOSITING_RAY_TRAVERSAL = `
   for (int step = startStep; step < endStep; ++step) {
     vec3 position = mix(nearPoint, farPoint, uNearLimitFraction + float(step) * stepSize);
     curChunkPosition = position - uTranslation;
-    // vec4 rgba = transferFunction(toNormalized(getDataValue(0)));
     vec4 rgba = transferFunction(toNormalized(getInterpolatedDataValue(0)));
     float alpha = 1.0 - (pow(clamp(1.0 - rgba.a, 0.0, 1.0), samplingRatio));
     outputColor.rgb += (1.0 - outputColor.a) * alpha * rgba.rgb;
     outputColor.a += (1.0 - outputColor.a) * alpha;
   }
-  // outputColor = vec4(samplingRatio, samplingRatio, samplingRatio, 1.0);
   emit(outputColor, 0u);
 }
 `
 
+// TODO (skm): Provide a switch for getInterpolatedDataValue
 const glsl_MAX_PROJECTION_RAY_TRAVERSAL = `
   outputColor = vec4(0.0, 0.0, 0.0, 1.0);
   maxValue = 0.0;
   for (int step = startStep; step < endStep; ++step) {
     vec3 position = mix(nearPoint, farPoint, uNearLimitFraction + float(step) * stepSize);
     curChunkPosition = position - uTranslation;
-    // float normChunkValue = toNormalized(getDataValue(0));
     float normChunkValue = toNormalized(getInterpolatedDataValue(0));
     if (normChunkValue > maxValue) {
         maxValue = normChunkValue;
