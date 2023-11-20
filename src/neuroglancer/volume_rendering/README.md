@@ -40,6 +40,21 @@ outputColor.rgb += (1.0 - outputColor.a) * alpha * rgba.rgb;
 outputColor.a += (1.0 - outputColor.a) * alpha;
 ```
 
+### Sampling ratio and opacity correction
+
+To avoid overcompositing when the number of depth samples change, opacity correction is performed. The first step of this involves calculating the sampling ratio, which is the ratio of the chosen number of depth samples to the optimal number of depth samples. The optimal number of depth samples is calculated based on the physical spacing of the data and the view spacing. The sampling ratio is then used to correct the opacity of the color at each step along the ray. The opacity correction is performed as follows:
+
+```glsl
+float alpha = 1.0 - (pow(clamp(1.0 - rgba.a, 0.0, 1.0), uSamplingRatio));
+```
+
+For example, if the optimal number of depth samples is 250, but we use 375 depth samples, then the sampling ratio would be 2/3 - indicating that we are oversampling. For a voxel with opacity 0.5, the opacity correction would be:
+
+```glsl
+float alpha = 1.0 - (pow(1.0 - 0.5, 0.666666));
+// alpha is 0.34 after opacity correction
+```
+
 ## Transfer function control
 
 To add points to the transfer function, select the `transferFunction` control in the UI and click on the transfer function to add a point. The point will be added at the current mouse position, with color matching the selected color in the UI. The point can be dragged around to change its position. The point can be deleted by double clicking on it. To change the color of the point, select the desired color in the UI and then `shift/alt/ctrl/cmd` click on the point. The point will be updated to the selected color.
