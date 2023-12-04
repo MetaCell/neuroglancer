@@ -156,6 +156,7 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
         builder.addUniform('highp vec3', 'uUpperClipBound');
 
         builder.addUniform('highp float', 'uSamplingRatio');
+        builder.addUniform('highp float', 'uBrightnessFactor');
         builder.addVarying('highp vec4', 'vNormalizedPosition');
         builder.addVertexCode(glsl_getBoxFaceVertexPosition);
 
@@ -168,15 +169,23 @@ gl_Position.z = 0.0;
         builder.addFragmentCode(`
 vec3 curChunkPosition;
 vec4 outputColor;
+bool tempNewSource = true;
 void userMain();
 `);
         defineChunkDataShaderAccess(builder, chunkFormat, numChannelDimensions, `curChunkPosition`);
         // See Real-Time Volume Graphics, page 12
         builder.addFragmentCode(`
 void emitRGBA(vec4 rgba) {
-  float opacityCorrectedAlpha = 1.0 - (pow(clamp(1.0 - rgba.a, 0.0, 1.0), uSamplingRatio));
-  float compositedAlpha = (1.0 - outputColor.a) * opacityCorrectedAlpha;
-  outputColor += vec4(rgba.rgb * compositedAlpha, compositedAlpha);
+  float alpha = 0.0;
+  if (tempNewSource) {
+    float opacityCorrectedAlpha = 1.0 - (pow(clamp(1.0 - rgba.a, 0.0, 1.0), uSamplingRatio));
+    float compositedAlpha = (1.0 - outputColor.a) * opacityCorrectedAlpha;
+    outputColor += vec4(rgba.rgb * compositedAlpha, compositedAlpha);
+  }
+  else {
+    alpha = rgba.a * uBrightnessFactor;
+    outputColor += vec4(rgba.rgb * alpha, alpha);
+  }
 }
 void emitRGB(vec3 rgb) {
   emitRGBA(vec4(rgb, 1.0));
@@ -433,6 +442,9 @@ void main() {
           // The sampling ratio is used for opacity correction.
           // arguably, the reference sampling rate should be at the nyquist frequency
           // to avoid aliasing, but this is not always practical for large datasets.
+          const step = (adjustedFar - adjustedNear) / (this.depthSamplesTarget.value - 1);
+          const uBrightnessFactor = step / (far - near);
+          gl.uniform1f(shader.uniform('uBrightnessFactor'), uBrightnessFactor);
           const actualSamplingRate =
               (adjustedFar - adjustedNear) / (this.depthSamplesTarget.value - 1);
           const referenceSamplingRate = (adjustedFar - adjustedNear) / (optimalSamples - 1);
