@@ -46,7 +46,7 @@ const NUM_COLOR_CHANNELS = 4;
 const POSITION_VALUES_PER_LINE = 4;  // x1, y1, x2, y2
 export const TRANSFER_FUNCTION_LENGTH = 512;
 const CONTROL_POINT_GRAB_DISTANCE = TRANSFER_FUNCTION_LENGTH / 40;
-const TRANSFER_FUNCTION_BORDER_WIDTH = 23;
+const TRANSFER_FUNCTION_BORDER_WIDTH = 255 / 10;
 
 const transferFunctionSamplerTextureUnit = Symbol('transferFunctionSamplerTexture');
 
@@ -535,7 +535,7 @@ class ControlPointsLookupTable extends RefCounted {
   addPoint(position: number, opacity: number, color: vec3) {
     const colorAsUint8 =
         vec3.fromValues(floatToUint8(color[0]), floatToUint8(color[1]), floatToUint8(color[2]));
-    let opacityAsUint8 = this.opacityToIndex(opacity);
+    const opacityAsUint8 = this.opacityToIndex(opacity);
     const controlPoints = this.trackable.value.controlPoints;
     const positionAsIndex = this.positionToIndex(position);
     const existingIndex = controlPoints.findIndex((point) => point.position === positionAsIndex);
@@ -556,7 +556,7 @@ class ControlPointsLookupTable extends RefCounted {
   updatePoint(index: number, position: number, opacity: number) {
     const {controlPoints} = this.trackable.value;
     const positionAsIndex = this.positionToIndex(position);
-    let opacityAsUint8 = floatToUint8(opacity);
+    const opacityAsUint8 = this.opacityToIndex(opacity);
     const color = controlPoints[index].color;
     controlPoints[index] = {
       position: positionAsIndex,
@@ -687,22 +687,16 @@ class TransferFunctionController extends RefCounted {
     const nearestIndex = this.findNearestControlPointIndex(event);
     if (nearestIndex !== -1) {
       this.currentGrabbedControlPointIndex = nearestIndex;
-      // if (shouldChangeColor) {
-      //   this.controlPointsLookupTable.setPointColor(this.currentGrabbedControlPointIndex, color);
-      // }
       return undefined;
     } else {
-      this.addPoint(event, color);
+      const {normalizedX, normalizedY} = this.getControlPointPosition(event) as CanvasPosition;
+      this.controlPointsLookupTable.addPoint(normalizedX, normalizedY, color);
       this.currentGrabbedControlPointIndex = this.findNearestControlPointIndex(event);
       return {
         ...this.getModel(),
         controlPoints: this.controlPointsLookupTable.trackable.value.controlPoints
       };
     }
-  }
-  addPoint(event: MouseEvent, color: vec3) {
-    const {normalizedX, normalizedY} = this.getControlPointPosition(event) as CanvasPosition;
-    this.controlPointsLookupTable.addPoint(normalizedX, normalizedY, color);
   }
   moveControlPoint(event: MouseEvent): TransferFunctionParameters|undefined {
     if (this.currentGrabbedControlPointIndex !== -1) {
