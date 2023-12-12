@@ -31,7 +31,7 @@ import {GL} from 'neuroglancer/webgl/context';
 import {HistogramChannelSpecification, HistogramSpecifications} from 'neuroglancer/webgl/empirical_cdf';
 import {defineInvlerpShaderFunction, enableLerpShaderFunction} from 'neuroglancer/webgl/lerp';
 import {ShaderBuilder, ShaderProgram} from 'neuroglancer/webgl/shader';
-import {ControlPoint, defineTransferFunctionShader, enableTransferFunctionShader, TRANSFER_FUNCTION_LENGTH} from 'neuroglancer/widget/transfer_function'
+import {ControlPoint, defineTransferFunctionShader, enableTransferFunctionShader, floatToUint8, TRANSFER_FUNCTION_LENGTH} from 'neuroglancer/widget/transfer_function'
 
 export interface ShaderSliderControl {
   type: 'slider';
@@ -863,28 +863,27 @@ function convertTransferFunctionControlPoints(value: unknown, dataType: DataType
   });
 }
 
-function parseTransferFunctionControlPoints(value: unknown, dataType: DataType) {
-  dataType;
+function parseTransferFunctionControlPoints(value: unknown) {
   return parseArray(value, x => {
-    if (x.position === undefined || x.color === undefined) {
+    if (x.position === undefined || x.color === undefined || x.opacity === undefined) {
       throw new Error(
-          `Expected object with position and color properties, but received: ${JSON.stringify(x)}`);
+          `Expected object with position and color and opacity properties, but received: ${
+              JSON.stringify(x)}`);
     }
     if (typeof x.position !== 'number') {
-      // TODO (skm) might need to be of dataType depending on final implementation
       throw new Error(`Expected number, but received: ${JSON.stringify(x.position)}`);
     }
-    if (Object.keys(x.color).length !== 4) {
-      throw new Error(
-          `Expected array of length 4 (R, G, B, A), but received: ${JSON.stringify(x.color)}`);
+    x.position = Math.max(0, Math.min(TRANSFER_FUNCTION_LENGTH - 1, x.position));
+    const color = parseRGBColorSpecification(x.color);
+    if (typeof x.opacity !== 'number') {
+      throw new Error(`Expected number but received: ${JSON.stringify(x.opacity)}`);
     }
-    if (typeof x.color[0] !== 'number' || typeof x.color[1] !== 'number' ||
-        typeof x.color[2] !== 'number' || typeof x.color[3] !== 'number') {
-      throw new Error(`Expected number, but received: ${JSON.stringify(x.color)}`);
-    }
+    const opacity = floatToUint8(Math.max(0, Math.min(1, x.opacity)));
+    const rgbaColor = vec4.fromValues(
+        floatToUint8(color[0]), floatToUint8(color[1]), floatToUint8(color[2]), opacity);
     return {
       position: x.position,
-      color: vec4.fromValues(x.color[0], x.color[1], x.color[2], x.color[3])
+      color: rgbaColor,
     };
   });
 }
@@ -896,7 +895,7 @@ function parseTransferFunctionParameters(
   verifyObject(obj);
   return {
     controlPoints: verifyOptionalObjectProperty(
-        obj, 'controlPoints', x => parseTransferFunctionControlPoints(x, dataType),
+        obj, 'controlPoints', x => parseTransferFunctionControlPoints(x),
         defaultValue.controlPoints),
     channel: verifyOptionalObjectProperty(
         obj, 'channel', x => parseInvlerpChannel(x, defaultValue.channel.length),
@@ -925,6 +924,15 @@ class TrackableTransferFunctionParameters extends TrackableValue<TransferFunctio
     super(defaultValueCopy, obj => parseTransferFunctionParameters(obj, dataType, defaultValue));
   }
 
+  controlPointsToJson(controlPoints: Array<ControlPoint>) {
+    return controlPoints.map(x => ({
+                               position: x.position,
+                               color: serializeColor(vec3.fromValues(
+                                   x.color[0] / 255, x.color[1] / 255, x.color[2] / 255)),
+                               opacity: x.color[3] / 255
+                             }));
+  }
+
   toJSON() {
     const {value: {channel, controlPoints, color}, dataType, defaultValue} = this;
     let range = this.value.range;
@@ -937,7 +945,7 @@ class TrackableTransferFunctionParameters extends TrackableValue<TransferFunctio
             defaultValue.controlPoints, controlPoints,
             (a, b) => arraysEqual(a.color, b.color) && a.position == b.position) ?
         undefined :
-        this.value.controlPoints;
+        this.controlPointsToJson(this.value.controlPoints);
     if (rangeJson === undefined && channelJson === undefined && colorJson === undefined &&
         controlPointsJson === undefined) {
       return undefined;

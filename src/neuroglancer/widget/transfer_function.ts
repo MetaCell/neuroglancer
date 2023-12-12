@@ -142,7 +142,7 @@ function findClosestValueIndexInSortedArray(array: Array<number>, value: number)
 /**
  * Convert a [0, 1] float to a uint8 value between 0 and 255
  */
-function floatToUint8(float: number) {
+export function floatToUint8(float: number) {
   return Math.min(255, Math.max(Math.round(float * 255), 0));
 }
 
@@ -707,7 +707,6 @@ class TransferFunctionController extends RefCounted {
   moveControlPoint(event: MouseEvent): TransferFunctionParameters|undefined {
     if (this.currentGrabbedControlPointIndex !== -1) {
       const position = this.getControlPointPosition(event);
-      console.log(position);
       if (position === undefined) return undefined;
       const {normalizedX, normalizedY} = position;
       this.currentGrabbedControlPointIndex = this.controlPointsLookupTable.updatePoint(
