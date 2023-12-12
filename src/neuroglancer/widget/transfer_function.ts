@@ -769,9 +769,6 @@ class TransferFunctionWidget extends Tab {
     });
     colorPickerDiv.appendChild(colorPicker.element);
 
-    const colorLabel = document.createElement('label');
-    colorLabel.setAttribute('for', 'neuroglancer-tf-color-widget');
-    colorPickerDiv.appendChild(colorLabel);
     element.appendChild(colorPickerDiv);
     this.updateControlPointsAndDraw();
     this.registerDisposer(this.trackable.changed.add(() => {
