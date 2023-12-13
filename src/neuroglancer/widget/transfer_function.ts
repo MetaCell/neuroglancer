@@ -40,11 +40,12 @@ import {ColorWidget} from 'neuroglancer/widget/color';
 import {getUpdatedRangeAndWindowParameters, updateInputBoundValue, updateInputBoundWidth} from 'neuroglancer/widget/invlerp';
 import {LayerControlFactory, LayerControlTool} from 'neuroglancer/widget/layer_control';
 import {Tab} from 'neuroglancer/widget/tab_view';
-import {startRelativeMouseDrag} from 'src/neuroglancer/util/mouse_drag';
+import {startRelativeMouseDrag} from 'neuroglancer/util/mouse_drag';
+import {findClosestMatchInSortedArray} from 'neuroglancer/util/array';
 
+export const TRANSFER_FUNCTION_LENGTH = 512;
 const NUM_COLOR_CHANNELS = 4;
 const POSITION_VALUES_PER_LINE = 4;  // x1, y1, x2, y2
-export const TRANSFER_FUNCTION_LENGTH = 512;
 const CONTROL_POINT_GRAB_DISTANCE = TRANSFER_FUNCTION_LENGTH / 40;
 const TRANSFER_FUNCTION_BORDER_WIDTH = 255 / 10;
 
@@ -110,33 +111,6 @@ function lerpBetweenControlPoints(out: Int32Array|Uint8Array, controlPoints: Arr
       controlPointIndex++;
     }
   }
-}
-
-// TODO (skm) move this to a more general location
-function findClosestValueIndexInSortedArray(array: Array<number>, value: number) {
-  if (array.length === 0) {
-    return -1;
-  }
-
-  let start = 0;
-  let end = array.length - 1;
-
-  while (start <= end) {
-    const mid = Math.floor((start + end) / 2);
-    if (array[mid] === value) {
-      return mid;
-    } else if (array[mid] < value) {
-      start = mid + 1;
-    } else {
-      end = mid - 1;
-    }
-  }
-
-  start = Math.min(start, array.length - 1);
-  end = Math.max(end, 0);
-  const startDiff = Math.abs(array[start] - value);
-  const endDiff = Math.abs(array[end] - value);
-  return startDiff < endDiff ? start : end;
 }
 
 /**
@@ -515,9 +489,9 @@ class ControlPointsLookupTable extends RefCounted {
     return opacityAsUint8;
   }
   findNearestControlPointIndex(position: number) {
-    return findClosestValueIndexInSortedArray(
+    return findClosestMatchInSortedArray(
         this.trackable.value.controlPoints.map((point) => point.position),
-        this.positionToIndex(position));
+        this.positionToIndex(position), (a, b) => a - b);
   }
   grabControlPoint(position: number) {
     const nearestIndex = this.findNearestControlPointIndex(position);
