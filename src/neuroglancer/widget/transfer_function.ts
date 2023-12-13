@@ -31,7 +31,7 @@ import {Buffer, getMemoizedBuffer} from 'neuroglancer/webgl/buffer';
 import {GL} from 'neuroglancer/webgl/context';
 import {defineInvlerpShaderFunction} from 'neuroglancer/webgl/lerp';
 import {defineLineShader, drawLines, initializeLineShader, VERTICES_PER_LINE} from 'neuroglancer/webgl/lines';
-import {VERTICES_PER_QUAD} from 'neuroglancer/webgl/quad';
+import {drawQuads} from 'neuroglancer/webgl/quad';
 import {ShaderBuilder, ShaderCodePart, ShaderProgram} from 'neuroglancer/webgl/shader';
 import {getShaderType} from 'neuroglancer/webgl/shader_lib';
 import {TransferFunctionParameters} from 'neuroglancer/webgl/shader_ui_controls';
@@ -42,6 +42,7 @@ import {LayerControlFactory, LayerControlTool} from 'neuroglancer/widget/layer_c
 import {Tab} from 'neuroglancer/widget/tab_view';
 import {startRelativeMouseDrag} from 'neuroglancer/util/mouse_drag';
 import {findClosestMatchInSortedArray} from 'neuroglancer/util/array';
+import {getGriddedRectangleBuffer} from 'neuroglancer/webgl/rectangle_grid_buffer';
 
 export const TRANSFER_FUNCTION_LENGTH = 512;
 const NUM_COLOR_CHANNELS = 4;
@@ -81,12 +82,14 @@ function lerpBetweenControlPoints(out: Int32Array|Uint8Array, controlPoints: Arr
     out[index + 3] = color[3];
   }
 
+  // Edge case: no control points - all transparent
   if (controlPoints.length === 0) {
     out.fill(0);
     return;
   }
   const firstPoint = controlPoints[0];
 
+  // Edge case: first control point is not at 0 - fill in transparent values
   if (firstPoint.position > 0) {
     const transparent = vec4.fromValues(0, 0, 0, 0);
     for (let i = 0; i < firstPoint.position; ++i) {
@@ -95,6 +98,7 @@ function lerpBetweenControlPoints(out: Int32Array|Uint8Array, controlPoints: Arr
     }
   }
 
+  // Interpolate between control points and fill to end with last color
   let controlPointIndex = 0;
   for (let i = firstPoint.position; i < TRANSFER_FUNCTION_LENGTH; ++i) {
     const currentPoint = controlPoints[controlPointIndex];
@@ -131,39 +135,6 @@ function lerpUint8Color(startColor: vec4, endColor: vec4, t: number) {
   return color;
 }
 
-/**
- * Create a Float32Array of vertices for a canvas filling rectangle with the given number of grids
- * in the x direction
- */
-function griddedRectangleArray(numGrids: number): Float32Array {
-  const result = new Float32Array(numGrids * VERTICES_PER_QUAD * 2);
-  const width = 2;
-  const height = 1;
-  let start = -width / 2;
-  const step = width / numGrids;
-  for (let i = 0; i < numGrids; ++i) {
-    const end = start + step;
-    const index = i * VERTICES_PER_QUAD * 2;
-
-    // Triangle 1 - top-left, top-right, bottom-right
-    result[index] = start;        // top-left x
-    result[index + 1] = height;   // top-left y
-    result[index + 2] = end       // top-right x
-    result[index + 3] = height;   // top-right y
-    result[index + 4] = end;      // bottom-right x
-    result[index + 5] = -height;  // bottom-right y
-
-    // Triangle 2 - top-left, bottom-right, bottom-left
-    result[index + 6] = start;     // top-left x
-    result[index + 7] = height;    // top-left y
-    result[index + 8] = end;       // bottom-right x
-    result[index + 9] = -height;   // bottom-right y
-    result[index + 10] = start;    // bottom-left x
-    result[index + 11] = -height;  // bottom-left y
-    start += step;
-  }
-  return result;
-}
 
 /**
  * Represent the underlying transfer function as a texture
@@ -213,7 +184,7 @@ class TransferFunctionTexture extends RefCounted {
  */
 class TransferFunctionPanel extends IndirectRenderedPanel {
   texture: TransferFunctionTexture;
-  private vertexBuffer: Buffer;
+  private textureVertexBuffer: Buffer;
   private controlPointsVertexBuffer: Buffer;
   private controlPointsColorBuffer: Buffer;
   private controlPointsPositionArray = new Float32Array();
@@ -235,10 +206,7 @@ class TransferFunctionPanel extends IndirectRenderedPanel {
     const {element} = this;
     element.classList.add('neuroglancer-transfer-function-panel');
     this.texture = this.registerDisposer(new TransferFunctionTexture(this.gl));
-    this.vertexBuffer = this.registerDisposer(getMemoizedBuffer(
-                                                  this.gl, WebGL2RenderingContext.ARRAY_BUFFER,
-                                                  griddedRectangleArray, TRANSFER_FUNCTION_LENGTH))
-                            .value;
+    this.textureVertexBuffer = this.registerDisposer(getGriddedRectangleBuffer(this.gl, TRANSFER_FUNCTION_LENGTH));
     this.controlPointsVertexBuffer =
         this.registerDisposer(getMemoizedBuffer(
                                   this.gl, WebGL2RenderingContext.ARRAY_BUFFER,
@@ -416,11 +384,11 @@ out_color = tempColor * alpha;
       const aVertexPosition = transferFunctionShader.attribute('aVertexPosition');
       gl.uniform1f(
           transferFunctionShader.uniform('uTransferFunctionEnd'), TRANSFER_FUNCTION_LENGTH - 1);
-      this.vertexBuffer.bindToVertexAttrib(
+      this.textureVertexBuffer.bindToVertexAttrib(
           aVertexPosition, /*components=*/ 2, /*attributeType=*/ WebGL2RenderingContext.FLOAT);
       const textureUnit = transferFunctionShader.textureUnit(transferFunctionSamplerTextureUnit);
       this.texture.updateAndActivate({controlPoints: this.controlPointsLookupTable, textureUnit});
-      gl.drawArrays(gl.TRIANGLES, 0, TRANSFER_FUNCTION_LENGTH * VERTICES_PER_QUAD);
+      drawQuads(this.gl, TRANSFER_FUNCTION_LENGTH, 1);
       gl.disableVertexAttribArray(aVertexPosition);
       gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, null);
     }
