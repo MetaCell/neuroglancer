@@ -71,7 +71,6 @@ export interface ShaderCheckboxControl {
   default: boolean;
 }
 
-// TODO (skm) make control points a class potentially
 export interface ShaderTransferFunctionControl {
   type: 'transferFunction';
   dataType: DataType;
@@ -512,7 +511,7 @@ function parseTransferFunctionDirective(
     errors.push('type must be transferFunction');
   }
   if (dataType === undefined) {
-    errors.push('image data must be provided to use transfer function');
+    errors.push('image data must be provided to use a transfer function');
   } else {
     range = defaultDataTypeRange[dataType];
   }
@@ -523,7 +522,6 @@ function parseTransferFunctionDirective(
           channel = parseInvlerpChannel(value, channel.length);
           break;
         }
-        // TODO (skm) parse hex color values
         case 'color': {
           color = parseRGBColorSpecification(value);
           break;
@@ -536,7 +534,7 @@ function parseTransferFunctionDirective(
         }
         case 'points': {
           if (dataType !== undefined) {
-            controlPoints.push(...convertTransferFunctionControlPoints(value, dataType));
+            controlPoints.push(...convertTransferFunctionControlPoints(value));
           }
           break;
         }
@@ -555,7 +553,6 @@ function parseTransferFunctionDirective(
     const transferFunctionRange = [0, TRANSFER_FUNCTION_LENGTH - 1] as [number, number];
     const startPoint = computeLerp(transferFunctionRange, DataType.UINT16, 0.4) as number;
     const endPoint = computeLerp(transferFunctionRange, DataType.UINT16, 0.7) as number;
-    // TODO (skm) when using texture, need to use normalized values
     controlPoints.push({position: startPoint, color: vec4.fromValues(0, 0, 0, 0)});
     controlPoints.push({position: endPoint, color: vec4.fromValues(255, 255, 255, 255)});
   }
@@ -840,26 +837,34 @@ class TrackablePropertyInvlerpParameters extends TrackableValue<PropertyInvlerpP
 }
 
 export interface TransferFunctionParameters {
-  controlPoints: Array<ControlPoint>;
+  controlPoints: ControlPoint[];
   channel: number[];
   color: vec3;
   range: DataTypeInterval;
 }
 
-function convertTransferFunctionControlPoints(value: unknown, dataType: DataType) {
-  dataType;
+function convertTransferFunctionControlPoints(value: unknown) {
   return parseArray(value, x => {
-    if (x.length !== 5) {
+    // Validate input length and types
+    if (x.length !== 3 || typeof x[0] !== 'number' || typeof x[1] !== 'string' || typeof x[2] !== 'number') {
       throw new Error(
-          `Expected array of length 5 (x, R, G, B, A), but received: ${JSON.stringify(x)}`);
+          `Expected array of length 3 (x, #RRGGBB, A), but received: ${JSON.stringify(x)}`);
     }
-    // TODO (skm) implement proper validation of array elements
-    for (const val of x) {
-      if (typeof val !== 'number') {
-        throw new Error(`Expected number, but received: ${JSON.stringify(val)}`);
-      }
+
+    // TODO (skm) consider parsing from real value via invlerp on the range
+    // Validate values
+    if (x[0] < 0 || x[0] > TRANSFER_FUNCTION_LENGTH - 1) {
+      throw new Error(
+          `Expected x in range [0, ${TRANSFER_FUNCTION_LENGTH - 1}], but received: ${JSON.stringify(x[0])}`);
     }
-    return {position: x[0], color: vec4.fromValues(x[1], x[2], x[3], x[4])};
+    if (x[1].length !== 7 || x[1][0] !== '#') {
+      throw new Error(`Expected #RRGGBB, but received: ${JSON.stringify(x[1])}`);
+    }
+    if (x[2] < 0 || x[2] > 1) {
+      throw new Error(`Expected opacity in range [0, 1], but received: ${JSON.stringify(x[2])}`);
+    }
+    const color = parseRGBColorSpecification(x[1]);
+    return {position: x[0], color: vec4.fromValues(color[0] * 255, color[1] * 255, color[2] * 255, x[2] * 255)};
   });
 }
 
@@ -908,7 +913,7 @@ function parseTransferFunctionParameters(
   };
 }
 
-function deepCopyTransferFunctionParameters(defaultValue: TransferFunctionParameters) {
+function copyTransferFunctionParameters(defaultValue: TransferFunctionParameters) {
   return {
     controlPoints:
         defaultValue.controlPoints.map(x => ({position: x.position, color: vec4.clone(x.color)})),
@@ -920,11 +925,11 @@ function deepCopyTransferFunctionParameters(defaultValue: TransferFunctionParame
 
 class TrackableTransferFunctionParameters extends TrackableValue<TransferFunctionParameters> {
   constructor(public dataType: DataType, public defaultValue: TransferFunctionParameters) {
-    const defaultValueCopy = deepCopyTransferFunctionParameters(defaultValue);
+    const defaultValueCopy = copyTransferFunctionParameters(defaultValue);
     super(defaultValueCopy, obj => parseTransferFunctionParameters(obj, dataType, defaultValue));
   }
 
-  controlPointsToJson(controlPoints: Array<ControlPoint>) {
+  controlPointsToJson(controlPoints: ControlPoint[]) {
     return controlPoints.map(x => ({
                                position: x.position,
                                color: serializeColor(vec3.fromValues(

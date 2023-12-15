@@ -20,18 +20,21 @@ import {DisplayContext, IndirectRenderedPanel} from 'neuroglancer/display_contex
 import {UserLayer} from 'neuroglancer/layer';
 import {makeCachedDerivedWatchableValue, WatchableValueInterface} from 'neuroglancer/trackable_value';
 import {ToolActivation} from 'neuroglancer/ui/tool';
+import {findClosestMatchInSortedArray} from 'neuroglancer/util/array';
 import {DataType} from 'neuroglancer/util/data_type';
 import {RefCounted} from 'neuroglancer/util/disposable';
 import {EventActionMap, registerActionListener} from 'neuroglancer/util/event_action_map';
 import {vec3, vec4} from 'neuroglancer/util/geom';
 import {computeLerp, DataTypeInterval, parseDataTypeValue} from 'neuroglancer/util/lerp';
 import {MouseEventBinder} from 'neuroglancer/util/mouse_bindings';
+import {startRelativeMouseDrag} from 'neuroglancer/util/mouse_drag';
 import {WatchableVisibilityPriority} from 'neuroglancer/visibility_priority/frontend';
 import {Buffer, getMemoizedBuffer} from 'neuroglancer/webgl/buffer';
 import {GL} from 'neuroglancer/webgl/context';
 import {defineInvlerpShaderFunction} from 'neuroglancer/webgl/lerp';
 import {defineLineShader, drawLines, initializeLineShader, VERTICES_PER_LINE} from 'neuroglancer/webgl/lines';
-import {VERTICES_PER_QUAD} from 'neuroglancer/webgl/quad';
+import {drawQuads} from 'neuroglancer/webgl/quad';
+import {createGriddedRectangleArray} from 'neuroglancer/webgl/rectangle_grid_buffer';
 import {ShaderBuilder, ShaderCodePart, ShaderProgram} from 'neuroglancer/webgl/shader';
 import {getShaderType} from 'neuroglancer/webgl/shader_lib';
 import {TransferFunctionParameters} from 'neuroglancer/webgl/shader_ui_controls';
@@ -40,11 +43,10 @@ import {ColorWidget} from 'neuroglancer/widget/color';
 import {getUpdatedRangeAndWindowParameters, updateInputBoundValue, updateInputBoundWidth} from 'neuroglancer/widget/invlerp';
 import {LayerControlFactory, LayerControlTool} from 'neuroglancer/widget/layer_control';
 import {Tab} from 'neuroglancer/widget/tab_view';
-import {startRelativeMouseDrag} from 'src/neuroglancer/util/mouse_drag';
 
+export const TRANSFER_FUNCTION_LENGTH = 512;
 const NUM_COLOR_CHANNELS = 4;
 const POSITION_VALUES_PER_LINE = 4;  // x1, y1, x2, y2
-export const TRANSFER_FUNCTION_LENGTH = 512;
 const CONTROL_POINT_GRAB_DISTANCE = TRANSFER_FUNCTION_LENGTH / 40;
 const TRANSFER_FUNCTION_BORDER_WIDTH = 255 / 10;
 
@@ -80,12 +82,14 @@ function lerpBetweenControlPoints(out: Int32Array|Uint8Array, controlPoints: Arr
     out[index + 3] = color[3];
   }
 
+  // Edge case: no control points - all transparent
   if (controlPoints.length === 0) {
     out.fill(0);
     return;
   }
   const firstPoint = controlPoints[0];
 
+  // Edge case: first control point is not at 0 - fill in transparent values
   if (firstPoint.position > 0) {
     const transparent = vec4.fromValues(0, 0, 0, 0);
     for (let i = 0; i < firstPoint.position; ++i) {
@@ -94,6 +98,7 @@ function lerpBetweenControlPoints(out: Int32Array|Uint8Array, controlPoints: Arr
     }
   }
 
+  // Interpolate between control points and fill to end with last color
   let controlPointIndex = 0;
   for (let i = firstPoint.position; i < TRANSFER_FUNCTION_LENGTH; ++i) {
     const currentPoint = controlPoints[controlPointIndex];
@@ -110,33 +115,6 @@ function lerpBetweenControlPoints(out: Int32Array|Uint8Array, controlPoints: Arr
       controlPointIndex++;
     }
   }
-}
-
-// TODO (skm) move this to a more general location
-function findClosestValueIndexInSortedArray(array: Array<number>, value: number) {
-  if (array.length === 0) {
-    return -1;
-  }
-
-  let start = 0;
-  let end = array.length - 1;
-
-  while (start <= end) {
-    const mid = Math.floor((start + end) / 2);
-    if (array[mid] === value) {
-      return mid;
-    } else if (array[mid] < value) {
-      start = mid + 1;
-    } else {
-      end = mid - 1;
-    }
-  }
-
-  start = Math.min(start, array.length - 1);
-  end = Math.max(end, 0);
-  const startDiff = Math.abs(array[start] - value);
-  const endDiff = Math.abs(array[end] - value);
-  return startDiff < endDiff ? start : end;
 }
 
 /**
@@ -158,40 +136,6 @@ function lerpUint8Color(startColor: vec4, endColor: vec4, t: number) {
 }
 
 /**
- * Create a Float32Array of vertices for a canvas filling rectangle with the given number of grids
- * in the x direction
- */
-function griddedRectangleArray(numGrids: number): Float32Array {
-  const result = new Float32Array(numGrids * VERTICES_PER_QUAD * 2);
-  const width = 2;
-  const height = 1;
-  let start = -width / 2;
-  const step = width / numGrids;
-  for (let i = 0; i < numGrids; ++i) {
-    const end = start + step;
-    const index = i * VERTICES_PER_QUAD * 2;
-
-    // Triangle 1 - top-left, top-right, bottom-right
-    result[index] = start;        // top-left x
-    result[index + 1] = height;   // top-left y
-    result[index + 2] = end       // top-right x
-    result[index + 3] = height;   // top-right y
-    result[index + 4] = end;      // bottom-right x
-    result[index + 5] = -height;  // bottom-right y
-
-    // Triangle 2 - top-left, bottom-right, bottom-left
-    result[index + 6] = start;     // top-left x
-    result[index + 7] = height;    // top-left y
-    result[index + 8] = end;       // bottom-right x
-    result[index + 9] = -height;   // bottom-right y
-    result[index + 10] = start;    // bottom-left x
-    result[index + 11] = -height;  // bottom-left y
-    start += step;
-  }
-  return result;
-}
-
-/**
  * Represent the underlying transfer function as a texture
  */
 class TransferFunctionTexture extends RefCounted {
@@ -207,7 +151,6 @@ class TransferFunctionTexture extends RefCounted {
   updateAndActivate(options: TransferFunctionTextureOptions) {
     const {gl} = this;
     let {texture} = this;
-    // TODO (skm) might be able to do more efficient updates
     if (texture !== null && options === this.priorOptions) {
       gl.activeTexture(WebGL2RenderingContext.TEXTURE0 + options.textureUnit);
       gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, texture);
@@ -239,10 +182,11 @@ class TransferFunctionTexture extends RefCounted {
  */
 class TransferFunctionPanel extends IndirectRenderedPanel {
   texture: TransferFunctionTexture;
-  private vertexBuffer: Buffer;
+  private textureVertexBuffer: Buffer;
+  private textureVertexBufferArray: Float32Array;
   private controlPointsVertexBuffer: Buffer;
-  private controlPointsColorBuffer: Buffer;
   private controlPointsPositionArray = new Float32Array();
+  private controlPointsColorBuffer: Buffer;
   private controlPointsColorArray = new Float32Array();
   private linePositionBuffer: Buffer;
   private linePositionArray = new Float32Array();
@@ -260,11 +204,13 @@ class TransferFunctionPanel extends IndirectRenderedPanel {
     super(parent.display, document.createElement('div'), parent.visibility);
     const {element} = this;
     element.classList.add('neuroglancer-transfer-function-panel');
+    this.textureVertexBufferArray = createGriddedRectangleArray(TRANSFER_FUNCTION_LENGTH);
     this.texture = this.registerDisposer(new TransferFunctionTexture(this.gl));
-    this.vertexBuffer = this.registerDisposer(getMemoizedBuffer(
-                                                  this.gl, WebGL2RenderingContext.ARRAY_BUFFER,
-                                                  griddedRectangleArray, TRANSFER_FUNCTION_LENGTH))
-                            .value;
+    this.textureVertexBuffer =
+        this
+            .registerDisposer(getMemoizedBuffer(
+                this.gl, WebGL2RenderingContext.ARRAY_BUFFER, () => this.textureVertexBufferArray))
+            .value;
     this.controlPointsVertexBuffer =
         this.registerDisposer(getMemoizedBuffer(
                                   this.gl, WebGL2RenderingContext.ARRAY_BUFFER,
@@ -311,6 +257,8 @@ class TransferFunctionPanel extends IndirectRenderedPanel {
     let startAdd = null;
     let endAdd = null;
     let lineIndex = 0;
+
+    // Add lines to the beginning and end if necessary
     if (controlPoints.length > 0) {
       if (controlPoints[0].position > 0) {
         numLines += 1;
@@ -327,6 +275,7 @@ class TransferFunctionPanel extends IndirectRenderedPanel {
       numLines = 0;
     }
 
+    // Create line positions
     const linePositionArray =
         new Float32Array(numLines * VERTICES_PER_LINE * POSITION_VALUES_PER_LINE);
     if (startAdd !== null) {
@@ -335,7 +284,6 @@ class TransferFunctionPanel extends IndirectRenderedPanel {
           controlPoints[0].color[3]);
       lineIndex = createLinePoints(linePositionArray, lineIndex, linePosition);
     }
-
     for (let i = 0; i < controlPoints.length; ++i) {
       const colorIndex = i * colorChannels;
       const positionIndex = i * 2;
@@ -351,7 +299,6 @@ class TransferFunctionPanel extends IndirectRenderedPanel {
         lineIndex = createLinePoints(linePositionArray, lineIndex, linePosition);
       }
     }
-
     if (endAdd !== null) {
       const linePosition = vec4.fromValues(
           controlPoints[controlPoints.length - 1].position,
@@ -359,6 +306,7 @@ class TransferFunctionPanel extends IndirectRenderedPanel {
       lineIndex = createLinePoints(linePositionArray, lineIndex, linePosition);
     }
 
+    // Update buffers
     this.controlPointsColorArray = colorArray;
     this.controlPointsPositionArray = positionArray;
     this.linePositionArray = linePositionArray;
@@ -437,19 +385,20 @@ out_color = tempColor * alpha;
     gl.blendFunc(WebGL2RenderingContext.SRC_ALPHA, WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA);
     gl.disable(WebGL2RenderingContext.DEPTH_TEST);
     gl.disable(WebGL2RenderingContext.STENCIL_TEST);
-    {
+    {  // Draw transfer function texture
       transferFunctionShader.bind();
       const aVertexPosition = transferFunctionShader.attribute('aVertexPosition');
       gl.uniform1f(
           transferFunctionShader.uniform('uTransferFunctionEnd'), TRANSFER_FUNCTION_LENGTH - 1);
-      this.vertexBuffer.bindToVertexAttrib(
+      this.textureVertexBuffer.bindToVertexAttrib(
           aVertexPosition, /*components=*/ 2, /*attributeType=*/ WebGL2RenderingContext.FLOAT);
       const textureUnit = transferFunctionShader.textureUnit(transferFunctionSamplerTextureUnit);
       this.texture.updateAndActivate({controlPoints: this.controlPointsLookupTable, textureUnit});
-      gl.drawArrays(gl.TRIANGLES, 0, TRANSFER_FUNCTION_LENGTH * VERTICES_PER_QUAD);
+      drawQuads(this.gl, TRANSFER_FUNCTION_LENGTH, 1);
       gl.disableVertexAttribArray(aVertexPosition);
       gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, null);
     }
+    // Draw lines and control points on top of transfer function - if there are any
     if (this.controlPointsPositionArray.length > 0) {
       const {renderViewport} = this;
       transferFunctionLineShader.bind();
@@ -486,10 +435,6 @@ out_color = tempColor * alpha;
   }
 }
 
-// TODO (skm) control points might need two positions, one for the actual position and one for the
-// display position
-// TODO (skm) however, this might make it a bit awkward for texturing
-// TODO (skm) does this need data type?
 /**
  * Lookup table for control points. Handles adding, removing, and updating control points as well as
  * consequent updates to the underlying lookup table formed from the control points.
@@ -515,9 +460,9 @@ class ControlPointsLookupTable extends RefCounted {
     return opacityAsUint8;
   }
   findNearestControlPointIndex(position: number) {
-    return findClosestValueIndexInSortedArray(
+    return findClosestMatchInSortedArray(
         this.trackable.value.controlPoints.map((point) => point.position),
-        this.positionToIndex(position));
+        this.positionToIndex(position), (a, b) => a - b);
   }
   grabControlPoint(position: number) {
     const nearestIndex = this.findNearestControlPointIndex(position);
@@ -575,7 +520,6 @@ class ControlPointsLookupTable extends RefCounted {
         colorAsUint8[0], colorAsUint8[1], colorAsUint8[2], controlPoints[index].color[3]);
   }
 }
-
 
 /**
  * Create the bounds on the UI range inputs for the transfer function widget
@@ -721,7 +665,6 @@ class TransferFunctionController extends RefCounted {
   }
 }
 
-// TODO (skm) the widget needs to have a controller for bindings
 /**
  * Widget for the transfer function. Creates the UI elements required for the transfer function.
  */
@@ -769,9 +712,6 @@ class TransferFunctionWidget extends Tab {
     });
     colorPickerDiv.appendChild(colorPicker.element);
 
-    const colorLabel = document.createElement('label');
-    colorLabel.setAttribute('for', 'neuroglancer-tf-color-widget');
-    colorPickerDiv.appendChild(colorLabel);
     element.appendChild(colorPickerDiv);
     this.updateControlPointsAndDraw();
     this.registerDisposer(this.trackable.changed.add(() => {
