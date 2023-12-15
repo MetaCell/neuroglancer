@@ -34,7 +34,7 @@ import {GL} from 'neuroglancer/webgl/context';
 import {defineInvlerpShaderFunction} from 'neuroglancer/webgl/lerp';
 import {defineLineShader, drawLines, initializeLineShader, VERTICES_PER_LINE} from 'neuroglancer/webgl/lines';
 import {drawQuads} from 'neuroglancer/webgl/quad';
-import {getGriddedRectangleBuffer} from 'neuroglancer/webgl/rectangle_grid_buffer';
+import {createGriddedRectangleArray} from 'neuroglancer/webgl/rectangle_grid_buffer';
 import {ShaderBuilder, ShaderCodePart, ShaderProgram} from 'neuroglancer/webgl/shader';
 import {getShaderType} from 'neuroglancer/webgl/shader_lib';
 import {TransferFunctionParameters} from 'neuroglancer/webgl/shader_ui_controls';
@@ -183,9 +183,10 @@ class TransferFunctionTexture extends RefCounted {
 class TransferFunctionPanel extends IndirectRenderedPanel {
   texture: TransferFunctionTexture;
   private textureVertexBuffer: Buffer;
+  private textureVertexBufferArray: Float32Array;
   private controlPointsVertexBuffer: Buffer;
-  private controlPointsColorBuffer: Buffer;
   private controlPointsPositionArray = new Float32Array();
+  private controlPointsColorBuffer: Buffer;
   private controlPointsColorArray = new Float32Array();
   private linePositionBuffer: Buffer;
   private linePositionArray = new Float32Array();
@@ -203,9 +204,13 @@ class TransferFunctionPanel extends IndirectRenderedPanel {
     super(parent.display, document.createElement('div'), parent.visibility);
     const {element} = this;
     element.classList.add('neuroglancer-transfer-function-panel');
+    this.textureVertexBufferArray = createGriddedRectangleArray(TRANSFER_FUNCTION_LENGTH);
     this.texture = this.registerDisposer(new TransferFunctionTexture(this.gl));
     this.textureVertexBuffer =
-        this.registerDisposer(getGriddedRectangleBuffer(this.gl, TRANSFER_FUNCTION_LENGTH));
+        this
+            .registerDisposer(getMemoizedBuffer(
+                this.gl, WebGL2RenderingContext.ARRAY_BUFFER, () => this.textureVertexBufferArray))
+            .value;
     this.controlPointsVertexBuffer =
         this.registerDisposer(getMemoizedBuffer(
                                   this.gl, WebGL2RenderingContext.ARRAY_BUFFER,
