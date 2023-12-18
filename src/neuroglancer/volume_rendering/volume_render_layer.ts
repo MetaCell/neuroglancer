@@ -51,6 +51,7 @@ interface VolumeRenderingAttachmentState {
 }
 
 export interface VolumeRenderingRenderLayerOptions {
+  gain: WatchableValueInterface<number>;
   multiscaleSource: MultiscaleVolumeChunkSource;
   transform: WatchableValueInterface<RenderLayerTransformOrError>;
   shaderError: WatchableShaderError;
@@ -79,6 +80,7 @@ function clampAndRoundResolutionTargetValue(value: number) {
 }
 
 export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
+  gain: WatchableValueInterface<number>;
   multiscaleSource: MultiscaleVolumeChunkSource;
   transform: WatchableValueInterface<RenderLayerTransformOrError>;
   channelCoordinateSpace: WatchableValueInterface<CoordinateSpace>;
@@ -107,6 +109,7 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
 
   constructor(options: VolumeRenderingRenderLayerOptions) {
     super();
+    this.gain = options.gain;
     this.multiscaleSource = options.multiscaleSource;
     this.transform = options.transform;
     this.channelCoordinateSpace = options.channelCoordinateSpace;
@@ -157,6 +160,7 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
 
         builder.addUniform('highp float', 'uSamplingRatio');
         builder.addUniform('highp float', 'uBrightnessFactor');
+        builder.addUniform('highp float', 'uGain');
         builder.addVarying('highp vec4', 'vNormalizedPosition');
         builder.addVertexCode(glsl_getBoxFaceVertexPosition);
 
@@ -199,17 +203,17 @@ void userMain();
         }
 void emitRGBA(vec4 rgba) {
   if (tempNewSource == 1) {
-    float opacityCorrectedAlpha = 1.0 - (pow(clamp(1.0 - rgba.a, 0.0, 1.0), uSamplingRatio));
+    float opacityCorrectedAlpha = 1.0 - (pow(clamp(1.0 - (rgba.a * uGain), 0.0, 1.0), uSamplingRatio));
     float compositedAlpha = (1.0 - outputColor.a) * opacityCorrectedAlpha;
     outputColor += vec4(rgba.rgb * compositedAlpha, compositedAlpha);
   }
   else if (tempNewSource == 2) {
     float correctedAlpha = clamp(rgba.a, 0.0, 1.0);
-    float weight = computeOITWeightDepth(correctedAlpha) * uBrightnessFactor;
+    float weight = computeOITWeightDepth(correctedAlpha) * uBrightnessFactor * uGain;
     outputColor += vec4(rgba.rgb * weight * correctedAlpha, correctedAlpha * weight);
   }
   else {
-    float alpha = rgba.a * uBrightnessFactor;
+    float alpha = rgba.a * uBrightnessFactor * uGain;
     outputColor += vec4(rgba.rgb * alpha, alpha);
   }
 }
@@ -290,6 +294,7 @@ void main() {
     this.vertexIdHelper = this.registerDisposer(VertexIdHelper.get(this.gl));
 
     this.registerDisposer(this.depthSamplesTarget.changed.add(this.redrawNeeded.dispatch));
+    this.registerDisposer(this.gain.changed.add(this.redrawNeeded.dispatch));
     this.registerDisposer(this.shaderControlState.changed.add(this.redrawNeeded.dispatch));
     this.registerDisposer(this.localPosition.changed.add(this.redrawNeeded.dispatch));
     this.registerDisposer(this.transform.changed.add(this.redrawNeeded.dispatch));
@@ -484,6 +489,7 @@ void main() {
           gl.uniform1f(shader.uniform('uNearLimitFraction'), nearLimitFraction);
           gl.uniform1f(shader.uniform('uFarLimitFraction'), farLimitFraction);
           gl.uniform1i(shader.uniform('uMaxSteps'), this.depthSamplesTarget.value);
+          gl.uniform1f(shader.uniform('uGain'), this.gain.value);
           gl.uniform3fv(shader.uniform('uLowerClipBound'), transformedSource.lowerClipDisplayBound);
           gl.uniform3fv(shader.uniform('uUpperClipBound'), transformedSource.upperClipDisplayBound);
         },
