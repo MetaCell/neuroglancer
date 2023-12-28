@@ -78,7 +78,7 @@ void emit(vec4 color, highp uint pickId) {
 export const glsl_computeOITWeight = `
 float computeOITWeight(float alpha) {
   float a = min(1.0, alpha) * 8.0 + 0.01;
-  float b = 0.95 + 1.0;
+  float b = -gl_FragCoord.z * 0.95 + 1.0;
   return a * a * a * b * b * b;
 }
 `;
@@ -90,7 +90,7 @@ void emit(vec4 color, highp uint pickId) {
   float weight = computeOITWeight(color.a);
   vec4 accum = color * weight;
   v4f_fragData0 = vec4(1.0, 0.0, 0.0, 1.0);
-  v4f_fragData1 = vec4(color.a * 8.0, 0.0, 0.0, 0.0);
+  v4f_fragData1 = vec4(accum.a, 0.0, 0.0, 0.0);
 }
 `
 ];
