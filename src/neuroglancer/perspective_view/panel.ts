@@ -75,6 +75,7 @@ void emit(vec4 color, highp uint pickId) {
  * http://jcgt.org/published/0002/02/09/paper.pdf
  * http://casual-effects.blogspot.com/2015/03/implemented-weighted-blended-order.html
  */
+// TODO: (SKM) could clamping help the precision issues?
 export const glsl_computeOITWeight = `
 float computeOITWeight(float alpha) {
   float a = min(1.0, alpha) * 8.0 + 0.01;
@@ -89,7 +90,7 @@ export const glsl_perspectivePanelEmitOIT = [
 void emit(vec4 color, highp uint pickId) {
   float weight = computeOITWeight(color.a);
   vec4 accum = color * weight;
-  v4f_fragData0 = vec4(1.0, 0.0, 0.0, 1.0);
+  v4f_fragData0 = vec4(accum.rgb, 1.0);
   v4f_fragData1 = vec4(accum.a, 0.0, 0.0, 0.0);
 }
 `
