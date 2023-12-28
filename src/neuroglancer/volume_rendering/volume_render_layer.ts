@@ -170,6 +170,7 @@ gl_Position.z = 0.0;
 vec3 curChunkPosition;
 vec4 outputColor;
 int tempNewSource = 0;
+float depth = 0.0;
 void userMain();
 `);
         defineChunkDataShaderAccess(builder, chunkFormat, numChannelDimensions, `curChunkPosition`);
@@ -191,6 +192,11 @@ void userMain();
             
             return y;
         }
+        float computeOITWeightDepth(float alpha) {
+          float a = min(1.0, alpha) * 8.0 + 0.01;
+          float b = -depth * 0.95 + 1.0;
+          return a * a * a * b * b * b;
+        }
 void emitRGBA(vec4 rgba) {
   if (tempNewSource == 1) {
     float opacityCorrectedAlpha = 1.0 - (pow(clamp(1.0 - rgba.a, 0.0, 1.0), uSamplingRatio));
@@ -199,7 +205,7 @@ void emitRGBA(vec4 rgba) {
   }
   else if (tempNewSource == 2) {
     float correctedAlpha = clamp(rgba.a, 0.0, 1.0);
-    float weight = computeOITWeight(correctedAlpha) * uBrightnessFactor;
+    float weight = computeOITWeightDepth(correctedAlpha) * uBrightnessFactor;
     outputColor += vec4(weight, weight, weight, weight * correctedAlpha);
   }
   else {
@@ -264,6 +270,9 @@ void main() {
   outputColor = vec4(0, 0, 0, 0);
   for (int step = startStep; step < endStep; ++step) {
     vec3 position = mix(nearPoint, farPoint, uNearLimitFraction + float(step) * stepSize);
+    vec4 clipSpacePosition = uModelViewProjectionMatrix * vec4(position, 1.0);
+    float NDCdepth = clipSpacePosition.z / clipSpacePosition.w;
+    depth = 0.5 * (NDCdepth + 1.0);
     curChunkPosition = position - uTranslation;
     userMain();
   }
