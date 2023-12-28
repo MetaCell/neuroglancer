@@ -198,8 +198,8 @@ void emitRGBA(vec4 rgba) {
     outputColor += vec4(rgba.rgb * compositedAlpha, compositedAlpha);
   }
   else if (tempNewSource == 2) {
-    float correctedAlpha = clamp(rgba.a * uBrightnessFactor, 0.0, 1.0);
-    float weight = 1000000.0 * computeOITWeight(correctedAlpha);
+    float correctedAlpha = clamp(rgba.a, 0.0, 1.0);
+    float weight = computeOITWeight(correctedAlpha) * uBrightnessFactor;
     outputColor += vec4(weight, weight, weight, weight * correctedAlpha);
   }
   else {
