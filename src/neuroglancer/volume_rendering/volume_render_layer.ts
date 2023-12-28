@@ -169,21 +169,41 @@ gl_Position.z = 0.0;
         builder.addFragmentCode(`
 vec3 curChunkPosition;
 vec4 outputColor;
-bool tempNewSource = true;
+int tempNewSource = 0;
 void userMain();
 `);
         defineChunkDataShaderAccess(builder, chunkFormat, numChannelDimensions, `curChunkPosition`);
         // See Real-Time Volume Graphics, page 12
+        // TODO (skm): ensure that this is the correct cbrt function
         builder.addFragmentCode(`
+        float cbrt( float x )
+        {
+          float y = sign(x) * uintBitsToFloat( floatBitsToUint( abs(x) ) / 3u + 0x2a514067u );
+        
+          for( int i = 0; i < 2; ++i )
+              y = ( 2. * y + x / ( y * y ) ) * .333333333;
+        
+            for( int i = 0; i < 3; ++i )
+            {
+              float y3 = y * y * y;
+                y *= ( y3 + 2. * x ) / ( 2. * y3 + x );
+            }
+            
+            return y;
+        }
 void emitRGBA(vec4 rgba) {
-  float alpha = 0.0;
-  if (tempNewSource) {
+  if (tempNewSource == 1) {
     float opacityCorrectedAlpha = 1.0 - (pow(clamp(1.0 - rgba.a, 0.0, 1.0), uSamplingRatio));
     float compositedAlpha = (1.0 - outputColor.a) * opacityCorrectedAlpha;
     outputColor += vec4(rgba.rgb * compositedAlpha, compositedAlpha);
   }
+  else if (tempNewSource == 2) {
+    float correctedAlpha = clamp(rgba.a * uBrightnessFactor, 0.0, 1.0);
+    float weight = 1000000.0 * computeOITWeight(correctedAlpha);
+    outputColor += vec4(weight, weight, weight, weight * correctedAlpha);
+  }
   else {
-    alpha = rgba.a * uBrightnessFactor;
+    float alpha = rgba.a * uBrightnessFactor;
     outputColor += vec4(rgba.rgb * alpha, alpha);
   }
 }
