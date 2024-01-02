@@ -107,7 +107,7 @@ void emit(vec4 color, highp uint pickId) {
   // TEMP Testing this code
   // v4f_fragData0 = vec4(0.0, 1.0, 0.0, 1.0);
   // TODO(SKM) this only works for grayscale
-  v4f_fragData0 = vec4(color.rg, color.r, 1.0 - color.a);
+  v4f_fragData0 = vec4(color.rg, color.r, color.a);
   v4f_fragData1 = vec4(color.b, 0.0, 0.0, 0.0);
 }
 `;

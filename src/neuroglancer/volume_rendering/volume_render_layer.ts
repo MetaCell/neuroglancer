@@ -295,9 +295,10 @@ void main() {
   }
   if (tempNewSource == 2) {
     vec3 scolor = summedColor;
-    outputColor = vec4(scolor.r, scolor.g, summedAlpha, alphaProduct);
+    outputColor = vec4(scolor.r, scolor.g, summedAlpha, 1.0 - alphaProduct);
     // outputColor = vec4(1.0, 1.0, 1.0, 1.0);
   }
+  // TODO (skm) - manual emit tricky
   if ((endStep - startStep) < 0) {
     outputColor = vec4(0.0, 0.0, 0.0, 0.0);
   }
