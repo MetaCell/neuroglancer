@@ -179,6 +179,9 @@ vec3 curChunkPosition;
 vec4 outputColor;
 int tempNewSource = 0;
 float depthaa = 0.0;
+vec3 summedColor = vec3(0.0, 0.0, 0.0);
+float summedAlpha = 0.0;
+float alphaProduct = 1.0;
 void userMain();
 `);
         defineChunkDataShaderAccess(builder, chunkFormat, numChannelDimensions, `curChunkPosition`);
@@ -203,6 +206,7 @@ void userMain();
         float computeOITWeightDepth(float alpha) {
           float a = min(1.0, alpha) * 8.0 + 0.01;
           float b = -depthaa * 0.95 + 1.0;
+          //float b = -gl_FragCoord.z * 0.95 + 1.0;
           return a * a * a * b * b * b;
         }
 void emitRGBA(vec4 rgba) {
@@ -212,12 +216,14 @@ void emitRGBA(vec4 rgba) {
     outputColor += vec4(rgba.rgb * compositedAlpha, compositedAlpha);
   }
   else if (tempNewSource == 2) {
-    float correctedAlpha = clamp(rgba.a, 0.0, 1.0);
+    float correctedAlpha = rgba.a;
+    correctedAlpha = correctedAlpha * uGain * cbrt(uBrightnessFactor);
     float weight = computeOITWeightDepth(correctedAlpha);
-    float weightedAlpha = correctedAlpha * weight * uGain * uBrightnessFactor;
-    //outputColor += vec4(rgba.rgb * weight * correctedAlpha * uGain * uBrightnessFactor, correctedAlpha * weight * uBrightnessFactor);
-    //outputColor = clamp(outputColor + vec4(rgba.rgb * weightedAlpha, weightedAlpha), 0.0, 1.0);
-    outputColor = clamp(outputColor + vec4(rgba.rgb * weightedAlpha, weightedAlpha), 0.0, 1.0);
+    float weightedAlpha = correctedAlpha * weight;
+    // outputColor = clamp(outputColor + vec4(rgba.rgb * weightedAlpha, weightedAlpha), 0.0, 1.0);
+    summedColor += rgba.rgb * weightedAlpha;
+    summedAlpha += weightedAlpha;
+    alphaProduct *= (1.0 - correctedAlpha);
   }
   else {
     float alpha = clamp(rgba.a * uBrightnessFactor * uGain, 0.0, 1.0);
@@ -279,10 +285,6 @@ void main() {
   int startStep = int(floor((intersectStart - uNearLimitFraction) / stepSize));
   int endStep = min(uMaxSteps, int(floor((intersectEnd - uNearLimitFraction) / stepSize)) + 1);
   outputColor = vec4(0, 0, 0, 0);
-  if ((endStep - startStep) < 0) {
-    emit(vec4(0.0, 0.0, 0.0, 0.0), 0u);
-  }
-  else {
   for (int step = startStep; step < endStep; ++step) {
     vec3 position = mix(nearPoint, farPoint, uNearLimitFraction + float(step) * stepSize);
     vec4 clipSpacePosition = uModelViewProjectionMatrix * vec4(position, 1.0);
@@ -291,8 +293,15 @@ void main() {
     curChunkPosition = position - uTranslation;
     userMain();
   }
-    emit(outputColor, 0u);
+  if (tempNewSource == 2) {
+    vec3 scolor = summedColor;
+    outputColor = vec4(scolor.r, scolor.g, summedAlpha, alphaProduct);
+    // outputColor = vec4(1.0, 1.0, 1.0, 1.0);
   }
+  if ((endStep - startStep) < 0) {
+    outputColor = vec4(0.0, 0.0, 0.0, 0.0);
+  }
+  emit(outputColor, 0u);
 }
 `);
         }

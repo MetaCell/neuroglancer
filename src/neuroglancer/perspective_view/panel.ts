@@ -96,12 +96,19 @@ void emit(vec4 color, highp uint pickId) {
 `
 ];
 
+// TODO (SKM) expand comment
+// The idea is that this captures the situation
+// Where the rendering multiplies by the weight
+// during the accumulation step.
+// As such, we don't need to multiply by the weight
+// during the OIT emission step.
 export const glsl_perspectivePanelEmitOITNoWeight = `
 void emit(vec4 color, highp uint pickId) {
   // TEMP Testing this code
   // v4f_fragData0 = vec4(0.0, 1.0, 0.0, 1.0);
-  v4f_fragData0 = vec4(color.rgb, color.a);
-  v4f_fragData1 = vec4(color.a, 0.0, 0.0, 0.0);
+  // TODO(SKM) this only works for grayscale
+  v4f_fragData0 = vec4(color.rg, color.r, 1.0 - color.a);
+  v4f_fragData1 = vec4(color.b, 0.0, 0.0, 0.0);
 }
 `;
 
