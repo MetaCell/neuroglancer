@@ -54,6 +54,7 @@ import {trackableFiniteFloat} from 'src/neuroglancer/trackable_finite_float';
 
 const OPACITY_JSON_KEY = 'opacity';
 const GAIN_JSON_KEY = 'gain';
+const TEMP_OIT_KEY = 'tempoit';
 const BLEND_JSON_KEY = 'blend';
 const SHADER_JSON_KEY = 'shader';
 const SHADER_CONTROLS_JSON_KEY = 'shaderControls';
@@ -72,6 +73,7 @@ const [volumeRenderingDepthSamplesOriginLogScale, volumeRenderingDepthSamplesMax
 export class ImageUserLayer extends Base {
   opacity = trackableAlphaValue(0.5);
   gain = trackableFiniteFloat(1);
+  tempOIT = new TrackableBoolean(false, false);
   blendMode = trackableBlendModeValue();
   fragmentMain = getTrackableFragmentMain();
   shaderError = makeWatchableShaderError();
@@ -129,6 +131,7 @@ export class ImageUserLayer extends Base {
     this.blendMode.changed.add(this.specificationChanged.dispatch);
     this.opacity.changed.add(this.specificationChanged.dispatch);
     this.gain.changed.add(this.specificationChanged.dispatch);
+    this.tempOIT.changed.add(this.specificationChanged.dispatch);
     this.fragmentMain.changed.add(this.specificationChanged.dispatch);
     this.shaderControlState.changed.add(this.specificationChanged.dispatch);
     this.sliceViewRenderScaleTarget.changed.add(this.specificationChanged.dispatch);
@@ -171,6 +174,7 @@ export class ImageUserLayer extends Base {
         const volumeRenderLayer = context.registerDisposer(new VolumeRenderingRenderLayer({
           multiscaleSource: volume,
           gain: this.gain,
+          tempOIT: this.tempOIT,
           shaderControlState: this.shaderControlState,
           shaderError: this.shaderError,
           transform: loadedSubsource.getRenderLayerTransform(this.channelCoordinateSpace),
@@ -194,6 +198,7 @@ export class ImageUserLayer extends Base {
     super.restoreState(specification);
     this.opacity.restoreState(specification[OPACITY_JSON_KEY]);
     this.gain.restoreState(specification[GAIN_JSON_KEY]);
+    this.tempOIT.restoreState(specification[TEMP_OIT_KEY]);
     verifyOptionalObjectProperty(
         specification, BLEND_JSON_KEY, blendValue => this.blendMode.restoreState(blendValue));
     this.fragmentMain.restoreState(specification[SHADER_JSON_KEY]);
@@ -209,6 +214,7 @@ export class ImageUserLayer extends Base {
     const x = super.toJSON();
     x[OPACITY_JSON_KEY] = this.opacity.toJSON();
     x[GAIN_JSON_KEY] = this.gain.toJSON();
+    x[TEMP_OIT_KEY] = this.tempOIT.toJSON();
     x[BLEND_JSON_KEY] = this.blendMode.toJSON();
     x[SHADER_JSON_KEY] = this.fragmentMain.toJSON();
     x[SHADER_CONTROLS_JSON_KEY] = this.shaderControlState.toJSON();
@@ -331,10 +337,14 @@ const LAYER_CONTROLS: LayerControlDefinition<ImageUserLayer>[] = [
   {
     label: 'Gain (3D)',
     toolJson: GAIN_JSON_KEY,
-    isValid: layer => makeCachedDerivedWatchableValue(
-        volumeRendering => (volumeRendering !== VOLUME_RENDERING_MODES.OFF),
-        [layer.volumeRenderingMode]),
+    isValid: layer => layer.volumeRendering,
     ...rangeLayerControl(layer => ({value: layer.gain, options: {min: 0, max: 100}})),
+  },
+  {
+    label: 'Temp OIT (3D)',
+    toolJson: TEMP_OIT_KEY,
+    isValid: layer => layer.volumeRendering,
+    ...checkboxLayerControl(layer => layer.tempOIT),
   },
   {
     label: 'Resolution (3D)',

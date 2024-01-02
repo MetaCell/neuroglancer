@@ -90,11 +90,20 @@ export const glsl_perspectivePanelEmitOIT = [
 void emit(vec4 color, highp uint pickId) {
   float weight = computeOITWeight(color.a);
   vec4 accum = color * weight;
-  v4f_fragData0 = vec4(accum.rgb, 1.0);
+  v4f_fragData0 = vec4(accum.rgb, color.a);
   v4f_fragData1 = vec4(accum.a, 0.0, 0.0, 0.0);
 }
 `
 ];
+
+export const glsl_perspectivePanelEmitOITNoWeight = `
+void emit(vec4 color, highp uint pickId) {
+  // TEMP Testing this code
+  // v4f_fragData0 = vec4(0.0, 1.0, 0.0, 1.0);
+  v4f_fragData0 = vec4(color.rgb, color.a);
+  v4f_fragData1 = vec4(color.a, 0.0, 0.0, 0.0);
+}
+`;
 
 export function perspectivePanelEmit(builder: ShaderBuilder) {
   builder.addOutputBuffer('vec4', `out_color`, OffscreenTextures.COLOR);
@@ -107,6 +116,12 @@ export function perspectivePanelEmitOIT(builder: ShaderBuilder) {
   builder.addOutputBuffer('vec4', 'v4f_fragData0', 0);
   builder.addOutputBuffer('vec4', 'v4f_fragData1', 1);
   builder.addFragmentCode(glsl_perspectivePanelEmitOIT);
+}
+
+export function perspectivePanelEmitOITNoWeight(builder: ShaderBuilder) {
+  builder.addOutputBuffer('vec4', 'v4f_fragData0', 0);
+  builder.addOutputBuffer('vec4', 'v4f_fragData1', 1);
+  builder.addFragmentCode(glsl_perspectivePanelEmitOITNoWeight);
 }
 
 const tempVec3 = vec3.create();
@@ -611,6 +626,8 @@ export class PerspectivePanel extends RenderedDataPanel {
       renderContext.bindFramebuffer();
       this.gl.clearColor(0.0, 0.0, 0.0, 1.0);
       gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
+      // TODO (skm): temp
+      //renderContext.emitter = perspectivePanelEmitOITNoWeight;
       renderContext.emitter = perspectivePanelEmitOIT;
       gl.blendFuncSeparate(
           WebGL2RenderingContext.ONE, WebGL2RenderingContext.ONE, WebGL2RenderingContext.ZERO,
@@ -618,6 +635,16 @@ export class PerspectivePanel extends RenderedDataPanel {
       renderContext.emitPickID = false;
       for (const [renderLayer, attachment] of visibleLayers) {
         if (renderLayer.isTransparent) {
+          if (renderLayer.hasOwnProperty('tempOIT')) {
+            if (renderLayer.tempOIT.value) {
+              renderContext.emitter = perspectivePanelEmitOITNoWeight;
+            } else {
+              renderContext.emitter = perspectivePanelEmitOIT;
+            }
+          }
+          else {
+            renderContext.emitter = perspectivePanelEmitOIT;
+          }
           renderLayer.draw(renderContext, attachment);
         }
       }

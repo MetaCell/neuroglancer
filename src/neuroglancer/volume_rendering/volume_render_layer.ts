@@ -52,6 +52,7 @@ interface VolumeRenderingAttachmentState {
 
 export interface VolumeRenderingRenderLayerOptions {
   gain: WatchableValueInterface<number>;
+  tempOIT: WatchableValueInterface<boolean>;
   multiscaleSource: MultiscaleVolumeChunkSource;
   transform: WatchableValueInterface<RenderLayerTransformOrError>;
   shaderError: WatchableShaderError;
@@ -81,6 +82,7 @@ function clampAndRoundResolutionTargetValue(value: number) {
 
 export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
   gain: WatchableValueInterface<number>;
+  tempOIT: WatchableValueInterface<boolean>;
   multiscaleSource: MultiscaleVolumeChunkSource;
   transform: WatchableValueInterface<RenderLayerTransformOrError>;
   channelCoordinateSpace: WatchableValueInterface<CoordinateSpace>;
@@ -89,6 +91,7 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
   depthSamplesTarget: WatchableValueInterface<number>;
   chunkResolutionHistogram: RenderScaleHistogram;
   backend: ChunkRenderLayerFrontend;
+  tempVar: number;
   private vertexIdHelper: VertexIdHelper;
 
   private shaderGetter: ParameterizedContextDependentShaderGetter<
@@ -110,6 +113,7 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
   constructor(options: VolumeRenderingRenderLayerOptions) {
     super();
     this.gain = options.gain;
+    this.tempOIT = options.tempOIT;
     this.multiscaleSource = options.multiscaleSource;
     this.transform = options.transform;
     this.channelCoordinateSpace = options.channelCoordinateSpace;
@@ -209,12 +213,15 @@ void emitRGBA(vec4 rgba) {
   }
   else if (tempNewSource == 2) {
     float correctedAlpha = clamp(rgba.a, 0.0, 1.0);
-    float weight = computeOITWeightDepth(correctedAlpha) * uBrightnessFactor * uGain;
-    outputColor += vec4(rgba.rgb * weight * correctedAlpha, correctedAlpha * weight);
+    float weight = computeOITWeightDepth(correctedAlpha);
+    float weightedAlpha = correctedAlpha * weight * uGain * uBrightnessFactor;
+    //outputColor += vec4(rgba.rgb * weight * correctedAlpha * uGain * uBrightnessFactor, correctedAlpha * weight * uBrightnessFactor);
+    //outputColor = clamp(outputColor + vec4(rgba.rgb * weightedAlpha, weightedAlpha), 0.0, 1.0);
+    outputColor = clamp(outputColor + vec4(rgba.rgb * weightedAlpha, weightedAlpha), 0.0, 1.0);
   }
   else {
-    float alpha = rgba.a * uBrightnessFactor * uGain;
-    outputColor += vec4(rgba.rgb * alpha, alpha);
+    float alpha = clamp(rgba.a * uBrightnessFactor * uGain, 0.0, 1.0);
+    outputColor = clamp(outputColor + vec4(rgba.rgb * alpha, alpha), 0.0, 1.0);
   }
 }
 void emitRGB(vec3 rgb) {
@@ -272,6 +279,10 @@ void main() {
   int startStep = int(floor((intersectStart - uNearLimitFraction) / stepSize));
   int endStep = min(uMaxSteps, int(floor((intersectEnd - uNearLimitFraction) / stepSize)) + 1);
   outputColor = vec4(0, 0, 0, 0);
+  if ((endStep - startStep) < 0) {
+    emit(vec4(0.0, 0.0, 0.0, 0.0), 0u);
+  }
+  else {
   for (int step = startStep; step < endStep; ++step) {
     vec3 position = mix(nearPoint, farPoint, uNearLimitFraction + float(step) * stepSize);
     vec4 clipSpacePosition = uModelViewProjectionMatrix * vec4(position, 1.0);
@@ -280,7 +291,8 @@ void main() {
     curChunkPosition = position - uTranslation;
     userMain();
   }
-  emit(outputColor, 0u);
+    emit(outputColor, 0u);
+  }
 }
 `);
         }
@@ -295,6 +307,7 @@ void main() {
 
     this.registerDisposer(this.depthSamplesTarget.changed.add(this.redrawNeeded.dispatch));
     this.registerDisposer(this.gain.changed.add(this.redrawNeeded.dispatch));
+    this.registerDisposer(this.tempOIT.changed.add(this.redrawNeeded.dispatch));
     this.registerDisposer(this.shaderControlState.changed.add(this.redrawNeeded.dispatch));
     this.registerDisposer(this.localPosition.changed.add(this.redrawNeeded.dispatch));
     this.registerDisposer(this.transform.changed.add(this.redrawNeeded.dispatch));
