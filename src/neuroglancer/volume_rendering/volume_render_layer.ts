@@ -217,7 +217,8 @@ void emitRGBA(vec4 rgba) {
   }
   else if (tempNewSource == 2) {
     float correctedAlpha = rgba.a;
-    correctedAlpha = correctedAlpha * uGain * cbrt(uBrightnessFactor);
+    // TODO (skm) - do we want to clamp
+    correctedAlpha = clamp(correctedAlpha * uGain * cbrt(uBrightnessFactor), 0.0, 100.0);
     float weight = computeOITWeightDepth(correctedAlpha);
     float weightedAlpha = correctedAlpha * weight;
     // outputColor = clamp(outputColor + vec4(rgba.rgb * weightedAlpha, weightedAlpha), 0.0, 1.0);
@@ -226,7 +227,7 @@ void emitRGBA(vec4 rgba) {
     alphaProduct *= (1.0 - correctedAlpha);
   }
   else {
-    float alpha = clamp(rgba.a * uBrightnessFactor * uGain, 0.0, 1.0);
+    float alpha = clamp(rgba.a * uBrightnessFactor * uGain * uGain, 0.0, 1.0);
     outputColor = clamp(outputColor + vec4(rgba.rgb * alpha, alpha), 0.0, 1.0);
   }
 }
@@ -294,15 +295,22 @@ void main() {
     userMain();
   }
   if (tempNewSource == 2) {
-    vec3 scolor = summedColor;
-    outputColor = vec4(scolor.r, scolor.g, summedAlpha, 1.0 - alphaProduct);
+    outputColor = vec4(summedColor, 1.0 - alphaProduct);
+    // v4f_fragData2 = vec4(summedAlpha, 0.0, 0.0, 0.0);
     // outputColor = vec4(1.0, 1.0, 1.0, 1.0);
   }
   // TODO (skm) - manual emit tricky
   if ((endStep - startStep) < 0) {
     outputColor = vec4(0.0, 0.0, 0.0, 0.0);
   }
-  emit(outputColor, 0u);
+  if (tempNewSource == 2) {
+    // TODO (skm) - manual emit tricky
+    // emitNoWeight(summedColor, summedAlpha, 1.0 - alphaProduct, 0u);
+    emitNoWeight(summedColor, summedAlpha, 1.0 - alphaProduct, 0u);
+  }
+  else {
+    emit(outputColor, 0u);
+  }
 }
 `);
         }

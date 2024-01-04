@@ -93,6 +93,11 @@ void emit(vec4 color, highp uint pickId) {
   v4f_fragData0 = vec4(accum.rgb, color.a);
   v4f_fragData1 = vec4(accum.a, 0.0, 0.0, 0.0);
 }
+
+void emitNoWeight(vec3 weightedColor, float weightedAlpha, float originalAlphaProduct, highp uint pickId) {
+  v4f_fragData0 = vec4(weightedColor, originalAlphaProduct);
+  v4f_fragData1 = vec4(weightedAlpha, 0.0, 0.0, 0.0);
+}
 `
 ];
 
@@ -103,12 +108,9 @@ void emit(vec4 color, highp uint pickId) {
 // As such, we don't need to multiply by the weight
 // during the OIT emission step.
 export const glsl_perspectivePanelEmitOITNoWeight = `
-void emit(vec4 color, highp uint pickId) {
-  // TEMP Testing this code
-  // v4f_fragData0 = vec4(0.0, 1.0, 0.0, 1.0);
-  // TODO(SKM) this only works for grayscale
-  v4f_fragData0 = vec4(color.rg, color.r, color.a);
-  v4f_fragData1 = vec4(color.b, 0.0, 0.0, 0.0);
+void emitNoWeight(vec3 weightedColor, float weightedAlpha, float originalAlphaProduct, highp uint pickId) {
+  v4f_fragData0 = vec4(weightedColor, originalAlphaProduct);
+  v4f_fragData1 = vec4(weightedAlpha, 0.0, 0.0, 0.0);
 }
 `;
 
