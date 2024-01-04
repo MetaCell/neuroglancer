@@ -77,42 +77,30 @@ void emit(vec4 color, highp uint pickId) {
  */
 // TODO: (SKM) could clamping help the precision issues?
 export const glsl_computeOITWeight = `
-float computeOITWeight(float alpha) {
+float computeOITWeight(float alpha, float depth) {
   float a = min(1.0, alpha) * 8.0 + 0.01;
-  float b = -gl_FragCoord.z * 0.95 + 1.0;
+  float b = -depth * 0.95 + 1.0;
   return a * a * a * b * b * b;
 }
 `;
 
 // Color must be premultiplied by alpha.
+// PreWeighted means that the rendering already multiplied by the weight
 export const glsl_perspectivePanelEmitOIT = [
   glsl_computeOITWeight, `
 void emit(vec4 color, highp uint pickId) {
-  float weight = computeOITWeight(color.a);
+  float weight = computeOITWeight(color.a, gl_FragCoord.z);
   vec4 accum = color * weight;
   v4f_fragData0 = vec4(accum.rgb, color.a);
   v4f_fragData1 = vec4(accum.a, 0.0, 0.0, 0.0);
 }
 
-void emitNoWeight(vec3 weightedColor, float weightedAlpha, float originalAlphaProduct, highp uint pickId) {
-  v4f_fragData0 = vec4(weightedColor, originalAlphaProduct);
-  v4f_fragData1 = vec4(weightedAlpha, 0.0, 0.0, 0.0);
+void emitPreWeighted(vec4 accum, float originalAlpha, highp uint pickId) {
+  v4f_fragData0 = vec4(accum.rgb, originalAlpha);
+  v4f_fragData1 = vec4(accum.a, 0.0, 0.0, 0.0);
 }
 `
 ];
-
-// TODO (SKM) expand comment
-// The idea is that this captures the situation
-// Where the rendering multiplies by the weight
-// during the accumulation step.
-// As such, we don't need to multiply by the weight
-// during the OIT emission step.
-export const glsl_perspectivePanelEmitOITNoWeight = `
-void emitNoWeight(vec3 weightedColor, float weightedAlpha, float originalAlphaProduct, highp uint pickId) {
-  v4f_fragData0 = vec4(weightedColor, originalAlphaProduct);
-  v4f_fragData1 = vec4(weightedAlpha, 0.0, 0.0, 0.0);
-}
-`;
 
 export function perspectivePanelEmit(builder: ShaderBuilder) {
   builder.addOutputBuffer('vec4', `out_color`, OffscreenTextures.COLOR);
@@ -125,12 +113,6 @@ export function perspectivePanelEmitOIT(builder: ShaderBuilder) {
   builder.addOutputBuffer('vec4', 'v4f_fragData0', 0);
   builder.addOutputBuffer('vec4', 'v4f_fragData1', 1);
   builder.addFragmentCode(glsl_perspectivePanelEmitOIT);
-}
-
-export function perspectivePanelEmitOITNoWeight(builder: ShaderBuilder) {
-  builder.addOutputBuffer('vec4', 'v4f_fragData0', 0);
-  builder.addOutputBuffer('vec4', 'v4f_fragData1', 1);
-  builder.addFragmentCode(glsl_perspectivePanelEmitOITNoWeight);
 }
 
 const tempVec3 = vec3.create();
@@ -635,8 +617,6 @@ export class PerspectivePanel extends RenderedDataPanel {
       renderContext.bindFramebuffer();
       this.gl.clearColor(0.0, 0.0, 0.0, 1.0);
       gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
-      // TODO (skm): temp
-      //renderContext.emitter = perspectivePanelEmitOITNoWeight;
       renderContext.emitter = perspectivePanelEmitOIT;
       gl.blendFuncSeparate(
           WebGL2RenderingContext.ONE, WebGL2RenderingContext.ONE, WebGL2RenderingContext.ZERO,
@@ -644,16 +624,7 @@ export class PerspectivePanel extends RenderedDataPanel {
       renderContext.emitPickID = false;
       for (const [renderLayer, attachment] of visibleLayers) {
         if (renderLayer.isTransparent) {
-          if (renderLayer.hasOwnProperty('tempOIT')) {
-            if (renderLayer.tempOIT.value) {
-              renderContext.emitter = perspectivePanelEmitOITNoWeight;
-            } else {
-              renderContext.emitter = perspectivePanelEmitOIT;
-            }
-          }
-          else {
-            renderContext.emitter = perspectivePanelEmitOIT;
-          }
+          renderContext.emitter = perspectivePanelEmitOIT;
           renderLayer.draw(renderContext, attachment);
         }
       }

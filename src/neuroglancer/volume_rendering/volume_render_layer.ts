@@ -37,7 +37,7 @@ import {ParameterizedContextDependentShaderGetter, parameterizedContextDependent
 import {ShaderModule, ShaderProgram} from 'neuroglancer/webgl/shader';
 import {addControlsToBuilder, setControlsInShader, ShaderControlsBuilderState, ShaderControlState} from 'neuroglancer/webgl/shader_ui_controls';
 import {defineVertexId, VertexIdHelper} from 'neuroglancer/webgl/vertex_id';
-import {clampToInterval} from 'src/neuroglancer/util/lerp';
+import {clampToInterval} from 'neuroglancer/util/lerp';
 
 export const VOLUME_RENDERING_DEPTH_SAMPLES_DEFAULT_VALUE = 64
 const VOLUME_RENDERING_DEPTH_SAMPLES_LOG_SCALE_ORIGIN = 1;
@@ -163,6 +163,7 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
         builder.addUniform('highp vec3', 'uUpperClipBound');
 
         builder.addUniform('highp float', 'uSamplingRatio');
+        builder.addUniform('highp float', 'uBrightnessFactorCbrt');
         builder.addUniform('highp float', 'uBrightnessFactor');
         builder.addUniform('highp float', 'uGain');
         builder.addVarying('highp vec4', 'vNormalizedPosition');
@@ -178,56 +179,27 @@ gl_Position.z = 0.0;
 vec3 curChunkPosition;
 vec4 outputColor;
 int tempNewSource = 0;
-float depthaa = 0.0;
-vec3 summedColor = vec3(0.0, 0.0, 0.0);
-float summedAlpha = 0.0;
+int depthFromFn = 1;
+float depth = 0.0;
+vec4 weightedColor = vec4(0.0, 0.0, 0.0, 0.0);
 float alphaProduct = 1.0;
 void userMain();
 `);
         defineChunkDataShaderAccess(builder, chunkFormat, numChannelDimensions, `curChunkPosition`);
-        // See Real-Time Volume Graphics, page 12
-        // TODO (skm): ensure that this is the correct cbrt function
-        builder.addFragmentCode(`
-        float cbrt( float x )
-        {
-          float y = sign(x) * uintBitsToFloat( floatBitsToUint( abs(x) ) / 3u + 0x2a514067u );
-        
-          for( int i = 0; i < 2; ++i )
-              y = ( 2. * y + x / ( y * y ) ) * .333333333;
-        
-            for( int i = 0; i < 3; ++i )
-            {
-              float y3 = y * y * y;
-                y *= ( y3 + 2. * x ) / ( 2. * y3 + x );
-            }
-            
-            return y;
-        }
-        float computeOITWeightDepth(float alpha) {
-          float a = min(1.0, alpha) * 8.0 + 0.01;
-          float b = -depthaa * 0.95 + 1.0;
-          //float b = -gl_FragCoord.z * 0.95 + 1.0;
-          return a * a * a * b * b * b;
-        }
+        builder.addFragmentCode(
+          `
 void emitRGBA(vec4 rgba) {
   if (tempNewSource == 1) {
-    float opacityCorrectedAlpha = 1.0 - (pow(clamp(1.0 - (rgba.a * uGain), 0.0, 1.0), uSamplingRatio));
-    float compositedAlpha = (1.0 - outputColor.a) * opacityCorrectedAlpha;
-    outputColor += vec4(rgba.rgb * compositedAlpha, compositedAlpha);
-  }
-  else if (tempNewSource == 2) {
-    float correctedAlpha = rgba.a;
-    // TODO (skm) - do we want to clamp
-    correctedAlpha = clamp(correctedAlpha * uGain * cbrt(uBrightnessFactor), 0.0, 100.0);
-    float weight = computeOITWeightDepth(correctedAlpha);
-    float weightedAlpha = correctedAlpha * weight;
-    // outputColor = clamp(outputColor + vec4(rgba.rgb * weightedAlpha, weightedAlpha), 0.0, 1.0);
-    summedColor += rgba.rgb * weightedAlpha;
-    summedAlpha += weightedAlpha;
+    float correctedAlpha = clamp(rgba.a * uGain * uBrightnessFactorCbrt, 0.0, 1.0);
+    if (depthFromFn == 0) {
+      depth = gl_FragCoord.z;
+    }
+    float weightedAlpha = correctedAlpha * computeOITWeight(correctedAlpha, depth);
+    weightedColor += vec4(rgba.rgb * weightedAlpha, weightedAlpha);
     alphaProduct *= (1.0 - correctedAlpha);
   }
   else {
-    float alpha = clamp(rgba.a * uBrightnessFactor * uGain * uGain, 0.0, 1.0);
+    float alpha = clamp(rgba.a * uBrightnessFactor * uGain, 0.0, 1.0);
     outputColor = clamp(outputColor + vec4(rgba.rgb * alpha, alpha), 0.0, 1.0);
   }
 }
@@ -239,6 +211,11 @@ void emitGrayscale(float value) {
 }
 void emitTransparent() {
   emitRGBA(vec4(0.0, 0.0, 0.0, 0.0));
+}
+float computeDepth(vec3 position) {
+  vec4 clipSpacePosition = uModelViewProjectionMatrix * vec4(position, 1.0);
+  float NDCdepth = clipSpacePosition.z / clipSpacePosition.w;
+  return clamp(0.5 * (NDCdepth + 1.0), 0.0, 1.0);
 }
 `);
         if (wireFrame) {
@@ -288,27 +265,22 @@ void main() {
   outputColor = vec4(0, 0, 0, 0);
   for (int step = startStep; step < endStep; ++step) {
     vec3 position = mix(nearPoint, farPoint, uNearLimitFraction + float(step) * stepSize);
-    vec4 clipSpacePosition = uModelViewProjectionMatrix * vec4(position, 1.0);
-    float NDCdepth = clipSpacePosition.z / clipSpacePosition.w;
-    depthaa = clamp(0.5 * (NDCdepth + 1.0), 0.0, 1.0);
+    depth = computeDepth(position);
     curChunkPosition = position - uTranslation;
     userMain();
   }
-  if (tempNewSource == 2) {
-    outputColor = vec4(summedColor, 1.0 - alphaProduct);
-    // v4f_fragData2 = vec4(summedAlpha, 0.0, 0.0, 0.0);
-    // outputColor = vec4(1.0, 1.0, 1.0, 1.0);
-  }
-  // TODO (skm) - manual emit tricky
-  if ((endStep - startStep) < 0) {
-    outputColor = vec4(0.0, 0.0, 0.0, 0.0);
-  }
-  if (tempNewSource == 2) {
-    // TODO (skm) - manual emit tricky
-    // emitNoWeight(summedColor, summedAlpha, 1.0 - alphaProduct, 0u);
-    emitNoWeight(summedColor, summedAlpha, 1.0 - alphaProduct, 0u);
+  int hideValue = 0;
+  if (tempNewSource == 1) {
+    if ((endStep - startStep) < hideValue) {
+      weightedColor = vec4(0.0, 0.0, 0.0, 0.0);
+      alphaProduct = 0.0;
+    }
+    emitPreWeighted(weightedColor, 1.0 - alphaProduct, 0u);
   }
   else {
+    if ((endStep - startStep) < 0) {
+      outputColor = vec4(0.0, 0.0, 0.0, 0.0);
+    }
     emit(outputColor, 0u);
   }
 }
@@ -510,6 +482,8 @@ void main() {
           const step = (adjustedFar - adjustedNear) / (this.depthSamplesTarget.value - 1);
           const uBrightnessFactor = step / (far - near);
           gl.uniform1f(shader.uniform('uBrightnessFactor'), uBrightnessFactor);
+          const uBrightnessFactorCbrt = Math.pow(uBrightnessFactor, 1 / 3);
+          gl.uniform1f(shader.uniform('uBrightnessFactorCbrt'), uBrightnessFactorCbrt);
           const actualSamplingRate =
               (adjustedFar - adjustedNear) / (this.depthSamplesTarget.value - 1);
           const referenceSamplingRate = (adjustedFar - adjustedNear) / (optimalSamples - 1);
