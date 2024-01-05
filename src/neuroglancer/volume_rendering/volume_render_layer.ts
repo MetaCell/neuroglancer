@@ -166,6 +166,7 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
         builder.addUniform('highp float', 'uBrightnessFactorCbrt');
         builder.addUniform('highp float', 'uBrightnessFactor');
         builder.addUniform('highp float', 'uGain');
+        builder.addUniform('highp int', 'uTempOIT');
         builder.addVarying('highp vec4', 'vNormalizedPosition');
         builder.addVertexCode(glsl_getBoxFaceVertexPosition);
 
@@ -178,7 +179,6 @@ gl_Position.z = 0.0;
         builder.addFragmentCode(`
 vec3 curChunkPosition;
 vec4 outputColor;
-int tempNewSource = 0;
 int depthFromFn = 1;
 float depth = 0.0;
 vec4 weightedColor = vec4(0.0, 0.0, 0.0, 0.0);
@@ -189,8 +189,8 @@ void userMain();
         builder.addFragmentCode(
           `
 void emitRGBA(vec4 rgba) {
-  if (tempNewSource == 1) {
-    float correctedAlpha = clamp(rgba.a * uGain * uBrightnessFactorCbrt, 0.0, 1.0);
+  if (uTempOIT == 1) {
+    float correctedAlpha = clamp(rgba.a * uGain * uSamplingRatio, 0.0, 1.0);
     if (depthFromFn == 0) {
       depth = gl_FragCoord.z;
     }
@@ -270,7 +270,7 @@ void main() {
     userMain();
   }
   int hideValue = 0;
-  if (tempNewSource == 1) {
+  if (uTempOIT == 1) {
     if ((endStep - startStep) < hideValue) {
       weightedColor = vec4(0.0, 0.0, 0.0, 0.0);
       alphaProduct = 0.0;
@@ -481,20 +481,28 @@ void main() {
           // to avoid aliasing, but this is not always practical for large datasets.
           const step = (adjustedFar - adjustedNear) / (this.depthSamplesTarget.value - 1);
           const uBrightnessFactor = step / (far - near);
-          gl.uniform1f(shader.uniform('uBrightnessFactor'), uBrightnessFactor);
-          const uBrightnessFactorCbrt = Math.pow(uBrightnessFactor, 1 / 3);
-          gl.uniform1f(shader.uniform('uBrightnessFactorCbrt'), uBrightnessFactorCbrt);
+          console.log(uBrightnessFactor);
+          gl.uniform1f(shader.uniform('uBrightnessFactor'), 1.0);
+          //const uBrightnessFactorCbrt = Math.pow(uBrightnessFactor, 1 / 4);
+          gl.uniform1f(shader.uniform('uBrightnessFactorCbrt'), 1.0);
           const actualSamplingRate =
               (adjustedFar - adjustedNear) / (this.depthSamplesTarget.value - 1);
           const referenceSamplingRate = (adjustedFar - adjustedNear) / (optimalSamples - 1);
           const samplingRatio = actualSamplingRate / referenceSamplingRate;
-          gl.uniform1f(shader.uniform('uSamplingRatio'), samplingRatio);
+          console.log(Math.pow(samplingRatio, 1 / 4));
+          //gl.uniform1f(shader.uniform('uSamplingRatio'), Math.pow(samplingRatio, 1 / 4));
+          gl.uniform1f(shader.uniform('uSamplingRatio'), 1.0);
           const nearLimitFraction = (adjustedNear - near) / (far - near);
           const farLimitFraction = (adjustedFar - near) / (far - near);
           gl.uniform1f(shader.uniform('uNearLimitFraction'), nearLimitFraction);
           gl.uniform1f(shader.uniform('uFarLimitFraction'), farLimitFraction);
           gl.uniform1i(shader.uniform('uMaxSteps'), this.depthSamplesTarget.value);
-          gl.uniform1f(shader.uniform('uGain'), this.gain.value);
+          gl.uniform1i(shader.uniform('uTempOIT'), this.tempOIT.value ? 1 : 0);
+          if (this.tempOIT.value) {
+            gl.uniform1f(shader.uniform('uGain'), Math.pow(this.gain.value, 1));
+          } else {
+            gl.uniform1f(shader.uniform('uGain'), this.gain.value);
+          }
           gl.uniform3fv(shader.uniform('uLowerClipBound'), transformedSource.lowerClipDisplayBound);
           gl.uniform3fv(shader.uniform('uUpperClipBound'), transformedSource.upperClipDisplayBound);
         },
