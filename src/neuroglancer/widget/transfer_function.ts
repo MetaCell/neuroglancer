@@ -48,13 +48,17 @@ import {PositionWidget} from 'neuroglancer/widget/position_widget';
 import {Tab} from 'neuroglancer/widget/tab_view';
 
 export const TRANSFER_FUNCTION_LENGTH = 512;
-const NUM_COLOR_CHANNELS = 4;
+export const NUM_COLOR_CHANNELS = 4;
 const POSITION_VALUES_PER_LINE = 4;  // x1, y1, x2, y2
 const CONTROL_POINT_GRAB_DISTANCE = TRANSFER_FUNCTION_LENGTH / 40;
 const TRANSFER_FUNCTION_BORDER_WIDTH = 255 / 10;
 
 const transferFunctionSamplerTextureUnit = Symbol('transferFunctionSamplerTexture');
 
+/**
+ * The position of a control point on the canvas is represented as an integer value between 0 and TRANSFER_FUNCTION_LENGTH - 1.
+ * The color of a control point is represented as four component vector of uint8 values between 0 and 255
+ */
 export interface ControlPoint {
   position: number;
   color: vec4;
@@ -77,7 +81,7 @@ interface CanvasPosition {
  * @param out The lookup table to fill
  * @param controlPoints The control points to interpolate between
  */
-function lerpBetweenControlPoints(out: Int32Array|Uint8Array, controlPoints: Array<ControlPoint>) {
+export function lerpBetweenControlPoints(out: Int32Array|Uint8Array, controlPoints: Array<ControlPoint>) {
   function addLookupValue(index: number, color: vec4) {
     out[index] = color[0];
     out[index + 1] = color[1];
@@ -109,13 +113,13 @@ function lerpBetweenControlPoints(out: Int32Array|Uint8Array, controlPoints: Arr
     const lookupIndex = i * NUM_COLOR_CHANNELS;
     if (currentPoint === nextPoint) {
       addLookupValue(lookupIndex, currentPoint.color);
-    } else if (i < nextPoint.position) {
+    } else {
       const t = (i - currentPoint.position) / (nextPoint.position - currentPoint.position);
       const lerpedColor = lerpUint8Color(currentPoint.color, nextPoint.color, t);
       addLookupValue(lookupIndex, lerpedColor);
-    } else {
-      addLookupValue(lookupIndex, nextPoint.color);
-      controlPointIndex++;
+      if (i === nextPoint.position) {
+        controlPointIndex++;
+      }
     }
   }
 }
