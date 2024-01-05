@@ -94,10 +94,13 @@ function getShaderLayerControlFactory<LayerType extends UserLayer>(
           }));
     }
     case 'transferFunction': {
-      return transferFunctionLayerControl(() => ({
-          dataType: control.dataType,
-          watchableValue: controlState.trackable,
-        }));
+      return transferFunctionLayerControl(
+          () => ({
+            dataType: control.dataType,
+            watchableValue: controlState.trackable,
+            channelCoordinateSpaceCombiner: shaderControlState.channelCoordinateSpaceCombiner,
+            defaultChannel: control.default.channel,
+          }));
     }
   }
 }

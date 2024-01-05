@@ -16,11 +16,13 @@
 
 import './transfer_function.css';
 
+import {CoordinateSpaceCombiner} from 'neuroglancer/coordinate_transform';
 import {DisplayContext, IndirectRenderedPanel} from 'neuroglancer/display_context';
 import {UserLayer} from 'neuroglancer/layer';
+import {Position} from 'neuroglancer/navigation_state';
 import {makeCachedDerivedWatchableValue, WatchableValueInterface} from 'neuroglancer/trackable_value';
 import {ToolActivation} from 'neuroglancer/ui/tool';
-import {findClosestMatchInSortedArray} from 'neuroglancer/util/array';
+import {arraysEqual, findClosestMatchInSortedArray} from 'neuroglancer/util/array';
 import {DataType} from 'neuroglancer/util/data_type';
 import {RefCounted} from 'neuroglancer/util/disposable';
 import {EventActionMap, registerActionListener} from 'neuroglancer/util/event_action_map';
@@ -42,6 +44,7 @@ import {setRawTextureParameters} from 'neuroglancer/webgl/texture';
 import {ColorWidget} from 'neuroglancer/widget/color';
 import {getUpdatedRangeAndWindowParameters, updateInputBoundValue, updateInputBoundWidth} from 'neuroglancer/widget/invlerp';
 import {LayerControlFactory, LayerControlTool} from 'neuroglancer/widget/layer_control';
+import {PositionWidget} from 'neuroglancer/widget/position_widget';
 import {Tab} from 'neuroglancer/widget/tab_view';
 
 export const TRANSFER_FUNCTION_LENGTH = 512;
@@ -796,7 +799,7 @@ export function enableTransferFunctionShader(
 }
 
 /**
- * Describe the transfer function widget in the popup window for a tool
+ * Behaviour of the transfer function widget in the tool popup window
  */
 export function activateTransferFunctionTool(
     activation: ToolActivation<LayerControlTool>, control: TransferFunctionWidget) {
@@ -810,11 +813,42 @@ export function activateTransferFunctionTool(
 export function transferFunctionLayerControl<LayerType extends UserLayer>(
     getter: (layer: LayerType) => {
       watchableValue: WatchableValueInterface<TransferFunctionParameters>,
+      defaultChannel: number[],
+      channelCoordinateSpaceCombiner: CoordinateSpaceCombiner | undefined,
       dataType: DataType,
     }): LayerControlFactory<LayerType, TransferFunctionWidget> {
   return {
     makeControl: (layer, context, options) => {
-      const {watchableValue, dataType} = getter(layer);
+      const {watchableValue, channelCoordinateSpaceCombiner, defaultChannel, dataType} =
+          getter(layer);
+
+      // We setup the ability to change the channel through the UI here
+      // but only if the data has multiple channels
+      if (channelCoordinateSpaceCombiner !== undefined && defaultChannel.length !== 0) {
+        const position =
+            context.registerDisposer(new Position(channelCoordinateSpaceCombiner.combined));
+        const positiionWidget = context.registerDisposer(
+            new PositionWidget(position, channelCoordinateSpaceCombiner, {copyButton: false}));
+        context.registerDisposer(position.changed.add(() => {
+          const value = position.value;
+          const newChannel = Array.from(value, x => Math.floor(x));
+          const oldParams = watchableValue.value;
+          if (!arraysEqual(oldParams.channel, newChannel)) {
+            watchableValue.value = {...watchableValue.value, channel: newChannel};
+          }
+        }));
+        const updatePosition = () => {
+          const value = position.value;
+          const params = watchableValue.value;
+          if (!arraysEqual(params.channel, value)) {
+            value.set(params.channel);
+            position.changed.dispatch();
+          }
+        };
+        updatePosition();
+        context.registerDisposer(watchableValue.changed.add(updatePosition));
+        options.labelContainer.appendChild(positiionWidget.element);
+      }
       const control = context.registerDisposer(new TransferFunctionWidget(
           options.visibility, options.display, dataType, watchableValue));
       return {control, controlElement: control.element};
