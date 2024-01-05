@@ -199,7 +199,7 @@ void emitRGBA(vec4 rgba) {
     alphaProduct *= (1.0 - correctedAlpha);
   }
   else {
-    float alpha = clamp(rgba.a * uBrightnessFactor * uGain, 0.0, 1.0);
+    float alpha = clamp(rgba.a * uSamplingRatio * uGain, 0.0, 1.0);
     outputColor = clamp(outputColor + vec4(rgba.rgb * alpha, alpha), 0.0, 1.0);
   }
 }
@@ -489,9 +489,8 @@ void main() {
               (adjustedFar - adjustedNear) / (this.depthSamplesTarget.value - 1);
           const referenceSamplingRate = (adjustedFar - adjustedNear) / (optimalSamples - 1);
           const samplingRatio = actualSamplingRate / referenceSamplingRate;
-          console.log(Math.pow(samplingRatio, 1 / 4));
-          //gl.uniform1f(shader.uniform('uSamplingRatio'), Math.pow(samplingRatio, 1 / 4));
-          gl.uniform1f(shader.uniform('uSamplingRatio'), 1.0);
+          gl.uniform1f(shader.uniform('uSamplingRatio'), samplingRatio);
+          //gl.uniform1f(shader.uniform('uSamplingRatio'), 1.0);
           const nearLimitFraction = (adjustedNear - near) / (far - near);
           const farLimitFraction = (adjustedFar - near) / (far - near);
           gl.uniform1f(shader.uniform('uNearLimitFraction'), nearLimitFraction);
