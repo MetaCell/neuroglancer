@@ -33,7 +33,7 @@ import {startRelativeMouseDrag} from 'neuroglancer/util/mouse_drag';
 import {WatchableVisibilityPriority} from 'neuroglancer/visibility_priority/frontend';
 import {Buffer, getMemoizedBuffer} from 'neuroglancer/webgl/buffer';
 import {GL} from 'neuroglancer/webgl/context';
-import {defineInvlerpShaderFunction} from 'neuroglancer/webgl/lerp';
+import {defineInvlerpShaderFunction, enableLerpShaderFunction} from 'neuroglancer/webgl/lerp';
 import {defineLineShader, drawLines, initializeLineShader, VERTICES_PER_LINE} from 'neuroglancer/webgl/lines';
 import {drawQuads} from 'neuroglancer/webgl/quad';
 import {createGriddedRectangleArray} from 'neuroglancer/webgl/rectangle_grid_buffer';
@@ -404,6 +404,8 @@ out_color = tempColor * alpha;
     // Draw lines and control points on top of transfer function - if there are any
     if (this.controlPointsPositionArray.length > 0) {
       const {renderViewport} = this;
+      
+      // Draw transfer function lerp indicator lines
       transferFunctionLineShader.bind();
       const aLineStartEnd = transferFunctionLineShader.attribute('aLineStartEnd');
       this.linePositionBuffer.bindToVertexAttrib(
@@ -416,6 +418,7 @@ out_color = tempColor * alpha;
           gl, this.linePositionArray.length / (VERTICES_PER_LINE * POSITION_VALUES_PER_LINE), 1);
       gl.disableVertexAttribArray(aLineStartEnd);
 
+      // Draw control points of the transfer function
       controlPointsShader.bind();
       const aVertexPosition = controlPointsShader.attribute('aVertexPosition');
       this.controlPointsVertexBuffer.bindToVertexAttrib(
@@ -743,8 +746,6 @@ export function defineTransferFunctionShader(
   const invlerpShaderCode =
       defineInvlerpShaderFunction(builder, name, dataType, true) as ShaderCodePart[];
   const shaderType = getShaderType(dataType);
-  // TODO (SKM) - bring in intepolation code option
-  // TODO (SKM) - use invlerp code to help this
   let code = `
 vec4 ${name}(float inputValue) {
   float gridMultiplier = uTransferFunctionGridSize_${name} - 1.0;
@@ -768,7 +769,6 @@ vec4 ${name}() {
   return [invlerpShaderCode[0], invlerpShaderCode[1], invlerpShaderCode[2], code]
 }
 
-// TODO (skm) can likely optimize this
 /**
  * Create a lookup table and bind that lookup table to a shader via uniforms
  */
@@ -776,26 +776,17 @@ export function enableTransferFunctionShader(
     shader: ShaderProgram, name: string, dataType: DataType, controlPoints: Array<ControlPoint>,
     interval: DataTypeInterval) {
   const {gl} = shader;
+
+  // Create the lookup table
   const transferFunction = new Int32Array(TRANSFER_FUNCTION_LENGTH * NUM_COLOR_CHANNELS);
   lerpBetweenControlPoints(transferFunction, controlPoints);
-  switch (dataType) {
-    case DataType.UINT8:
-    case DataType.UINT16:
-    case DataType.INT8:
-    case DataType.INT16:
-    case DataType.FLOAT32:
-      gl.uniform4iv(shader.uniform(`uTransferFunctionParams_${name}`), transferFunction);
-      gl.uniform1f(shader.uniform(`uTransferFunctionGridSize_${name}`), TRANSFER_FUNCTION_LENGTH);
-      gl.uniform2f(
-          shader.uniform(`uLerpParams_${name}`), interval[0] as number,
-          1 / ((interval[1] as number) - (interval[0] as number)));
-      break;
-    // TODO (skm) add support for other data types
-    // TODO (skm) easiest way might be to use the invlerp function
-    // TODO (skm) might be able to use a texture for this
-    default:
-      throw new Error(`Data type for transfer function not yet implemented: ${dataType}`);
-  }
+
+  // Bind the lookup table to the shader
+  gl.uniform4iv(shader.uniform(`uTransferFunctionParams_${name}`), transferFunction);
+  gl.uniform1f(shader.uniform(`uTransferFunctionGridSize_${name}`), TRANSFER_FUNCTION_LENGTH);
+
+  // Use the lerp shader function to grab an index into the lookup table
+  enableLerpShaderFunction(shader, name, dataType, interval);
 }
 
 /**
