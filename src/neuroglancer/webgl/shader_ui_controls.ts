@@ -31,7 +31,7 @@ import {GL} from 'neuroglancer/webgl/context';
 import {HistogramChannelSpecification, HistogramSpecifications} from 'neuroglancer/webgl/empirical_cdf';
 import {defineInvlerpShaderFunction, enableLerpShaderFunction} from 'neuroglancer/webgl/lerp';
 import {ShaderBuilder, ShaderProgram} from 'neuroglancer/webgl/shader';
-import {ControlPoint, defineTransferFunctionShader, enableTransferFunctionShader, floatToUint8, TRANSFER_FUNCTION_LENGTH} from 'neuroglancer/widget/transfer_function'
+import {ControlPoint, defineTransferFunctionShader, enableTransferFunctionShader, floatToUint8, TRANSFER_FUNCTION_LENGTH, TransferFunctionTexture} from 'neuroglancer/widget/transfer_function'
 
 export interface ShaderSliderControl {
   type: 'slider';
@@ -75,6 +75,7 @@ export interface ShaderTransferFunctionControl {
   type: 'transferFunction';
   dataType: DataType;
   default: TransferFunctionParameters;
+  texture: TransferFunctionTexture;
 }
 
 export type ShaderUiControl = ShaderSliderControl|ShaderColorControl|ShaderImageInvlerpControl|
@@ -561,9 +562,10 @@ function parseTransferFunctionDirective(
   } else if (range === undefined) {
     range = [0, 1] as [number, number];
   }
+  const texture = new TransferFunctionTexture(null);
   return {
     control:
-        {type: 'transferFunction', dataType, default: {controlPoints, channel, color, range}} as
+        {type: 'transferFunction', dataType, default: {controlPoints, channel, color, range}, texture} as
         ShaderTransferFunctionControl,
     errors: undefined,
   };
@@ -1339,7 +1341,7 @@ function setControlInShader(
       break;
     case 'transferFunction':
       enableTransferFunctionShader(
-          shader, uName, control.dataType, value.controlPoints, value.range);
+          shader, uName, control.dataType, value.controlPoints, value.range, control.texture);
       break;
   }
 }

@@ -405,6 +405,8 @@ void main() {
 
     const endShader = () => {
       if (shader === null) return;
+      console.log("endDrawing");
+      shader.unbindAllTextures();
       if (prevChunkFormat !== null) {
         prevChunkFormat!.endDrawing(gl, shader);
       }

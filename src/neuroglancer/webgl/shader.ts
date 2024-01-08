@@ -209,6 +209,18 @@ export class ShaderProgram extends RefCounted {
     this.gl.useProgram(this.program);
   }
 
+  // TODO (skm) - determine if this is needed temp for now
+  unbindAllTextures() {
+    const gl = this.gl;
+    for (let [key, value] of this.textureUnits.entries()) {
+      if (key.description.startsWith('TransferFunction')) {
+        console.log('unbind', key.description, value);
+        this.gl.activeTexture(gl.TEXTURE0 + value);
+        this.gl.bindTexture(gl.TEXTURE_2D, null);
+      }
+    }
+  }
+
   disposed() {
     let {gl} = this;
     gl.deleteShader(this.vertexShader);
