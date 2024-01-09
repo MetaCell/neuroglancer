@@ -16,6 +16,7 @@
 
 import {RefCounted} from 'neuroglancer/util/disposable';
 import {GL} from 'neuroglancer/webgl/context';
+import {ControlPoint, TransferFunctionTexture} from 'neuroglancer/widget/transfer_function';
 
 const DEBUG_SHADER = false;
 
@@ -141,6 +142,7 @@ export class ShaderProgram extends RefCounted {
   textureUnits: Map<any, number>;
   vertexShaderInputBinders: {[name: string]: VertexShaderInputBinder} = {};
   vertexDebugOutputs?: VertexDebugOutput[];
+  textures: Map<any, TransferFunctionTexture> = new Map<any, TransferFunctionTexture>();
 
   constructor(
       public gl: GL, public vertexSource: string, public fragmentSource: string,
@@ -200,7 +202,7 @@ export class ShaderProgram extends RefCounted {
     return this.attributes.get(name)!;
   }
 
-  textureUnit(symbol: Symbol): number {
+  textureUnit(symbol: Symbol | string): number {
     return this.textureUnits.get(symbol)!;
   }
 
@@ -213,12 +215,19 @@ export class ShaderProgram extends RefCounted {
   unbindAllTextures() {
     const gl = this.gl;
     for (let [key, value] of this.textureUnits.entries()) {
-      if (key.description.startsWith('TransferFunction')) {
-        console.log('unbind', key.description, value);
+      const to_check = typeof key === 'symbol' ? key.description : key;
+      if (to_check.startsWith('TransferFunction')) {
+        console.log('unbind', to_check, value);
         this.gl.activeTexture(gl.TEXTURE0 + value);
         this.gl.bindTexture(gl.TEXTURE_2D, null);
       }
     }
+  }
+
+  bindTexture(symbol: Symbol | string, controlPoints: ControlPoint[]) {
+    const textureUnit = this.textureUnits.get(symbol)!;
+    const texture = this.textures.get(symbol)!;
+    texture.updateAndActivate({textureUnit, controlPoints});
   }
 
   disposed() {
@@ -232,6 +241,7 @@ export class ShaderProgram extends RefCounted {
     this.gl = <any>undefined;
     this.attributes = <any>undefined;
     this.uniforms = <any>undefined;
+    this.textures = <any>undefined;
   }
 }
 
@@ -385,7 +395,7 @@ export class ShaderBuilder {
   private uniforms = new Array<string>();
   private attributes = new Array<string>();
   private initializers: Array<ShaderInitializer> = [];
-  private textureUnits = new Map<Symbol, number>();
+  private textureUnits = new Map<Symbol|string, number>();
   private vertexDebugOutputs: VertexDebugOutput[] = [];
   constructor(public gl: GL) {}
 
@@ -398,7 +408,7 @@ export class ShaderBuilder {
     this.vertexDebugOutputs.push({typeName, name});
   }
 
-  allocateTextureUnit(symbol: Symbol, count: number = 1) {
+  allocateTextureUnit(symbol: Symbol | string, count: number = 1) {
     if (this.textureUnits.has(symbol)) {
       throw new Error('Duplicate texture unit symbol: ' + symbol.toString());
     }
@@ -408,7 +418,7 @@ export class ShaderBuilder {
     return old;
   }
 
-  addTextureSampler(samplerType: ShaderSamplerType, name: string, symbol: Symbol, extent?: number) {
+  addTextureSampler(samplerType: ShaderSamplerType, name: string, symbol: Symbol | string, extent?: number) {
     let textureUnit = this.allocateTextureUnit(symbol, extent);
     this.addUniform(`highp ${samplerType}`, name, extent);
     this.addInitializer(shader => {
