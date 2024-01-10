@@ -695,7 +695,7 @@ float ${uName}() {
       case 'transferFunction': {
         builder.addFragmentCode(`#define ${name} ${uName}\n`)
         builder.addFragmentCode(
-            defineTransferFunctionShader(builder, uName, control.dataType, builderValue.channel, Symbol(`TransferFunction.texture_${name}`)));
+            defineTransferFunctionShader(builder, uName, control.dataType, builderValue.channel));
         break;
       }
       default: {
@@ -1340,9 +1340,8 @@ function setControlInShader(
       // Value is hard-coded in shader.
       break;
     case 'transferFunction':
-      console.log("name", name, "uName", uName);
       enableTransferFunctionShader(
-          shader, uName, control.dataType, value.controlPoints, value.range, control.texture);
+          shader, uName, control.dataType, value.controlPoints, value.range);
       break;
   }
 }

@@ -142,7 +142,7 @@ export class ShaderProgram extends RefCounted {
   textureUnits: Map<any, number>;
   vertexShaderInputBinders: {[name: string]: VertexShaderInputBinder} = {};
   vertexDebugOutputs?: VertexDebugOutput[];
-  textures: Map<any, TransferFunctionTexture> = new Map<any, TransferFunctionTexture>();
+  transferFunctionTextures: Map<any, TransferFunctionTexture> = new Map<any, TransferFunctionTexture>();
 
   constructor(
       public gl: GL, public vertexSource: string, public fragmentSource: string,
@@ -211,22 +211,27 @@ export class ShaderProgram extends RefCounted {
     this.gl.useProgram(this.program);
   }
 
-  // TODO (skm) - determine if this is needed temp for now
-  unbindAllTextures() {
+  unbindTransferFunctionTextures() {
     const gl = this.gl;
-    for (let [key, value] of this.textureUnits.entries()) {
-      const to_check = typeof key === 'symbol' ? key.description : key;
-      if (to_check.startsWith('TransferFunction')) {
-        console.log('unbind', to_check, value);
+    for (let key of this.transferFunctionTextures.keys()) {
+      const value = this.textureUnits.get(key);
+      if (value !== undefined) {
+        console.log('unbind', key, value);
         this.gl.activeTexture(gl.TEXTURE0 + value);
         this.gl.bindTexture(gl.TEXTURE_2D, null);
       }
     }
   }
 
-  bindTexture(symbol: Symbol | string, controlPoints: ControlPoint[]) {
-    const textureUnit = this.textureUnits.get(symbol)!;
-    const texture = this.textures.get(symbol)!;
+  bindAndUpdateTransferFunctionTexture(symbol: Symbol | string, controlPoints: ControlPoint[]) {
+    const textureUnit = this.textureUnits.get(symbol);
+    if (textureUnit === undefined) {
+      throw new Error(`Invalid texture unit symbol: ${symbol.toString()}`);
+    }
+    const texture = this.transferFunctionTextures.get(symbol);
+    if (texture === undefined) {
+      throw new Error(`Invalid transfer function texture symbol: ${symbol.toString()}`);
+    }
     texture.updateAndActivate({textureUnit, controlPoints});
   }
 
@@ -241,7 +246,7 @@ export class ShaderProgram extends RefCounted {
     this.gl = <any>undefined;
     this.attributes = <any>undefined;
     this.uniforms = <any>undefined;
-    this.textures = <any>undefined;
+    this.transferFunctionTextures = <any>undefined;
   }
 }
 

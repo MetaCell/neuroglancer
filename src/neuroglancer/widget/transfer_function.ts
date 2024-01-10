@@ -55,15 +55,6 @@ const TRANSFER_FUNCTION_BORDER_WIDTH = 255 / 10;
 
 const transferFunctionSamplerTextureUnit = Symbol('transferFunctionSamplerTexture');
 
-// TODO (SKM) maybe temp
-const transferFunctionTextureUnitSymbolPool = [
-  Symbol('TransferFunction.textureUnit0'),
-  Symbol('TransferFunction.textureUnit1'),
-];
-const unitsInUse = new Set<Symbol>();
-const transferFunctionTextureUnitSamplerMap = new Map<string, Symbol>();
-const transferFunctionTextures = new Map<any, TransferFunctionTexture>();
-
 /**
  * The position of a control point on the canvas is represented as an integer value between 0 and TRANSFER_FUNCTION_LENGTH - 1.
  * The color of a control point is represented as four component vector of uint8 values between 0 and 255
@@ -161,7 +152,7 @@ export class TransferFunctionTexture extends RefCounted {
   height: number = 1;
   private priorOptions: TransferFunctionTextureOptions|undefined = undefined;
 
-  constructor(public gl: GL | null, public tempname = '') {
+  constructor(public gl: GL | null) {
     super();
   }
 
@@ -176,7 +167,6 @@ export class TransferFunctionTexture extends RefCounted {
       controlPointsEqual = arraysEqualWithPredicate(
         existingOptions.controlPoints, newOptions.controlPoints, (a, b) => a.position === b.position && arraysEqual(a.color, b.color));
     }
-    console.log('texture unit equal', existingOptions.textureUnit, newOptions.textureUnit);
     const textureUnitEqual = existingOptions.textureUnit === newOptions.textureUnit;
 
     return lookupTableEqual && controlPointsEqual && textureUnitEqual;
@@ -188,12 +178,9 @@ export class TransferFunctionTexture extends RefCounted {
     if (options.lookupTable === undefined && options.controlPoints === undefined) {
       throw new Error('Either lookupTable or controlPoints must be defined for transfer function texture');
     }
-    let {tempname, texture} = this;
+    let {texture} = this;
 
     function bindAndActivateTexture() {
-      if (tempname) {
-        console.log(tempname, options.textureUnit);
-      }
       if (options.textureUnit === undefined) {
         throw new Error('Texture unit must be defined for transfer function texture');
       }
@@ -210,7 +197,6 @@ export class TransferFunctionTexture extends RefCounted {
     if (texture === null) {
       texture = this.texture = gl.createTexture();
     }
-    console.log('updating texture');
     // Update the texture
     bindAndActivateTexture();
     setRawTextureParameters(gl);
@@ -293,12 +279,15 @@ class TransferFunctionPanel extends IndirectRenderedPanel {
   }
 
   updateTransferFunctionPanelLines() {
+    // Normalize position to [-1, 1] for shader (x axis)
     function normalizePosition(position: number) {
       return (position / (TRANSFER_FUNCTION_LENGTH - 1)) * 2 - 1;
     }
+    // Normalize opacity to [-1, 1] for shader (y axis)
     function normalizeOpacity(opacity: number) {
       return (opacity / 255) * 2 - 1;
     }
+    // Normalize color to [0, 1] for shader (color channels)
     function normalizeColor(colorComponent: number) {
       return (colorComponent / 255);
     }
@@ -755,20 +744,9 @@ class TransferFunctionWidget extends Tab {
     // Color picker element
     const colorPickerDiv = document.createElement('div');
     colorPickerDiv.classList.add('neuroglancer-transfer-function-color-picker');
-    colorPickerDiv.addEventListener('mouseenter', (event: MouseEvent) => {
-      event.stopPropagation();
-      event.preventDefault();
-      colorPicker.element.disabled = false;
-    })
-    colorPickerDiv.addEventListener('mouseleave', (event: MouseEvent) => {
-      event.stopPropagation();
-      event.preventDefault();
-      colorPicker.element.disabled = true;
-    })
     const colorPicker = this.registerDisposer(new ColorWidget(
         makeCachedDerivedWatchableValue((x: TransferFunctionParameters) => x.color, [trackable]),
         () => vec3.fromValues(1, 1, 1)));
-    colorPicker.element.disabled = true;
     colorPicker.element.title = 'Transfer Function Color Picker'
     colorPicker.element.id = 'neuroglancer-tf-color-widget';
     colorPicker.element.addEventListener('change', () => {
@@ -801,36 +779,12 @@ class TransferFunctionWidget extends Tab {
  * Create a shader function for the transfer function to grab the nearest lookup table value
  */
 export function defineTransferFunctionShader(
-    builder: ShaderBuilder, name: string, dataType: DataType, channel: number[], symbol: Symbol) {
-  //builder.addUniform(`highp ivec4`, `uTransferFunctionParams_${name}`, TRANSFER_FUNCTION_LENGTH);
-  console.log('defineTransferFunctionShader', name);
+    builder: ShaderBuilder, name: string, dataType: DataType, channel: number[]) {
   builder.addUniform(`highp float`, `uTransferFunctionEnd_${name}`);
-  // TODO (skm): temp does not really make sense I think
-  //const symbol = Symbol(`TransferFunctionLookupTableTextureUnit_${name}`);
-  //transferFunctionTextureUnitSamplerMap.set(`TransferFunctionLookupTableTextureUnit_${name}`, symbol);
-  // function getFirstUnusedTextureUnit() {
-  //   for (let i = 0; i < 2; ++i) {
-  //     const toTry = transferFunctionTextureUnitSymbolPool[i];
-  //     if (unitsInUse.has(toTry)) continue;
-  //     unitsInUse.add(toTry);
-  //     return toTry;
-  //   }
-  //   throw new Error('No available texture units');
-  // }
-
-  //const firstUnusedSymbol = getFirstUnusedTextureUnit();
-  //const symbol = firstUnusedSymbol;
-  // transferFunctionTextureUnitSamplerMap.set(`TransferFunctionLookupTableTextureUnit_${name}`, symbol);
-  //transferFunctionTextures.set(`TransferFunctionLookupTableTexture_${name}`, texture);
   builder.addTextureSampler('sampler2D', `uTransferFunctionSampler_${name}`, `TransferFunction.${name}`);
   const invlerpShaderCode =
       defineInvlerpShaderFunction(builder, name, dataType, true) as ShaderCodePart[];
   const shaderType = getShaderType(dataType);
-  //   let code = `
-  // vec4 ${name}(float inputValue) {
-  //   int index = clamp(int(round(inputValue * uTransferFunctionEnd_${name})), 0, int(uTransferFunctionEnd_${name}));
-  //   return vec4(uTransferFunctionParams_${name}[index]) / 255.0;
-  // }
   let code = `
 vec4 ${name}(float inputValue) {
   int index = clamp(int(round(inputValue * uTransferFunctionEnd_${name})), 0, int(uTransferFunctionEnd_${name}));
@@ -850,15 +804,14 @@ vec4 ${name}() {
   }
 }
 `;
-// TODO (SKM): double check this and also for max projection
-// if (dataType !== DataType.UINT64 && dataType !== DataType.FLOAT32) {
-//   const scalarType = DATA_TYPE_SIGNED[dataType] ? 'int' : 'uint';
-//   code += `
-// float ${name}(${scalarType} inputValue) {
-//   return ${name}(${shaderType}(inputValue));
-// }
-// `;
-//   }
+if (dataType !== DataType.UINT64 && dataType !== DataType.FLOAT32) {
+  const scalarType = DATA_TYPE_SIGNED[dataType] ? 'int' : 'uint';
+  code += `
+vec4 ${name}(${scalarType} inputValue) {
+  return ${name}(${shaderType}(inputValue));
+}
+`;
+  }
   return [invlerpShaderCode[0], invlerpShaderCode[1], invlerpShaderCode[2], code]
 }
 
@@ -866,72 +819,15 @@ vec4 ${name}() {
  * Create a lookup table and bind that lookup table to a shader via uniforms
  */
 export function enableTransferFunctionShader(
-    shader: ShaderProgram, name: string, dataType: DataType, controlPoints: ControlPoint[], interval: DataTypeInterval, texturee: TransferFunctionTexture) {
+    shader: ShaderProgram, name: string, dataType: DataType, controlPoints: ControlPoint[], interval: DataTypeInterval) {
   const {gl} = shader;
 
-  console.log('enableTransferFunctionShader', shader, name);
-  console.log(shader.textures, shader.textureUnits);
-
-  // TODO (skm) this doesn't work as multiple layers can have the same name
-  console.log('transferFunctionTextures', transferFunctionTextures);
-  const texture = shader.textures.get(`TransferFunction.${name}`)
+  const texture = shader.transferFunctionTextures.get(`TransferFunction.${name}`)
+  // Create a lookup table texture if it does not exist
   if (texture === undefined) {
-    shader.textures.set(`TransferFunction.${name}`, new TransferFunctionTexture(gl));
+    shader.transferFunctionTextures.set(`TransferFunction.${name}`, new TransferFunctionTexture(gl));
   }
-  // if (texture.gl === null) {
-  //   texture.gl = gl;
-  // }
-  // if (texture.gl !== gl) {
-  //   throw new Error('Transfer function texture not created with same GL context as shader');
-  // }
-
-  // Create and bind the lookup table
-  //const transferFunction = new Int32Array(TRANSFER_FUNCTION_LENGTH * NUM_COLOR_CHANNELS);
-  //lerpBetweenControlPoints(transferFunction, controlPoints);
-  //gl.uniform4iv(shader.uniform(`uTransferFunctionParams_${name}`), transferFunction); 
-
-  // Create the texture
-  //console.log('transferFunctionTextureUnitSamplerMap', transferFunctionTextureUnitSamplerMap);
-  //const storedName = transferFunctionTextureUnitSamplerMap.get(`TransferFunctionLookupTableTextureUnit_${name}`);
-  // console.log('stored name', storedName);
-  // console.log('name in shader units?', shader.textureUnits.has(storedName));
-  // console.log(transferFunctionTextureUnitSamplerMap, shader.textureUnits);
-  // if (storedName === undefined) {
-  //   throw new Error('Transfer function texture unit not created');
-  // }
-  //const textureUnit = shader.textureUnit(storedName);
-  //const textureUnit = shader.textureUnit(transferFunctionTextureUnit);
-  //const storedName = transferFunctionTextureUnitSamplerMap.get(`TransferFunctionLookupTableTextureUnit_${name}`);
-  // if (storedName === undefined) {
-  //   throw new Error('Transfer function texture unit not created');
-  // }
-  // const textureUnit = shader.textureUnit(storedName);
-  // console.log('texture unit', name, textureUnit);
-  // if (textureUnit === undefined) {
-  //   return;
-  // }
-  // texture.updateAndActivate({controlPoints, textureUnit});
-  // gl.uniform1i(shader.uniform(`uTransferFunctionSampler_${name}`), textureUnit);
-  // TODO (SKM) need to unbind that texture after rendering
-
-  //const lookupTable = new Uint8Array(TRANSFER_FUNCTION_LENGTH * NUM_COLOR_CHANNELS);
-  //lerpBetweenControlPoints(lookupTable, controlPoints);
-  //texture.updateAndActivate({lookupTable, textureUnit});
-
-  // TODO (skm) do we need to dispose of this texture?
-  // shader.registerDisposer(() => {
-  //   console.log('dispose transfer function texture');
-  // //   // texture.dispose();
-  //   // shader.textureUnits.delete(transferFunctionTextureUnitSamplerMap.get(`TransferFunctionLookupTableTextureUnit_${name}`));
-  //   const storedName = transferFunctionTextureUnitSamplerMap.get(`TransferFunctionLookupTableTextureUnit_${name}`);
-  //   if (storedName === undefined) {
-  //     throw new Error('Transfer function texture unit not created');
-  //   }
-  //   unitsInUse.delete(storedName);
-  //   transferFunctionTextureUnitSamplerMap.delete(`TransferFunctionLookupTableTextureUnit_${name}`);
-  // });
-
-  shader.bindTexture(`TransferFunction.${name}`, controlPoints);
+  shader.bindAndUpdateTransferFunctionTexture(`TransferFunction.${name}`, controlPoints);
   
   // Bind the length of the lookup table to the shader as a uniform
   gl.uniform1f(shader.uniform(`uTransferFunctionEnd_${name}`), TRANSFER_FUNCTION_LENGTH - 1);
