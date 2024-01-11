@@ -46,6 +46,7 @@ import {getUpdatedRangeAndWindowParameters, updateInputBoundValue, updateInputBo
 import {LayerControlFactory, LayerControlTool} from 'neuroglancer/widget/layer_control';
 import {PositionWidget} from 'neuroglancer/widget/position_widget';
 import {Tab} from 'neuroglancer/widget/tab_view';
+import {Uint64} from 'neuroglancer/util/uint64';
 
 export const TRANSFER_FUNCTION_LENGTH = 256;
 export const NUM_COLOR_CHANNELS = 4;
@@ -61,6 +62,16 @@ const transferFunctionSamplerTextureUnit = Symbol('transferFunctionSamplerTextur
  */
 export interface ControlPoint {
   position: number;
+  color: vec4;
+}
+
+/**
+ * A parsed control point could have a position represented as a Uint64
+ * This will later be converted to a number between 0 and TRANSFER_FUNCTION_LENGTH - 1
+ * And then stored as a control point
+ */
+export interface ParsedControlPoint {
+  position: number | Uint64;
   color: vec4;
 }
 
