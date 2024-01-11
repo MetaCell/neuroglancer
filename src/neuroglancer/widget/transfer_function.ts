@@ -48,7 +48,7 @@ import {PositionWidget} from 'neuroglancer/widget/position_widget';
 import {Tab} from 'neuroglancer/widget/tab_view';
 import {Uint64} from 'neuroglancer/util/uint64';
 
-export const TRANSFER_FUNCTION_LENGTH = 256;
+export const TRANSFER_FUNCTION_LENGTH = 1024;
 export const NUM_COLOR_CHANNELS = 4;
 const POSITION_VALUES_PER_LINE = 4;  // x1, y1, x2, y2
 const CONTROL_POINT_GRAB_DISTANCE = TRANSFER_FUNCTION_LENGTH / 40;
@@ -575,6 +575,13 @@ class ControlPointsLookupTable extends RefCounted {
       color: vec4.fromValues(color[0], color[1], color[2], opacityAsUint8)
     };
     controlPoints.sort((a, b) => a.position - b.position);
+    const exsitingPositions = new Set<number>();
+    for (const point of controlPoints) {
+      if (exsitingPositions.has(point.position)) {
+        return index;
+      }
+      exsitingPositions.add(point.position);
+    }
     const newControlPointIndex =
         controlPoints.findIndex((point) => point.position === positionAsIndex);
     return newControlPointIndex;
@@ -711,11 +718,13 @@ class TransferFunctionController extends RefCounted {
   }
   moveControlPoint(event: MouseEvent): TransferFunctionParameters|undefined {
     if (this.currentGrabbedControlPointIndex !== -1) {
+      console.log("before", this.currentGrabbedControlPointIndex);
       const position = this.getControlPointPosition(event);
       if (position === undefined) return undefined;
       const {normalizedX, normalizedY} = position;
       this.currentGrabbedControlPointIndex = this.controlPointsLookupTable.updatePoint(
           this.currentGrabbedControlPointIndex, normalizedX, normalizedY);
+      console.log("after", this.currentGrabbedControlPointIndex);
       return {
         ...this.getModel(),
         controlPoints: this.controlPointsLookupTable.trackable.value.controlPoints

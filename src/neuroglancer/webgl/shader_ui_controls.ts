@@ -31,7 +31,7 @@ import {GL} from 'neuroglancer/webgl/context';
 import {HistogramChannelSpecification, HistogramSpecifications} from 'neuroglancer/webgl/empirical_cdf';
 import {defineInvlerpShaderFunction, enableLerpShaderFunction} from 'neuroglancer/webgl/lerp';
 import {ShaderBuilder, ShaderProgram} from 'neuroglancer/webgl/shader';
-import {ControlPoint, defineTransferFunctionShader, enableTransferFunctionShader, floatToUint8, ParsedControlPoint, TRANSFER_FUNCTION_LENGTH, TransferFunctionTexture} from 'neuroglancer/widget/transfer_function'
+import {ControlPoint, defineTransferFunctionShader, enableTransferFunctionShader, floatToUint8, ParsedControlPoint, TRANSFER_FUNCTION_LENGTH} from 'neuroglancer/widget/transfer_function'
 import { Uint64 } from '../util/uint64';
 
 export interface ShaderSliderControl {
@@ -76,7 +76,6 @@ export interface ShaderTransferFunctionControl {
   type: 'transferFunction';
   dataType: DataType;
   default: TransferFunctionParameters;
-  texture: TransferFunctionTexture;
 }
 
 export type ShaderUiControl = ShaderSliderControl|ShaderColorControl|ShaderImageInvlerpControl|
@@ -551,9 +550,7 @@ function parseTransferFunctionDirective(
       errors.push(`Invalid ${key} value: ${e.message}`);
     }
   }
-  if (errors.length > 0) {
-    return {errors};
-  }
+ 
   if (range === undefined) {
     if (dataType !== undefined) range = defaultDataTypeRange[dataType];
     else range = [0, 1] as [number, number];
@@ -571,12 +568,22 @@ function parseTransferFunctionDirective(
       const position = computeLerp([0, TRANSFER_FUNCTION_LENGTH - 1], DataType.UINT16, normalizedPosition) as number;
       controlPoints.push({position: position, color: controlPoint.color});
     }
+    const pointPositions = new Set<number>();
+    for (let i = 0; i < controlPoints.length; i++) {
+      const controlPoint = controlPoints[i];
+      if (pointPositions.has(controlPoint.position)) {
+        errors.push(`Duplicate control point position: ${parsedControlPoints[i].position}`);
+      }
+      pointPositions.add(controlPoint.position);
+    }
     controlPoints.sort((a, b) => a.position - b.position);
   }
-  const texture = new TransferFunctionTexture(null);
+  if (errors.length > 0) {
+    return {errors};
+  }
   return {
     control:
-        {type: 'transferFunction', dataType, default: {controlPoints, channel, color, range}, texture} as
+        {type: 'transferFunction', dataType, default: {controlPoints, channel, color, range}} as
         ShaderTransferFunctionControl,
     errors: undefined,
   };
@@ -869,15 +876,12 @@ function convertTransferFunctionControlPoints(value: unknown, dataType: DataType
     if (dataType != DataType.UINT64) {
       const defaultRange = defaultDataTypeRange[dataType] as [number, number];
       position = verifyFiniteFloat(x[0]);
-      console.log(new Uint64(172839, 12389210).toString());
-      console.log(position);
       if (position < defaultRange[0] || position > defaultRange[1]) {
         throw new Error(`Expected x in range [${defaultRange[0]}, ${defaultRange[1]}], but received: ${JSON.stringify(x[0])}`);
       }
     }
     else {
       const defaultRange = defaultDataTypeRange[dataType] as [Uint64, Uint64];
-      console.log(defaultRange[1].toString());
       if (typeof x[0] !== 'string') {
         throw new Error(`Expected string for Uint64, but received: ${JSON.stringify(x[0])}`);
       }
@@ -935,10 +939,11 @@ function parseTransferFunctionParameters(
   verifyObject(obj);
   const range = verifyOptionalObjectProperty(
       obj, 'range', x => parseDataTypeInterval(x, dataType), defaultValue.range);
+  const controlPoints = verifyOptionalObjectProperty(
+      obj, 'controlPoints', x => parseTransferFunctionControlPoints(x, range, dataType),
+      defaultValue.controlPoints);
   return {
-    controlPoints: verifyOptionalObjectProperty(
-        obj, 'controlPoints', x => parseTransferFunctionControlPoints(x, range, dataType),
-        defaultValue.controlPoints),
+    controlPoints: controlPoints,
     channel: verifyOptionalObjectProperty(
         obj, 'channel', x => parseInvlerpChannel(x, defaultValue.channel.length),
         defaultValue.channel),
