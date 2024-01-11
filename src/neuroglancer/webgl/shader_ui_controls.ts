@@ -32,7 +32,7 @@ import {HistogramChannelSpecification, HistogramSpecifications} from 'neuroglanc
 import {defineInvlerpShaderFunction, enableLerpShaderFunction} from 'neuroglancer/webgl/lerp';
 import {ShaderBuilder, ShaderProgram} from 'neuroglancer/webgl/shader';
 import {ControlPoint, defineTransferFunctionShader, enableTransferFunctionShader, floatToUint8, ParsedControlPoint, TRANSFER_FUNCTION_LENGTH} from 'neuroglancer/widget/transfer_function'
-import { Uint64 } from '../util/uint64';
+import {Uint64} from 'neuroglancer/util/uint64';
 
 export interface ShaderSliderControl {
   type: 'slider';
