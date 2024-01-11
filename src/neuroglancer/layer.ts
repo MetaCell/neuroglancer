@@ -59,7 +59,7 @@ const SOURCE_JSON_KEY = 'source';
 const TRANSFORM_JSON_KEY = 'transform';
 const PICK_JSON_KEY = 'pick';
 
-const METACELL_TAG = ' 181223'
+const METACELL_TAG = ' 110124'
 
 export interface UserLayerSelectionState {
   generation: number;
