@@ -718,13 +718,11 @@ class TransferFunctionController extends RefCounted {
   }
   moveControlPoint(event: MouseEvent): TransferFunctionParameters|undefined {
     if (this.currentGrabbedControlPointIndex !== -1) {
-      console.log("before", this.currentGrabbedControlPointIndex);
       const position = this.getControlPointPosition(event);
       if (position === undefined) return undefined;
       const {normalizedX, normalizedY} = position;
       this.currentGrabbedControlPointIndex = this.controlPointsLookupTable.updatePoint(
           this.currentGrabbedControlPointIndex, normalizedX, normalizedY);
-      console.log("after", this.currentGrabbedControlPointIndex);
       return {
         ...this.getModel(),
         controlPoints: this.controlPointsLookupTable.trackable.value.controlPoints
