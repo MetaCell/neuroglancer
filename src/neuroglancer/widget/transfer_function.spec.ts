@@ -14,8 +14,13 @@
  * limitations under the License.
  */
 
-import { lerpBetweenControlPoints, TRANSFER_FUNCTION_LENGTH, NUM_COLOR_CHANNELS, ControlPoint } from "neuroglancer/widget/transfer_function";
+import { lerpBetweenControlPoints, TRANSFER_FUNCTION_LENGTH, NUM_COLOR_CHANNELS, ControlPoint, defineTransferFunctionShader, enableTransferFunctionShader } from "neuroglancer/widget/transfer_function";
 import {vec4} from 'neuroglancer/util/geom';
+import { DataType } from "neuroglancer/util/data_type";
+import { fragmentShaderTest } from "neuroglancer/webgl/shader_testing";
+import { defaultDataTypeRange } from "neuroglancer/util/lerp";
+import { Uint64 } from "neuroglancer/util/uint64";
+import { getShaderType } from "neuroglancer/webgl/shader_lib";
 
 describe("lerpBetweenControlPoints", () => {
     const output = new Uint8Array(NUM_COLOR_CHANNELS * TRANSFER_FUNCTION_LENGTH);
@@ -73,5 +78,53 @@ describe("lerpBetweenControlPoints", () => {
             }
         }
     });
+});
 
+describe('compute transfer function on GPU', () => {
+    const maxTransferFunctionPoints = TRANSFER_FUNCTION_LENGTH - 1;
+    const controlPoints: ControlPoint[] = [
+        { position: 0, color: vec4.fromValues(0, 0, 0, 0) },
+        { position: maxTransferFunctionPoints, color: vec4.fromValues(255, 255, 255, 255) },
+    ];
+    for (const dataType of Object.values(DataType)) {
+        if (typeof dataType === "string") continue
+        it('computes transfer function on GPU for all datatypes', () => {
+            const shaderDataType = getShaderType(dataType);
+            fragmentShaderTest(
+                {inputValue: shaderDataType}, {val1: 'float', val2: 'float', val3: 'float', val4: 'float'},
+                tester => {
+                    const {builder} = tester;
+                    builder.addFragmentCode(defineTransferFunctionShader(builder, 'doTransferFunction', dataType, []));
+                    builder.setFragmentMain(`
+                        vec4 result = doTransferFunction(inputValue);
+                        val1 = result.r;
+                        val2 = result.g;
+                        val3 = result.b;
+                        val4 = result.a;
+                    `);
+                    const {shader} = tester;
+                    const testShader = (point: any) => {
+                        enableTransferFunctionShader(shader, 'doTransferFunction', dataType, controlPoints, defaultDataTypeRange[dataType]);
+                        tester.execute({inputValue: point});
+                        const values = tester.values;
+                        return vec4.fromValues(values.val1, values.val2, values.val3, values.val4);
+                    }
+                    let color = testShader(0);
+                    expect(color).toEqual(vec4.fromValues(0, 0, 0, 0));
+                    const maxValue = defaultDataTypeRange[dataType][1];
+                    color = testShader(maxValue);
+                    expect(color).toEqual(vec4.fromValues(255, 255, 255, 255));
+                    if (dataType !== DataType.UINT64) {
+                        color = testShader(maxValue as number / 2);
+                        expect(color).toEqual(vec4.fromValues(127, 127, 127, 127));
+                    }
+                    else {
+                        const value = (maxValue as Uint64).toNumber() / 2;
+                        const position = Uint64.fromNumber(value);
+                        color = testShader(position);
+                        expect(color).toEqual(vec4.fromValues(127, 127, 127, 127));
+                    }
+                }),
+        });
+    }
 });
