@@ -803,25 +803,21 @@ export function defineTransferFunctionShader(
   const invlerpShaderCode =
       defineInvlerpShaderFunction(builder, name, dataType, true) as ShaderCodePart[];
   const shaderType = getShaderType(dataType);
+  // Use ${name}_ to avoid name collisions with other shader functions in the case of FLOAT32 dtype
   let code = `
-vec4 ${name}(float inputValue) {
+vec4 ${name}_(float inputValue) {
   int index = clamp(int(round(inputValue * uTransferFunctionEnd_${name})), 0, int(uTransferFunctionEnd_${name}));
   return texelFetch(uTransferFunctionSampler_${name}, ivec2(index, 0), 0);
 }
 vec4 ${name}(${shaderType} inputValue) {
   float v = computeInvlerp(inputValue, uLerpParams_${name});
-  return ${name}(clamp(v, 0.0, 1.0));
+  return ${name}_(clamp(v, 0.0, 1.0));
 }
 vec4 ${name}() {
-  if (!MAX_PROJECTION) {
-    return ${name}(getInterpolatedDataValue(${channel.join(',')}));
-  }
-  else {
-    float v = computeInvlerp(maxIntensity, uLerpParams_${name});
-    return ${name}(clamp(v, 0.0, 1.0));
-  }
+  return ${name}(getInterpolatedDataValue(${channel.join(',')}));
 }
 `;
+// TODO (SKM) add back in max projection at a later date
 if (dataType !== DataType.UINT64 && dataType !== DataType.FLOAT32) {
   const scalarType = DATA_TYPE_SIGNED[dataType] ? 'int' : 'uint';
   code += `

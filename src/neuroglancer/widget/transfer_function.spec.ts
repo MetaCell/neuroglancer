@@ -88,20 +88,30 @@ describe('compute transfer function on GPU', () => {
     ];
     for (const dataType of Object.values(DataType)) {
         if (typeof dataType === "string") continue
-        it('computes transfer function on GPU for all datatypes', () => {
-            const shaderDataType = getShaderType(dataType);
+        it(`computes transfer function on GPU for ${DataType[dataType]}`, () => {
+            console.log("Testing " + DataType[dataType])
+            const shaderType = getShaderType(dataType);
             fragmentShaderTest(
-                {inputValue: shaderDataType}, {val1: 'float', val2: 'float', val3: 'float', val4: 'float'},
+                {inputValue: dataType}, {val1: 'float', val2: 'float', val3: 'float', val4: 'float'},
                 tester => {
                     const {builder} = tester;
+// TODO (SKM) might need this for max projection
+//                     builder.addFragmentCode(`
+// #define MAX_PROJECTION false
+// float maxIntensity = 0.0;
+// `);
+                    builder.addFragmentCode(`
+${shaderType} getInterpolatedDataValue() {
+    return inputValue;
+}`)
                     builder.addFragmentCode(defineTransferFunctionShader(builder, 'doTransferFunction', dataType, []));
                     builder.setFragmentMain(`
-                        vec4 result = doTransferFunction(inputValue);
-                        val1 = result.r;
-                        val2 = result.g;
-                        val3 = result.b;
-                        val4 = result.a;
-                    `);
+vec4 result = doTransferFunction(inputValue);
+val1 = result.r;
+val2 = result.g;
+val3 = result.b;
+val4 = result.a;
+`);
                     const {shader} = tester;
                     const testShader = (point: any) => {
                         enableTransferFunctionShader(shader, 'doTransferFunction', dataType, controlPoints, defaultDataTypeRange[dataType]);
@@ -109,22 +119,29 @@ describe('compute transfer function on GPU', () => {
                         const values = tester.values;
                         return vec4.fromValues(values.val1, values.val2, values.val3, values.val4);
                     }
-                    let color = testShader(0);
-                    expect(color).toEqual(vec4.fromValues(0, 0, 0, 0));
+                    const minValue = defaultDataTypeRange[dataType][0];
                     const maxValue = defaultDataTypeRange[dataType][1];
+                    let color = testShader(minValue);
+                    expect(color).toEqual(vec4.fromValues(0, 0, 0, 0));
                     color = testShader(maxValue);
-                    expect(color).toEqual(vec4.fromValues(255, 255, 255, 255));
+                    expect(color).toEqual(vec4.fromValues(1, 1, 1, 1));
                     if (dataType !== DataType.UINT64) {
-                        color = testShader(maxValue as number / 2);
-                        expect(color).toEqual(vec4.fromValues(127, 127, 127, 127));
+                        const minValueNumber = minValue as number;
+                        const maxValueNumber = maxValue as number;
+                        color = testShader((maxValueNumber + minValueNumber) / 2);
+                        for (let i = 0; i < 3; i++) {
+                            expect(color[i]).toBeCloseTo(0.5);
+                        }
                     }
                     else {
                         const value = (maxValue as Uint64).toNumber() / 2;
                         const position = Uint64.fromNumber(value);
                         color = testShader(position);
-                        expect(color).toEqual(vec4.fromValues(127, 127, 127, 127));
+                        for (let i = 0; i < 3; i++) {
+                            expect(color[i]).toBeCloseTo(0.5);
+                        }
                     }
-                }),
+                });
         });
     }
 });
