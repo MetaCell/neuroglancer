@@ -88,16 +88,14 @@ float computeOITWeight(float alpha, float depth) {
 // PreWeighted means that the rendering already multiplied by the weight
 export const glsl_perspectivePanelEmitOIT = [
   glsl_computeOITWeight, `
+void emitOITWeighted(vec4 accum, float alpha, highp uint pickId) {
+  v4f_fragData0 = vec4(accum.rgb, alpha);
+  v4f_fragData1 = vec4(accum.a, 0.0, 0.0, 0.0);
+}
 void emit(vec4 color, highp uint pickId) {
   float weight = computeOITWeight(color.a, gl_FragCoord.z);
   vec4 accum = color * weight;
-  v4f_fragData0 = vec4(accum.rgb, color.a);
-  v4f_fragData1 = vec4(accum.a, 0.0, 0.0, 0.0);
-}
-
-void emitPreWeighted(vec4 accum, float originalAlpha, highp uint pickId) {
-  v4f_fragData0 = vec4(accum.rgb, originalAlpha);
-  v4f_fragData1 = vec4(accum.a, 0.0, 0.0, 0.0);
+  emitOITWeighted(accum, color.a, pickId);
 }
 `
 ];

@@ -199,7 +199,7 @@ void emitRGBA(vec4 rgba) {
     alphaProduct *= (1.0 - correctedAlpha);
   }
   else {
-    float alpha = clamp(rgba.a * uSamplingRatio * uGain, 0.0, 1.0);
+    float alpha = clamp(rgba.a * uBrightnessFactor * uGain, 0.0, 1.0);
     outputColor = clamp(outputColor + vec4(rgba.rgb * alpha, alpha), 0.0, 1.0);
   }
 }
@@ -275,7 +275,7 @@ void main() {
       weightedColor = vec4(0.0, 0.0, 0.0, 0.0);
       alphaProduct = 0.0;
     }
-    emitPreWeighted(weightedColor, 1.0 - alphaProduct, 0u);
+    emitOITWeighted(weightedColor, 1.0 - alphaProduct, 0u);
   }
   else {
     if ((endStep - startStep) < 0) {
@@ -481,8 +481,7 @@ void main() {
           // to avoid aliasing, but this is not always practical for large datasets.
           const step = (adjustedFar - adjustedNear) / (this.depthSamplesTarget.value - 1);
           const uBrightnessFactor = step / (far - near);
-          console.log(uBrightnessFactor);
-          gl.uniform1f(shader.uniform('uBrightnessFactor'), 1.0);
+          gl.uniform1f(shader.uniform('uBrightnessFactor'), uBrightnessFactor);
           //const uBrightnessFactorCbrt = Math.pow(uBrightnessFactor, 1 / 4);
           gl.uniform1f(shader.uniform('uBrightnessFactorCbrt'), 1.0);
           const actualSamplingRate =
