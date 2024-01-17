@@ -65,6 +65,7 @@ function getShaderLayerControlFactory<LayerType extends UserLayer>(
       let histogramIndex = 0;
       for (const [otherName, {control: {type: otherType}}] of shaderControlState.state) {
         if (otherName === controlId) break;
+        // TODO (skm) might need to include transfer function here
         if (otherType === 'imageInvlerp') ++histogramIndex;
       }
       return channelInvlerpLayerControl(
