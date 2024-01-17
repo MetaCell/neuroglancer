@@ -37,7 +37,7 @@ import {setRawTextureParameters} from 'neuroglancer/webgl/texture';
 import {ChunkFormat} from 'src/neuroglancer/sliceview/volume/frontend';
 import {defineInvlerpShaderFunction} from 'src/neuroglancer/webgl/lerp';
 
-const DEBUG_HISTOGRAMS = false;
+const DEBUG_HISTOGRAMS = true;
 
 export interface HistogramChannelSpecification {
   // Channel coordinates.
@@ -184,13 +184,13 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
   }
 }
 
-export function defineShaderCodeForHistograms(builder: ShaderBuilder, numHistograms: number, chunkFormat: ChunkFormat, dataHistogramChannelSpecifications: HistogramChannelSpecification[], nameAppend: string = '') {
+export function defineShaderCodeForHistograms(builder: ShaderBuilder, numHistograms: number, chunkFormat: ChunkFormat, dataHistogramChannelSpecifications: HistogramChannelSpecification[], start: number = 1, nameAppend: string = '') {
   let histogramCollectionCode = '';
   const {dataType} = chunkFormat;
   for (let i = 0; i < numHistograms; ++i) {
     const {channel} = dataHistogramChannelSpecifications[i];
     const outputName = `out_histogram${i}${nameAppend}`;
-    builder.addOutputBuffer('vec4', outputName, 1 + i);
+    builder.addOutputBuffer('vec4', outputName, start + i);
     const getDataValueExpr = `getDataValue(${channel.join(',')})`;
     const invlerpName = `invlerpForHistogram${i}${nameAppend}`;
     builder.addFragmentCode(

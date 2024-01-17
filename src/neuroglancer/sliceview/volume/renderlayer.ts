@@ -235,8 +235,6 @@ export abstract class SliceViewVolumeRenderLayer<ShaderParameters = any> extends
   constructor(
       multiscaleSource: MultiscaleVolumeChunkSource,
       options: RenderLayerOptions<ShaderParameters>) {
-    console.log("SliceViewVolumeRenderLayer constructor");
-    console.log(options);
     const {shaderError = makeWatchableShaderError(), shaderParameters} = options;
     super(multiscaleSource.chunkManager, multiscaleSource, options);
     const {gl} = this;
@@ -282,7 +280,7 @@ void emit(vec4 color) {
         const numHistograms = dataHistogramChannelSpecifications.length;
         if (dataHistogramsEnabled && numHistograms > 0) {
           const histogramCollectionCode = defineShaderCodeForHistograms(
-            builder, numHistograms, chunkFormat, dataHistogramChannelSpecifications, '');
+            builder, numHistograms, chunkFormat, dataHistogramChannelSpecifications);
           builder.addFragmentCode(`void userMain();
 void main() {
   ${histogramCollectionCode}

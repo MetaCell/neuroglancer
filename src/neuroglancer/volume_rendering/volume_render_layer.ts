@@ -39,6 +39,7 @@ import {ShaderModule, ShaderProgram} from 'neuroglancer/webgl/shader';
 import {addControlsToBuilder, setControlsInShader, ShaderControlsBuilderState, ShaderControlState} from 'neuroglancer/webgl/shader_ui_controls';
 import {defineVertexId, VertexIdHelper} from 'neuroglancer/webgl/vertex_id';
 import {HistogramChannelSpecification, HistogramSpecifications, defineShaderCodeForHistograms} from 'src/neuroglancer/webgl/empirical_cdf';
+import {enableLerpShaderFunction} from 'src/neuroglancer/webgl/lerp';
 
 export const VOLUME_RENDERING_DEPTH_SAMPLES_DEFAULT_VALUE = 64
 const VOLUME_RENDERING_DEPTH_SAMPLES_LOG_SCALE_ORIGIN = 1;
@@ -201,7 +202,7 @@ void userMain();
         let histogramCollectionCode = '';
         if (dataHistogramsEnabled && numHistograms > 0) {
           histogramCollectionCode = defineShaderCodeForHistograms(
-            builder, numHistograms, chunkFormat, dataHistogramChannelSpecifications, 'VR'
+            builder, numHistograms, chunkFormat, dataHistogramChannelSpecifications, 2, ''
           );
         }
 
@@ -475,6 +476,7 @@ void main() {
             fixedPositionWithinChunk[chunkDim] = 0;
           }
           const chunkFormat = source.chunkFormat;
+          const dataHistogramsEnabled = this.dataHistogramSpecifications.visibility.visible;
           if (chunkFormat !== prevChunkFormat) {
             prevChunkFormat = chunkFormat;
             endShader();
@@ -482,7 +484,7 @@ void main() {
               emitter: renderContext.emitter,
               chunkFormat: chunkFormat!,
               wireFrame: renderContext.wireFrame,
-              dataHistogramsEnabled: this.dataHistogramSpecifications.visibility.visible,
+              dataHistogramsEnabled: dataHistogramsEnabled,
             });
             shader = shaderResult.shader;
             if (shader !== null) {
@@ -493,6 +495,14 @@ void main() {
                     gl, shader, this.shaderControlState,
                     shaderResult.parameters.parseResult.controls);
                 chunkFormat.beginDrawing(gl, shader);
+                if (dataHistogramsEnabled) {
+                  const {dataHistogramChannelSpecifications} = shaderResult.extraParameters;
+                  const numHistograms = dataHistogramChannelSpecifications.length;
+                  const bounds = this.dataHistogramSpecifications.bounds.value;
+                  for (let i = 0; i < numHistograms; ++i) {
+                    enableLerpShaderFunction(shader, `invlerpForHistogram${i}`, chunkFormat.dataType, bounds[i]);
+                  }
+                }
                 chunkFormat.beginSource(gl, shader);
               }
             }
@@ -582,6 +592,13 @@ void main() {
     gl.disable(WebGL2RenderingContext.CULL_FACE);
     endShader();
     this.vertexIdHelper.disable();
+    if (!renderContext.wireFrame) {
+      // TODO (SKM) need to implement the compute histogram code for VR
+      const dataHistogramCount = this.getDataHistogramCount();
+      if (dataHistogramCount > 0) {
+        sliceView.computeHistograms(dataHistogramCount, this.dataHistogramSpecifications);
+      }
+    }
   }
 
   isReady(

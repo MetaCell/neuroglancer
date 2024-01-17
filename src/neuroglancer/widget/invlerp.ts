@@ -324,7 +324,10 @@ out_color = uColor;
       gl.drawArrays(WebGL2RenderingContext.TRIANGLE_FAN, 0, 4);
       gl.disableVertexAttribArray(aVertexPosition);
     }
-    if (this.parent.histogramSpecifications.producerVisibility.visible) {
+    console.log(this.parent.histogramSpecifications.producerVisibility.visible);
+    // TODO (SKM) temp, just setting to true
+    if (this.parent.histogramSpecifications.producerVisibility.visible || !this.parent.histogramSpecifications.producerVisibility.visible) {
+      console.log('drawing histogram')
       const {renderViewport} = this;
       lineShader.bind();
       initializeLineShader(
