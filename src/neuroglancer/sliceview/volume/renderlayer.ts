@@ -30,8 +30,8 @@ import {mat4, vec3} from 'neuroglancer/util/geom';
 import {getObjectId} from 'neuroglancer/util/object_id';
 import {GL} from 'neuroglancer/webgl/context';
 import {makeWatchableShaderError, ParameterizedContextDependentShaderGetter, parameterizedContextDependentShaderGetter, ParameterizedShaderGetterResult, WatchableShaderError} from 'neuroglancer/webgl/dynamic_shader';
-import {HistogramChannelSpecification} from 'neuroglancer/webgl/empirical_cdf';
-import {defineInvlerpShaderFunction, enableLerpShaderFunction} from 'neuroglancer/webgl/lerp';
+import {HistogramChannelSpecification, defineShaderCodeForHistograms} from 'neuroglancer/webgl/empirical_cdf';
+import {enableLerpShaderFunction} from 'neuroglancer/webgl/lerp';
 import {defineLineShader, drawLines, initializeLineShader, VERTICES_PER_LINE} from 'neuroglancer/webgl/lines';
 import {ShaderBuilder, ShaderProgram} from 'neuroglancer/webgl/shader';
 import {defineVertexId, VertexIdHelper} from 'neuroglancer/webgl/vertex_id';
@@ -235,6 +235,8 @@ export abstract class SliceViewVolumeRenderLayer<ShaderParameters = any> extends
   constructor(
       multiscaleSource: MultiscaleVolumeChunkSource,
       options: RenderLayerOptions<ShaderParameters>) {
+    console.log("SliceViewVolumeRenderLayer constructor");
+    console.log(options);
     const {shaderError = makeWatchableShaderError(), shaderParameters} = options;
     super(multiscaleSource.chunkManager, multiscaleSource, options);
     const {gl} = this;
@@ -279,29 +281,8 @@ void emit(vec4 color) {
         defineChunkDataShaderAccess(builder, chunkFormat, numChannelDimensions, `vChunkPosition`);
         const numHistograms = dataHistogramChannelSpecifications.length;
         if (dataHistogramsEnabled && numHistograms > 0) {
-          let histogramCollectionCode = '';
-          const {dataType} = chunkFormat;
-          for (let i = 0; i < numHistograms; ++i) {
-            const {channel} = dataHistogramChannelSpecifications[i];
-            const outputName = `out_histogram${i}`;
-            builder.addOutputBuffer('vec4', outputName, 1 + i);
-            const getDataValueExpr = `getDataValue(${channel.join(',')})`;
-            const invlerpName = `invlerpForHistogram${i}`;
-            builder.addFragmentCode(
-                defineInvlerpShaderFunction(builder, invlerpName, dataType, /*clamp=*/ false));
-            builder.addFragmentCode(`
-float getHistogramValue${i}() {
-  return invlerpForHistogram${i}(${getDataValueExpr});
-}
-`);
-            histogramCollectionCode += `{
-float x = getHistogramValue${i}();
-if (x < 0.0) x = 0.0;
-else if (x > 1.0) x = 1.0;
-else x = (1.0 + x * 253.0) / 255.0;
-${outputName} = vec4(x, x, x, 1.0);
-}`;
-          }
+          const histogramCollectionCode = defineShaderCodeForHistograms(
+            builder, numHistograms, chunkFormat, dataHistogramChannelSpecifications, '');
           builder.addFragmentCode(`void userMain();
 void main() {
   ${histogramCollectionCode}

@@ -34,6 +34,8 @@ import {FramebufferConfiguration, makeTextureBuffers, TextureBuffer} from 'neuro
 import {ShaderBuilder} from 'neuroglancer/webgl/shader';
 import {glsl_simpleFloatHash} from 'neuroglancer/webgl/shader_lib';
 import {setRawTextureParameters} from 'neuroglancer/webgl/texture';
+import {ChunkFormat} from 'src/neuroglancer/sliceview/volume/frontend';
+import {defineInvlerpShaderFunction} from 'src/neuroglancer/webgl/lerp';
 
 const DEBUG_HISTOGRAMS = false;
 
@@ -181,3 +183,30 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
     gl.disable(WebGL2RenderingContext.BLEND);
   }
 }
+
+export function defineShaderCodeForHistograms(builder: ShaderBuilder, numHistograms: number, chunkFormat: ChunkFormat, dataHistogramChannelSpecifications: HistogramChannelSpecification[], nameAppend: string = '') {
+  let histogramCollectionCode = '';
+  const {dataType} = chunkFormat;
+  for (let i = 0; i < numHistograms; ++i) {
+    const {channel} = dataHistogramChannelSpecifications[i];
+    const outputName = `out_histogram${i}${nameAppend}`;
+    builder.addOutputBuffer('vec4', outputName, 1 + i);
+    const getDataValueExpr = `getDataValue(${channel.join(',')})`;
+    const invlerpName = `invlerpForHistogram${i}${nameAppend}`;
+    builder.addFragmentCode(
+        defineInvlerpShaderFunction(builder, invlerpName, dataType, /*clamp=*/ false));
+    builder.addFragmentCode(`
+float getHistogramValue${i}() {
+  return invlerpForHistogram${i}(${getDataValueExpr});
+}
+    `);
+    histogramCollectionCode += `{
+float x = getHistogramValue${i}();
+if (x < 0.0) x = 0.0;
+else if (x > 1.0) x = 1.0;
+else x = (1.0 + x * 253.0) / 255.0;
+${outputName} = vec4(x, x, x, 1.0);
+    }`;
+  }
+  return histogramCollectionCode;
+};
