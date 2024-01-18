@@ -27,7 +27,7 @@ import {FrontendTransformedSource, getVolumetricTransformedSources, serializeAll
 import {SliceViewRenderLayer} from 'neuroglancer/sliceview/renderlayer';
 import {ChunkFormat, defineChunkDataShaderAccess, MultiscaleVolumeChunkSource, VolumeChunk, VolumeChunkSource} from 'neuroglancer/sliceview/volume/frontend';
 import {makeCachedDerivedWatchableValue, NestedStateManager, registerNested, WatchableValueInterface} from 'neuroglancer/trackable_value';
-import {getFrustrumPlanes, mat4, vec3} from 'neuroglancer/util/geom';
+import {getFrustrumPlanes, kZeroVec4, mat4, vec3} from 'neuroglancer/util/geom';
 import {clampToInterval} from 'neuroglancer/util/lerp';
 import {getObjectId} from 'neuroglancer/util/object_id';
 import {forEachVisibleVolumeRenderingChunk, getVolumeRenderingNearFarBounds, HistogramInformation, VOLUME_RENDERING_RENDER_LAYER_RPC_ID, VOLUME_RENDERING_RENDER_LAYER_UPDATE_SOURCES_RPC_ID} from 'neuroglancer/volume_rendering/base';
@@ -459,7 +459,7 @@ void main() {
     gl.cullFace(WebGL2RenderingContext.FRONT);
 
     forEachVisibleVolumeRenderingChunk(
-        renderContext.projectionParameters, this.localPosition.value, this.depthSamplesTarget.value,
+        projectionParameters, this.localPosition.value, this.depthSamplesTarget.value,
         allSources[0],
         (transformedSource, ignored1, physicalSpacing, optimalSamples, ignored2,
          histogramInformation) => {
@@ -594,9 +594,19 @@ void main() {
     this.vertexIdHelper.disable();
     if (!renderContext.wireFrame) {
       // TODO (SKM) need to implement the compute histogram code for VR
-      const dataHistogramCount = this.getDataHistogramCount();
+      const dataHistogramCount = this.dataHistogramSpecifications.visibleHistograms;
       if (dataHistogramCount > 0) {
-        sliceView.computeHistograms(dataHistogramCount, this.dataHistogramSpecifications);
+        const framebuffer = attachment.view.getOffscreenFramebufferWithHistograms(dataHistogramCount);
+        console.log('framebuffer', framebuffer);
+        const {width, height} = projectionParameters;
+        framebuffer.bind(width, height);
+        gl.clearBufferfv(WebGL2RenderingContext.COLOR, 1, kZeroVec4);
+        for (let i = 0; i < dataHistogramCount; ++i) {
+          // TODO (skm) This might not be quite right as these may need to be 
+          // part of the transparent configuration
+          gl.clearBufferfv(WebGL2RenderingContext.COLOR, 3 + i, kZeroVec4);
+        }
+        attachment.view.computeHistograms(dataHistogramCount, this.dataHistogramSpecifications);
       }
     }
   }

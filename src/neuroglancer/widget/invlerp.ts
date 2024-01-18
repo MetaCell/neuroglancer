@@ -324,10 +324,7 @@ out_color = uColor;
       gl.drawArrays(WebGL2RenderingContext.TRIANGLE_FAN, 0, 4);
       gl.disableVertexAttribArray(aVertexPosition);
     }
-    console.log(this.parent.histogramSpecifications.producerVisibility.visible);
-    // TODO (SKM) temp, just setting to true
-    if (this.parent.histogramSpecifications.producerVisibility.visible || !this.parent.histogramSpecifications.producerVisibility.visible) {
-      console.log('drawing histogram')
+    if (this.parent.histogramSpecifications.producerVisibility.visible) {
       const {renderViewport} = this;
       lineShader.bind();
       initializeLineShader(
@@ -543,7 +540,8 @@ export class InvlerpWidget extends Tab {
   };
   invertArrows: HTMLElement[];
   get texture() {
-    return this.histogramSpecifications.getFramebuffers(this.display.gl)[this.histogramIndex]
+    // TODO (SKM) temp vr support
+    return this.histogramSpecifications.getFramebuffers(this.display.gl, true)[this.histogramIndex]
         .colorBuffers[0]
         .texture;
   }

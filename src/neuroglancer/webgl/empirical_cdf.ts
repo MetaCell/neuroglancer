@@ -37,7 +37,7 @@ import {setRawTextureParameters} from 'neuroglancer/webgl/texture';
 import {ChunkFormat} from 'src/neuroglancer/sliceview/volume/frontend';
 import {defineInvlerpShaderFunction} from 'src/neuroglancer/webgl/lerp';
 
-const DEBUG_HISTOGRAMS = true;
+const DEBUG_HISTOGRAMS = false;
 
 export interface HistogramChannelSpecification {
   // Channel coordinates.
@@ -46,6 +46,7 @@ export interface HistogramChannelSpecification {
 
 export class HistogramSpecifications extends RefCounted {
   framebuffers: FramebufferConfiguration<TextureBuffer>[] = [];
+  framebuffersVR: FramebufferConfiguration<TextureBuffer>[] = [];
   producerVisibility = new VisibilityPriorityAggregator();
   frameNumber = -1;
   constructor(
@@ -56,8 +57,11 @@ export class HistogramSpecifications extends RefCounted {
     super();
   }
 
-  getFramebuffers(gl: GL) {
-    const {framebuffers} = this;
+  getFramebuffers(gl: GL, vr: boolean = false) {
+    let {framebuffers} = this;
+    if (vr) {
+      framebuffers = this.framebuffersVR;
+    }
     const count = this.bounds.value.length;
     while (framebuffers.length < count) {
       const framebuffer = new FramebufferConfiguration(gl, {
@@ -80,6 +84,10 @@ export class HistogramSpecifications extends RefCounted {
       framebuffer.dispose();
     }
     this.framebuffers.length = 0;
+    for (const framebuffer of this.framebuffersVR) {
+      framebuffer.dispose();
+    }
+    this.framebuffersVR.length = 0;
   }
 }
 
@@ -137,10 +145,10 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
 
   compute(
       count: number, depthTexture: WebGLTexture|null, inputTextures: TextureBuffer[],
-      histogramSpecifications: HistogramSpecifications, frameNumber: number) {
+      histogramSpecifications: HistogramSpecifications, frameNumber: number, vr: boolean = false) {
     const {gl} = this;
     const {shader} = this;
-    const outputFramebuffers = histogramSpecifications.getFramebuffers(gl);
+    const outputFramebuffers = histogramSpecifications.getFramebuffers(gl, vr);
     shader.bind();
     gl.enable(WebGL2RenderingContext.BLEND);
     gl.disable(WebGL2RenderingContext.SCISSOR_TEST);
@@ -160,6 +168,7 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
     for (let i = 0; i < count; ++i) {
       gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, inputTextures[i].texture);
       setRawTextureParameters(gl);
+      // The image is empty after binding
       outputFramebuffers[i].bind(256, 1);
       if (frameNumber !== oldFrameNumber) {
         gl.clearColor(0, 0, 0, 0);
