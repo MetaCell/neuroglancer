@@ -34,8 +34,6 @@ import {FramebufferConfiguration, makeTextureBuffers, TextureBuffer} from 'neuro
 import {ShaderBuilder} from 'neuroglancer/webgl/shader';
 import {glsl_simpleFloatHash} from 'neuroglancer/webgl/shader_lib';
 import {setRawTextureParameters} from 'neuroglancer/webgl/texture';
-import {ChunkFormat} from 'src/neuroglancer/sliceview/volume/frontend';
-import {defineInvlerpShaderFunction} from 'src/neuroglancer/webgl/lerp';
 
 const DEBUG_HISTOGRAMS = false;
 
@@ -46,7 +44,6 @@ export interface HistogramChannelSpecification {
 
 export class HistogramSpecifications extends RefCounted {
   framebuffers: FramebufferConfiguration<TextureBuffer>[] = [];
-  framebuffersVR: FramebufferConfiguration<TextureBuffer>[] = [];
   producerVisibility = new VisibilityPriorityAggregator();
   frameNumber = -1;
   constructor(
@@ -57,11 +54,8 @@ export class HistogramSpecifications extends RefCounted {
     super();
   }
 
-  getFramebuffers(gl: GL, vr: boolean = false) {
-    let {framebuffers} = this;
-    if (vr) {
-      framebuffers = this.framebuffersVR;
-    }
+  getFramebuffers(gl: GL) {
+    const {framebuffers} = this;
     const count = this.bounds.value.length;
     while (framebuffers.length < count) {
       const framebuffer = new FramebufferConfiguration(gl, {
@@ -84,10 +78,6 @@ export class HistogramSpecifications extends RefCounted {
       framebuffer.dispose();
     }
     this.framebuffers.length = 0;
-    for (const framebuffer of this.framebuffersVR) {
-      framebuffer.dispose();
-    }
-    this.framebuffersVR.length = 0;
   }
 }
 
@@ -145,10 +135,10 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
 
   compute(
       count: number, depthTexture: WebGLTexture|null, inputTextures: TextureBuffer[],
-      histogramSpecifications: HistogramSpecifications, frameNumber: number, vr: boolean = false) {
+      histogramSpecifications: HistogramSpecifications, frameNumber: number) {
     const {gl} = this;
     const {shader} = this;
-    const outputFramebuffers = histogramSpecifications.getFramebuffers(gl, vr);
+    const outputFramebuffers = histogramSpecifications.getFramebuffers(gl);
     shader.bind();
     gl.enable(WebGL2RenderingContext.BLEND);
     gl.disable(WebGL2RenderingContext.SCISSOR_TEST);
@@ -168,7 +158,6 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
     for (let i = 0; i < count; ++i) {
       gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, inputTextures[i].texture);
       setRawTextureParameters(gl);
-      // The image is empty after binding
       outputFramebuffers[i].bind(256, 1);
       if (frameNumber !== oldFrameNumber) {
         gl.clearColor(0, 0, 0, 0);
@@ -192,30 +181,3 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
     gl.disable(WebGL2RenderingContext.BLEND);
   }
 }
-
-export function defineShaderCodeForHistograms(builder: ShaderBuilder, numHistograms: number, chunkFormat: ChunkFormat, dataHistogramChannelSpecifications: HistogramChannelSpecification[], start: number = 1, nameAppend: string = '') {
-  let histogramCollectionCode = '';
-  const {dataType} = chunkFormat;
-  for (let i = 0; i < numHistograms; ++i) {
-    const {channel} = dataHistogramChannelSpecifications[i];
-    const outputName = `out_histogram${i}${nameAppend}`;
-    builder.addOutputBuffer('vec4', outputName, start + i);
-    const getDataValueExpr = `getDataValue(${channel.join(',')})`;
-    const invlerpName = `invlerpForHistogram${i}${nameAppend}`;
-    builder.addFragmentCode(
-        defineInvlerpShaderFunction(builder, invlerpName, dataType, /*clamp=*/ false));
-    builder.addFragmentCode(`
-float getHistogramValue${i}() {
-  return invlerpForHistogram${i}(${getDataValueExpr});
-}
-    `);
-    histogramCollectionCode += `{
-float x = getHistogramValue${i}();
-if (x < 0.0) x = 0.0;
-else if (x > 1.0) x = 1.0;
-else x = (1.0 + x * 253.0) / 255.0;
-${outputName} = vec4(x, x, x, 1.0);
-    }`;
-  }
-  return histogramCollectionCode;
-};

@@ -41,7 +41,6 @@ import {ShaderBuilder} from 'neuroglancer/webgl/shader';
 import {MultipleScaleBarTextures, ScaleBarOptions} from 'neuroglancer/widget/scale_bar';
 import {RPC, SharedObject} from 'neuroglancer/worker_rpc';
 import {PerspectiveViewAnnotationLayer} from 'neuroglancer/annotation/renderlayer';
-import {HistogramSpecifications, TextureHistogramGenerator} from 'src/neuroglancer/webgl/empirical_cdf';
 
 export interface PerspectiveViewerState extends RenderedDataViewerState {
   wireFrame: WatchableValueInterface<boolean>;
@@ -186,16 +185,6 @@ export class PerspectivePanel extends RenderedDataPanel {
     ],
     depthBuffer: new DepthStencilRenderbuffer(this.gl)
   }));
-  protected histogramInputTextures: TextureBuffer[] = [];
-  protected offscreenFramebuffersWithHistograms = [this.offscreenFramebuffer];
-  private histogramGenerator = TextureHistogramGenerator.get(this.gl);
-
-  computeHistograms(count: number, histogramSpecifications: HistogramSpecifications) {
-    this.histogramGenerator.compute(
-        count, this.offscreenFramebuffer.colorBuffers[OffscreenTextures.Z]!.texture, this.histogramInputTextures,
-        histogramSpecifications,
-        this.context.frameNumber, true);
-  }
 
   protected transparentConfiguration_: FramebufferConfiguration<TextureBuffer>|undefined;
 
@@ -299,27 +288,6 @@ export class PerspectivePanel extends RenderedDataPanel {
         viewer.perspectiveViewBackgroundColor.changed.add(() => this.scheduleRedraw()));
     this.registerDisposer(viewer.wireFrame.changed.add(() => this.scheduleRedraw()));
     this.sliceViews.changed.add(() => this.scheduleRedraw());
-  }
-
-  getOffscreenFramebufferWithHistograms(count: number) {
-    const {offscreenFramebuffersWithHistograms} = this;
-    let framebuffer = offscreenFramebuffersWithHistograms[count];
-    if (framebuffer === undefined) {
-      const {gl, histogramInputTextures, offscreenFramebuffer} = this;
-      if (histogramInputTextures.length < count) {
-        histogramInputTextures.push(...makeTextureBuffers(
-            gl, count - histogramInputTextures.length, WebGL2RenderingContext.R8,
-            WebGL2RenderingContext.RED));
-      }
-      let colorBuffers = [offscreenFramebuffer.colorBuffers[0].addRef()];
-      for (let i = 0; i < count; ++i) {
-        colorBuffers.push(histogramInputTextures[i].addRef());
-      }
-      framebuffer = this.registerDisposer(new FramebufferConfiguration(
-          gl, {colorBuffers, depthBuffer: offscreenFramebuffer.depthBuffer!.addRef()}));
-      offscreenFramebuffersWithHistograms[count] = framebuffer;
-    }
-    return framebuffer;
   }
 
   translateByViewportPixels(deltaX: number, deltaY: number): void {

@@ -540,8 +540,7 @@ export class InvlerpWidget extends Tab {
   };
   invertArrows: HTMLElement[];
   get texture() {
-    // TODO (SKM) temp vr support
-    return this.histogramSpecifications.getFramebuffers(this.display.gl, true)[this.histogramIndex]
+    return this.histogramSpecifications.getFramebuffers(this.display.gl)[this.histogramIndex]
         .colorBuffers[0]
         .texture;
   }

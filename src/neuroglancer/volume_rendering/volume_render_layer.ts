@@ -27,7 +27,7 @@ import {FrontendTransformedSource, getVolumetricTransformedSources, serializeAll
 import {SliceViewRenderLayer} from 'neuroglancer/sliceview/renderlayer';
 import {ChunkFormat, defineChunkDataShaderAccess, MultiscaleVolumeChunkSource, VolumeChunk, VolumeChunkSource} from 'neuroglancer/sliceview/volume/frontend';
 import {makeCachedDerivedWatchableValue, NestedStateManager, registerNested, WatchableValueInterface} from 'neuroglancer/trackable_value';
-import {getFrustrumPlanes, kZeroVec4, mat4, vec3} from 'neuroglancer/util/geom';
+import {getFrustrumPlanes, mat4, vec3} from 'neuroglancer/util/geom';
 import {clampToInterval} from 'neuroglancer/util/lerp';
 import {getObjectId} from 'neuroglancer/util/object_id';
 import {forEachVisibleVolumeRenderingChunk, getVolumeRenderingNearFarBounds, HistogramInformation, VOLUME_RENDERING_RENDER_LAYER_RPC_ID, VOLUME_RENDERING_RENDER_LAYER_UPDATE_SOURCES_RPC_ID} from 'neuroglancer/volume_rendering/base';
@@ -38,8 +38,6 @@ import {ParameterizedContextDependentShaderGetter, parameterizedContextDependent
 import {ShaderModule, ShaderProgram} from 'neuroglancer/webgl/shader';
 import {addControlsToBuilder, setControlsInShader, ShaderControlsBuilderState, ShaderControlState} from 'neuroglancer/webgl/shader_ui_controls';
 import {defineVertexId, VertexIdHelper} from 'neuroglancer/webgl/vertex_id';
-import {HistogramChannelSpecification, HistogramSpecifications, defineShaderCodeForHistograms} from 'src/neuroglancer/webgl/empirical_cdf';
-import {enableLerpShaderFunction} from 'src/neuroglancer/webgl/lerp';
 
 export const VOLUME_RENDERING_DEPTH_SAMPLES_DEFAULT_VALUE = 64
 const VOLUME_RENDERING_DEPTH_SAMPLES_LOG_SCALE_ORIGIN = 1;
@@ -84,7 +82,6 @@ function clampAndRoundResolutionTargetValue(value: number) {
 interface VolumeRenderingShaderParameters {
   numChannelDimensions: number;
   mode: VOLUME_RENDERING_MODES;
-  dataHistogramChannelSpecifications: HistogramChannelSpecification[];
 }
 
 interface VolumeRenderingShaderSnippets {
@@ -103,11 +100,10 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
   chunkResolutionHistogram: RenderScaleHistogram;
   mode: TrackableVolumeRenderingModeValue;
   backend: ChunkRenderLayerFrontend;
-  dataHistogramSpecifications: HistogramSpecifications;
   private vertexIdHelper: VertexIdHelper;
 
   private shaderGetter: ParameterizedContextDependentShaderGetter<
-      {emitter: ShaderModule, chunkFormat: ChunkFormat, wireFrame: boolean, dataHistogramsEnabled: boolean},
+      {emitter: ShaderModule, chunkFormat: ChunkFormat, wireFrame: boolean},
       ShaderControlsBuilderState, VolumeRenderingShaderParameters>;
 
   get gl() {
@@ -133,21 +129,20 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
     this.chunkResolutionHistogram = options.chunkResolutionHistogram;
     this.registerDisposer(this.chunkResolutionHistogram.visibility.add(this.visibility));
     this.mode = options.mode;
-    this.dataHistogramSpecifications = this.shaderControlState.histogramSpecifications;
     const extraParameters = this.registerDisposer(makeCachedDerivedWatchableValue(
-        (space: CoordinateSpace, mode: VOLUME_RENDERING_MODES, dataHistogramChannelSpecifications: HistogramChannelSpecification[]) =>
-            ({numChannelDimensions: space.rank, mode, dataHistogramChannelSpecifications}),
-        [this.channelCoordinateSpace, this.mode, this.dataHistogramSpecifications.channels]));
+        (space: CoordinateSpace, mode: VOLUME_RENDERING_MODES) =>
+            ({numChannelDimensions: space.rank, mode}),
+        [this.channelCoordinateSpace, this.mode]));
 
     this.shaderGetter = parameterizedContextDependentShaderGetter(this, this.gl, {
       memoizeKey: 'VolumeRenderingRenderLayer',
       parameters: options.shaderControlState.builderState,
-      getContextKey: ({emitter, chunkFormat, wireFrame, dataHistogramsEnabled}) =>
-          `${getObjectId(emitter)}:${chunkFormat.shaderKey}:${wireFrame}:${dataHistogramsEnabled}`,
+      getContextKey: ({emitter, chunkFormat, wireFrame}) =>
+          `${getObjectId(emitter)}:${chunkFormat.shaderKey}:${wireFrame}`,
       shaderError: options.shaderError,
       extraParameters: extraParameters,
       defineShader: (
-          builder, {emitter, chunkFormat, wireFrame, dataHistogramsEnabled}, shaderBuilderState,
+          builder, {emitter, chunkFormat, wireFrame}, shaderBuilderState,
           shaderParametersState) => {
         if (shaderBuilderState.parseResult.errors.length !== 0) {
           throw new Error('Invalid UI control specification');
@@ -197,16 +192,7 @@ void userMain();
 `);
         const numChannelDimensions = shaderParametersState.numChannelDimensions;
         defineChunkDataShaderAccess(builder, chunkFormat, numChannelDimensions, `curChunkPosition`);
-        const {dataHistogramChannelSpecifications} = shaderParametersState;
-        const numHistograms = dataHistogramChannelSpecifications.length;
-        let histogramCollectionCode = '';
-        if (dataHistogramsEnabled && numHistograms > 0) {
-          histogramCollectionCode = defineShaderCodeForHistograms(
-            builder, numHistograms, chunkFormat, dataHistogramChannelSpecifications, 2, ''
-          );
-        }
-
-        let glslSnippets: VolumeRenderingShaderSnippets;
+         let glslSnippets: VolumeRenderingShaderSnippets;
         // TODO (skm) provide a switch for interpolated vs. nearest neighbor
         switch (shaderParametersState.mode) {
           case VOLUME_RENDERING_MODES.MAX:
@@ -276,7 +262,6 @@ void emitTransparent() {
   else {
           builder.setFragmentMainFunction(`
 void main() {
-  ${histogramCollectionCode}
   vec2 normalizedPosition = vNormalizedPosition.xy / vNormalizedPosition.w;
   vec4 nearPointH = uInvModelViewProjectionMatrix * vec4(normalizedPosition, -1.0, 1.0);
   vec4 farPointH = uInvModelViewProjectionMatrix * vec4(normalizedPosition, 1.0, 1.0);
@@ -459,7 +444,7 @@ void main() {
     gl.cullFace(WebGL2RenderingContext.FRONT);
 
     forEachVisibleVolumeRenderingChunk(
-        projectionParameters, this.localPosition.value, this.depthSamplesTarget.value,
+        renderContext.projectionParameters, this.localPosition.value, this.depthSamplesTarget.value,
         allSources[0],
         (transformedSource, ignored1, physicalSpacing, optimalSamples, ignored2,
          histogramInformation) => {
@@ -476,15 +461,13 @@ void main() {
             fixedPositionWithinChunk[chunkDim] = 0;
           }
           const chunkFormat = source.chunkFormat;
-          const dataHistogramsEnabled = this.dataHistogramSpecifications.visibility.visible;
           if (chunkFormat !== prevChunkFormat) {
             prevChunkFormat = chunkFormat;
             endShader();
             shaderResult = this.shaderGetter({
               emitter: renderContext.emitter,
               chunkFormat: chunkFormat!,
-              wireFrame: renderContext.wireFrame,
-              dataHistogramsEnabled: dataHistogramsEnabled,
+              wireFrame: renderContext.wireFrame
             });
             shader = shaderResult.shader;
             if (shader !== null) {
@@ -495,14 +478,6 @@ void main() {
                     gl, shader, this.shaderControlState,
                     shaderResult.parameters.parseResult.controls);
                 chunkFormat.beginDrawing(gl, shader);
-                if (dataHistogramsEnabled) {
-                  const {dataHistogramChannelSpecifications} = shaderResult.extraParameters;
-                  const numHistograms = dataHistogramChannelSpecifications.length;
-                  const bounds = this.dataHistogramSpecifications.bounds.value;
-                  for (let i = 0; i < numHistograms; ++i) {
-                    enableLerpShaderFunction(shader, `invlerpForHistogram${i}`, chunkFormat.dataType, bounds[i]);
-                  }
-                }
                 chunkFormat.beginSource(gl, shader);
               }
             }
@@ -592,23 +567,6 @@ void main() {
     gl.disable(WebGL2RenderingContext.CULL_FACE);
     endShader();
     this.vertexIdHelper.disable();
-    if (!renderContext.wireFrame) {
-      // TODO (SKM) need to implement the compute histogram code for VR
-      const dataHistogramCount = this.dataHistogramSpecifications.visibleHistograms;
-      if (dataHistogramCount > 0) {
-        const framebuffer = attachment.view.getOffscreenFramebufferWithHistograms(dataHistogramCount);
-        console.log('framebuffer', framebuffer);
-        const {width, height} = projectionParameters;
-        framebuffer.bind(width, height);
-        gl.clearBufferfv(WebGL2RenderingContext.COLOR, 1, kZeroVec4);
-        for (let i = 0; i < dataHistogramCount; ++i) {
-          // TODO (skm) This might not be quite right as these may need to be 
-          // part of the transparent configuration
-          gl.clearBufferfv(WebGL2RenderingContext.COLOR, 3 + i, kZeroVec4);
-        }
-        attachment.view.computeHistograms(dataHistogramCount, this.dataHistogramSpecifications);
-      }
-    }
   }
 
   isReady(
