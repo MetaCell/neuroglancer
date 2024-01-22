@@ -43,6 +43,8 @@ export const VOLUME_RENDERING_DEPTH_SAMPLES_DEFAULT_VALUE = 64
 const VOLUME_RENDERING_DEPTH_SAMPLES_LOG_SCALE_ORIGIN = 1;
 const VOLUME_RENDERING_RESOLUTION_INDICATOR_BAR_HEIGHT = 10;
 
+const depthSamplerTextureUnit = Symbol('depthSamplerTextureUnit');
+
 interface TransformedVolumeSource extends
     FrontendTransformedSource<SliceViewRenderLayer, VolumeChunkSource> {}
 
@@ -168,6 +170,8 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
         builder.addUniform('highp float', 'uGain');
         builder.addUniform('highp int', 'uTempOIT');
         builder.addVarying('highp vec4', 'vNormalizedPosition');
+
+        builder.addTextureSampler('sampler2D', 'uDepthSampler', depthSamplerTextureUnit);
         builder.addVertexCode(glsl_getBoxFaceVertexPosition);
 
         builder.setVertexMain(`
@@ -191,11 +195,14 @@ void userMain();
 void emitRGBA(vec4 rgba) {
   if (uTempOIT == 1) {
     float correctedAlpha = clamp(rgba.a * uGain * uSamplingRatio, 0.0, 1.0);
+    float textureBufferDepth = 1.0 - texture(uDepthSampler, vNormalizedPosition.xy / vNormalizedPosition.w).r;
     if (depthFromFn == 0) {
       depth = gl_FragCoord.z;
     }
     float weightedAlpha = correctedAlpha * computeOITWeight(correctedAlpha, depth);
-    weightedColor += vec4(rgba.rgb * weightedAlpha, weightedAlpha);
+    //TEMP
+    //weightedColor += vec4(rgba.rgb * weightedAlpha, weightedAlpha);
+    weightedColor += vec4(textureBufferDepth, textureBufferDepth, textureBufferDepth, weightedAlpha);
     alphaProduct *= (1.0 - correctedAlpha);
   }
   else {
@@ -385,6 +392,9 @@ void main() {
       if (prevChunkFormat !== null) {
         prevChunkFormat!.endDrawing(gl, shader);
       }
+      const DepthTextureUnit = shader.textureUnit(depthSamplerTextureUnit);
+      gl.activeTexture(WebGL2RenderingContext.TEXTURE0 + DepthTextureUnit);
+      gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, null);
       if (presentCount !== 0 || notPresentCount !== 0) {
         let index = curHistogramInformation.spatialScales.size - 1;
         const alreadyStoredSamples =
@@ -419,6 +429,7 @@ void main() {
     gl.enable(WebGL2RenderingContext.CULL_FACE);
     gl.cullFace(WebGL2RenderingContext.FRONT);
 
+
     forEachVisibleVolumeRenderingChunk(
         renderContext.projectionParameters, this.localPosition.value, this.depthSamplesTarget.value,
         allSources[0],
@@ -452,6 +463,9 @@ void main() {
                 setControlsInShader(
                     gl, shader, this.shaderControlState,
                     shaderResult.parameters.parseResult.controls);
+                    const textureUnit = shader.textureUnit(depthSamplerTextureUnit);
+                    gl.activeTexture(WebGL2RenderingContext.TEXTURE0 + textureUnit);
+                    gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, renderContext.depthBufferObjectId!);
                 chunkFormat.beginDrawing(gl, shader);
                 chunkFormat.beginSource(gl, shader);
               }

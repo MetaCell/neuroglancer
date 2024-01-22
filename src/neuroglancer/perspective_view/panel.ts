@@ -615,7 +615,6 @@ export class PerspectivePanel extends RenderedDataPanel {
       renderContext.bindFramebuffer();
       this.gl.clearColor(0.0, 0.0, 0.0, 1.0);
       gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
-      renderContext.emitter = perspectivePanelEmitOIT;
       gl.blendFuncSeparate(
           WebGL2RenderingContext.ONE, WebGL2RenderingContext.ONE, WebGL2RenderingContext.ZERO,
           WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA);
@@ -623,6 +622,7 @@ export class PerspectivePanel extends RenderedDataPanel {
       for (const [renderLayer, attachment] of visibleLayers) {
         if (renderLayer.isTransparent) {
           renderContext.emitter = perspectivePanelEmitOIT;
+          renderContext.depthBufferObjectId = this.offscreenFramebuffer.colorBuffers[OffscreenTextures.Z]!.texture;
           renderLayer.draw(renderContext, attachment);
         }
       }
