@@ -622,7 +622,7 @@ export class PerspectivePanel extends RenderedDataPanel {
       for (const [renderLayer, attachment] of visibleLayers) {
         if (renderLayer.isTransparent) {
           renderContext.emitter = perspectivePanelEmitOIT;
-          renderContext.depthBufferObjectId = this.offscreenFramebuffer.colorBuffers[OffscreenTextures.Z]!.texture;
+          renderContext.depthBufferObjectId = this.offscreenFramebuffer.colorBuffers[OffscreenTextures.Z].texture;
           renderLayer.draw(renderContext, attachment);
         }
       }
