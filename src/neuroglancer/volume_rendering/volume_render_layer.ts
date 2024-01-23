@@ -184,7 +184,8 @@ gl_Position.z = 0.0;
 vec3 curChunkPosition;
 vec4 outputColor;
 int depthFromFn = 1;
-float depth = 0.0;
+float rayDepth = 0.0;
+float bufferDepth = 0.0;
 vec4 weightedColor = vec4(0.0, 0.0, 0.0, 0.0);
 float alphaProduct = 1.0;
 void userMain();
@@ -195,15 +196,11 @@ void userMain();
 void emitRGBA(vec4 rgba) {
   if (uTempOIT == 1) {
     float correctedAlpha = clamp(rgba.a * uGain * uSamplingRatio, 0.0, 1.0);
-    float textureBufferDepth = 1.0 - texture(uDepthSampler, vNormalizedPosition.xy / vNormalizedPosition.w).r;
-    //float textureBufferDepth = 1.0 - texture(uDepthSampler, vec2(0.0, 0.0)).r;
     if (depthFromFn == 0) {
-      depth = gl_FragCoord.z;
+      rayDepth = gl_FragCoord.z;
     }
-    float weightedAlpha = correctedAlpha * computeOITWeight(correctedAlpha, depth);
-    //TEMP
-    //weightedColor += vec4(rgba.rgb * weightedAlpha, weightedAlpha);
-    weightedColor += vec4(textureBufferDepth * weightedAlpha, 0.0, 0.0, weightedAlpha);
+    float weightedAlpha = correctedAlpha * computeOITWeight(correctedAlpha, rayDepth);
+    weightedColor += vec4(rgba.rgb * weightedAlpha, weightedAlpha);
     alphaProduct *= (1.0 - correctedAlpha);
   }
   else {
@@ -226,22 +223,15 @@ float computeDepth(vec3 RayPosition) {
   return clamp(0.5 * (NDCdepth + 1.0), 0.0, 1.0);
 }
 vec2 computeDepthTextureUVCoord(vec3 RayPosition) {
-  return vec2(0.0, 0.0);
-  // vec4 clipSpacePosition = uModelViewProjectionMatrix * vec4(RayPosition, 1.0);
-  // vec2 NDCposition = clipSpacePosition.xy / clipSpacePosition.w;
-  // return clamp(0.5 * (NDCposition + 1.0), 0.0, 1.0);
+  vec4 clipSpacePosition = uModelViewProjectionMatrix * vec4(RayPosition, 1.0);
+  vec2 NDCposition = clipSpacePosition.xy / clipSpacePosition.w;
+  return clamp(0.5 * (NDCposition + 1.0), 0.0, 1.0);
 }
 `);
         if (wireFrame) {
           builder.setFragmentMainFunction(`
 void main() {
-  vec2 normalizedPosition = vNormalizedPosition.xy / vNormalizedPosition.w;
-  vec2 depthUV = 0.5 * (normalizedPosition + 1.0);
-  //depthUV = 0.5 * (depthUV + 1.0);
-  //vec2 depthUV = computeDepthTextureUVCoord(vNormalizedPosition.xyz);
-  float textureBufferDepth = texture(uDepthSampler, depthUV).r;
-  outputColor = vec4(textureBufferDepth, textureBufferDepth, textureBufferDepth, 1.0);
-  //outputColor = vec4(uChunkNumber, uChunkNumber, uChunkNumber, 1.0);
+  outputColor = vec4(uChunkNumber, uChunkNumber, uChunkNumber, 1.0);
   emit(outputColor, 0u);
 }
 `);
@@ -285,9 +275,13 @@ void main() {
   outputColor = vec4(0, 0, 0, 0);
   for (int step = startStep; step < endStep; ++step) {
     vec3 position = mix(nearPoint, farPoint, uNearLimitFraction + float(step) * stepSize);
-    depth = computeDepth(position);
-    curChunkPosition = position - uTranslation;
-    userMain();
+    rayDepth = computeDepth(position);
+    vec2 depthUV = computeDepthTextureUVCoord(position);
+    bufferDepth = texture(uDepthSampler, depthUV).r;
+    if ((1.0 - rayDepth) > bufferDepth) {
+      curChunkPosition = position - uTranslation;
+      userMain();
+    }
   }
   int hideValue = 0;
   if (uTempOIT == 1) {
@@ -474,16 +468,16 @@ void main() {
               shader.bind();
               if (chunkFormat !== null) {
                 setControlsInShader(
-                    gl, shader, this.shaderControlState,
-                    shaderResult.parameters.parseResult.controls);
-                // if (renderContext.depthBufferObjectId !== undefined) {
-                //   const textureUnit = shader.textureUnit(depthSamplerTextureUnit);
-                //   gl.activeTexture(WebGL2RenderingContext.TEXTURE0 + textureUnit);
-                //   gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, renderContext.depthBufferObjectId);
-                // }
-                // else {
-                //   console.log("Depth buffer object id is undefined");
-                // }
+                  gl, shader, this.shaderControlState,
+                  shaderResult.parameters.parseResult.controls);
+                if (renderContext.depthBufferObjectId !== undefined) {
+                  const textureUnit = shader.textureUnit(depthSamplerTextureUnit);
+                  gl.activeTexture(WebGL2RenderingContext.TEXTURE0 + textureUnit);
+                  gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, renderContext.depthBufferObjectId);
+                }
+                else {
+                  throw new Error("Depth buffer object id is undefined");
+                }
                 chunkFormat.beginDrawing(gl, shader);
                 chunkFormat.beginSource(gl, shader);
               }
@@ -578,14 +572,7 @@ void main() {
             }
             newSource = false;
             gl.uniform3fv(shader.uniform('uTranslation'), chunkPosition);
-            if (renderContext.depthBufferObjectId !== undefined) {
-              const textureUnit = shader.textureUnit(depthSamplerTextureUnit);
-              gl.activeTexture(WebGL2RenderingContext.TEXTURE0 + textureUnit);
-              gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, renderContext.depthBufferObjectId);
-            }
-            else {
-              console.log("Depth buffer object id is undefined");
-            }
+
             drawBoxes(gl, 1, 1);
             ++presentCount;
           } else {
