@@ -34,6 +34,7 @@ import {FramebufferConfiguration, makeTextureBuffers, TextureBuffer} from 'neuro
 import {ShaderBuilder} from 'neuroglancer/webgl/shader';
 import {glsl_simpleFloatHash} from 'neuroglancer/webgl/shader_lib';
 import {setRawTextureParameters} from 'neuroglancer/webgl/texture';
+import {defineLineShader} from 'src/neuroglancer/webgl/lines';
 
 const DEBUG_HISTOGRAMS = false;
 
@@ -180,4 +181,53 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
     }
     gl.disable(WebGL2RenderingContext.BLEND);
   }
+}
+
+export function defineHistogramLineShader(gl: GL, textureSymbol: Symbol, numCDFLines: number) {
+  const builder = new ShaderBuilder(gl);
+    defineLineShader(builder);
+    builder.addTextureSampler('sampler2D', 'uHistogramSampler', textureSymbol);
+    builder.addOutputBuffer('vec4', 'out_color', 0);
+    builder.addAttribute('uint', 'aDataValue');
+    builder.addUniform('float', 'uBoundsFraction');
+    builder.addVertexCode(`
+float getCount(int i) {
+  return texelFetch(uHistogramSampler, ivec2(i, 0), 0).x;
+}
+vec4 getVertex(float cdf, int i) {
+  float x;
+  if (i == 0) {
+    x = -1.0;
+  } else if (i == 255) {
+    x = 1.0;
+  } else {
+    x = float(i) / 254.0 * uBoundsFraction * 2.0 - 1.0;
+  }
+  return vec4(x, cdf * (2.0 - uLineParams.y) - 1.0 + uLineParams.y * 0.5, 0.0, 1.0);
+}
+`);
+    builder.setVertexMain(`
+int lineNumber = int(aDataValue);
+int dataValue = lineNumber;
+float cumSum = 0.0;
+for (int i = 0; i <= dataValue; ++i) {
+  cumSum += getCount(i);
+}
+float total = cumSum + getCount(dataValue + 1);
+float cumSumEnd = dataValue == ${numCDFLines - 1} ? cumSum : total;
+if (dataValue == ${numCDFLines - 1}) {
+  cumSum + getCount(dataValue + 1);
+}
+for (int i = dataValue + 2; i < 256; ++i) {
+  total += getCount(i);
+}
+total = max(total, 1.0);
+float cdf1 = cumSum / total;
+float cdf2 = cumSumEnd / total;
+emitLine(getVertex(cdf1, lineNumber), getVertex(cdf2, lineNumber + 1), 1.0);
+`);
+    builder.setFragmentMain(`
+out_color = vec4(0.0, 1.0, 1.0, getLineAlpha());
+`);
+    return builder.build();
 }

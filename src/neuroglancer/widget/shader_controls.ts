@@ -94,12 +94,19 @@ function getShaderLayerControlFactory<LayerType extends UserLayer>(
           }));
     }
     case 'transferFunction': {
+      let histogramIndex = 0;
+      for (const [otherName, {control: {type: otherType}}] of shaderControlState.state) {
+        if (otherName === controlId) break;
+        if (otherType === 'transferFunction') ++histogramIndex;
+      }
       return transferFunctionLayerControl(
           () => ({
             dataType: control.dataType,
             watchableValue: controlState.trackable,
             channelCoordinateSpaceCombiner: shaderControlState.channelCoordinateSpaceCombiner,
             defaultChannel: control.default.channel,
+            histogramSpecifications: shaderControlState.histogramSpecifications,
+            histogramIndex
           }));
     }
   }

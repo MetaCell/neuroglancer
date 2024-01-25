@@ -27,7 +27,7 @@ import {DATA_TYPE_SIGNED, DataType} from 'neuroglancer/util/data_type';
 import {RefCounted} from 'neuroglancer/util/disposable';
 import {EventActionMap, registerActionListener} from 'neuroglancer/util/event_action_map';
 import {vec3, vec4} from 'neuroglancer/util/geom';
-import {computeLerp, DataTypeInterval, parseDataTypeValue} from 'neuroglancer/util/lerp';
+import {computeLerp, DataTypeInterval, getIntervalBoundsEffectiveFraction, parseDataTypeValue} from 'neuroglancer/util/lerp';
 import {MouseEventBinder} from 'neuroglancer/util/mouse_bindings';
 import {startRelativeMouseDrag} from 'neuroglancer/util/mouse_drag';
 import {WatchableVisibilityPriority} from 'neuroglancer/visibility_priority/frontend';
@@ -42,11 +42,12 @@ import {getShaderType} from 'neuroglancer/webgl/shader_lib';
 import {TransferFunctionParameters} from 'neuroglancer/webgl/shader_ui_controls';
 import {setRawTextureParameters} from 'neuroglancer/webgl/texture';
 import {ColorWidget} from 'neuroglancer/widget/color';
-import {getUpdatedRangeAndWindowParameters, updateInputBoundValue, updateInputBoundWidth} from 'neuroglancer/widget/invlerp';
+import {getUpdatedRangeAndWindowParameters, updateInputBoundValue, updateInputBoundWidth, NUM_CDF_LINES} from 'neuroglancer/widget/invlerp';
 import {LayerControlFactory, LayerControlTool} from 'neuroglancer/widget/layer_control';
 import {PositionWidget} from 'neuroglancer/widget/position_widget';
 import {Tab} from 'neuroglancer/widget/tab_view';
 import {Uint64} from 'neuroglancer/util/uint64';
+import { HistogramSpecifications, defineHistogramLineShader } from 'neuroglancer/webgl/empirical_cdf';
 
 export const TRANSFER_FUNCTION_LENGTH = 1024;
 export const NUM_COLOR_CHANNELS = 4;
@@ -55,6 +56,7 @@ const CONTROL_POINT_GRAB_DISTANCE = TRANSFER_FUNCTION_LENGTH / 40;
 const TRANSFER_FUNCTION_BORDER_WIDTH = 255 / 10;
 
 const transferFunctionSamplerTextureUnit = Symbol('transferFunctionSamplerTexture');
+const histogramSamplerTextureUnit = Symbol('histogramSamplerTexture');
 
 /**
  * The position of a control point on the canvas is represented as an integer value between 0 and TRANSFER_FUNCTION_LENGTH - 1.
@@ -379,19 +381,31 @@ class TransferFunctionPanel extends IndirectRenderedPanel {
     this.linePositionBuffer.setData(this.linePositionArray);
   }
 
+  private dataValuesBuffer =
+      this.registerDisposer(getMemoizedBuffer(this.gl, WebGL2RenderingContext.ARRAY_BUFFER, () => {
+            const array = new Uint8Array(NUM_CDF_LINES * VERTICES_PER_LINE);
+            for (let i = 0; i < NUM_CDF_LINES; ++i) {
+              for (let j = 0; j < VERTICES_PER_LINE; ++j) {
+                array[i * VERTICES_PER_LINE + j] = i;
+              }
+            }
+            return array;
+          })).value;
+
+  private histogramLineShader = this.registerDisposer(defineHistogramLineShader(this.gl, histogramSamplerTextureUnit, NUM_CDF_LINES));
+
   private transferFunctionLineShader = this.registerDisposer((() => {
     const builder = new ShaderBuilder(this.gl);
     defineLineShader(builder);
     builder.addAttribute('vec4', 'aLineStartEnd');
     builder.addOutputBuffer('vec4', 'out_color', 0);
-    builder.addVarying('float', 'vColor');
     builder.setVertexMain(`
 vec4 start = vec4(aLineStartEnd[0], aLineStartEnd[1], 0.0, 1.0);
 vec4 end = vec4(aLineStartEnd[2], aLineStartEnd[3], 0.0, 1.0);
 emitLine(start, end, 1.0);
 `);
     builder.setFragmentMain(`
-out_color = vec4(0.0, 1.0, 1.0, getLineAlpha());
+out_color = vec4(1.0, 1.0, 0.0, getLineAlpha());
 `);
     return builder.build();
   })());
@@ -441,7 +455,7 @@ out_color = tempColor * alpha;
   })());
 
   drawIndirect() {
-    const {transferFunctionLineShader, gl, transferFunctionShader, controlPointsShader} = this;
+    const {transferFunctionLineShader, histogramLineShader, gl, transferFunctionShader, controlPointsShader, parent: {dataType, trackable: {value: bounds}}} = this;
     this.setGLLogicalViewport();
     gl.clearColor(0.0, 0.0, 0.0, 0.0);
     gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
@@ -449,6 +463,31 @@ out_color = tempColor * alpha;
     gl.blendFunc(WebGL2RenderingContext.SRC_ALPHA, WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA);
     gl.disable(WebGL2RenderingContext.DEPTH_TEST);
     gl.disable(WebGL2RenderingContext.STENCIL_TEST);
+    // Draw histogram lines
+    const {renderViewport} = this;
+    if (this.parent.histogramSpecifications.producerVisibility.visible)
+    {
+     histogramLineShader.bind();
+     initializeLineShader(
+          histogramLineShader,
+          {width: renderViewport.logicalWidth, height: renderViewport.logicalHeight},
+          /*featherWidthInPixels=*/ 1);
+      const histogramTextureUnit = histogramLineShader.textureUnit(histogramSamplerTextureUnit);
+      console.log(getIntervalBoundsEffectiveFraction(dataType, bounds.range), bounds.range);
+      gl.uniform1f(
+        histogramLineShader.uniform('uBoundsFraction'),
+        getIntervalBoundsEffectiveFraction(dataType, bounds.range));
+      gl.activeTexture(WebGL2RenderingContext.TEXTURE0 + histogramTextureUnit);
+      gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, this.parent.histogramTexture);
+      setRawTextureParameters(gl);
+      const aDataValue = histogramLineShader.attribute('aDataValue');
+      this.dataValuesBuffer.bindToVertexAttribI(
+        aDataValue, /*components=*/ 1, /*attributeType=*/ WebGL2RenderingContext.UNSIGNED_BYTE);
+      drawLines(gl, NUM_CDF_LINES, 1);
+      gl.disableVertexAttribArray(aDataValue);
+      gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, null);
+    }
+
     {  // Draw transfer function texture
       transferFunctionShader.bind();
       const aVertexPosition = transferFunctionShader.attribute('aVertexPosition');
@@ -464,8 +503,6 @@ out_color = tempColor * alpha;
     }
     // Draw lines and control points on top of transfer function - if there are any
     if (this.controlPointsPositionArray.length > 0) {
-      const {renderViewport} = this;
-      
       // Draw transfer function lerp indicator lines
       transferFunctionLineShader.bind();
       const aLineStartEnd = transferFunctionLineShader.attribute('aLineStartEnd');
@@ -746,11 +783,17 @@ class TransferFunctionWidget extends Tab {
   private transferFunctionPanel = this.registerDisposer(new TransferFunctionPanel(this));
 
   range = createRangeBoundInputs(this.dataType, this.trackable);
+  get histogramTexture() {
+    return this.histogramSpecifications.getFramebuffers(this.display.gl)[this.histogramIndex].colorBuffers[0].texture;
+  }
   constructor(
       visibility: WatchableVisibilityPriority, public display: DisplayContext,
       public dataType: DataType,
-      public trackable: WatchableValueInterface<TransferFunctionParameters>) {
+      public trackable: WatchableValueInterface<TransferFunctionParameters>,
+      public histogramSpecifications: HistogramSpecifications,
+      public histogramIndex: number) {
     super(visibility);
+    this.registerDisposer(histogramSpecifications.visibility.add(this.visibility));
     const {element} = this;
     element.classList.add('neuroglancer-transfer-function-widget');
     element.appendChild(this.transferFunctionPanel.element);
@@ -803,7 +846,7 @@ export function defineTransferFunctionShader(
   const invlerpShaderCode =
       defineInvlerpShaderFunction(builder, name, dataType, true) as ShaderCodePart[];
   const shaderType = getShaderType(dataType);
-  // Use ${name}_ to avoid name collisions with other shader functions in the case of FLOAT32 dtype
+  // Use ${name}_ here to avoid name collisions with other shader functions in the case of FLOAT32 dtype
   let code = `
 vec4 ${name}_(float inputValue) {
   int index = clamp(int(round(inputValue * uTransferFunctionEnd_${name})), 0, int(uTransferFunctionEnd_${name}));
@@ -817,7 +860,6 @@ vec4 ${name}() {
   return ${name}(getInterpolatedDataValue(${channel.join(',')}));
 }
 `;
-// TODO (SKM) add back in max projection at a later date
 if (dataType !== DataType.UINT64 && dataType !== DataType.FLOAT32) {
   const scalarType = DATA_TYPE_SIGNED[dataType] ? 'int' : 'uint';
   code += `
@@ -868,10 +910,12 @@ export function transferFunctionLayerControl<LayerType extends UserLayer>(
       defaultChannel: number[],
       channelCoordinateSpaceCombiner: CoordinateSpaceCombiner | undefined,
       dataType: DataType,
+      histogramSpecifications: HistogramSpecifications,
+      histogramIndex: number
     }): LayerControlFactory<LayerType, TransferFunctionWidget> {
   return {
     makeControl: (layer, context, options) => {
-      const {watchableValue, channelCoordinateSpaceCombiner, defaultChannel, dataType} =
+      const {watchableValue, channelCoordinateSpaceCombiner, defaultChannel, dataType, histogramSpecifications, histogramIndex} =
           getter(layer);
 
       // We setup the ability to change the channel through the UI here
@@ -902,7 +946,7 @@ export function transferFunctionLayerControl<LayerType extends UserLayer>(
         options.labelContainer.appendChild(positiionWidget.element);
       }
       const control = context.registerDisposer(new TransferFunctionWidget(
-          options.visibility, options.display, dataType, watchableValue));
+          options.visibility, options.display, dataType, watchableValue,histogramSpecifications,histogramIndex));
       return {control, controlElement: control.element};
     },
     activateTool: (activation, control) => {
