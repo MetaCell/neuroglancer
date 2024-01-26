@@ -296,7 +296,7 @@ void main() {
     curChunkPosition = position - uTranslation;
     userMain();
   }
-  emit(outputColor, 0u);
+  emit(outputColor, 0.0, 0u);
 }
 `);
           builder.addFragmentCode(glsl_COLORMAPS);

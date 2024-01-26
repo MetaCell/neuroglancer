@@ -50,6 +50,11 @@ export interface PerspectiveViewRenderContext
    * Specifies whether there was a previous pick ID pass.
    */
   alreadyEmittedPickID: boolean;
+
+  /**
+   * Specifices the function to bind the max projection buffers.
+   */
+  bindMaxProjectionBuffers?: (() => void) | undefined;
 }
 
 export class PerspectiveViewRenderLayer<
