@@ -171,6 +171,19 @@ v4f_fragColor = vec4(accum.rgb / accum.a, revealage);
 `);
 }
 
+function defineMaxProjectionCopyShader(builder: ShaderBuilder) {
+  builder.addOutputBuffer("vec4", "v4f_fragData0", 0);
+  builder.addOutputBuffer("vec4", "v4f_fragData1", 1);
+  builder.setFragmentMain(`
+  vec4 maxVec = getValue0();
+  vec4 otherVec = getValue1();
+  float max = maxVec.r;
+
+  v4f_fragData0 = vec4(max, 1.0, 0.0, 1.0);
+  v4f_fragData1 = vec4(1.0, 0.0, 0.0, 0.0);
+`);
+}
+
 const PerspectiveViewStateBase = withSharedVisibility(SharedObject);
 class PerspectiveViewState extends PerspectiveViewStateBase {
   sharedProjectionParameters: SharedProjectionParameters;
@@ -258,11 +271,18 @@ export class PerspectivePanel extends RenderedDataPanel {
     | FramebufferConfiguration<TextureBuffer>
     | undefined;
 
+  protected maxProjectionCopyConfiguration_:
+    | FramebufferConfiguration<TextureBuffer>
+    | undefined;
+
   protected offscreenCopyHelper = this.registerDisposer(
     OffscreenCopyHelper.get(this.gl),
   );
   protected transparencyCopyHelper = this.registerDisposer(
     OffscreenCopyHelper.get(this.gl, defineTransparencyCopyShader, 2),
+  );
+  protected maxProjectionCopyHelper = this.registerDisposer(
+     OffscreenCopyHelper.get(this.gl, defineMaxProjectionCopyShader, 2),
   );
 
   private sharedObject: PerspectiveViewState;
@@ -675,6 +695,26 @@ export class PerspectivePanel extends RenderedDataPanel {
     return maxProjectionConfiguration;
   }
 
+  private get maxProjectionCopyConfiguration() {
+    let maxProjectionCopyConfiguration = this.maxProjectionCopyConfiguration_;
+    if (maxProjectionCopyConfiguration === undefined) {
+      maxProjectionCopyConfiguration = this.maxProjectionCopyConfiguration_ =
+        this.registerDisposer(
+          new FramebufferConfiguration(this.gl, {
+            colorBuffers: makeTextureBuffers(
+              this.gl,
+              2,
+              this.gl.RGBA32F,
+              this.gl.RGBA,
+              this.gl.FLOAT,
+            ),
+            depthBuffer: this.offscreenFramebuffer.depthBuffer!.addRef(),
+          }),
+        );
+    }
+    return maxProjectionCopyConfiguration;
+  }
+
   drawWithPicking(pickingData: FramePickingData): boolean {
     if (!this.navigationState.valid) {
       return false;
@@ -886,30 +926,36 @@ export class PerspectivePanel extends RenderedDataPanel {
           "isVolumeRendering" in renderLayer &&
           renderLayer.isVolumeRendering
         ) {
-          gl.blendFunc(
-        WebGL2RenderingContext.ONE,
-        WebGL2RenderingContext.ZERO,
-      );
+          gl.blendFunc(WebGL2RenderingContext.ONE, WebGL2RenderingContext.ZERO);
           const { maxProjectionConfiguration } = this;
           renderContext.bindMaxProjectionBuffers = () => {
             maxProjectionConfiguration.bind(width, height);
           };
+          const { maxProjectionCopyConfiguration } = this;
+          renderContext.bindMaxProjectionCopyBuffers = () => {
+            maxProjectionCopyConfiguration.bind(width, height);
+          };
           renderContext.bindMaxProjectionBuffers();
+          renderContext.maxProjectionCopyShader = this.maxProjectionCopyHelper;
+          renderContext.maxProjectionBufferTextureIDs = [
+            maxProjectionConfiguration.colorBuffers[0].texture,
+            maxProjectionConfiguration.colorBuffers[1].texture,
+          ];
           renderContext.emitter = perspectivePanelEmitMax;
           renderLayer.draw(renderContext, attachment);
           renderContext.bindFramebuffer();
           renderContext.emitter = perspectivePanelEmitOIT;
         } else if (renderLayer.isTransparent) {
           gl.blendFuncSeparate(
-        WebGL2RenderingContext.ONE,
-        WebGL2RenderingContext.ONE,
-        WebGL2RenderingContext.ZERO,
-        WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA,
-      );
+            WebGL2RenderingContext.ONE,
+            WebGL2RenderingContext.ONE,
+            WebGL2RenderingContext.ZERO,
+            WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA,
+          );
           renderLayer.draw(renderContext, attachment);
         }
       }
-      this.maxProjectionConfiguration.bindSingle(0);
+      this.maxProjectionConfiguration.bindSingle(1);
       const numPixels = width * height;
       const array = new Float32Array(numPixels * 4);
       gl.readPixels(
@@ -935,10 +981,7 @@ export class PerspectivePanel extends RenderedDataPanel {
       //   WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA,
       //   WebGL2RenderingContext.SRC_ALPHA,
       // );
-      gl.blendFunc(
-        WebGL2RenderingContext.ONE,
-        WebGL2RenderingContext.ZERO,
-      );
+      gl.blendFunc(WebGL2RenderingContext.ONE, WebGL2RenderingContext.ZERO);
       this.transparencyCopyHelper.draw(
         this.maxProjectionConfiguration.colorBuffers[0].texture,
         this.maxProjectionConfiguration.colorBuffers[1].texture,

@@ -24,6 +24,7 @@ import {
 import { vec3 } from "#/util/geom";
 import { ShaderModule } from "#/webgl/shader";
 import { SharedObject } from "#/worker_rpc";
+import {OffscreenCopyHelper} from "src/webgl/offscreen";
 
 export type PerspectiveViewReadyRenderContext =
   ThreeDimensionalReadyRenderContext;
@@ -52,9 +53,25 @@ export interface PerspectiveViewRenderContext
   alreadyEmittedPickID: boolean;
 
   /**
+   * Specifies the texture containing the max projection values.
+   */
+  maxProjectionBufferTextureIDs?: Array<WebGLTexture | null> | undefined;
+
+  /**
    * Specifices the function to bind the max projection buffers.
    */
   bindMaxProjectionBuffers?: (() => void) | undefined;
+
+  /**
+   * Specifies the function to bind the max projection copy buffers.
+   */
+  bindMaxProjectionCopyBuffers?: (() => void) | undefined;
+
+  /**
+   * MaxProjectionCopyShader
+   */
+  maxProjectionCopyShader?: OffscreenCopyHelper | undefined;
+  
 }
 
 export class PerspectiveViewRenderLayer<

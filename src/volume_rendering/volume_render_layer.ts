@@ -69,7 +69,7 @@ import {
   shaderCodeWithLineDirective,
   WatchableShaderError,
 } from "#/webgl/dynamic_shader";
-import { ShaderModule, ShaderProgram } from "#/webgl/shader";
+import { ShaderBuilder, ShaderModule, ShaderProgram } from "#/webgl/shader";
 import {
   addControlsToBuilder,
   setControlsInShader,
@@ -78,10 +78,18 @@ import {
 } from "#/webgl/shader_ui_controls";
 import { defineVertexId, VertexIdHelper } from "#/webgl/vertex_id";
 import { clampToInterval } from "#/util/lerp";
+import { Buffer, getMemoizedBuffer } from "#/webgl/buffer";
+import { drawQuads } from "src/webgl/quad";
 
 export const VOLUME_RENDERING_DEPTH_SAMPLES_DEFAULT_VALUE = 64;
 const VOLUME_RENDERING_DEPTH_SAMPLES_LOG_SCALE_ORIGIN = 1;
 const VOLUME_RENDERING_RESOLUTION_INDICATOR_BAR_HEIGHT = 10;
+const maxProjectionCopyIntensitySamplerTextureUnit = Symbol(
+  "maxProjectionCopyIntensityTextureUnit",
+);
+const maxProjectionCopyColorSamplerTextureUnit = Symbol(
+  "maxProjectionCopyColorTextureUnit",
+);
 
 type TransformedVolumeSource = FrontendTransformedSource<
   SliceViewRenderLayer,
@@ -127,6 +135,35 @@ function clampAndRoundResolutionTargetValue(value: number) {
   return clampToInterval(depthSamplesBounds, Math.round(value)) as number;
 }
 
+function DefineMaxProjectionCopyShader(builder: ShaderBuilder) {
+  builder.addAttribute("vec2", "aVertexPosition");
+  builder.addVarying("vec2", "vTexCoord");
+  builder.addOutputBuffer("vec4", "v4f_fragData0", 0);
+  builder.addOutputBuffer("vec4", "v4f_fragData1", 1);
+  builder.addTextureSampler(
+    "sampler2D",
+    "uSamplerIntensity",
+    maxProjectionCopyIntensitySamplerTextureUnit,
+  );
+  builder.addTextureSampler(
+    "sampler2D",
+    "uSamplerColor",
+    maxProjectionCopyColorSamplerTextureUnit,
+  );
+  builder.setVertexMain(`
+gl_Position = vec4(aVertexPosition, 0.0, 1.0);
+vTexCoord = 0.5 * (aVertexPosition + 1.0);
+`);
+  builder.setFragmentMain(`
+vec2 uv = vTexCoord;
+vec4 max = texture(uSamplerIntensity, uv);
+vec4 max2 = texture(uSamplerColor, uv);
+
+v4f_fragData0 = vec4(max.r, 1.0, max2.r, 1.0);
+v4f_fragData1 = vec4(1.0, 0.0, 0.0, 0.0);
+`);
+}
+
 export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
   multiscaleSource: MultiscaleVolumeChunkSource;
   transform: WatchableValueInterface<RenderLayerTransformOrError>;
@@ -137,6 +174,9 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
   chunkResolutionHistogram: RenderScaleHistogram;
   backend: ChunkRenderLayerFrontend;
   private vertexIdHelper: VertexIdHelper;
+  private textureVertexBufferArray: Float32Array;
+  private textureVertexBuffer: Buffer;
+  private maxProjectionCopyShader: ShaderProgram;
 
   private shaderGetter: ParameterizedContextDependentShaderGetter<
     { emitter: ShaderModule; chunkFormat: ChunkFormat },
@@ -165,6 +205,29 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
     this.localPosition = options.localPosition;
     this.depthSamplesTarget = options.depthSamplesTarget;
     this.chunkResolutionHistogram = options.chunkResolutionHistogram;
+    this.textureVertexBufferArray = new Float32Array([
+      -1, -1, 1, -1, -1, 1, 1, 1,
+    ]);
+    this.textureVertexBuffer = this.registerDisposer(
+      getMemoizedBuffer(
+        this.gl,
+        WebGL2RenderingContext.ARRAY_BUFFER,
+        () => this.textureVertexBufferArray,
+      ),
+    ).value;
+    this.textureVertexBuffer.setData(this.textureVertexBufferArray);
+
+    this.maxProjectionCopyShader = this.registerDisposer(
+      (() => {
+        const builder = new ShaderBuilder(this.gl);
+        DefineMaxProjectionCopyShader(builder);
+        return builder.build();
+      })(),
+    );
+
+    console.log("Testing");
+    console.log(this.maxProjectionCopyShader);
+
     this.registerDisposer(
       this.chunkResolutionHistogram.visibility.add(this.visibility),
     );
@@ -220,6 +283,11 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
 
           builder.addUniform("highp float", "uBrightnessFactor");
           builder.addVarying("highp vec4", "vNormalizedPosition");
+          // builder.addTextureSampler(
+          //   "sampler2D",
+          //   "uMaxProjectionSampler",
+          //   maxProjectionSamplerTextureUnit,
+          // );
           builder.addVertexCode(glsl_getBoxFaceVertexPosition);
 
           builder.setVertexMain(`
@@ -232,6 +300,7 @@ gl_Position.z = 0.0;
 vec3 curChunkPosition;
 vec4 outputColor;
 void userMain();
+float maxIntensity = 0.0;
 `);
           defineChunkDataShaderAccess(
             builder,
@@ -252,6 +321,10 @@ void emitGrayscale(float value) {
 }
 void emitTransparent() {
   emitRGBA(vec4(0.0, 0.0, 0.0, 0.0));
+}
+vec2 computeUVFromClipSpace(vec4 clipSpacePosition) {
+  vec2 NDCPosition = clipSpacePosition.xy / clipSpacePosition.w;
+  return (NDCPosition + 1.0) * 0.5;
 }
 `);
           builder.setFragmentMainFunction(`
@@ -293,7 +366,12 @@ void main() {
   outputColor = vec4(0, 0, 0, 0);
   for (int step = startStep; step < endStep; ++step) {
     vec3 position = mix(nearPoint, farPoint, uNearLimitFraction + float(step) * stepSize);
+    //vec4 clipSpacePosition = uModelViewProjectionMatrix * vec4(position, 1.0);
+    //vec2 uv = computeUVFromClipSpace(clipSpacePosition);
+    //float storedMax = texture(uMaxProjectionSampler, uv).r;
     curChunkPosition = position - uTranslation;
+    float normChunkValue = float(toRaw(getInterpolatedDataValue(0)));
+    //maxIntensity = max(max(maxIntensity, normChunkValue), storedMax);
     userMain();
   }
   emit(outputColor, 0.0, 0u);
@@ -633,7 +711,35 @@ void main() {
           }
           newSource = false;
           gl.uniform3fv(shader.uniform("uTranslation"), chunkPosition);
+          if (renderContext.bindMaxProjectionBuffers !== undefined) {
+            shader.bind();
+            renderContext.bindMaxProjectionBuffers();
+          }
           drawBoxes(gl, 1, 1);
+          if (renderContext.bindMaxProjectionCopyBuffers !== undefined) {
+            //TODO remove the offscreen copy helper
+            const { maxProjectionCopyShader } = this;
+            this.vertexIdHelper.disable();
+            maxProjectionCopyShader.bind();
+            const aVertexPosition = shader.attribute("aVertexPosition");
+            this.textureVertexBuffer.bindToVertexAttrib(
+              aVertexPosition, 2, WebGL2RenderingContext.FLOAT);
+            const maxProjectionCopyIntensityTextureUnit = maxProjectionCopyShader.textureUnit(maxProjectionCopyIntensitySamplerTextureUnit);
+            const maxProjectionCopyColorTextureUnit = maxProjectionCopyShader.textureUnit(maxProjectionCopyColorSamplerTextureUnit);
+            gl.activeTexture(WebGL2RenderingContext.TEXTURE0 + maxProjectionCopyIntensityTextureUnit);
+            gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, renderContext.maxProjectionBufferTextureIDs![0]);
+            gl.activeTexture(WebGL2RenderingContext.TEXTURE0 + maxProjectionCopyColorTextureUnit);
+            gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, renderContext.maxProjectionBufferTextureIDs![1]);
+            renderContext.bindMaxProjectionCopyBuffers();
+            drawQuads(gl, 1, 1);
+            gl.disableVertexAttribArray(aVertexPosition);
+            gl.activeTexture(WebGL2RenderingContext.TEXTURE0 + maxProjectionCopyIntensityTextureUnit);
+            gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, null);
+            gl.activeTexture(WebGL2RenderingContext.TEXTURE0 + maxProjectionCopyColorTextureUnit);
+            gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, null);
+            shader.bind();
+            this.vertexIdHelper.enable();
+          }
           ++presentCount;
         } else {
           ++notPresentCount;
