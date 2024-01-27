@@ -206,7 +206,10 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
     this.depthSamplesTarget = options.depthSamplesTarget;
     this.chunkResolutionHistogram = options.chunkResolutionHistogram;
     this.textureVertexBufferArray = new Float32Array([
-      -1, -1, 1, -1, -1, 1, 1, 1,
+      // Triangle 1 - top left, top-rght, bottom-right
+      -1, 1, 1, 1, 1, -1,
+      // Triangle 2 - top-left, bottom-right, bottom-left
+      -1, 1, 1, -1, -1, -1,
     ]);
     this.textureVertexBuffer = this.registerDisposer(
       getMemoizedBuffer(
@@ -224,9 +227,6 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
         return builder.build();
       })(),
     );
-
-    console.log("Testing");
-    console.log(this.maxProjectionCopyShader);
 
     this.registerDisposer(
       this.chunkResolutionHistogram.visibility.add(this.visibility),
@@ -718,6 +718,7 @@ void main() {
           drawBoxes(gl, 1, 1);
           if (renderContext.bindMaxProjectionCopyBuffers !== undefined) {
             //TODO remove the offscreen copy helper
+            console.log("Binding new")
             const { maxProjectionCopyShader } = this;
             this.vertexIdHelper.disable();
             maxProjectionCopyShader.bind();

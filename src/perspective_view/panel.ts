@@ -983,8 +983,8 @@ export class PerspectivePanel extends RenderedDataPanel {
       // );
       gl.blendFunc(WebGL2RenderingContext.ONE, WebGL2RenderingContext.ZERO);
       this.transparencyCopyHelper.draw(
-        this.maxProjectionConfiguration.colorBuffers[0].texture,
-        this.maxProjectionConfiguration.colorBuffers[1].texture,
+        this.maxProjectionCopyConfiguration.colorBuffers[0].texture,
+        this.maxProjectionCopyConfiguration.colorBuffers[1].texture,
       );
       gl.depthMask(true);
       gl.disable(WebGL2RenderingContext.BLEND);
@@ -992,6 +992,11 @@ export class PerspectivePanel extends RenderedDataPanel {
 
       if (this.maxProjectionConfiguration !== undefined && !allEmpty) {
         renderContext.bindMaxProjectionBuffers!();
+        gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
+      }
+
+      if (this.maxProjectionCopyConfiguration !== undefined && !allEmpty) {
+        renderContext.bindMaxProjectionCopyBuffers!();
         gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
       }
 
