@@ -194,7 +194,7 @@ There is a Google Group/mailing list for discussion related to Neuroglancer:
 
 # Contributing
 
-Want to contribute?  Great!  First, read [CONTRIBUTING.md](CONTRIBUTING.md).
+Want to contribute?  Great!  First, read [CONTRIBUTING.md](CONTRIBUTING.md) before doing anything.
 
 # License
 
