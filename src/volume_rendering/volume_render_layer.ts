@@ -212,7 +212,22 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
           builder.addFragmentCode(`
 #define VOLUME_RENDERING true
 `);
-
+          let emitRGBA = `
+void emitRGBA(vec4 rgba) {
+  float alpha = rgba.a * uBrightnessFactor;
+  outputColor += vec4(rgba.rgb * alpha, alpha);
+}
+`
+          if (shaderParametersState.mode === VOLUME_RENDERING_MODES.MAX) {
+            emitRGBA = `
+void emitRGBA(vec4 rgba) {
+  float alpha = rgba.a;
+  if (rgba.a > outputColor.a) {
+    outputColor = vec4(rgba.rgb * alpha, alpha);
+  }
+}
+`
+          }
           emitter(builder);
           // Near limit in [0, 1] as fraction of full limit.
           builder.addUniform("highp float", "uNearLimitFraction");
@@ -255,10 +270,7 @@ void userMain();
             "curChunkPosition",
           );
           builder.addFragmentCode(`
-void emitRGBA(vec4 rgba) {
-  float alpha = rgba.a * uBrightnessFactor;
-  outputColor += vec4(rgba.rgb * alpha, alpha);
-}
+${emitRGBA}
 void emitRGB(vec3 rgb) {
   emitRGBA(vec4(rgb, 1.0));
 }
