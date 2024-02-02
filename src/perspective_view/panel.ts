@@ -160,6 +160,18 @@ v4f_fragColor = vec4(accum.rgb / accum.a, revealage);
 `);
 }
 
+function defineMaxProjectionCopyShader(builder: ShaderBuilder) {
+  builder.addOutputBuffer("vec4", "v4f_fragData0", 0);
+  builder.addOutputBuffer("vec4", "v4f_fragData1", 1);
+  builder.setFragmentMain(`
+vec4 v0 = getValue0();
+vec4 v1 = getValue1();
+
+v4f_fragData0 = v0;
+v4f_fragData1 = v1;
+`);
+}
+
 const PerspectiveViewStateBase = withSharedVisibility(SharedObject);
 class PerspectiveViewState extends PerspectiveViewStateBase {
   sharedProjectionParameters: SharedProjectionParameters;
@@ -252,6 +264,9 @@ export class PerspectivePanel extends RenderedDataPanel {
   );
   protected transparencyCopyHelper = this.registerDisposer(
     OffscreenCopyHelper.get(this.gl, defineTransparencyCopyShader, 2),
+  );
+  protected maxProjectionCopyHelper = this.registerDisposer(
+    OffscreenCopyHelper.get(this.gl, defineMaxProjectionCopyShader, 2),
   );
 
   private sharedObject: PerspectiveViewState;
@@ -854,6 +869,11 @@ export class PerspectivePanel extends RenderedDataPanel {
       gl.depthMask(false);
       gl.enable(WebGL2RenderingContext.BLEND);
 
+      // Clear max projection buffer
+      this.gl.clearColor(0.0, 0.0, 0.0, 1.0);
+      this.maxProjectionConfiguration.bind(width, height);
+      gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
+
       // Compute accumulate and revealage textures.
       const { transparentConfiguration } = this;
       renderContext.bindFramebuffer = () => {
@@ -870,6 +890,7 @@ export class PerspectivePanel extends RenderedDataPanel {
         WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA,
       );
       renderContext.emitPickID = false;
+      // Draw all max projection layers first.
       for (const [renderLayer, attachment] of visibleLayers) {
         if (renderLayer.isTransparent) {
           if (
@@ -877,16 +898,53 @@ export class PerspectivePanel extends RenderedDataPanel {
             (renderLayer as VolumeRenderingRenderLayer).mode.value ===
               VOLUME_RENDERING_MODES.MAX
           ) {
+            // Setup max projection state
             renderContext.maxProjectionHelper = {
               bindMaxProjectionBuffer: () => {
                 this.maxProjectionConfiguration.bind(width, height);
               },
             };
+
+            // Draw max projection
+            renderContext.maxProjectionHelper.bindMaxProjectionBuffer();
+            renderLayer.draw(renderContext, attachment);
           }
-          renderLayer.draw(renderContext, attachment);
+        }
+      }
+      // Copy max projection to transparent configuration
+      renderContext.bindFramebuffer();
+      gl.blendFunc(
+        WebGL2RenderingContext.ONE,
+        WebGL2RenderingContext.ZERO,
+      );
+      this.maxProjectionCopyHelper.draw(
+        this.maxProjectionConfiguration.colorBuffers[0].texture,
+        this.maxProjectionConfiguration.colorBuffers[1].texture,
+      );
+
+      // Restore state
+      gl.blendFuncSeparate(
+        WebGL2RenderingContext.ONE,
+        WebGL2RenderingContext.ONE,
+        WebGL2RenderingContext.ZERO,
+        WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA,
+      );
+
+      // Draw all other transparent layers
+      for (const [renderLayer, attachment] of visibleLayers) {
+        if (renderLayer.isTransparent) {
+          const isMax = (
+            "mode" in renderLayer &&
+            (renderLayer as VolumeRenderingRenderLayer).mode.value ===
+              VOLUME_RENDERING_MODES.MAX
+          )
+          if (!isMax) {
+            renderLayer.draw(renderContext, attachment);
+          }
         }
       }
 
+        
       // Copy transparent rendering result back to primary buffer.
       gl.disable(WebGL2RenderingContext.DEPTH_TEST);
       this.offscreenFramebuffer.bindSingle(OffscreenTextures.COLOR);
