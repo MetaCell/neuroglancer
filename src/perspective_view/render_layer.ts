@@ -28,6 +28,10 @@ import { SharedObject } from "#/worker_rpc";
 export type PerspectiveViewReadyRenderContext =
   ThreeDimensionalReadyRenderContext;
 
+interface maxProjectionHelper {
+  bindMaxProjectionBuffer: () => void;
+}
+
 export interface PerspectiveViewRenderContext
   extends PerspectiveViewReadyRenderContext,
     ThreeDimensionalRenderContext {
@@ -50,6 +54,8 @@ export interface PerspectiveViewRenderContext
    * Specifies whether there was a previous pick ID pass.
    */
   alreadyEmittedPickID: boolean;
+
+  maxProjectionHelper?: maxProjectionHelper | undefined;
 }
 
 export class PerspectiveViewRenderLayer<

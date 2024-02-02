@@ -74,6 +74,8 @@ import { ShaderBuilder } from "#/webgl/shader";
 import { MultipleScaleBarTextures, ScaleBarOptions } from "#/widget/scale_bar";
 import { RPC, SharedObject } from "#/worker_rpc";
 import { PerspectiveViewAnnotationLayer } from "#/annotation/renderlayer";
+import { VolumeRenderingRenderLayer } from "src/volume_rendering/volume_render_layer";
+import { VOLUME_RENDERING_MODES } from "src/volume_rendering/trackable_volume_rendering_mode";
 
 export interface PerspectiveViewerState extends RenderedDataViewerState {
   wireFrame: WatchableValueInterface<boolean>;
@@ -238,6 +240,10 @@ export class PerspectivePanel extends RenderedDataPanel {
   );
 
   protected transparentConfiguration_:
+    | FramebufferConfiguration<TextureBuffer>
+    | undefined;
+
+  protected maxProjectionConfiguration_:
     | FramebufferConfiguration<TextureBuffer>
     | undefined;
 
@@ -638,6 +644,26 @@ export class PerspectivePanel extends RenderedDataPanel {
     return transparentConfiguration;
   }
 
+  private get maxProjectionConfiguration() {
+    let maxProjectionConfiguration = this.maxProjectionConfiguration_;
+    if (maxProjectionConfiguration === undefined) {
+      maxProjectionConfiguration = this.maxProjectionConfiguration_ =
+        this.registerDisposer(
+          new FramebufferConfiguration(this.gl, {
+            colorBuffers: makeTextureBuffers(
+              this.gl,
+              2,
+              this.gl.RGBA32F,
+              this.gl.RGBA,
+              this.gl.FLOAT,
+            ),
+            depthBuffer: this.offscreenFramebuffer.depthBuffer!.addRef(),
+          }),
+        );
+    }
+    return maxProjectionConfiguration;
+  }
+
   drawWithPicking(pickingData: FramePickingData): boolean {
     if (!this.navigationState.valid) {
       return false;
@@ -846,6 +872,17 @@ export class PerspectivePanel extends RenderedDataPanel {
       renderContext.emitPickID = false;
       for (const [renderLayer, attachment] of visibleLayers) {
         if (renderLayer.isTransparent) {
+          if (
+            "mode" in renderLayer &&
+            (renderLayer as VolumeRenderingRenderLayer).mode.value ===
+              VOLUME_RENDERING_MODES.MAX
+          ) {
+            renderContext.maxProjectionHelper = {
+              bindMaxProjectionBuffer: () => {
+                this.maxProjectionConfiguration.bind(width, height);
+              },
+            };
+          }
           renderLayer.draw(renderContext, attachment);
         }
       }
