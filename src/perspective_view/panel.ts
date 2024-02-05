@@ -903,6 +903,8 @@ export class PerspectivePanel extends RenderedDataPanel {
               bindMaxProjectionBuffer: () => {
                 this.maxProjectionConfiguration.bind(width, height);
               },
+              maxProjectionConfiguration: this.maxProjectionConfiguration,
+              viewport: { width, height}
             };
 
             // Draw max projection
@@ -911,16 +913,18 @@ export class PerspectivePanel extends RenderedDataPanel {
           }
         }
       }
+
       // Copy max projection to transparent configuration
-      renderContext.bindFramebuffer();
-      gl.blendFunc(
-        WebGL2RenderingContext.ONE,
-        WebGL2RenderingContext.ZERO,
-      );
-      this.maxProjectionCopyHelper.draw(
-        this.maxProjectionConfiguration.colorBuffers[0].texture,
-        this.maxProjectionConfiguration.colorBuffers[1].texture,
-      );
+      // renderContext.bindFramebuffer();
+      // gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
+      // gl.blendFunc(
+      //   WebGL2RenderingContext.ONE,
+      //   WebGL2RenderingContext.ZERO,
+      // );
+      // this.maxProjectionCopyHelper.draw(
+      //   this.maxProjectionConfiguration.colorBuffers[0].texture,
+      //   this.maxProjectionConfiguration.colorBuffers[1].texture,
+      // );
 
       // Restore state
       gl.blendFuncSeparate(
@@ -933,18 +937,16 @@ export class PerspectivePanel extends RenderedDataPanel {
       // Draw all other transparent layers
       for (const [renderLayer, attachment] of visibleLayers) {
         if (renderLayer.isTransparent) {
-          const isMax = (
+          const isMax =
             "mode" in renderLayer &&
             (renderLayer as VolumeRenderingRenderLayer).mode.value ===
-              VOLUME_RENDERING_MODES.MAX
-          )
+              VOLUME_RENDERING_MODES.MAX;
           if (!isMax) {
             renderLayer.draw(renderContext, attachment);
           }
         }
       }
 
-        
       // Copy transparent rendering result back to primary buffer.
       gl.disable(WebGL2RenderingContext.DEPTH_TEST);
       this.offscreenFramebuffer.bindSingle(OffscreenTextures.COLOR);

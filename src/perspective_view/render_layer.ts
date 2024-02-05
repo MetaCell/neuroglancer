@@ -24,12 +24,15 @@ import {
 import { vec3 } from "#/util/geom";
 import { ShaderModule } from "#/webgl/shader";
 import { SharedObject } from "#/worker_rpc";
+import {FramebufferConfiguration} from "src/webgl/offscreen";
 
 export type PerspectiveViewReadyRenderContext =
   ThreeDimensionalReadyRenderContext;
 
 interface maxProjectionHelper {
   bindMaxProjectionBuffer: () => void;
+  maxProjectionConfiguration: FramebufferConfiguration;
+  viewport: {width: number, height: number};
 }
 
 export interface PerspectiveViewRenderContext
