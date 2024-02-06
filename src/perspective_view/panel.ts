@@ -125,7 +125,8 @@ export const glsl_perspectivePanelEmitOIT = [
 void emit(vec4 color, highp uint pickId) {
   float weight = computeOITWeight(color.a);
   vec4 accum = color * weight;
-  v4f_fragData0 = vec4(accum.rgb, color.a);
+  v4f_fragData0 = color;
+  //v4f_fragData0 = vec4(accum.rgb, color.a);
   v4f_fragData1 = vec4(accum.a, 0.0, 0.0, 0.0);
 }
 `,
@@ -156,7 +157,8 @@ vec4 v1 = getValue1();
 vec4 accum = vec4(v0.rgb, v1.r);
 float revealage = v0.a;
 
-v4f_fragColor = vec4(accum.rgb / accum.a, revealage);
+//v4f_fragColor = vec4(accum.rgb / accum.a, revealage);
+v4f_fragColor = v0;
 `);
 }
 
@@ -883,10 +885,6 @@ export class PerspectivePanel extends RenderedDataPanel {
       this.gl.clearColor(0.0, 0.0, 0.0, 1.0);
       gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
       renderContext.emitter = perspectivePanelEmitOIT;
-      gl.blendFunc(
-        WebGL2RenderingContext.ONE,
-        WebGL2RenderingContext.ZERO
-      );
       renderContext.emitPickID = false;
       // Draw all max projection layers first.
       for (const [renderLayer, attachment] of visibleLayers) {
@@ -952,11 +950,11 @@ export class PerspectivePanel extends RenderedDataPanel {
         WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA,
         WebGL2RenderingContext.SRC_ALPHA,
       );
-      // TODO (SKM) - temp
-      // gl.blendFunc(
-      //   WebGL2RenderingContext.ONE,
-      //   WebGL2RenderingContext.ZERO,
-      // );
+      //TODO (SKM) - temp
+      gl.blendFunc(
+        WebGL2RenderingContext.ONE,
+        WebGL2RenderingContext.ZERO,
+      );
       this.transparencyCopyHelper.draw(
         transparentConfiguration.colorBuffers[0].texture,
         transparentConfiguration.colorBuffers[1].texture,

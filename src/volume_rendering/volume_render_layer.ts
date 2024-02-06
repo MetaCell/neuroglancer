@@ -394,8 +394,9 @@ void emitTransparent() {
 void emitRGBA(float intensity, vec4 rgba) {
   if (intensity > maxIntensity) {
     maxIntensity = intensity;
-    outputColor = vec4(rgba.rgb * rgba.a, rgba.a);
+    outputColor = vec4(rgba.rgb, rgba.a);
   }
+  //outputColor = vec4(tempUV.xy, 0.0, 0.3);
 }
 void emitGrayscale(float value) {
   emitRGBA(value, vec4(value, value, value, value));
@@ -413,6 +414,7 @@ void emitTransparent() {
   vec4 firstTexColor = texture(uColorSampler, firstUV);
   maxIntensity = firstTexIntensity.r;
   outputColor = firstTexColor;
+  tempUV = firstUV;
 `
           }
           builder.addVertexCode(glsl_getBoxFaceVertexPosition);
@@ -429,6 +431,7 @@ vec4 outputColor;
 void userMain();
 float maxIntensity;
 vec4 maxColor;
+vec2 tempUV;
 `);
           defineChunkDataShaderAccess(
             builder,
@@ -478,9 +481,10 @@ void main() {
   ${glsl_colorInit}
   for (int step = startStep; step < endStep; ++step) {
     vec3 position = mix(nearPoint, farPoint, uNearLimitFraction + float(step) * stepSize);
-    // vec4 clipSpacePosition = uModelViewProjectionMatrix * vec4(position, 1.0);
-    // vec2 uv = clipSpacePosition.xy / clipSpacePosition.w;
-    // uv = 0.5 * uv + 0.5;
+    vec4 clipSpacePosition = uModelViewProjectionMatrix * vec4(position, 1.0);
+    vec2 uv = clipSpacePosition.xy / clipSpacePosition.w;
+    uv = 0.5 * uv + 0.5;
+    tempUV = uv;
     // bufferIntensity = texture(uIntensitySampler, uv).r;
     // bufferColor = texture(uColorSampler, uv);
     curChunkPosition = position - uTranslation;
