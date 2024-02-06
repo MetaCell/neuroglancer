@@ -953,10 +953,10 @@ export class PerspectivePanel extends RenderedDataPanel {
         WebGL2RenderingContext.SRC_ALPHA,
       );
       // TODO (SKM) - temp
-      gl.blendFunc(
-        WebGL2RenderingContext.ONE,
-        WebGL2RenderingContext.ZERO,
-      );
+      // gl.blendFunc(
+      //   WebGL2RenderingContext.ONE,
+      //   WebGL2RenderingContext.ZERO,
+      // );
       this.transparencyCopyHelper.draw(
         transparentConfiguration.colorBuffers[0].texture,
         transparentConfiguration.colorBuffers[1].texture,
