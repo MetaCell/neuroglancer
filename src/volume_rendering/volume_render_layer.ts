@@ -91,7 +91,6 @@ import {
 } from "src/webgl/offscreen";
 import { Buffer, getMemoizedBuffer } from "#/webgl/buffer";
 import { drawQuads } from "#/webgl/quad";
-import { max } from "lodash";
 
 export const VOLUME_RENDERING_DEPTH_SAMPLES_DEFAULT_VALUE = 64;
 const VOLUME_RENDERING_DEPTH_SAMPLES_LOG_SCALE_ORIGIN = 1;
