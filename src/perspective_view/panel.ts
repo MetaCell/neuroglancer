@@ -870,7 +870,7 @@ export class PerspectivePanel extends RenderedDataPanel {
       gl.enable(WebGL2RenderingContext.BLEND);
 
       // Clear max projection buffer
-      this.gl.clearColor(0.0, 0.0, 0.0, 1.0);
+      this.gl.clearColor(0.0, 0.0, 0.0, 0.0);
       this.maxProjectionConfiguration.bind(width, height);
       gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
 
@@ -883,11 +883,9 @@ export class PerspectivePanel extends RenderedDataPanel {
       this.gl.clearColor(0.0, 0.0, 0.0, 1.0);
       gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
       renderContext.emitter = perspectivePanelEmitOIT;
-      gl.blendFuncSeparate(
+      gl.blendFunc(
         WebGL2RenderingContext.ONE,
-        WebGL2RenderingContext.ONE,
-        WebGL2RenderingContext.ZERO,
-        WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA,
+        WebGL2RenderingContext.ZERO
       );
       renderContext.emitPickID = false;
       // Draw all max projection layers first.
@@ -904,27 +902,27 @@ export class PerspectivePanel extends RenderedDataPanel {
                 this.maxProjectionConfiguration.bind(width, height);
               },
               maxProjectionConfiguration: this.maxProjectionConfiguration,
+              transparentConfiguration: this.transparentConfiguration,
               viewport: { width, height}
             };
 
             // Draw max projection
-            renderContext.maxProjectionHelper.bindMaxProjectionBuffer();
             renderLayer.draw(renderContext, attachment);
           }
         }
       }
 
-      // Copy max projection to transparent configuration
-      // renderContext.bindFramebuffer();
-      // gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
-      // gl.blendFunc(
-      //   WebGL2RenderingContext.ONE,
-      //   WebGL2RenderingContext.ZERO,
-      // );
-      // this.maxProjectionCopyHelper.draw(
-      //   this.maxProjectionConfiguration.colorBuffers[0].texture,
-      //   this.maxProjectionConfiguration.colorBuffers[1].texture,
-      // );
+      //Copy max projection to transparent configuration
+      renderContext.bindFramebuffer();
+      gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
+      gl.blendFunc(
+        WebGL2RenderingContext.ONE,
+        WebGL2RenderingContext.ZERO,
+      );
+      this.maxProjectionCopyHelper.draw(
+        this.maxProjectionConfiguration.colorBuffers[0].texture,
+        this.maxProjectionConfiguration.colorBuffers[1].texture,
+      );
 
       // Restore state
       gl.blendFuncSeparate(
@@ -933,7 +931,7 @@ export class PerspectivePanel extends RenderedDataPanel {
         WebGL2RenderingContext.ZERO,
         WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA,
       );
-
+      
       // Draw all other transparent layers
       for (const [renderLayer, attachment] of visibleLayers) {
         if (renderLayer.isTransparent) {
@@ -953,6 +951,11 @@ export class PerspectivePanel extends RenderedDataPanel {
       gl.blendFunc(
         WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA,
         WebGL2RenderingContext.SRC_ALPHA,
+      );
+      // TODO (SKM) - temp
+      gl.blendFunc(
+        WebGL2RenderingContext.ONE,
+        WebGL2RenderingContext.ZERO,
       );
       this.transparencyCopyHelper.draw(
         transparentConfiguration.colorBuffers[0].texture,

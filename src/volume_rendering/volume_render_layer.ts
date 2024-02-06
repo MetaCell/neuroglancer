@@ -197,8 +197,8 @@ vec2 uv = vTexCoord;
 vec4 max = texture(uSamplerIntensity, uv);
 vec4 max2 = texture(uSamplerColor, uv);
 
-v4f_fragData0 = max;
-v4f_fragData1 = max2;
+v4f_fragData0 = max2;
+v4f_fragData1 = max;
 `);
 }
 
@@ -375,6 +375,9 @@ void emitRGB(vec3 rgb) {
 void emitTransparent() {
   emitRGBA(vec4(0.0, 0.0, 0.0, 0.0));
 }
+`;
+        let glsl_colorInit = `
+  outputColor = vec4(0.0, 0.0, 0.0, 0.0);
 `
           if (this.mode.value === VOLUME_RENDERING_MODES.MAX) {
             builder.addTextureSampler(
@@ -400,6 +403,16 @@ void emitGrayscale(float value) {
 void emitTransparent() {
   emitRGBA(0.0, vec4(0.0, 0.0, 0.0, 0.0));
 }
+`;
+            glsl_colorInit = `
+  vec3 firstPosition = mix(nearPoint, farPoint, uNearLimitFraction + float(startStep) * stepSize);
+  vec4 firstClipSpacePosition = uModelViewProjectionMatrix * vec4(firstPosition, 1.0);
+  vec2 firstUV = firstClipSpacePosition.xy / firstClipSpacePosition.w;
+  firstUV = 0.5 * firstUV + 0.5;
+  vec4 firstTexIntensity = texture(uIntensitySampler, firstUV);
+  vec4 firstTexColor = texture(uColorSampler, firstUV);
+  maxIntensity = firstTexIntensity.r;
+  outputColor = firstTexColor;
 `
           }
           builder.addVertexCode(glsl_getBoxFaceVertexPosition);
@@ -414,7 +427,7 @@ gl_Position.z = 0.0;
 vec3 curChunkPosition;
 vec4 outputColor;
 void userMain();
-float maxIntensity = -1.0;
+float maxIntensity;
 vec4 maxColor;
 `);
           defineChunkDataShaderAccess(
@@ -462,9 +475,14 @@ void main() {
   float stepSize = (uFarLimitFraction - uNearLimitFraction) / float(uMaxSteps - 1);
   int startStep = int(floor((intersectStart - uNearLimitFraction) / stepSize));
   int endStep = min(uMaxSteps, int(floor((intersectEnd - uNearLimitFraction) / stepSize)) + 1);
-  outputColor = vec4(0, 0, 0, 0);
+  ${glsl_colorInit}
   for (int step = startStep; step < endStep; ++step) {
     vec3 position = mix(nearPoint, farPoint, uNearLimitFraction + float(step) * stepSize);
+    // vec4 clipSpacePosition = uModelViewProjectionMatrix * vec4(position, 1.0);
+    // vec2 uv = clipSpacePosition.xy / clipSpacePosition.w;
+    // uv = 0.5 * uv + 0.5;
+    // bufferIntensity = texture(uIntensitySampler, uv).r;
+    // bufferColor = texture(uColorSampler, uv);
     curChunkPosition = position - uTranslation;
     userMain();
   }
@@ -806,10 +824,49 @@ void main() {
           }
           newSource = false;
           gl.uniform3fv(shader.uniform("uTranslation"), chunkPosition);
-          drawBoxes(gl, 1, 1);
           if (this.mode.value === VOLUME_RENDERING_MODES.MAX) {
-            // Setup state
+            gl.blendFunc(
+              WebGL2RenderingContext.ONE,
+              WebGL2RenderingContext.ZERO,
+            );
             const maxProjectionHelper = renderContext.maxProjectionHelper!;
+            maxProjectionHelper.bindMaxProjectionBuffer();
+            const intensityTextureUnit = shader.textureUnit(
+              maxProjectionIntensitySamplerTextureUnit,
+            );
+            const colorTextureUnit = shader.textureUnit(
+              maxProjectionColorSamplerTextureUnit,
+            );
+            gl.activeTexture(
+              WebGL2RenderingContext.TEXTURE0 + intensityTextureUnit,
+            );
+            gl.bindTexture(
+              WebGL2RenderingContext.TEXTURE_2D,
+              (
+                maxProjectionHelper.transparentConfiguration
+                  .colorBuffers[1] as TextureBuffer
+              ).texture,
+            );
+            gl.activeTexture(
+              WebGL2RenderingContext.TEXTURE0 + colorTextureUnit,
+            );
+            gl.bindTexture(
+              WebGL2RenderingContext.TEXTURE_2D,
+              (
+                maxProjectionHelper.transparentConfiguration
+                  .colorBuffers[0] as TextureBuffer
+              ).texture,
+            );
+            drawBoxes(gl, 1, 1);
+            gl.activeTexture(
+              WebGL2RenderingContext.TEXTURE0 + intensityTextureUnit,
+            );
+            gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, null);
+            gl.activeTexture(
+              WebGL2RenderingContext.TEXTURE0 + colorTextureUnit,
+            );
+            gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, null);
+            // Setup state
             const localShader = this.maxProjectionCopyShader;
             localShader.bind();
             //this.vertexIdHelper.disable();
@@ -839,7 +896,7 @@ void main() {
               WebGL2RenderingContext.TEXTURE_2D,
               (
                 maxProjectionHelper.maxProjectionConfiguration
-                  .colorBuffers[0] as TextureBuffer
+                  .colorBuffers[1] as TextureBuffer
               ).texture,
             );
             gl.activeTexture(
@@ -850,7 +907,7 @@ void main() {
               WebGL2RenderingContext.TEXTURE_2D,
               (
                 maxProjectionHelper.maxProjectionConfiguration
-                  .colorBuffers[1] as TextureBuffer
+                  .colorBuffers[0] as TextureBuffer
               ).texture,
             );
 
@@ -879,18 +936,14 @@ void main() {
                 maxProjectionCopyColorTextureUnit,
             );
             gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, null);
-            gl.blendFuncSeparate(
-              WebGL2RenderingContext.ONE,
-              WebGL2RenderingContext.ONE,
-              WebGL2RenderingContext.ZERO,
-              WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA,
-            );
             maxProjectionHelper.bindMaxProjectionBuffer();
             const chunkFormat = transformedSource.source.chunkFormat;
             // TODO (skm can I overcome calling this?)
             chunkFormat.beginDrawing(gl, shader);
             shader.bind();
             //this.vertexIdHelper.enable();
+          } else {
+            drawBoxes(gl, 1, 1);
           }
           ++presentCount;
         } else {

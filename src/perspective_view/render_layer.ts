@@ -32,6 +32,7 @@ export type PerspectiveViewReadyRenderContext =
 interface maxProjectionHelper {
   bindMaxProjectionBuffer: () => void;
   maxProjectionConfiguration: FramebufferConfiguration;
+  transparentConfiguration: FramebufferConfiguration;
   viewport: {width: number, height: number};
 }
 
