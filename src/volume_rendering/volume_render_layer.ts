@@ -89,8 +89,9 @@ import {
   TextureBuffer,
   makeTextureBuffers,
 } from "src/webgl/offscreen";
-import {Buffer, getMemoizedBuffer} from "#/webgl/buffer";
+import { Buffer, getMemoizedBuffer } from "#/webgl/buffer";
 import { drawQuads } from "#/webgl/quad";
+import { max } from "lodash";
 
 export const VOLUME_RENDERING_DEPTH_SAMPLES_DEFAULT_VALUE = 64;
 const VOLUME_RENDERING_DEPTH_SAMPLES_LOG_SCALE_ORIGIN = 1;
@@ -101,6 +102,12 @@ const maxProjectionCopyIntensitySamplerTextureUnit = Symbol(
 );
 const maxProjectionCopyColorSamplerTextureUnit = Symbol(
   "maxProjectionCopyColorTextureUnit",
+);
+const maxProjectionIntensitySamplerTextureUnit = Symbol(
+  "maxProjectionIntensityTextureUnit",
+);
+const maxProjectionColorSamplerTextureUnit = Symbol(
+  "maxProjectionColorTextureUnit",
 );
 
 type TransformedVolumeSource = FrontendTransformedSource<
@@ -354,6 +361,48 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
 
           builder.addUniform("highp float", "uBrightnessFactor");
           builder.addVarying("highp vec4", "vNormalizedPosition");
+
+          let glsl_emitRBGA = `
+void emitRGBA(vec4 rgba) {
+  float alpha = rgba.a * uBrightnessFactor;
+  outputColor += vec4(rgba.rgb * alpha, alpha);
+}
+void emitGrayscale(float value) {
+  emitRGBA(vec4(value, value, value, value));
+}
+void emitRGB(vec3 rgb) {
+  emitRGBA(vec4(rgb, 1.0));
+}
+void emitTransparent() {
+  emitRGBA(vec4(0.0, 0.0, 0.0, 0.0));
+}
+`
+          if (this.mode.value === VOLUME_RENDERING_MODES.MAX) {
+            builder.addTextureSampler(
+              "sampler2D",
+              "uIntensitySampler",
+              maxProjectionIntensitySamplerTextureUnit,
+            );
+            builder.addTextureSampler(
+              "sampler2D",
+              "uColorSampler",
+              maxProjectionColorSamplerTextureUnit,
+            );
+            glsl_emitRBGA = `
+void emitRGBA(float intensity, vec4 rgba) {
+  if (intensity > maxIntensity) {
+    maxIntensity = intensity;
+    outputColor = vec4(rgba.rgb * rgba.a, rgba.a);
+  }
+}
+void emitGrayscale(float value) {
+  emitRGBA(value, vec4(value, value, value, value));
+}
+void emitTransparent() {
+  emitRGBA(0.0, vec4(0.0, 0.0, 0.0, 0.0));
+}
+`
+          }
           builder.addVertexCode(glsl_getBoxFaceVertexPosition);
 
           builder.setVertexMain(`
@@ -366,6 +415,8 @@ gl_Position.z = 0.0;
 vec3 curChunkPosition;
 vec4 outputColor;
 void userMain();
+float maxIntensity = -1.0;
+vec4 maxColor;
 `);
           defineChunkDataShaderAccess(
             builder,
@@ -374,19 +425,7 @@ void userMain();
             "curChunkPosition",
           );
           builder.addFragmentCode(`
-void emitRGBA(vec4 rgba) {
-  float alpha = rgba.a * uBrightnessFactor;
-  outputColor += vec4(rgba.rgb * alpha, alpha);
-}
-void emitRGB(vec3 rgb) {
-  emitRGBA(vec4(rgb, 1.0));
-}
-void emitGrayscale(float value) {
-  emitRGB(vec3(value, value, value));
-}
-void emitTransparent() {
-  emitRGBA(vec4(0.0, 0.0, 0.0, 0.0));
-}
+${glsl_emitRBGA}
 `);
           builder.setFragmentMainFunction(`
 void main() {
@@ -782,18 +821,39 @@ void main() {
             );
             const aVertexPosition = localShader.attribute("aVertexPosition");
             this.textureVertexBuffer.bindToVertexAttrib(
-              aVertexPosition, 2, WebGL2RenderingContext.FLOAT);
-            const maxProjectionCopyIntensityTextureUnit = localShader.textureUnit(maxProjectionCopyIntensitySamplerTextureUnit);
-            const maxProjectionCopyColorTextureUnit = localShader.textureUnit(maxProjectionCopyColorSamplerTextureUnit);
-            gl.activeTexture(WebGL2RenderingContext.TEXTURE0 + maxProjectionCopyIntensityTextureUnit);
-            gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, (
-                  maxProjectionHelper.maxProjectionConfiguration
-                    .colorBuffers[0] as TextureBuffer
-                ).texture);
-            gl.activeTexture(WebGL2RenderingContext.TEXTURE0 + maxProjectionCopyColorTextureUnit);
-            gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D,  (maxProjectionHelper.maxProjectionConfiguration
-              .colorBuffers[1] as TextureBuffer)
-          .texture);
+              aVertexPosition,
+              2,
+              WebGL2RenderingContext.FLOAT,
+            );
+            const maxProjectionCopyIntensityTextureUnit =
+              localShader.textureUnit(
+                maxProjectionCopyIntensitySamplerTextureUnit,
+              );
+            const maxProjectionCopyColorTextureUnit = localShader.textureUnit(
+              maxProjectionCopyColorSamplerTextureUnit,
+            );
+            gl.activeTexture(
+              WebGL2RenderingContext.TEXTURE0 +
+                maxProjectionCopyIntensityTextureUnit,
+            );
+            gl.bindTexture(
+              WebGL2RenderingContext.TEXTURE_2D,
+              (
+                maxProjectionHelper.maxProjectionConfiguration
+                  .colorBuffers[0] as TextureBuffer
+              ).texture,
+            );
+            gl.activeTexture(
+              WebGL2RenderingContext.TEXTURE0 +
+                maxProjectionCopyColorTextureUnit,
+            );
+            gl.bindTexture(
+              WebGL2RenderingContext.TEXTURE_2D,
+              (
+                maxProjectionHelper.maxProjectionConfiguration
+                  .colorBuffers[1] as TextureBuffer
+              ).texture,
+            );
 
             //Copy the result so far over
             // this.maxProjectionCopyHelper.draw(
@@ -810,9 +870,15 @@ void main() {
 
             // // Restore state
             gl.disableVertexAttribArray(aVertexPosition);
-            gl.activeTexture(WebGL2RenderingContext.TEXTURE0 + maxProjectionCopyIntensityTextureUnit);
+            gl.activeTexture(
+              WebGL2RenderingContext.TEXTURE0 +
+                maxProjectionCopyIntensityTextureUnit,
+            );
             gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, null);
-            gl.activeTexture(WebGL2RenderingContext.TEXTURE0 + maxProjectionCopyColorTextureUnit);
+            gl.activeTexture(
+              WebGL2RenderingContext.TEXTURE0 +
+                maxProjectionCopyColorTextureUnit,
+            );
             gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, null);
             gl.blendFuncSeparate(
               WebGL2RenderingContext.ONE,
