@@ -47,7 +47,6 @@ import {
 } from "#/sliceview/volume/image_renderlayer";
 import { trackableAlphaValue } from "#/trackable_alpha";
 import { trackableBlendModeValue } from "#/trackable_blend";
-import { TrackableBoolean } from "#/trackable_boolean";
 import {
   makeCachedDerivedWatchableValue,
   makeCachedLazyDerivedWatchableValue,
@@ -83,7 +82,6 @@ import {
   LayerControlDefinition,
   registerLayerControl,
 } from "#/widget/layer_control";
-import { checkboxLayerControl } from "#/widget/layer_control_checkbox";
 import { enumLayerControl } from "#/widget/layer_control_enum";
 import { rangeLayerControl } from "#/widget/layer_control_range";
 import { makeMaximizeButton } from "#/widget/maximize_button";
@@ -98,6 +96,10 @@ import {
   ShaderControls,
 } from "#/widget/shader_controls";
 import { Tab } from "#/widget/tab_view";
+import {
+  trackableShaderModeValue,
+  VOLUME_RENDERING_MODES,
+} from "#/volume_rendering/trackable_volume_rendering_mode";
 import { trackableFiniteFloat } from "#/trackable_finite_float";
 
 const OPACITY_JSON_KEY = "opacity";
@@ -106,7 +108,7 @@ const SHADER_JSON_KEY = "shader";
 const SHADER_CONTROLS_JSON_KEY = "shaderControls";
 const CROSS_SECTION_RENDER_SCALE_JSON_KEY = "crossSectionRenderScale";
 const CHANNEL_DIMENSIONS_JSON_KEY = "channelDimensions";
-const VOLUME_RENDERING_JSON_KEY = "volumeRendering";
+const VOLUME_RENDERING_MODE_JSON_KEY = "volumeRenderingMode";
 const VOLUME_RENDERING_GAIN_JSON_KEY = "volumeRenderingGain";
 const VOLUME_RENDERING_DEPTH_SAMPLES_JSON_KEY = "volumeRenderingDepthSamples";
 
@@ -149,7 +151,7 @@ export class ImageUserLayer extends Base {
       this.channelCoordinateSpace,
     ),
   );
-  volumeRendering = new TrackableBoolean(false, false);
+  volumeRenderingMode = trackableShaderModeValue();
 
   shaderControlState = this.registerDisposer(
     new ShaderControlState(
@@ -208,7 +210,7 @@ export class ImageUserLayer extends Base {
     this.sliceViewRenderScaleTarget.changed.add(
       this.specificationChanged.dispatch,
     );
-    this.volumeRendering.changed.add(this.specificationChanged.dispatch);
+    this.volumeRenderingMode.changed.add(this.specificationChanged.dispatch);
     this.volumeRenderingDepthSamplesTarget.changed.add(
       this.specificationChanged.dispatch,
     );
@@ -268,18 +270,19 @@ export class ImageUserLayer extends Base {
               this.volumeRenderingChunkResolutionHistogram,
             localPosition: this.localPosition,
             channelCoordinateSpace: this.channelCoordinateSpace,
+            mode: this.volumeRenderingMode,
           }),
         );
         context.registerDisposer(
           loadedSubsource.messages.addChild(volumeRenderLayer.messages),
         );
         context.registerDisposer(
-          registerNested((context, volumeRendering) => {
-            if (!volumeRendering) return;
+          registerNested((context, volumeRenderingMode) => {
+            if (volumeRenderingMode === VOLUME_RENDERING_MODES.OFF) return;
             context.registerDisposer(
               this.addRenderLayer(volumeRenderLayer.addRef()),
             );
-          }, this.volumeRendering),
+          }, this.volumeRenderingMode),
         );
         this.shaderError.changed.dispatch();
       });
@@ -303,7 +306,12 @@ export class ImageUserLayer extends Base {
     this.channelCoordinateSpace.restoreState(
       specification[CHANNEL_DIMENSIONS_JSON_KEY],
     );
-    this.volumeRendering.restoreState(specification[VOLUME_RENDERING_JSON_KEY]);
+    verifyOptionalObjectProperty(
+      specification,
+      VOLUME_RENDERING_MODE_JSON_KEY,
+      (volumeRenderingMode) =>
+        this.volumeRenderingMode.restoreState(volumeRenderingMode)
+    );
     this.volumeRenderingGain.restoreState(
       specification[VOLUME_RENDERING_GAIN_JSON_KEY],
     );
@@ -320,7 +328,7 @@ export class ImageUserLayer extends Base {
     x[CROSS_SECTION_RENDER_SCALE_JSON_KEY] =
       this.sliceViewRenderScaleTarget.toJSON();
     x[CHANNEL_DIMENSIONS_JSON_KEY] = this.channelCoordinateSpace.toJSON();
-    x[VOLUME_RENDERING_JSON_KEY] = this.volumeRendering.toJSON();
+    x[VOLUME_RENDERING_MODE_JSON_KEY] = this.volumeRenderingMode.toJSON();
     x[VOLUME_RENDERING_GAIN_JSON_KEY] = this.volumeRenderingGain.toJSON();
     x[VOLUME_RENDERING_DEPTH_SAMPLES_JSON_KEY] =
       this.volumeRenderingDepthSamplesTarget.toJSON();
@@ -457,13 +465,18 @@ const LAYER_CONTROLS: LayerControlDefinition<ImageUserLayer>[] = [
   },
   {
     label: "Volume rendering (experimental)",
-    toolJson: VOLUME_RENDERING_JSON_KEY,
-    ...checkboxLayerControl((layer) => layer.volumeRendering),
+    toolJson: VOLUME_RENDERING_MODE_JSON_KEY,
+    ...enumLayerControl((layer) => layer.volumeRenderingMode),
   },
   {
     label: "Gain (3D)",
     toolJson: VOLUME_RENDERING_GAIN_JSON_KEY,
-    isValid: (layer) => layer.volumeRendering,
+    isValid: (layer) =>
+      makeCachedDerivedWatchableValue(
+        (volumeRenderingMode) =>
+          volumeRenderingMode !== VOLUME_RENDERING_MODES.OFF,
+        [layer.volumeRenderingMode],
+      ),
     ...rangeLayerControl((layer) => ({
       value: layer.volumeRenderingGain,
       options: { min: -10.0, max: 10.0, step: 0.1 },
@@ -472,7 +485,12 @@ const LAYER_CONTROLS: LayerControlDefinition<ImageUserLayer>[] = [
   {
     label: "Resolution (3D)",
     toolJson: VOLUME_RENDERING_DEPTH_SAMPLES_JSON_KEY,
-    isValid: (layer) => layer.volumeRendering,
+    isValid: (layer) =>
+      makeCachedDerivedWatchableValue(
+        (volumeRenderingMode) =>
+          volumeRenderingMode !== VOLUME_RENDERING_MODES.OFF,
+        [layer.volumeRenderingMode],
+      ),
     ...renderScaleLayerControl(
       (layer) => ({
         histogram: layer.volumeRenderingChunkResolutionHistogram,
