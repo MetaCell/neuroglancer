@@ -15,18 +15,17 @@
 
 import neuroglancer
 import numpy as np
-import cv2
-from skimage.metrics import structural_similarity as ssim
 from time import sleep
-import os
-from PIL import Image
 import pytest
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+from PIL import Image
+import io
 
 
 
 URL = r"zarr://s3://aind-open-data/exaSPIM_653980_2023-08-10_20-08-29_fusion_2023-08-24/fused.zarr/"
-image_path = 'image_comparison_assets/gain.png'
-image_path_nogain = 'image_comparison_assets/nogain.png'
 
 def add_render_panel(side="left", row=0, col=0):
     return neuroglancer.LayerSidePanelState(
@@ -39,9 +38,13 @@ def add_render_panel(side="left", row=0, col=0):
 
     
 no_gain_screenshot = None
+gain_screenshot = None
 
 @pytest.mark.timeout(600)
 def test_no_gain(webdriver):
+    
+    global no_gain_avg
+    global no_gain_screenshot
     a = np.array([[[255]]], dtype=np.uint8)
     with webdriver.viewer.txn() as s:
         s.dimensions = neuroglancer.CoordinateSpace(
@@ -70,20 +73,34 @@ void main() {
         s.show_axis_lines = False
         s.position = [0.5, 0.5, 0.5]
         s.layers["brain"].volumeRenderingGain = 0
-        # s.layers["brain"].shaderControl
-        # webdriver.sync()
-    sleep(5)
-    global no_gain_screenshot
-    screenshot = webdriver.viewer.screenshot().screenshot
-    no_gain_screenshot = screenshot.image_pixels
-    assert screenshot.image_pixels.size != 0, "Image is empty"
+    
+    WebDriverWait(webdriver.driver, 60).until(
+        EC.text_to_be_present_in_element((By.CSS_SELECTOR, '#neuroglancer-container > div > div:nth-child(2) > div.neuroglancer-side-panel-column > div.neuroglancer-side-panel > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-stack-view > div > div:nth-child(6) > label > div.neuroglancer-render-scale-widget.neuroglancer-layer-control-control > div.neuroglancer-render-scale-widget-legend > div:nth-child(2)'), '16/16')
+    )
+    WebDriverWait(webdriver.driver, 60).until(
+        lambda driver: driver.execute_script('return document.readyState') == 'complete'
+    )
+    print("Layer loaded")
+    sleep(3)
+    screenshot = webdriver.driver.get_screenshot_as_png()
+    sleep(3)
+    print("Screenshot taken")
+     # Convert the screenshot to a NumPy array
+    image = Image.open(io.BytesIO(screenshot))
+    no_gain_screenshot = np.array(image)
+    assert no_gain_screenshot.size != 0, "Image is empty"
     # Check if the image contains valid pixel values
-    assert np.all(screenshot.image_pixels >= 0) and np.all(screenshot.image_pixels <= 255), "Image contains invalid pixel values"
-    # webdriver.quit()
+    assert np.all(no_gain_screenshot >= 0) and np.all(no_gain_screenshot <= 255), "Image contains invalid pixel values"
+    no_gain_avg = np.mean(no_gain_screenshot)
+    print('No Gain average pixel value:')
+    print(no_gain_avg)
+  
+
     
 @pytest.mark.timeout(600)
 def test_gain(webdriver):
-    global no_gain_screenshot
+    global gain_screenshot
+    global gain_avg
     a = np.array([[[255]]], dtype=np.uint8)
     with webdriver.viewer.txn() as s:
         s.dimensions = neuroglancer.CoordinateSpace(
@@ -111,14 +128,27 @@ void main() {
         s.cross_section_scale = 1e-6
         s.show_axis_lines = False
         s.position = [0.5, 0.5, 0.5]
-        s.layers["brain"].volumeRenderingGain = 5
-        # s.layers["brain"].shaderControl
-        # webdriver.sync()
-    sleep(1)
-    gain_screenshot = webdriver.viewer.screenshot().screenshot
-    assert gain_screenshot.image_pixels.size != 0, "Image is empty"
+        s.layers["brain"].volumeRenderingGain = 10
+    WebDriverWait(webdriver.driver, 60).until(
+        lambda driver: driver.execute_script('return document.readyState') == 'complete'
+    )
+    sleep(3)
+    print("Layer loaded")
+    screenshot = webdriver.driver.get_screenshot_as_png()
+    sleep(3)
+    print("Screenshot taken")
+     # Convert the screenshot to a NumPy array
+    image = Image.open(io.BytesIO(screenshot))
+    gain_screenshot = np.array(image)
+    assert gain_screenshot.size != 0, "Image is empty"
     # Check if the image contains valid pixel values
-    assert np.all(gain_screenshot.image_pixels >= 0) and np.all(gain_screenshot.image_pixels <= 255), "Image contains invalid pixel values"
-    # assert np.array_equal(no_gain_screenshot, screenshot.image_pixels), "Screenshots are not equal"
+    assert np.all(gain_screenshot >= 0) and np.all(gain_screenshot <= 255), "Image contains invalid pixel values"
+    gain_avg = np.mean(gain_screenshot)
+    print('Gain average pixel value:')
+    print(gain_avg)
+  
+
    
-   
+def test_gain_difference():
+    sleep(2)
+    assert gain_avg > no_gain_avg, "The gain screenshot is not brighter than the no gain screenshot"
