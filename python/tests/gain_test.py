@@ -50,6 +50,7 @@ def test_no_gain(webdriver):
         s.dimensions = neuroglancer.CoordinateSpace(
             names=["x", "y", "z", "t"], units=["nm", "nm", "um", "ms"], scales=[748, 748, 1, 1]
         )
+        s.layout = "3d"
         s.layers.append(
             name="a",
             layer=neuroglancer.ImageLayer(
@@ -63,17 +64,16 @@ void main() {
 """,
                 volume_rendering=True,
                 volumeRenderingDepthSamples=512,
-                 tool_bindings={
+                tool_bindings={
                     "A": neuroglancer.VolumeRenderingDepthSamplesTool(),
                     "B": neuroglancer.VolumeRenderingGainTool(),  
                     }
-                 ),
+                ),
         )
         s.cross_section_scale = 1e-6
         s.show_axis_lines = False
-        s.position = [0.5, 0.5, 0.5]
+        # s.position = [0.5, 0.5, 0.5]
         s.layers["brain"].volumeRenderingGain = 0
-    
     WebDriverWait(webdriver.driver, 60).until(
         EC.text_to_be_present_in_element((By.CSS_SELECTOR, '#neuroglancer-container > div > div:nth-child(2) > div.neuroglancer-side-panel-column > div.neuroglancer-side-panel > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-stack-view > div > div:nth-child(6) > label > div.neuroglancer-render-scale-widget.neuroglancer-layer-control-control > div.neuroglancer-render-scale-widget-legend > div:nth-child(2)'), '16/16')
     )
@@ -82,7 +82,12 @@ void main() {
     )
     print("Layer loaded")
     sleep(3)
-    screenshot = webdriver.driver.get_screenshot_as_png()
+    canvas_element = WebDriverWait(webdriver.driver, 10).until(
+        EC.presence_of_element_located((By.CLASS_NAME, 'neuroglancer-layer-group-viewer'))
+    )
+    screenshot = canvas_element.screenshot_as_png
+    # with open('no_gain_screenshot.png', 'wb') as file:
+    #     file.write(screenshot)
     sleep(3)
     print("Screenshot taken")
      # Convert the screenshot to a NumPy array
@@ -106,6 +111,7 @@ def test_gain(webdriver):
         s.dimensions = neuroglancer.CoordinateSpace(
             names=["x", "y", "z", "t"], units=["nm", "nm", "um", "ms"], scales=[748, 748, 1, 1]
         )
+        s.layout = "3d"
         s.layers.append(
             name="a",
             layer=neuroglancer.ImageLayer(
@@ -119,22 +125,27 @@ void main() {
 """,
                 volume_rendering=True,
                 volumeRenderingDepthSamples=512,
-                 tool_bindings={
+                tool_bindings={
                     "A": neuroglancer.VolumeRenderingDepthSamplesTool(),
                     "B": neuroglancer.VolumeRenderingGainTool(),  
                     }
-                 ),
+                ),
         )
         s.cross_section_scale = 1e-6
         s.show_axis_lines = False
-        s.position = [0.5, 0.5, 0.5]
+        # s.position = [0.5, 0.5, 0.5]
         s.layers["brain"].volumeRenderingGain = 10
     WebDriverWait(webdriver.driver, 60).until(
         lambda driver: driver.execute_script('return document.readyState') == 'complete'
     )
     sleep(3)
     print("Layer loaded")
-    screenshot = webdriver.driver.get_screenshot_as_png()
+    canvas_element = WebDriverWait(webdriver.driver, 10).until(
+        EC.presence_of_element_located((By.CLASS_NAME, 'neuroglancer-layer-group-viewer'))
+    )
+    screenshot = canvas_element.screenshot_as_png
+    # with open('gain_screenshot.png', 'wb') as file:
+    #     file.write(screenshot)
     sleep(3)
     print("Screenshot taken")
      # Convert the screenshot to a NumPy array
@@ -148,7 +159,7 @@ void main() {
     print(gain_avg)
   
 
-   
+@pytest.mark.timeout(10)
 def test_gain_difference():
     sleep(2)
     assert gain_avg > no_gain_avg, "The gain screenshot is not brighter than the no gain screenshot"
