@@ -25,8 +25,6 @@ import io
 
 
 
-URL = r"zarr://s3://aind-open-data/exaSPIM_653980_2023-08-10_20-08-29_fusion_2023-08-24/fused.zarr/"
-
 def add_render_panel(side="left", row=0, col=0):
     return neuroglancer.LayerSidePanelState(
         side=side,
@@ -36,53 +34,62 @@ def add_render_panel(side="left", row=0, col=0):
         tabs=["rendering", "source"],
     )
 
-    
+def add_image_layer(state, **kwargs):
+    shape = (50,) * 3
+    data = np.full(shape=shape, fill_value=255, dtype=np.uint8)
+    dimensions = neuroglancer.CoordinateSpace(
+        names=["x", "y", "z"], units="nm", scales=[400, 400, 400]
+    )
+    local_volume = neuroglancer.LocalVolume(data, dimensions)
+    state.layers["image"] = neuroglancer.ImageLayer(
+        source=local_volume,
+        volume_rendering=True,
+        tool_bindings={
+            "A": neuroglancer.VolumeRenderingGainTool(),
+        },
+        panels=[add_render_panel()],
+        **kwargs,
+    )
+    state.layout = "3d"
+
+def get_shader():
+    return """
+void main() {
+    emitRGBA(vec4(1.0, 1.0, 1.0, 0.001));
+    }
+    """
+
+@pytest.fixture()
+def shared_webdriver(request, webdriver):
+    gainValue = request.node.get_closest_marker("gain_value").args[0]
+    with webdriver.viewer.txn() as s:
+        add_image_layer(s, shader=get_shader())
+        s.layers["image"].volumeRenderingGain = gainValue
+    yield webdriver
+
 no_gain_screenshot = None
 gain_screenshot = None
 
 @pytest.mark.timeout(600)
-def test_no_gain(webdriver):
+@pytest.mark.gain_value(0)
+def test_no_gain(shared_webdriver):
     
     global no_gain_avg
     global no_gain_screenshot
-    a = np.array([[[255]]], dtype=np.uint8)
-    with webdriver.viewer.txn() as s:
-        s.dimensions = neuroglancer.CoordinateSpace(
-            names=["x", "y", "z", "t"], units=["nm", "nm", "um", "ms"], scales=[748, 748, 1, 1]
-        )
-        s.layout = "3d"
-        s.layers.append(
-            name="a",
-            layer=neuroglancer.ImageLayer(
-                source = URL,
-                panels=[add_render_panel()],
-                shader="""
-#uicontrol invlerp normalized(range=[0, 250], window=[0, 65535], clamp=true)
-void main() {
-  emitGrayscale(normalized());
-}
-""",
-                volume_rendering=True,
-                volumeRenderingDepthSamples=512,
-                tool_bindings={
-                    "A": neuroglancer.VolumeRenderingDepthSamplesTool(),
-                    "B": neuroglancer.VolumeRenderingGainTool(),  
-                    }
-                ),
-        )
-        s.cross_section_scale = 1e-6
-        s.show_axis_lines = False
-        # s.position = [0.5, 0.5, 0.5]
-        s.layers["brain"].volumeRenderingGain = 0
-    WebDriverWait(webdriver.driver, 60).until(
-        EC.text_to_be_present_in_element((By.CSS_SELECTOR, '#neuroglancer-container > div > div:nth-child(2) > div.neuroglancer-side-panel-column > div.neuroglancer-side-panel > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-stack-view > div > div:nth-child(6) > label > div.neuroglancer-render-scale-widget.neuroglancer-layer-control-control > div.neuroglancer-render-scale-widget-legend > div:nth-child(2)'), '16/16')
-    )
-    WebDriverWait(webdriver.driver, 60).until(
+   
+    shared_webdriver.sync()
+    sleep(2)
+    WebDriverWait(shared_webdriver.driver, 60).until(
         lambda driver: driver.execute_script('return document.readyState') == 'complete'
     )
+    sleep(2)
+    WebDriverWait(shared_webdriver.driver, 60).until(
+        EC.text_to_be_present_in_element((By.CSS_SELECTOR, '#neuroglancer-container > div > div:nth-child(2) > div.neuroglancer-side-panel-column > div.neuroglancer-side-panel > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-stack-view > div > div:nth-child(6) > label > div.neuroglancer-render-scale-widget.neuroglancer-layer-control-control > div.neuroglancer-render-scale-widget-legend > div:nth-child(2)'), '8/8')
+    )
+    
     print("Layer loaded")
     sleep(3)
-    canvas_element = WebDriverWait(webdriver.driver, 10).until(
+    canvas_element = WebDriverWait(shared_webdriver.driver, 10).until(
         EC.presence_of_element_located((By.CLASS_NAME, 'neuroglancer-layer-group-viewer'))
     )
     screenshot = canvas_element.screenshot_as_png
@@ -103,44 +110,18 @@ void main() {
 
     
 @pytest.mark.timeout(600)
-def test_gain(webdriver):
+@pytest.mark.gain_value(10)
+def test_gain(shared_webdriver):
     global gain_screenshot
     global gain_avg
-    a = np.array([[[255]]], dtype=np.uint8)
-    with webdriver.viewer.txn() as s:
-        s.dimensions = neuroglancer.CoordinateSpace(
-            names=["x", "y", "z", "t"], units=["nm", "nm", "um", "ms"], scales=[748, 748, 1, 1]
-        )
-        s.layout = "3d"
-        s.layers.append(
-            name="a",
-            layer=neuroglancer.ImageLayer(
-                source = URL,
-                panels=[add_render_panel()],
-                shader="""
-#uicontrol invlerp normalized(range=[0, 250], window=[0, 65535], clamp=true)
-void main() {
-  emitGrayscale(normalized());
-}
-""",
-                volume_rendering=True,
-                volumeRenderingDepthSamples=512,
-                tool_bindings={
-                    "A": neuroglancer.VolumeRenderingDepthSamplesTool(),
-                    "B": neuroglancer.VolumeRenderingGainTool(),  
-                    }
-                ),
-        )
-        s.cross_section_scale = 1e-6
-        s.show_axis_lines = False
-        # s.position = [0.5, 0.5, 0.5]
-        s.layers["brain"].volumeRenderingGain = 10
-    WebDriverWait(webdriver.driver, 60).until(
+    shared_webdriver.sync()
+    sleep(2)
+    WebDriverWait(shared_webdriver.driver, 60).until(
         lambda driver: driver.execute_script('return document.readyState') == 'complete'
     )
     sleep(3)
     print("Layer loaded")
-    canvas_element = WebDriverWait(webdriver.driver, 10).until(
+    canvas_element = WebDriverWait(shared_webdriver.driver, 10).until(
         EC.presence_of_element_located((By.CLASS_NAME, 'neuroglancer-layer-group-viewer'))
     )
     screenshot = canvas_element.screenshot_as_png
@@ -163,3 +144,5 @@ void main() {
 def test_gain_difference():
     sleep(2)
     assert gain_avg > no_gain_avg, "The gain screenshot is not brighter than the no gain screenshot"
+    
+    
