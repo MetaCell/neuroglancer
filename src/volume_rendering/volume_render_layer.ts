@@ -14,74 +14,84 @@
  * limitations under the License.
  */
 
-import { ChunkState } from "#/chunk_manager/base";
-import { ChunkRenderLayerFrontend } from "#/chunk_manager/frontend";
-import { CoordinateSpace } from "#/coordinate_transform";
-import { VisibleLayerInfo } from "#/layer";
-import { PerspectivePanel } from "#/perspective_view/panel";
-import {
+import { ChunkState } from "#src/chunk_manager/base.js";
+import { ChunkRenderLayerFrontend } from "#src/chunk_manager/frontend.js";
+import type { CoordinateSpace } from "#src/coordinate_transform.js";
+import type { VisibleLayerInfo } from "#src/layer/index.js";
+import type { PerspectivePanel } from "#src/perspective_view/panel.js";
+import type {
   PerspectiveViewReadyRenderContext,
   PerspectiveViewRenderContext,
-  PerspectiveViewRenderLayer,
-} from "#/perspective_view/render_layer";
-import { RenderLayerTransformOrError } from "#/render_coordinate_transform";
+} from "#src/perspective_view/render_layer.js";
+import { PerspectiveViewRenderLayer } from "#src/perspective_view/render_layer.js";
+import type { RenderLayerTransformOrError } from "#src/render_coordinate_transform.js";
+import type { RenderScaleHistogram } from "#src/render_scale_statistics.js";
 import {
   numRenderScaleHistogramBins,
-  RenderScaleHistogram,
   renderScaleHistogramBinSize,
-} from "#/render_scale_statistics";
-import { SharedWatchableValue } from "#/shared_watchable_value";
-import { getNormalizedChunkLayout } from "#/sliceview/base";
+} from "#src/render_scale_statistics.js";
+import { SharedWatchableValue } from "#src/shared_watchable_value.js";
+import { getNormalizedChunkLayout } from "#src/sliceview/base.js";
+import type { FrontendTransformedSource } from "#src/sliceview/frontend.js";
 import {
-  FrontendTransformedSource,
   getVolumetricTransformedSources,
   serializeAllTransformedSources,
-} from "#/sliceview/frontend";
-import { SliceViewRenderLayer } from "#/sliceview/renderlayer";
-import {
+} from "#src/sliceview/frontend.js";
+import type { SliceViewRenderLayer } from "#src/sliceview/renderlayer.js";
+import type {
   ChunkFormat,
-  defineChunkDataShaderAccess,
   MultiscaleVolumeChunkSource,
   VolumeChunk,
   VolumeChunkSource,
-} from "#/sliceview/volume/frontend";
+} from "#src/sliceview/volume/frontend.js";
+import { defineChunkDataShaderAccess } from "#src/sliceview/volume/frontend.js";
+import type {
+  NestedStateManager,
+  WatchableValueInterface,
+} from "#src/trackable_value.js";
 import {
   makeCachedDerivedWatchableValue,
-  NestedStateManager,
   registerNested,
-  WatchableValueInterface,
-} from "#/trackable_value";
-import { getFrustrumPlanes, mat4, vec3 } from "#/util/geom";
-import { getObjectId } from "#/util/object_id";
+} from "#src/trackable_value.js";
+import { getFrustrumPlanes, mat4, vec3 } from "#src/util/geom.js";
+import { clampToInterval } from "#src/util/lerp.js";
+import { getObjectId } from "#src/util/object_id.js";
+import type { HistogramInformation } from "#src/volume_rendering/base.js";
 import {
   forEachVisibleVolumeRenderingChunk,
   getVolumeRenderingNearFarBounds,
-  HistogramInformation,
   VOLUME_RENDERING_RENDER_LAYER_RPC_ID,
   VOLUME_RENDERING_RENDER_LAYER_UPDATE_SOURCES_RPC_ID,
-} from "#/volume_rendering/base";
-import { drawBoxes, glsl_getBoxFaceVertexPosition } from "#/webgl/bounding_box";
-import { glsl_COLORMAPS } from "#/webgl/colormaps";
+} from "#src/volume_rendering/base.js";
+import type { TrackableVolumeRenderingModeValue } from "#src/volume_rendering/trackable_volume_rendering_mode.js";
 import {
+  VOLUME_RENDERING_MODES,
+  isProjection,
+} from "#src/volume_rendering/trackable_volume_rendering_mode.js";
+import {
+  drawBoxes,
+  glsl_getBoxFaceVertexPosition,
+} from "#src/webgl/bounding_box.js";
+import { glsl_COLORMAPS } from "#src/webgl/colormaps.js";
+import type {
   ParameterizedContextDependentShaderGetter,
-  parameterizedContextDependentShaderGetter,
   ParameterizedShaderGetterResult,
-  shaderCodeWithLineDirective,
   WatchableShaderError,
-} from "#/webgl/dynamic_shader";
-import { ShaderModule, ShaderProgram } from "#/webgl/shader";
+} from "#src/webgl/dynamic_shader.js";
+import {
+  parameterizedContextDependentShaderGetter,
+  shaderCodeWithLineDirective,
+} from "#src/webgl/dynamic_shader.js";
+import type { ShaderModule, ShaderProgram } from "#src/webgl/shader.js";
+import type {
+  ShaderControlsBuilderState,
+  ShaderControlState,
+} from "#src/webgl/shader_ui_controls.js";
 import {
   addControlsToBuilder,
   setControlsInShader,
-  ShaderControlsBuilderState,
-  ShaderControlState,
-} from "#/webgl/shader_ui_controls";
-import { defineVertexId, VertexIdHelper } from "#/webgl/vertex_id";
-import { clampToInterval } from "#/util/lerp";
-import {
-  TrackableVolumeRenderingModeValue,
-  VOLUME_RENDERING_MODES,
-} from "#/volume_rendering/trackable_volume_rendering_mode";
+} from "#src/webgl/shader_ui_controls.js";
+import { defineVertexId, VertexIdHelper } from "#src/webgl/vertex_id.js";
 
 export const VOLUME_RENDERING_DEPTH_SAMPLES_DEFAULT_VALUE = 64;
 const VOLUME_RENDERING_DEPTH_SAMPLES_LOG_SCALE_ORIGIN = 1;
@@ -230,19 +240,43 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
           let glsl_finalEmit = `
   emitAccumAndRevealage(outputColor, 1.0 - revealage, 0u);
 `;
+          let glsl_emitIntensity = `
+void emitIntensity(float value) {
+}`;
           let glsl_continualEmit = ``;
-          if (shaderParametersState.mode === VOLUME_RENDERING_MODES.MAX) {
+          if (isProjection(shaderParametersState.mode)) {
+            const glsl_change_intensity = `
+float intensityChanged = step(savedIntensity, newIntensity - 0.00001);
+`;
+            builder.addFragmentCode(`
+float newIntensity = 0.0;
+float savedDepth = 0.0;
+float savedIntensity = 0.0;
+`);
+            glsl_emitIntensity = `
+void emitIntensity(float value) {
+  newIntensity = clamp(value, 0.0, 1.0);
+}`;
+            if (shaderParametersState.mode === VOLUME_RENDERING_MODES.MIN) {
+              glsl_emitIntensity = `
+void emitIntensity(float value) {
+  newIntensity = clamp(1.0 - value, 0.0, 1.0);
+}`;
+            }
             glsl_rgbaEmit = `
 void emitRGBA(vec4 rgba) {
-  float correctedAlpha = clamp(rgba.a * uBrightnessFactor * uGain, 0.0, 1.0);
-  float weightedAlpha = correctedAlpha * computeOITWeight(correctedAlpha, depthAtRayPosition);
-  outputColor = vec4(rgba.rgb * weightedAlpha, weightedAlpha);
-  revealage = 1.0 - correctedAlpha;
+  ${glsl_change_intensity}
+  float alpha = clamp(rgba.a, 0.0, 1.0);
+  outputColor = mix(outputColor, vec4(rgba.rgb * alpha, alpha), intensityChanged);
+  savedIntensity = mix(savedIntensity, newIntensity, intensityChanged); 
+  savedDepth = mix(savedDepth, depthAtRayPosition, intensityChanged);
 }
 `;
-            glsl_finalEmit = ``;
+            glsl_finalEmit = `
+  gl_FragDepth = savedIntensity;
+`;
             glsl_continualEmit = `
-  emitAccumAndRevealage(outputColor, 1.0 - revealage, 0u);
+  emit(outputColor, savedDepth, savedIntensity);
 `;
           }
           emitter(builder);
@@ -297,18 +331,18 @@ void userMain();
           );
           builder.addFragmentCode([
             glsl_rgbaEmit,
+            glsl_emitIntensity,
             `
 void emitRGB(vec3 rgb) {
   emitRGBA(vec4(rgb, 1.0));
 }
 void emitGrayscale(float value) {
+  emitIntensity(value);
   emitRGBA(vec4(value, value, value, value));
 }
 void emitTransparent() {
+  emitIntensity(0.0);
   emitRGBA(vec4(0.0, 0.0, 0.0, 0.0));
-}
-void emitIntensity(float value) {
-  gl_FragDepth = value;
 }
 float computeDepthFromClipSpace(vec4 clipSpacePosition) {
   float NDCDepthCoord = clipSpacePosition.z / clipSpacePosition.w;
@@ -324,7 +358,8 @@ vec2 computeUVFromClipSpace(vec4 clipSpacePosition) {
             builder.setFragmentMainFunction(`
 void main() {
   outputColor = vec4(uChunkNumber, uChunkNumber, uChunkNumber, 1.0);
-  emit(outputColor, 0u);
+  emitIntensity(uChunkNumber);
+  emit(outputColor, 0.0, uChunkNumber);
 }
 `);
           } else {
