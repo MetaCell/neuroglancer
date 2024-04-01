@@ -265,20 +265,6 @@ float getIntensity() {
   return convertIntensity(mix(defaultMaxProjectionIntensity, userIntensity, userIntensitySet));
 }
 `;
-            glsl_emitIntensity = `
-float convertIntensity(float value) {
-  return clamp(value, 0.0, 1.0);
-}
-${emitFunctions}
-`;
-            if (shaderParametersState.mode === VolumeRenderingModes.MIN) {
-              glsl_emitIntensity = `
-float convertIntensity(float value) {
-  return clamp(1.0 - value, 0.0, 1.0);
-}
-${emitFunctions}
-`;
-            }
             glsl_rgbaEmit = `
 void emitRGBA(vec4 rgba) {
   float alpha = clamp(rgba.a, 0.0, 1.0);
