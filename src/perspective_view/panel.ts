@@ -1006,12 +1006,15 @@ export class PerspectivePanel extends RenderedDataPanel {
         if (renderLayer.isVolumeRendering) {
           const volumeRenderingRenderLayer =
             renderLayer as VolumeRenderingRenderLayer;
+          // TODO (SKM): this does not work if the chunk goes out of view
+          // E.g. when zoomed in
           const sampleRate = volumeRenderingRenderLayer.lastUsedSampleRate;
           const ratio = Math.floor(width / sampleRate);
           volumeRenderingDownsampleFactorBasedOnSize = Math.max(
             Math.min(volumeRenderingDownsampleFactorBasedOnSize, ratio),
             1,
           );
+          console.log(volumeRenderingDownsampleFactorBasedOnSize);
         }
       }
       if (volumeRenderingDownsampleFactorBasedOnSize === 1000) {

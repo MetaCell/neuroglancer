@@ -53,7 +53,13 @@ import {
   makeCachedDerivedWatchableValue,
   registerNested,
 } from "#src/trackable_value.js";
-import { getFrustrumPlanes, mat4, vec3 } from "#src/util/geom.js";
+import {
+  getFrustrumPlanes,
+  mat4,
+  transformVectorByMat4,
+  vec3,
+  //vec4,
+} from "#src/util/geom.js";
 import { clampToInterval } from "#src/util/lerp.js";
 import { getObjectId } from "#src/util/object_id.js";
 import type { HistogramInformation } from "#src/volume_rendering/base.js";
@@ -107,6 +113,85 @@ void emitRGBA(vec4 rgba) {
   revealage *= 1.0 - correctedAlpha;
 }
 `;
+
+// interface Matrix4 {
+//   elements: Float32Array;
+// }
+
+// function multiplyMatrixVector(matrix: Matrix4, vector: vec4): vec4 {
+//   const x =
+//     matrix.elements[0] * vector[0] +
+//     matrix.elements[4] * vector[1] +
+//     matrix.elements[8] * vector[2] +
+//     matrix.elements[12] * vector[3];
+//   const y =
+//     matrix.elements[1] * vector[0] +
+//     matrix.elements[5] * vector[1] +
+//     matrix.elements[9] * vector[2] +
+//     matrix.elements[13] * vector[3];
+//   const z =
+//     matrix.elements[2] * vector[0] +
+//     matrix.elements[6] * vector[1] +
+//     matrix.elements[10] * vector[2] +
+//     matrix.elements[14] * vector[3];
+//   const w =
+//     matrix.elements[3] * vector[0] +
+//     matrix.elements[7] * vector[1] +
+//     matrix.elements[11] * vector[2] +
+//     matrix.elements[15] * vector[3];
+
+//   return vec4.fromValues(x / w, y / w, z / w, 1.0);
+// }
+
+function modelToNDC(
+  cube: vec3[],
+  chunkDataSize: vec3,
+  chunkPosition: vec3,
+  modelViewProjection: mat4,
+  screenWidth: number,
+  screenHeight: number,
+): vec3[] {
+  const ndcCube: vec3[] = [];
+
+  cube.forEach((vertex) => {
+    // Apply model matrix
+    const multiplied = vec3.multiply(vec3.create(), vertex, chunkDataSize);
+    const position = vec3.add(vec3.create(), chunkPosition, multiplied);
+
+    // const modelTransformedVertex: vec4 = vec4.fromValues(
+    //   position[0],
+    //   position[1],
+    //   position[2],
+    //   1,
+    // );
+    // const modelViewProjectionM = {
+    //   elements: modelViewProjection,
+    // };
+
+    // const clipTransformedVertex = multiplyMatrixVector(
+    //   modelViewProjectionM,
+    //   modelTransformedVertex,
+    // );
+
+    // Clip to NDC
+    // const ndcVertex = vec3.fromValues(
+    //   clipTransformedVertex[0],
+    //   clipTransformedVertex[1],
+    //   clipTransformedVertex[2],
+    // );
+    const ndcVertex = transformVectorByMat4(
+      vec3.create(),
+      position,
+      modelViewProjection,
+    );
+
+    console.log(screenWidth, screenHeight);
+
+    ndcCube.push(ndcVertex);
+  });
+
+  return ndcCube;
+}
 
 type TransformedVolumeSource = FrontendTransformedSource<
   SliceViewRenderLayer,
@@ -623,6 +708,46 @@ void main() {
     gl.enable(WebGL2RenderingContext.CULL_FACE);
     gl.cullFace(WebGL2RenderingContext.FRONT);
 
+    // Example usage
+    const cube: vec3[] = [
+      // Front face
+      vec3.fromValues(0.0, 0.0, 1.0),
+      vec3.fromValues(1.0, 0.0, 1.0),
+      vec3.fromValues(1.0, 1.0, 1.0),
+      vec3.fromValues(0.0, 1.0, 1.0),
+
+      // Back face
+      vec3.fromValues(0.0, 0.0, 0.0),
+      vec3.fromValues(0.0, 1.0, 0.0),
+      vec3.fromValues(1.0, 1.0, 0.0),
+      vec3.fromValues(1.0, 0.0, 0.0),
+
+      // Top face
+      vec3.fromValues(0.0, 1.0, 0.0),
+      vec3.fromValues(0.0, 1.0, 1.0),
+      vec3.fromValues(1.0, 1.0, 1.0),
+      vec3.fromValues(1.0, 1.0, 0.0),
+
+      // Bottom face
+      vec3.fromValues(0.0, 0.0, 0.0),
+      vec3.fromValues(1.0, 0.0, 0.0),
+      vec3.fromValues(1.0, 0.0, 1.0),
+      vec3.fromValues(0.0, 0.0, 1.0),
+
+      // Right face
+      vec3.fromValues(1.0, 0.0, 0.0),
+      vec3.fromValues(1.0, 1.0, 0.0),
+      vec3.fromValues(1.0, 1.0, 1.0),
+      vec3.fromValues(1.0, 0.0, 1.0),
+
+      // Left face
+      vec3.fromValues(0.0, 0.0, 0.0),
+      vec3.fromValues(0.0, 0.0, 1.0),
+      vec3.fromValues(0.0, 1.0, 1.0),
+      vec3.fromValues(0.0, 1.0, 0.0),
+    ];
+
+    let modelViewProjection: mat4;
     forEachVisibleVolumeRenderingChunk(
       renderContext.projectionParameters,
       this.localPosition.value,
@@ -701,7 +826,7 @@ void main() {
 
         // Compute projection matrix that transforms chunk layout coordinates to device
         // coordinates.
-        const modelViewProjection = mat4.multiply(
+        modelViewProjection = mat4.multiply(
           tempMat4,
           projectionParameters.viewProjectionMat,
           chunkLayout.transform,
@@ -801,6 +926,20 @@ void main() {
           }
           newSource = false;
           gl.uniform3fv(shader.uniform("uTranslation"), chunkPosition);
+
+          const screenWidth = renderContext.projectionParameters.width;
+          const screenHeight = renderContext.projectionParameters.height;
+
+          const ndcCube = modelToNDC(
+            cube,
+            chunkDataDisplaySize,
+            chunkPosition,
+            modelViewProjection,
+            screenWidth,
+            screenHeight,
+          );
+          console.log(ndcCube);
+
           drawBoxes(gl, 1, 1);
           ++presentCount;
         } else {
