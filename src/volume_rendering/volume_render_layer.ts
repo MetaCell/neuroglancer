@@ -106,6 +106,9 @@ const VOLUME_RENDERING_RESOLUTION_INDICATOR_BAR_HEIGHT = 10;
 
 const depthSamplerTextureUnit = Symbol("depthSamplerTextureUnit");
 
+let tempMax = 0.0;
+let chunkRes = 0.0;
+
 export const glsl_emitRGBAVolumeRendering = `
 void emitRGBA(vec4 rgba) {
   float correctedAlpha = clamp(rgba.a * uBrightnessFactor * uGain, 0.0, 1.0);
@@ -144,11 +147,80 @@ void emitRGBA(vec4 rgba) {
 //   return vec4.fromValues(x / w, y / w, z / w, 1.0);
 // }
 
+function computeDiagonalLength(face: vec3[]): number {
+  const v1 = face[0];
+  const v2 = face[1];
+  const v3 = face[2];
+  const v4 = face[3];
+  const dx1 = v1[0] - v2[0];
+  const dy1 = v1[1] - v3[1];
+  const dx2 = v3[0] - v4[0];
+  const dy2 = v2[1] - v4[1];
+  const diagonal1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+  const diagonal2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+  return Math.max(diagonal1, diagonal2);
+}
+
+function findLargestDiagonal(cube: vec3[]): number {
+  let frontFace = cube.slice(0, 4);
+  let maxZ = -1000;
+  for (let i = 0; i < 6; i++) {
+    const face = cube.slice(i * 4, i * 4 + 4);
+    let total = 0.0;
+    for (let j = 0; j < face.length; j++) {
+      total += face[j][2];
+    }
+    if (total > maxZ) {
+      maxZ = total;
+      frontFace = face;
+    }
+  }
+  const diagonalLength = computeDiagonalLength(frontFace);
+  return diagonalLength;
+}
+
+// function computeLength(point1: vec3, point2: vec3): number {
+//   const dx = point2[0] - point1[0];
+//   const dy = point2[1] - point1[1];
+//   if (dx === 0 && dy === 0) {
+//     return 0;
+//   }
+//   return Math.sqrt(dx * dx + dy * dy);
+// }
+
+// function findLargestDiagonalA(rhomboidCorners: vec3[]): number {
+//   let maxDiagonal = 0;
+//   // Lets be lazy for the moment and not only do diagonals, but all possible combinations of corners
+//   for (let i = 0; i < rhomboidCorners.length; i++) {
+//     for (let j = i + 1; j < rhomboidCorners.length; j++) {
+//       const diagonalLength = computeLength(
+//         rhomboidCorners[i],
+//         rhomboidCorners[j],
+//       );
+//       if (diagonalLength > maxDiagonal) {
+//         maxDiagonal = diagonalLength;
+//       }
+//     }
+//   }
+//   return maxDiagonal;
+// }
+
+// function cuboidDiagonalLength(cube: vec3[]): number {
+//   const frontRightCorner = cube[2];
+//   const backLeftCorner = cube[5];
+//   const dx = frontRightCorner[0] - backLeftCorner[0];
+//   const dy = frontRightCorner[1] - backLeftCorner[1];
+//   const dz = frontRightCorner[2] - backLeftCorner[2];
+//   return Math.sqrt(dx * dx + dy * dy + dz * dz);
+// }
+
 function modelToNDC(
   cube: vec3[],
   chunkDataSize: vec3,
   chunkPosition: vec3,
   modelViewProjection: mat4,
+  lowerClipDisplayBound: vec3,
+  upperClipDisplayBound: vec3,
 ): vec3[] {
   const ndcCube: vec3[] = [];
 
@@ -156,6 +228,10 @@ function modelToNDC(
     // Apply model matrix
     const multiplied = vec3.multiply(vec3.create(), vertex, chunkDataSize);
     const position = vec3.add(vec3.create(), chunkPosition, multiplied);
+    for (let i = 0; i < 3; i++) {
+      position[i] = Math.max(lowerClipDisplayBound[i], position[i]);
+      position[i] = Math.min(upperClipDisplayBound[i], position[i]);
+    }
 
     const modelTransformedVertex: vec4 = vec4.fromValues(
       position[0],
@@ -169,7 +245,8 @@ function modelToNDC(
     const clipTransformedVertex = transformVectorFourByMat4(
       vec4.create(),
       modelTransformedVertex,
-      mat4.transpose(mat4.create(), modelViewProjection),
+      //mat4.transpose(mat4.create(), modelViewProjection),
+      modelViewProjection,
     );
 
     // Clip to NDC
@@ -835,12 +912,27 @@ void main() {
         );
         const clippingPlanes = tempVisibleVolumetricClippingPlanes;
         getFrustrumPlanes(clippingPlanes, modelViewProjection);
-        mat4.invert(modelViewProjection, modelViewProjection);
+        const uInvModelViewProjectionMatrix = mat4.create();
+        mat4.invert(uInvModelViewProjectionMatrix, modelViewProjection);
         gl.uniformMatrix4fv(
           shader.uniform("uInvModelViewProjectionMatrix"),
           false,
-          modelViewProjection,
+          uInvModelViewProjectionMatrix,
         );
+        const leftWindowVec3 = vec3.fromValues(-1, 0, 0);
+        const rightWindowVec3 = vec3.fromValues(1, 0, 0);
+        const leftInModelSpace = vec3.transformMat4(
+          vec3.create(),
+          leftWindowVec3,
+          uInvModelViewProjectionMatrix,
+        );
+        const rightInModelSpace = vec3.transformMat4(
+          vec3.create(),
+          rightWindowVec3,
+          uInvModelViewProjectionMatrix,
+        );
+        console.log("left", leftInModelSpace);
+        console.log("right", rightInModelSpace);
         const { near, far, adjustedNear, adjustedFar } =
           getVolumeRenderingNearFarBounds(
             clippingPlanes,
@@ -850,7 +942,6 @@ void main() {
         const optimalSampleRate = optimalSamples;
         const actualSampleRate = this.depthSamplesTarget.value;
         const brightnessFactor = optimalSampleRate / actualSampleRate;
-        this.lastUsedSampleRate = Math.max(actualSampleRate, optimalSampleRate);
         gl.uniform1f(shader.uniform("uBrightnessFactor"), brightnessFactor);
         const nearLimitFraction = (adjustedNear - near) / (far - near);
         const farLimitFraction = (adjustedFar - near) / (far - near);
@@ -901,6 +992,15 @@ void main() {
               shader.uniform("uChunkDataSize"),
               chunkDataDisplaySize,
             );
+            const thisChunkRes = Math.max(...chunkDataDisplaySize);
+            chunkRes = Math.max(
+              Math.sqrt(
+                thisChunkRes * thisChunkRes +
+                  thisChunkRes * thisChunkRes +
+                  thisChunkRes * thisChunkRes,
+              ),
+              chunkRes,
+            );
           }
           const { chunkGridPosition } = chunk;
           for (let i = 0; i < 3; ++i) {
@@ -929,9 +1029,12 @@ void main() {
             chunkDataDisplaySize,
             chunkPosition,
             modelViewProjection,
+            transformedSource.lowerClipDisplayBound,
+            transformedSource.upperClipDisplayBound,
           );
-          console.log(ndcCube);
-
+          //console.log("NDC cube: ", ndcCube);
+          const largestDiagonal = findLargestDiagonal(ndcCube);
+          tempMax = Math.max(tempMax, largestDiagonal);
           drawBoxes(gl, 1, 1);
           ++presentCount;
         } else {
@@ -939,6 +1042,10 @@ void main() {
         }
       },
     );
+    console.log("Max diagonal: ", tempMax);
+    this.lastUsedSampleRate = (4 / tempMax) * chunkRes;
+    tempMax = 0.0;
+    chunkRes = 0.0;
     gl.disable(WebGL2RenderingContext.CULL_FACE);
     endShader();
     this.vertexIdHelper.disable();

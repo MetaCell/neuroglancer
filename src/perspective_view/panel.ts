@@ -1014,12 +1014,13 @@ export class PerspectivePanel extends RenderedDataPanel {
             Math.min(volumeRenderingDownsampleFactorBasedOnSize, ratio),
             1,
           );
-          console.log(volumeRenderingDownsampleFactorBasedOnSize);
         }
       }
       if (volumeRenderingDownsampleFactorBasedOnSize === 1000) {
         volumeRenderingDownsampleFactorBasedOnSize = 1;
       }
+      console.log(volumeRenderingDownsampleFactorBasedOnSize);
+      volumeRenderingDownsampleFactorBasedOnSize = 4;
       
       let volumeRenderingDownsampleFactorBasedOnFramerate = 1;
       if (this.shouldCheckFrameRate) {
