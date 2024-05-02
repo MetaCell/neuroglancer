@@ -71,6 +71,37 @@ no_gain_screenshot = None
 gain_screenshot = None
 
 @pytest.mark.timeout(600)
+@pytest.mark.gain_value(10)
+def test_gain(shared_webdriver):
+    global gain_screenshot
+    global gain_avg
+    shared_webdriver.sync()
+    sleep(2)
+    WebDriverWait(shared_webdriver.driver, 60).until(
+        lambda driver: driver.execute_script('return document.readyState') == 'complete'
+    )
+    sleep(3)
+    print("Layer loaded")
+    canvas_element = WebDriverWait(shared_webdriver.driver, 10).until(
+        EC.presence_of_element_located((By.CLASS_NAME, 'neuroglancer-layer-group-viewer'))
+    )
+    sleep(3)
+    screenshot = canvas_element.screenshot_as_png
+    with open('gain_screenshot.png', 'wb') as file:
+        file.write(screenshot)
+    sleep(3)
+    print("Screenshot taken")
+     # Convert the screenshot to a NumPy array
+    image = Image.open(io.BytesIO(screenshot))
+    gain_screenshot = np.array(image)
+    assert gain_screenshot.size != 0, "Image is empty"
+    # Check if the image contains valid pixel values
+    assert np.all(gain_screenshot >= 0) and np.all(gain_screenshot <= 255), "Image contains invalid pixel values"
+    gain_avg = np.mean(gain_screenshot)
+    print('Gain average pixel value:')
+    print(gain_avg)
+  
+@pytest.mark.timeout(600)
 @pytest.mark.gain_value(0)
 def test_no_gain(shared_webdriver):
     
@@ -92,9 +123,10 @@ def test_no_gain(shared_webdriver):
     canvas_element = WebDriverWait(shared_webdriver.driver, 10).until(
         EC.presence_of_element_located((By.CLASS_NAME, 'neuroglancer-layer-group-viewer'))
     )
+    sleep(3)
     screenshot = canvas_element.screenshot_as_png
-    # with open('no_gain_screenshot.png', 'wb') as file:
-    #     file.write(screenshot)
+    with open('no_gain_screenshot.png', 'wb') as file:
+        file.write(screenshot)
     sleep(3)
     print("Screenshot taken")
      # Convert the screenshot to a NumPy array
@@ -109,36 +141,7 @@ def test_no_gain(shared_webdriver):
   
 
     
-@pytest.mark.timeout(600)
-@pytest.mark.gain_value(10)
-def test_gain(shared_webdriver):
-    global gain_screenshot
-    global gain_avg
-    shared_webdriver.sync()
-    sleep(2)
-    WebDriverWait(shared_webdriver.driver, 60).until(
-        lambda driver: driver.execute_script('return document.readyState') == 'complete'
-    )
-    sleep(3)
-    print("Layer loaded")
-    canvas_element = WebDriverWait(shared_webdriver.driver, 10).until(
-        EC.presence_of_element_located((By.CLASS_NAME, 'neuroglancer-layer-group-viewer'))
-    )
-    screenshot = canvas_element.screenshot_as_png
-    # with open('gain_screenshot.png', 'wb') as file:
-    #     file.write(screenshot)
-    sleep(3)
-    print("Screenshot taken")
-     # Convert the screenshot to a NumPy array
-    image = Image.open(io.BytesIO(screenshot))
-    gain_screenshot = np.array(image)
-    assert gain_screenshot.size != 0, "Image is empty"
-    # Check if the image contains valid pixel values
-    assert np.all(gain_screenshot >= 0) and np.all(gain_screenshot <= 255), "Image contains invalid pixel values"
-    gain_avg = np.mean(gain_screenshot)
-    print('Gain average pixel value:')
-    print(gain_avg)
-  
+
 
 @pytest.mark.timeout(10)
 def test_gain_difference():
