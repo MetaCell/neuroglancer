@@ -13,7 +13,6 @@
 # limitations under the License.
 """Wrappers for representing the Neuroglancer viewer state."""
 
-
 import collections
 import collections.abc
 import copy
@@ -33,6 +32,7 @@ from .json_wrappers import (
     TypedList,
     TypedStringMap,
     array_wrapper,
+    bool_or_string,
     number_or_string,
     optional,
     text_type,
@@ -165,9 +165,9 @@ class OpacityTool(Tool):
 
 
 @export_tool
-class VolumeRenderingTool(Tool):
+class VolumeRenderingModeTool(Tool):
     __slots__ = ()
-    TOOL_TYPE = "volumeRendering"
+    TOOL_TYPE = "volumeRenderingMode"
 
 
 @export_tool
@@ -518,6 +518,16 @@ class InvlerpParameters(JsonObjectWrapper):
     channel = wrapped_property("channel", optional(typed_list(int)))
 
 
+@export
+class TransferFunctionParameters(JsonObjectWrapper):
+    window = wrapped_property("window", optional(array_wrapper(numbers.Number, 2)))
+    channel = wrapped_property("channel", optional(typed_list(int)))
+    controlPoints = wrapped_property(
+        "controlPoints", optional(typed_list(typed_list(number_or_string)))
+    )
+    defaultColor = wrapped_property("defaultColor", optional(str))
+
+
 _UINT64_STR_PATTERN = re.compile("[0-9]+")
 
 
@@ -530,8 +540,12 @@ def _shader_control_parameters(v, _readonly=False):
     if isinstance(v, numbers.Number):
         return v
     if isinstance(v, dict):
+        if "controlPoints" in v:
+            return TransferFunctionParameters(v, _readonly=_readonly)
         return InvlerpParameters(v, _readonly=_readonly)
     if isinstance(v, InvlerpParameters):
+        return v
+    if isinstance(v, TransferFunctionParameters):
         return v
     raise TypeError(f"Unexpected shader control parameters type: {type(v)}")
 
@@ -555,8 +569,8 @@ class ImageLayer(Layer, _AnnotationLayerOptions):
     )
     opacity = wrapped_property("opacity", optional(float, 0.5))
     blend = wrapped_property("blend", optional(str))
-    volume_rendering = volumeRendering = wrapped_property(
-        "volumeRendering", optional(bool, False)
+    volume_rendering_mode = volumeRenderingMode = VolumeRendering = volume_rendering = (
+        wrapped_property("volumeRendering", optional(bool_or_string, False))
     )
     volume_rendering_gain = volumeRenderingGain = wrapped_property(
         "volumeRenderingGain", optional(float, 0)
@@ -1138,10 +1152,7 @@ class ManagedLayer(JsonObjectWrapper):
             return setattr(self.layer, key, value)
 
     def __repr__(self):
-        return "ManagedLayer({},{})".format(
-            encode_json_for_repr(self.name),
-            encode_json_for_repr(self.to_json()),
-        )
+        return f"ManagedLayer({encode_json_for_repr(self.name)},{encode_json_for_repr(self.to_json())})"
 
     def to_json(self):
         r = self.layer.to_json()
@@ -1648,9 +1659,9 @@ class ViewerState(JsonObjectWrapper):
     projection_depth = projectionDepth = wrapped_property(
         "projectionDepth", optional(float)
     )
-    projection_orientation = (
-        projectionOrientation
-    ) = perspectiveOrientation = perspective_orientation = wrapped_property(
+    projection_orientation = projectionOrientation = perspectiveOrientation = (
+        perspective_orientation
+    ) = wrapped_property(
         "projectionOrientation", optional(array_wrapper(np.float32, 4))
     )
     show_slices = showSlices = wrapped_property("showSlices", optional(bool, True))

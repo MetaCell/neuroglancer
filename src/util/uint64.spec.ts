@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-import { Uint64 } from "#/util/uint64";
+import { describe, it, expect } from "vitest";
+import { Uint64 } from "#src/util/uint64.js";
 
 describe("uint64", () => {
   it("less", () => {
@@ -40,6 +41,7 @@ describe("uint64", () => {
     expect(new Uint64(4294967295, 4294967295).toString(36)).toEqual(
       "3w5e11264sgsf",
     );
+    expect(new Uint64(0, 79741775).toString(29)).toEqual("s2276dsssss2");
   });
 
   it("conversion from string", () => {
@@ -83,13 +85,11 @@ describe("uint64", () => {
   it("parseString toString round trip", () => {
     function check(s: string, base: number) {
       const x = Uint64.parseString(s, base);
-      expect(x.valid()).toBe(
-        true,
-        `low=${x.low}, high=${x.high}, toString(${base}) = ${x.toString(
-          base,
-        )}, s=${s}`,
-      );
-      expect(x.toString(base)).toEqual(s);
+      const message = `low=${x.low}, high=${x.high}, toString(${base}) = ${x.toString(
+        base,
+      )}, s=${s}`;
+      expect(x.valid(), message).toBe(true);
+      expect(x.toString(base), message).toEqual(s);
     }
     check("0", 10);
     check("1", 10);
@@ -102,14 +102,8 @@ describe("uint64", () => {
     function check(x: Uint64, base: number) {
       const s = x.toString(base);
       const y = Uint64.parseString(s, base);
-      expect(y.low).toBe(
-        x.low,
-        `s=${s}, x.low=${x.low}, x.high=${x.high}, y.low=${y.low}, y.high=${y.high}, base=${base}`,
-      );
-      expect(y.high).toBe(
-        x.high,
-        `s=${s}, x.low=${x.low}, x.high=${x.high}, y.low=${y.low}, y.high=${y.high}, base=${base}`,
-      );
+      const message = `s=${s}, x.low=${x.low}, x.high=${x.high}, y.low=${y.low}, y.high=${y.high}, base=${base}`;
+      expect([y.low, y.high], message).toEqual([x.low, x.high]);
     }
     const count = 100;
     {
@@ -117,7 +111,7 @@ describe("uint64", () => {
       expect(u.toString(13)).toEqual("153c9125c642b111b8");
       check(u, 13);
     }
-
+    check(new Uint64(0, 79741775), 29);
     for (let base = 2; base <= 36; ++base) {
       for (let i = 0; i < count; ++i) {
         check(Uint64.random(), base);
