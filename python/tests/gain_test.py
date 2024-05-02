@@ -50,7 +50,7 @@ def add_image_layer(state, **kwargs):
         panels=[add_render_panel()],
         **kwargs,
     )
-    state.layout = "3d"
+    # state.layout = "3d"
 
 def get_shader():
     return """
