@@ -56,8 +56,9 @@ import {
 import {
   getFrustrumPlanes,
   mat4,
-  transformVectorByMat4,
+  transformVectorFourByMat4,
   vec3,
+  vec4,
   //vec4,
 } from "#src/util/geom.js";
 import { clampToInterval } from "#src/util/lerp.js";
@@ -148,8 +149,6 @@ function modelToNDC(
   chunkDataSize: vec3,
   chunkPosition: vec3,
   modelViewProjection: mat4,
-  screenWidth: number,
-  screenHeight: number,
 ): vec3[] {
   const ndcCube: vec3[] = [];
 
@@ -158,20 +157,20 @@ function modelToNDC(
     const multiplied = vec3.multiply(vec3.create(), vertex, chunkDataSize);
     const position = vec3.add(vec3.create(), chunkPosition, multiplied);
 
-    // const modelTransformedVertex: vec4 = vec4.fromValues(
-    //   position[0],
-    //   position[1],
-    //   position[2],
-    //   1,
-    // );
+    const modelTransformedVertex: vec4 = vec4.fromValues(
+      position[0],
+      position[1],
+      position[2],
+      1.0,
+    );
     // const modelViewProjectionM = {
     //   elements: modelViewProjection,
     // };
-
-    // const clipTransformedVertex = multiplyMatrixVector(
-    //   modelViewProjectionM,
-    //   modelTransformedVertex,
-    // );
+    const clipTransformedVertex = transformVectorFourByMat4(
+      vec4.create(),
+      modelTransformedVertex,
+      mat4.transpose(mat4.create(), modelViewProjection),
+    );
 
     // Clip to NDC
     // const ndcVertex = vec3.fromValues(
@@ -179,13 +178,11 @@ function modelToNDC(
     //   clipTransformedVertex[1],
     //   clipTransformedVertex[2],
     // );
-    const ndcVertex = transformVectorByMat4(
-      vec3.create(),
-      position,
-      modelViewProjection,
+    const ndcVertex = vec3.fromValues(
+      clipTransformedVertex[0] / clipTransformedVertex[3],
+      clipTransformedVertex[1] / clipTransformedVertex[3],
+      clipTransformedVertex[2] / clipTransformedVertex[3],
     );
-
-    console.log(screenWidth, screenHeight);
 
     ndcCube.push(ndcVertex);
   });
@@ -927,16 +924,11 @@ void main() {
           newSource = false;
           gl.uniform3fv(shader.uniform("uTranslation"), chunkPosition);
 
-          const screenWidth = renderContext.projectionParameters.width;
-          const screenHeight = renderContext.projectionParameters.height;
-
           const ndcCube = modelToNDC(
             cube,
             chunkDataDisplaySize,
             chunkPosition,
             modelViewProjection,
-            screenWidth,
-            screenHeight,
           );
           console.log(ndcCube);
 
