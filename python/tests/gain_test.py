@@ -85,7 +85,6 @@ def test_gain(shared_webdriver):
     canvas_element = WebDriverWait(shared_webdriver.driver, 10).until(
         EC.presence_of_element_located((By.CLASS_NAME, 'neuroglancer-layer-group-viewer'))
     )
-    sleep(3)
     screenshot = canvas_element.screenshot_as_png
     with open('gain_screenshot.png', 'wb') as file:
         file.write(screenshot)
@@ -123,7 +122,6 @@ def test_no_gain(shared_webdriver):
     canvas_element = WebDriverWait(shared_webdriver.driver, 10).until(
         EC.presence_of_element_located((By.CLASS_NAME, 'neuroglancer-layer-group-viewer'))
     )
-    sleep(3)
     screenshot = canvas_element.screenshot_as_png
     with open('no_gain_screenshot.png', 'wb') as file:
         file.write(screenshot)
