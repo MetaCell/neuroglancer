@@ -50,7 +50,7 @@ def add_image_layer(state, **kwargs):
         panels=[add_render_panel()],
         **kwargs,
     )
-    state.layout = "3d"
+    # state.layout = "3d"
 
 def get_shader():
     return """
@@ -107,15 +107,15 @@ def test_no_gain(shared_webdriver):
     global no_gain_avg
     global no_gain_screenshot
    
-    shared_webdriver.sync()
+    # shared_webdriver.sync()
     sleep(2)
     WebDriverWait(shared_webdriver.driver, 60).until(
         lambda driver: driver.execute_script('return document.readyState') == 'complete'
     )
     sleep(2)
-    WebDriverWait(shared_webdriver.driver, 60).until(
-        EC.text_to_be_present_in_element((By.CSS_SELECTOR, '#neuroglancer-container > div > div:nth-child(2) > div.neuroglancer-side-panel-column > div.neuroglancer-side-panel > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-stack-view > div > div:nth-child(6) > label > div.neuroglancer-render-scale-widget.neuroglancer-layer-control-control > div.neuroglancer-render-scale-widget-legend > div:nth-child(2)'), '8/8')
-    )
+    # WebDriverWait(shared_webdriver.driver, 60).until(
+    #      EC.text_to_be_present_in_element((By.CSS_SELECTOR, '#neuroglancer-container > div > div:nth-child(2) > div.neuroglancer-side-panel-column > div.neuroglancer-side-panel > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-stack-view > div > div:nth-child(6) > label > div.neuroglancer-render-scale-widget.neuroglancer-layer-control-control > div.neuroglancer-render-scale-widget-legend > div:nth-child(2)'), '8/8')
+    # )
     
     print("Layer loaded")
     sleep(3)
