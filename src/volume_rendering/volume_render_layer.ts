@@ -238,13 +238,22 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
 `);
           let glsl_rgbaEmit = glsl_emitRGBAVolumeRendering;
           let glsl_finalEmit = `
-  emitAccumRevealageDepthIntensityPick(outputColor, 1.0 - revealage, 0.0, 1.0, 0u);
+  emitAccumRevealageDepthIntensityPick(outputColor, 1.0 - revealage, maxDepth, maxIntensity, 0u);
 `;
           let glsl_emitIntensity = `
 void emitIntensity(float value) {
 }
 `;
-          let glsl_handleMaxProjectionUpdate = ``;
+          let glsl_handleMaxProjectionUpdate = `
+float intensity = getIntensity();
+bool intensityChanged = intensity > maxIntensity;
+if (intensityChanged) {
+  maxDepth = depthAtRayPosition;
+}
+maxIntensity = max(maxIntensity, intensity);
+userEmittedIntensity = -100.0;
+defaultMaxProjectionIntensity = 0.0;
+`;
           if (isProjectionMode(shaderParametersState.mode)) {
             const glsl_intensityConversion =
               shaderParametersState.mode === VolumeRenderingModes.MIN
@@ -287,6 +296,16 @@ void emitRGBA(vec4 rgba) {
   defaultMaxProjectionIntensity = 0.0;
   userEmittedIntensity = -100.0;
 `;
+          } else {
+            builder.addFragmentCode(`
+            float userEmittedIntensity = -100.0;
+            float convertIntensity(float value) {
+              return clamp(value, 0.0, 1.0);
+            }
+            float getIntensity() {
+              float intensity = userEmittedIntensity > -100.0 ? userEmittedIntensity : defaultMaxProjectionIntensity;
+              return convertIntensity(intensity);
+            }`);
           }
           emitter(builder);
           // Near limit in [0, 1] as fraction of full limit.
@@ -332,6 +351,8 @@ float depthAtRayPosition;
 vec4 outputColor;
 float revealage;
 void userMain();
+float maxIntensity = 0.0;
+float maxDepth = 0.0;
 `);
           defineChunkDataShaderAccess(
             builder,
