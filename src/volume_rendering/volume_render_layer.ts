@@ -238,34 +238,37 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
 `);
           let glsl_rgbaEmit = glsl_emitRGBAVolumeRendering;
           let glsl_finalEmit = `
-  emitAccumRevealageDepthIntensityPick(outputColor, 1.0 - revealage, maxDepth, maxIntensity, 0u);
+  emitAccumRevealageDepthIntensityPick(outputColor, 1.0 - revealage, savedDepth,  savedIntensity, uPickId);
 `;
-          let glsl_emitIntensity = `
-void emitIntensity(float value) {
-}
-`;
-          let glsl_handleMaxProjectionUpdate = `
-float intensity = getIntensity();
-bool intensityChanged = intensity > maxIntensity;
-if (intensityChanged) {
-  maxDepth = depthAtRayPosition;
-}
-maxIntensity = max(maxIntensity, intensity);
-userEmittedIntensity = -100.0;
-defaultMaxProjectionIntensity = 0.0;
-`;
+          let glsl_updateMaxProjection = ``;
           if (isProjectionMode(shaderParametersState.mode)) {
-            const glsl_intensityConversion =
-              shaderParametersState.mode === VolumeRenderingModes.MIN
-                ? `1.0 - value`
-                : `value`;
             builder.addFragmentCode(`
+vec4 newColor = vec4(0.0);
+`);
+            glsl_rgbaEmit = `
+void emitRGBA(vec4 rgba) {
+float alpha = clamp(rgba.a, 0.0, 1.0);
+newColor = vec4(rgba.rgb * alpha, alpha);
+}
+`;
+            glsl_finalEmit = `
+  gl_FragDepth = savedIntensity;
+`;
+            glsl_updateMaxProjection = `
+outputColor = intensityChanged ? newColor : outputColor;
+emit(outputColor, savedDepth, savedIntensity, uPickId);
+`;
+          }
+          const glsl_intensityConversion =
+            shaderParametersState.mode === VolumeRenderingModes.MIN
+              ? `1.0 - value`
+              : `value`;
+          builder.addFragmentCode(`
 float savedDepth = 0.0;
 float savedIntensity = 0.0;
-vec4 newColor = vec4(0.0);
 float userEmittedIntensity = -100.0;
 `);
-            glsl_emitIntensity = `
+          const glsl_emitIntensity = `
 float convertIntensity(float value) {
   return clamp(${glsl_intensityConversion}, 0.0, 1.0);
 }
@@ -277,36 +280,15 @@ float getIntensity() {
   return convertIntensity(intensity);
 }
 `;
-            glsl_rgbaEmit = `
-void emitRGBA(vec4 rgba) {
-  float alpha = clamp(rgba.a, 0.0, 1.0);
-  newColor = vec4(rgba.rgb * alpha, alpha);
-}
-`;
-            glsl_finalEmit = `
-  gl_FragDepth = savedIntensity;
-`;
-            glsl_handleMaxProjectionUpdate = `
+          const glsl_handleMaxProjectionUpdate = `
   float newIntensity = getIntensity();
   bool intensityChanged = newIntensity > savedIntensity;
   savedIntensity = intensityChanged ? newIntensity : savedIntensity; 
   savedDepth = intensityChanged ? depthAtRayPosition : savedDepth;
-  outputColor = intensityChanged ? newColor : outputColor;
-  emit(outputColor, savedDepth, savedIntensity, uPickId);
+  ${glsl_updateMaxProjection}
   defaultMaxProjectionIntensity = 0.0;
   userEmittedIntensity = -100.0;
 `;
-          } else {
-            builder.addFragmentCode(`
-            float userEmittedIntensity = -100.0;
-            float convertIntensity(float value) {
-              return clamp(value, 0.0, 1.0);
-            }
-            float getIntensity() {
-              float intensity = userEmittedIntensity > -100.0 ? userEmittedIntensity : defaultMaxProjectionIntensity;
-              return convertIntensity(intensity);
-            }`);
-          }
           emitter(builder);
           // Near limit in [0, 1] as fraction of full limit.
           builder.addUniform("highp float", "uNearLimitFraction");
@@ -646,9 +628,7 @@ void main() {
     gl.enable(WebGL2RenderingContext.CULL_FACE);
     gl.cullFace(WebGL2RenderingContext.FRONT);
 
-    const pickId = isProjectionMode(this.mode.value)
-      ? renderContext.pickIDs.register(this)
-      : 0;
+    const pickId = renderContext.pickIDs.register(this);
     forEachVisibleVolumeRenderingChunk(
       renderContext.projectionParameters,
       this.localPosition.value,
