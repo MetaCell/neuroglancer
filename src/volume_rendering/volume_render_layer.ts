@@ -238,7 +238,7 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
 `);
           let glsl_rgbaEmit = glsl_emitRGBAVolumeRendering;
           let glsl_finalEmit = `
-  emitAccumAndRevealage(outputColor, 1.0 - revealage, 0u);
+  emitAccumRevealageDepthIntensityPick(outputColor, 1.0 - revealage, 0.0, 1.0, 0u);
 `;
           let glsl_emitIntensity = `
 void emitIntensity(float value) {
