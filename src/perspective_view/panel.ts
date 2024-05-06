@@ -161,9 +161,9 @@ export function perspectivePanelEmit(builder: ShaderBuilder) {
 export function perspectivePanelEmitOIT(builder: ShaderBuilder) {
   builder.addOutputBuffer("vec4", "v4f_fragData0", 0);
   builder.addOutputBuffer("vec4", "v4f_fragData1", 1);
-  builder.addOutputBuffer("vec4", "v4f_fragData2", 2);
-  builder.addOutputBuffer("vec4", "v4f_fragData3", 3);
-  builder.addOutputBuffer("vec4", "v4f_fragData4", 4);
+  builder.addOutputBuffer("highp vec4", "v4f_fragData2", 2);
+  builder.addOutputBuffer("highp vec4", "v4f_fragData3", 3);
+  builder.addOutputBuffer("highp vec4", "v4f_fragData4", 4);
   builder.addFragmentCode(glsl_perspectivePanelEmitOIT);
 }
 
@@ -204,9 +204,9 @@ v4f_fragColor = vec4(accum.rgb / accum.a, revealage);
 function defineMaxProjectionColorCopyShader(builder: ShaderBuilder) {
   builder.addOutputBuffer("vec4", "v4f_fragData0", 0);
   builder.addOutputBuffer("vec4", "v4f_fragData1", 1);
-  builder.addOutputBuffer("vec4", "v4f_fragData2", 2);
-  builder.addOutputBuffer("vec4", "v4f_fragData3", 3);
-  builder.addOutputBuffer("vec4", "v4f_fragData4", 4);
+  builder.addOutputBuffer("highp vec4", "v4f_fragData2", 2);
+  builder.addOutputBuffer("highp vec4", "v4f_fragData3", 3);
+  builder.addOutputBuffer("highp vec4", "v4f_fragData4", 4);
   builder.addFragmentCode(glsl_perspectivePanelEmitOIT);
   builder.setFragmentMain(`
 vec4 color = getValue0();
