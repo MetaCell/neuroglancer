@@ -22,6 +22,7 @@ import type {
 } from "#src/renderlayer.js";
 import { VisibilityTrackedRenderLayer } from "#src/renderlayer.js";
 import type { vec3 } from "#src/util/geom.js";
+import type {DepthRenderbuffer, DepthTextureBuffer, FramebufferConfiguration, OffscreenCopyHelper, TextureBuffer} from "#src/webgl/offscreen.js";
 import type { ShaderModule } from "#src/webgl/shader.js";
 import type { SharedObject } from "#src/worker_rpc.js";
 
@@ -55,6 +56,12 @@ export interface PerspectiveViewRenderContext
    * Specifies the ID of the depth frame buffer texture to query during rendering.
    */
   depthBufferTexture?: WebGLTexture | null;
+
+  transparentConfiguration?: FramebufferConfiguration<TextureBuffer, DepthTextureBuffer | DepthRenderbuffer>;
+
+  maxProjectionToPickCopyHelper?: OffscreenCopyHelper;
+
+  bindMaxProjectionPickingBuffer?: () => void;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging

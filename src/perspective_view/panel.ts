@@ -1069,6 +1069,10 @@ export class PerspectivePanel extends RenderedDataPanel {
         WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA,
       );
       renderContext.emitPickID = false;
+      renderContext.transparentConfiguration = transparentConfiguration;
+      renderContext.maxProjectionToPickCopyHelper =
+        this.maxProjectionToPickCopyHelper;
+      renderContext.bindMaxProjectionPickingBuffer = bindMaxProjectionPickingBuffer;
       for (const [renderLayer, attachment] of visibleLayers) {
         if (renderLayer.isTransparent) {
           renderContext.depthBufferTexture =
@@ -1136,24 +1140,6 @@ export class PerspectivePanel extends RenderedDataPanel {
         // Draw regular transparent layers
         else if (renderLayer.isTransparent) {
           renderLayer.draw(renderContext, attachment);
-          bindMaxProjectionPickingBuffer();
-          gl.depthMask(true);
-          gl.disable(WebGL2RenderingContext.BLEND);
-          gl.depthFunc(WebGL2RenderingContext.GREATER);
-          this.maxProjectionToPickCopyHelper.draw(
-            this.transparentConfiguration.colorBuffers[2 /*depth*/].texture,
-            this.transparentConfiguration.colorBuffers[3 /*intensity*/].texture,
-            this.transparentConfiguration.colorBuffers[4 /*pick*/].texture,
-          );
-          this.transparentConfiguration.bindSingle(2);
-          gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
-          this.transparentConfiguration.bindSingle(3);
-          gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
-          this.transparentConfiguration.bindSingle(4);
-          gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
-          renderContext.bindFramebuffer();
-          gl.enable(WebGL2RenderingContext.BLEND);
-          gl.depthFunc(WebGL2RenderingContext.LESS);
         }
       }
       // Copy transparent rendering result back to primary buffer.
@@ -1267,7 +1253,7 @@ export class PerspectivePanel extends RenderedDataPanel {
     // Draw the texture over the whole viewport.
     this.setGLClippedViewport();
     this.offscreenCopyHelper.draw(
-      this.offscreenFramebuffer.colorBuffers[OffscreenTextures.Z].texture,
+      this.offscreenFramebuffer.colorBuffers[OffscreenTextures.COLOR].texture,
     );
     return true;
   }

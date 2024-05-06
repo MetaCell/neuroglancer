@@ -808,6 +808,36 @@ void main() {
           gl.uniform3fv(shader.uniform("uTranslation"), chunkPosition);
           gl.uniform1ui(shader.uniform("uPickId"), pickId);
           drawBoxes(gl, 1, 1);
+          if (!isProjectionMode(this.mode.value)) {
+            gl.depthMask(true);
+            gl.disable(WebGL2RenderingContext.BLEND);
+            gl.depthFunc(WebGL2RenderingContext.GREATER);
+            this.vertexIdHelper.disable();
+            renderContext.bindMaxProjectionPickingBuffer!();
+            renderContext.maxProjectionToPickCopyHelper!.draw(
+              renderContext.transparentConfiguration!.colorBuffers[2 /*depth*/]
+                .texture,
+              renderContext.transparentConfiguration!
+                .colorBuffers[3 /*intensity*/].texture,
+              renderContext.transparentConfiguration!.colorBuffers[4 /*pick*/]
+                .texture,
+            );
+            renderContext.transparentConfiguration!.bindSingle(2);
+            gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
+            renderContext.transparentConfiguration!.bindSingle(3);
+            gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
+            renderContext.transparentConfiguration!.bindSingle(4);
+            gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
+            renderContext.bindFramebuffer();
+            this.vertexIdHelper.enable();
+            gl.enable(WebGL2RenderingContext.BLEND);
+            gl.depthFunc(WebGL2RenderingContext.LESS);
+            gl.depthMask(false);
+            const chunkFormat = transformedSource.source.chunkFormat;
+            // TODO (skm can I overcome calling this?)
+            chunkFormat.beginDrawing(gl, shader);
+            shader.bind();
+          }
           ++presentCount;
         } else {
           ++notPresentCount;
