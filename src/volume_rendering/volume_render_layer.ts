@@ -832,11 +832,14 @@ void main() {
               renderContext.transparentConfiguration!.colorBuffers[4 /*pick*/]
                 .texture,
             );
-            renderContext.transparentConfiguration!.bindSingle(2);
-            gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
-            renderContext.transparentConfiguration!.bindSingle(3);
-            gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
-            renderContext.transparentConfiguration!.bindSingle(4);
+            renderContext.bindFramebuffer();
+            gl.drawBuffers([
+              gl.NONE,
+              gl.NONE,
+              gl.COLOR_ATTACHMENT2,
+              gl.COLOR_ATTACHMENT3,
+              gl.COLOR_ATTACHMENT4,
+            ]);
             gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
             renderContext.bindFramebuffer();
             this.vertexIdHelper.enable();
@@ -845,6 +848,13 @@ void main() {
             gl.depthMask(false);
             const chunkFormat = transformedSource.source.chunkFormat;
             bindChunkDrawing(chunkFormat);
+            gl.drawBuffers([
+              gl.COLOR_ATTACHMENT0,
+              gl.COLOR_ATTACHMENT1,
+              gl.COLOR_ATTACHMENT2,
+              gl.COLOR_ATTACHMENT3,
+              gl.COLOR_ATTACHMENT4,
+            ]);
           }
           ++presentCount;
         } else {
