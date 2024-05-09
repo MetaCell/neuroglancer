@@ -130,18 +130,18 @@ export const glsl_perspectivePanelEmitOIT = [
 void emitAccumAndRevealage(vec4 accum, float revealage, highp uint pickId) {
   v4f_fragData0 = vec4(accum.rgb, revealage);
   v4f_fragData1 = vec4(accum.a, 0.0, 0.0, 0.0);
-  v4f_fragData2 = vec4(0.0);
-  v4f_fragData3 = vec4(0.0);
-  v4f_fragData4 = vec4(0.0);
+  out_z = vec4(0.0);
+  out_intensity  = vec4(0.0);
+  out_pickId = vec4(0.0);
 }
 void emitAccumRevealageDepthIntensityPick(vec4 accum, float revealage, float depth, float intensity, highp uint pickId) {
   v4f_fragData0 = vec4(accum.rgb, revealage);
   v4f_fragData1 = vec4(accum.a, 0.0, 0.0, 0.0);
   float bufferDepth = 1.0 - depth;
-  v4f_fragData2 = vec4(bufferDepth, bufferDepth, bufferDepth, 1.0);
-  v4f_fragData3 = vec4(intensity, intensity, intensity, 1.0);
+  out_z = vec4(bufferDepth, bufferDepth, bufferDepth, 1.0);
+  out_intensity = vec4(intensity, intensity, intensity, 1.0);
   float pickIdFloat = float(pickId);
-  v4f_fragData4 = vec4(pickIdFloat, pickIdFloat, pickIdFloat, 1.0);
+  out_pickId = vec4(pickIdFloat, pickIdFloat, pickIdFloat, 1.0);
 }
 void emit(vec4 color, highp uint pickId) {
   float weight = computeOITWeight(color.a, gl_FragCoord.z);
@@ -161,25 +161,25 @@ export function perspectivePanelEmit(builder: ShaderBuilder) {
 export function perspectivePanelEmitOIT(builder: ShaderBuilder) {
   builder.addOutputBuffer("vec4", "v4f_fragData0", 0);
   builder.addOutputBuffer("vec4", "v4f_fragData1", 1);
-  builder.addOutputBuffer("highp vec4", "v4f_fragData2", 2);
-  builder.addOutputBuffer("highp vec4", "v4f_fragData3", 3);
-  builder.addOutputBuffer("highp vec4", "v4f_fragData4", 4);
+  builder.addOutputBuffer("highp vec4", "out_z", 2);
+  builder.addOutputBuffer("highp vec4", "out_intensity", 3);
+  builder.addOutputBuffer("highp vec4", "out_pickId", 4);
   builder.addFragmentCode(glsl_perspectivePanelEmitOIT);
 }
 
 export function maxProjectionEmit(builder: ShaderBuilder) {
-  builder.addOutputBuffer("vec4", "v4f_fragData0", 0);
-  builder.addOutputBuffer("highp vec4", "v4f_fragData1", 1);
-  builder.addOutputBuffer("highp vec4", "v4f_fragData2", 2);
-  builder.addOutputBuffer("highp vec4", "v4f_fragData3", 3);
+  builder.addOutputBuffer("vec4", "out_color", 0);
+  builder.addOutputBuffer("highp vec4", "out_z", 1);
+  builder.addOutputBuffer("highp vec4", "out_intensity", 2);
+  builder.addOutputBuffer("highp vec4", "out_pickId", 3);
   builder.addFragmentCode(`
 void emit(vec4 color, float depth, float intensity, highp uint pickId) {
   float pickIdFloat = float(pickId);
   float bufferDepth = 1.0 - depth;
-  v4f_fragData0 = color;
-  v4f_fragData1 = vec4(bufferDepth, bufferDepth, bufferDepth, 1.0);
-  v4f_fragData2 = vec4(intensity, intensity, intensity, 1.0);
-  v4f_fragData3 = vec4(pickIdFloat, pickIdFloat, pickIdFloat, 1.0);
+  out_color = color;
+  out_z = vec4(bufferDepth, bufferDepth, bufferDepth, 1.0);
+  out_intensity = vec4(intensity, intensity, intensity, 1.0);
+  out_pickId = vec4(pickIdFloat, pickIdFloat, pickIdFloat, 1.0);
 }`);
 }
 
@@ -204,9 +204,9 @@ v4f_fragColor = vec4(accum.rgb / accum.a, revealage);
 function defineMaxProjectionColorCopyShader(builder: ShaderBuilder) {
   builder.addOutputBuffer("vec4", "v4f_fragData0", 0);
   builder.addOutputBuffer("vec4", "v4f_fragData1", 1);
-  builder.addOutputBuffer("highp vec4", "v4f_fragData2", 2);
-  builder.addOutputBuffer("highp vec4", "v4f_fragData3", 3);
-  builder.addOutputBuffer("highp vec4", "v4f_fragData4", 4);
+  builder.addOutputBuffer("highp vec4", "out_z", 2);
+  builder.addOutputBuffer("highp vec4", "out_intensity", 3);
+  builder.addOutputBuffer("highp vec4", "out_pickId", 4);
   builder.addFragmentCode(glsl_perspectivePanelEmitOIT);
   builder.setFragmentMain(`
 vec4 color = getValue0();
@@ -221,13 +221,13 @@ emitAccumAndRevealage(accum, revealage, 0u);
 
 // Copy the max projection depth and pick values to the main buffer
 function defineMaxProjectionPickCopyShader(builder: ShaderBuilder) {
-  builder.addOutputBuffer("vec4", "v4f_fragData0", 0);
-  builder.addOutputBuffer("highp vec4", "v4f_fragData1", 1);
-  builder.addOutputBuffer("highp vec4", "v4f_fragData2", 2);
+  builder.addOutputBuffer("vec4", "out_color", 0);
+  builder.addOutputBuffer("highp vec4", "out_z", 1);
+  builder.addOutputBuffer("highp vec4", "out_pickId", 2);
   builder.setFragmentMain(`
-v4f_fragData0 = vec4(0.0);
-v4f_fragData1 = getValue0();
-v4f_fragData2 = getValue1();
+out_color = vec4(0.0);
+out_z = getValue0();
+out_pickId = getValue1();
 `);
 }
 
@@ -236,11 +236,11 @@ v4f_fragData2 = getValue1();
 // This is to combine max projection picking data via depth testing
 // on the maximum intensity value of the data.
 function defineMaxProjectionToPickCopyShader(builder: ShaderBuilder) {
-  builder.addOutputBuffer("highp vec4", "v4f_fragData0", 0);
-  builder.addOutputBuffer("highp vec4", "v4f_fragData1", 1);
+  builder.addOutputBuffer("highp vec4", "out_z", 0);
+  builder.addOutputBuffer("highp vec4", "out_pickId", 1);
   builder.setFragmentMain(`
-v4f_fragData0 = getValue0();
-v4f_fragData1 = getValue2();
+out_z = getValue0();
+out_pickId = getValue2();
 gl_FragDepth = getValue1().r;
 `);
 }
@@ -1072,7 +1072,8 @@ export class PerspectivePanel extends RenderedDataPanel {
       renderContext.transparentConfiguration = transparentConfiguration;
       renderContext.maxProjectionToPickCopyHelper =
         this.maxProjectionToPickCopyHelper;
-      renderContext.bindMaxProjectionPickingBuffer = bindMaxProjectionPickingBuffer;
+      renderContext.bindMaxProjectionPickingBuffer =
+        bindMaxProjectionPickingBuffer;
       for (const [renderLayer, attachment] of visibleLayers) {
         if (renderLayer.isTransparent) {
           renderContext.depthBufferTexture =
