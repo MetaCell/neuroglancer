@@ -955,7 +955,7 @@ export class PerspectivePanel extends RenderedDataPanel {
     const { visibleLayers } = this.visibleLayerTracker;
 
     let hasTransparent = false;
-    let hasMaxProjection = false;
+    let hasVolumeRendering = false;
 
     let hasAnnotation = false;
 
@@ -970,9 +970,7 @@ export class PerspectivePanel extends RenderedDataPanel {
       } else {
         hasTransparent = true;
         if (renderLayer.isVolumeRendering) {
-          hasMaxProjection =
-            hasMaxProjection ||
-            isProjectionLayer(renderLayer as VolumeRenderingRenderLayer);
+          hasVolumeRendering = true;
         }
       }
     }
@@ -1023,9 +1021,7 @@ export class PerspectivePanel extends RenderedDataPanel {
       // Create max projection buffer if needed.
       let bindMaxProjectionBuffer: () => void = () => {};
       let bindMaxProjectionPickingBuffer: () => void = () => {};
-      // TODO (SKM) temp override to always bind
-      hasMaxProjection = true;
-      if (hasMaxProjection) {
+      if (hasVolumeRendering) {
         const { maxProjectionConfiguration } = this;
         bindMaxProjectionBuffer = () => {
           maxProjectionConfiguration.bind(width, height);
@@ -1186,18 +1182,19 @@ export class PerspectivePanel extends RenderedDataPanel {
         /*dppass=*/ WebGL2RenderingContext.REPLACE,
       );
       gl.stencilMask(2);
+      if (hasVolumeRendering) {
+        this.maxProjectionPickCopyHelper.draw(
+          this.maxProjectionPickConfiguration.colorBuffers[0].texture /*depth*/,
+          this.maxProjectionPickConfiguration.colorBuffers[1].texture /*pick*/,
+        );
+      }
       for (const [renderLayer, attachment] of visibleLayers) {
-        if (!renderLayer.isTransparent || !renderLayer.transparentPickEnabled) {
+        if (
+          !renderLayer.isTransparent ||
+          !renderLayer.transparentPickEnabled ||
+          renderLayer.isVolumeRendering
+        ) {
           continue;
-        }
-        // For max projection layers, can copy over the pick buffer directly.
-        if (renderLayer.isVolumeRendering) {
-          this.maxProjectionPickCopyHelper.draw(
-            this.maxProjectionPickConfiguration.colorBuffers[0]
-              .texture /*depth*/,
-            this.maxProjectionPickConfiguration.colorBuffers[1]
-              .texture /*pick*/,
-          );
         } else {
           renderLayer.draw(renderContext, attachment);
         }
