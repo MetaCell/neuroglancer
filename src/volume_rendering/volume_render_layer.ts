@@ -612,6 +612,40 @@ void main() {
         );
       }
     };
+    const bindChunkDrawing = (chunkFormat: ChunkFormat) => {
+      if (shader !== null) {
+        shader.bind();
+        if (chunkFormat !== null) {
+          setControlsInShader(
+            gl,
+            shader,
+            this.shaderControlState,
+            shaderResult.parameters.parseResult.controls,
+          );
+          if (
+            renderContext.depthBufferTexture !== undefined &&
+            renderContext.depthBufferTexture !== null
+          ) {
+            const depthTextureUnit = shader.textureUnit(
+              depthSamplerTextureUnit,
+            );
+            gl.activeTexture(
+              WebGL2RenderingContext.TEXTURE0 + depthTextureUnit,
+            );
+            gl.bindTexture(
+              WebGL2RenderingContext.TEXTURE_2D,
+              renderContext.depthBufferTexture,
+            );
+          } else {
+            throw new Error(
+              "Depth buffer texture ID for volume rendering is undefined or null",
+            );
+          }
+          chunkFormat.beginDrawing(gl, shader);
+          chunkFormat.beginSource(gl, shader);
+        }
+      }
+    };
     let newSource = true;
 
     const { projectionParameters } = renderContext;
@@ -667,38 +701,7 @@ void main() {
             wireFrame: renderContext.wireFrame,
           });
           shader = shaderResult.shader;
-          if (shader !== null) {
-            shader.bind();
-            if (chunkFormat !== null) {
-              setControlsInShader(
-                gl,
-                shader,
-                this.shaderControlState,
-                shaderResult.parameters.parseResult.controls,
-              );
-              if (
-                renderContext.depthBufferTexture !== undefined &&
-                renderContext.depthBufferTexture !== null
-              ) {
-                const depthTextureUnit = shader.textureUnit(
-                  depthSamplerTextureUnit,
-                );
-                gl.activeTexture(
-                  WebGL2RenderingContext.TEXTURE0 + depthTextureUnit,
-                );
-                gl.bindTexture(
-                  WebGL2RenderingContext.TEXTURE_2D,
-                  renderContext.depthBufferTexture,
-                );
-              } else {
-                throw new Error(
-                  "Depth buffer texture ID for volume rendering is undefined or null",
-                );
-              }
-              chunkFormat.beginDrawing(gl, shader);
-              chunkFormat.beginSource(gl, shader);
-            }
-          }
+          bindChunkDrawing(chunkFormat);
         }
         chunkDataSize = undefined;
         if (shader === null) return;
@@ -834,9 +837,7 @@ void main() {
             gl.depthFunc(WebGL2RenderingContext.LESS);
             gl.depthMask(false);
             const chunkFormat = transformedSource.source.chunkFormat;
-            // TODO (skm can I overcome calling this?)
-            chunkFormat.beginDrawing(gl, shader);
-            shader.bind();
+            bindChunkDrawing(chunkFormat);
           }
           ++presentCount;
         } else {
