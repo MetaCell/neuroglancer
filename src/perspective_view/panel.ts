@@ -137,11 +137,20 @@ void emitAccumAndRevealage(vec4 accum, float revealage, highp uint pickId) {
 void emitAccumRevealageDepthIntensityPick(vec4 accum, float revealage, float depth, float intensity, highp uint pickId) {
   v4f_fragData0 = vec4(accum.rgb, revealage);
   v4f_fragData1 = vec4(accum.a, 0.0, 0.0, 0.0);
-  float bufferDepth = 1.0 - depth;
-  out_z = vec4(bufferDepth, bufferDepth, bufferDepth, 1.0);
-  out_intensity = vec4(intensity, intensity, intensity, 1.0);
-  float pickIdFloat = float(pickId);
-  out_pickId = vec4(pickIdFloat, pickIdFloat, pickIdFloat, 1.0);
+  bool intensityChanged = intensity > out_intensity.r;
+  float output_depth = intensityChanged ? depth - out_z.r : 0.0;
+  float output_intensity = intensityChanged ? intensity - out_intensity.r : 0.0;
+  out_z = vec4(output_depth, output_depth, output_depth, 1.0);
+  out_intensity = vec4(output_intensity, output_intensity, output_intensity, 1.0);
+  if (out_pickId.r == 0.0) {
+     out_pickId = vec4(float(pickId), 0.0, 0.0, 1.0);
+  }
+  else {
+     out_pickId = vec4(1000.0, 0.0, 0.0, 1.0);
+  }
+  //float pickIdFloat = float(pickId);
+  //float pickIdFloat = float(pickId) - out_pickId.r;
+  //out_pickId = vec4(pickIdFloat, pickIdFloat, pickIdFloat, 1.0);
 }
 void emit(vec4 color, highp uint pickId) {
   float weight = computeOITWeight(color.a, gl_FragCoord.z);
@@ -175,7 +184,7 @@ export function maxProjectionEmit(builder: ShaderBuilder) {
   builder.addFragmentCode(`
 void emit(vec4 color, float depth, float intensity, highp uint pickId) {
   float pickIdFloat = float(pickId);
-  float bufferDepth = 1.0 - depth;
+  float bufferDepth = depth;
   out_color = color;
   out_z = vec4(bufferDepth, bufferDepth, bufferDepth, 1.0);
   out_intensity = vec4(intensity, intensity, intensity, 1.0);
@@ -211,7 +220,7 @@ function defineMaxProjectionColorCopyShader(builder: ShaderBuilder) {
   builder.setFragmentMain(`
 vec4 color = getValue0();
 float bufferDepth = getValue1().r;
-float weight = computeOITWeight(color.a, 1.0 - bufferDepth);
+float weight = computeOITWeight(color.a, bufferDepth);
 vec4 accum = color * weight;
 float revealage = color.a;
 
@@ -239,8 +248,10 @@ function defineMaxProjectionToPickCopyShader(builder: ShaderBuilder) {
   builder.addOutputBuffer("highp vec4", "out_z", 0);
   builder.addOutputBuffer("highp vec4", "out_pickId", 1);
   builder.setFragmentMain(`
-out_z = getValue0();
-out_pickId = getValue2();
+float bufferDepth = 1.0 - getValue0().r;
+out_z = vec4(bufferDepth, bufferDepth, bufferDepth, 1.0);
+float pickId = getValue2().r;
+out_pickId = vec4(pickId, pickId, pickId, 1.0);
 gl_FragDepth = getValue1().r;
 `);
 }
@@ -1036,6 +1047,7 @@ export class PerspectivePanel extends RenderedDataPanel {
         );
 
         const { maxProjectionPickConfiguration } = this;
+        renderContext.tempMaxConfiguration = maxProjectionPickConfiguration;
         bindMaxProjectionPickingBuffer = () => {
           maxProjectionPickConfiguration.bind(width, height);
         };
@@ -1133,6 +1145,34 @@ export class PerspectivePanel extends RenderedDataPanel {
           gl.depthFunc(WebGL2RenderingContext.LESS);
           renderContext.emitter = perspectivePanelEmitOIT;
           renderContext.bindFramebuffer();
+        } else if (renderLayer.isVolumeRendering) {
+          renderLayer.draw(renderContext, attachment);
+          bindMaxProjectionPickingBuffer();
+          gl.disable(WebGL2RenderingContext.BLEND);
+          gl.depthFunc(WebGL2RenderingContext.GREATER);
+          this.maxProjectionToPickCopyHelper.draw(
+            this.transparentConfiguration.colorBuffers[2 /*depth*/].texture,
+            this.transparentConfiguration.colorBuffers[3 /*intensity*/].texture,
+            this.transparentConfiguration.colorBuffers[4 /*pick*/].texture,
+          );
+          renderContext.bindFramebuffer();
+          gl.drawBuffers([
+            gl.NONE,
+            gl.NONE,
+            gl.COLOR_ATTACHMENT2,
+            gl.COLOR_ATTACHMENT3,
+            gl.COLOR_ATTACHMENT4,
+          ]);
+          gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
+          gl.drawBuffers([
+            gl.COLOR_ATTACHMENT0,
+            gl.COLOR_ATTACHMENT1,
+            gl.COLOR_ATTACHMENT2,
+            gl.COLOR_ATTACHMENT3,
+            gl.COLOR_ATTACHMENT4,
+          ]);
+          gl.enable(WebGL2RenderingContext.BLEND);
+          gl.depthFunc(WebGL2RenderingContext.LESS);
         }
         // Draw regular transparent layers
         else if (renderLayer.isTransparent) {
@@ -1251,7 +1291,7 @@ export class PerspectivePanel extends RenderedDataPanel {
     // Draw the texture over the whole viewport.
     this.setGLClippedViewport();
     this.offscreenCopyHelper.draw(
-      this.offscreenFramebuffer.colorBuffers[OffscreenTextures.COLOR].texture,
+      this.offscreenFramebuffer.colorBuffers[OffscreenTextures.Z].texture,
     );
     return true;
   }

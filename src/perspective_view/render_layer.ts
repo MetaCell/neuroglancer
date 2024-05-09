@@ -62,6 +62,8 @@ export interface PerspectiveViewRenderContext
   maxProjectionToPickCopyHelper?: OffscreenCopyHelper;
 
   bindMaxProjectionPickingBuffer?: () => void;
+
+  tempMaxConfiguration?: FramebufferConfiguration<TextureBuffer, DepthTextureBuffer | DepthRenderbuffer>;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging

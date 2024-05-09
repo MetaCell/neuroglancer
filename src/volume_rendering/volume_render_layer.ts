@@ -670,6 +670,7 @@ void main() {
     gl.cullFace(WebGL2RenderingContext.FRONT);
 
     const pickId = renderContext.pickIDs.register(this);
+    console.log("pickId", pickId);
     forEachVisibleVolumeRenderingChunk(
       renderContext.projectionParameters,
       this.localPosition.value,
@@ -818,44 +819,46 @@ void main() {
           gl.uniform3fv(shader.uniform("uTranslation"), chunkPosition);
           gl.uniform1ui(shader.uniform("uPickId"), pickId);
           drawBoxes(gl, 1, 1);
-          if (!isProjectionMode(this.mode.value)) {
-            gl.depthMask(true);
-            gl.disable(WebGL2RenderingContext.BLEND);
-            gl.depthFunc(WebGL2RenderingContext.GREATER);
-            this.vertexIdHelper.disable();
-            renderContext.bindMaxProjectionPickingBuffer!();
-            renderContext.maxProjectionToPickCopyHelper!.draw(
-              renderContext.transparentConfiguration!.colorBuffers[2 /*depth*/]
-                .texture,
-              renderContext.transparentConfiguration!
-                .colorBuffers[3 /*intensity*/].texture,
-              renderContext.transparentConfiguration!.colorBuffers[4 /*pick*/]
-                .texture,
-            );
-            renderContext.bindFramebuffer();
-            gl.drawBuffers([
-              gl.NONE,
-              gl.NONE,
-              gl.COLOR_ATTACHMENT2,
-              gl.COLOR_ATTACHMENT3,
-              gl.COLOR_ATTACHMENT4,
-            ]);
-            gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
-            renderContext.bindFramebuffer();
-            this.vertexIdHelper.enable();
-            gl.enable(WebGL2RenderingContext.BLEND);
-            gl.depthFunc(WebGL2RenderingContext.LESS);
-            gl.depthMask(false);
-            const chunkFormat = transformedSource.source.chunkFormat;
-            bindChunkDrawing(chunkFormat);
-            gl.drawBuffers([
-              gl.COLOR_ATTACHMENT0,
-              gl.COLOR_ATTACHMENT1,
-              gl.COLOR_ATTACHMENT2,
-              gl.COLOR_ATTACHMENT3,
-              gl.COLOR_ATTACHMENT4,
-            ]);
-          }
+          // let renderPick = !isProjectionMode(this.mode.value);
+          // renderPick = false;
+          // if (renderPick) {
+          //   gl.depthMask(true);
+          //   gl.disable(WebGL2RenderingContext.BLEND);
+          //   gl.depthFunc(WebGL2RenderingContext.GREATER);
+          //   this.vertexIdHelper.disable();
+          //   renderContext.bindMaxProjectionPickingBuffer!();
+          //   renderContext.maxProjectionToPickCopyHelper!.draw(
+          //     renderContext.tempMaxConfiguration!.colorBuffers[1 /*depth*/]
+          //       .texture,
+          //     renderContext.transparentConfiguration!
+          //       .colorBuffers[3 /*intensity*/].texture,
+          //     renderContext.transparentConfiguration!.colorBuffers[4 /*pick*/]
+          //       .texture,
+          //   );
+          //   renderContext.bindFramebuffer();
+          //   gl.drawBuffers([
+          //     gl.NONE,
+          //     gl.NONE,
+          //     gl.COLOR_ATTACHMENT2,
+          //     gl.COLOR_ATTACHMENT3,
+          //     gl.COLOR_ATTACHMENT4,
+          //   ]);
+          //   gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
+          //   renderContext.bindFramebuffer();
+          //   this.vertexIdHelper.enable();
+          //   gl.enable(WebGL2RenderingContext.BLEND);
+          //   gl.depthFunc(WebGL2RenderingContext.LESS);
+          //   gl.depthMask(false);
+          //   const chunkFormat = transformedSource.source.chunkFormat;
+          //   bindChunkDrawing(chunkFormat);
+          //   gl.drawBuffers([
+          //     gl.COLOR_ATTACHMENT0,
+          //     gl.COLOR_ATTACHMENT1,
+          //     gl.COLOR_ATTACHMENT2,
+          //     gl.COLOR_ATTACHMENT3,
+          //     gl.COLOR_ATTACHMENT4,
+          //   ]);
+          // }
           ++presentCount;
         } else {
           ++notPresentCount;
