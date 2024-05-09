@@ -31,7 +31,7 @@ import type {
 } from "#src/webgl/shader.js";
 import { textureTargetForSamplerType } from "#src/webgl/shader.js";
 
-const textureUnitSymbol = Symbol("SingleTextureVolumeChunk.textureUnit");
+export const textureUnitSymbol = Symbol("SingleTextureVolumeChunk.textureUnit");
 const textureLayoutSymbol = Symbol("SingleTextureVolumeChunk.textureLayout");
 
 export abstract class SingleTextureChunkFormat<TextureLayout extends Disposable>
@@ -56,10 +56,12 @@ export abstract class SingleTextureChunkFormat<TextureLayout extends Disposable>
 
   abstract get shaderSamplerType(): ShaderSamplerType;
 
-  beginDrawing(gl: GL, shader: ShaderProgram) {
+  beginDrawing(gl: GL, shader: ShaderProgram, reset: boolean = true) {
     const textureUnit = shader.textureUnit(textureUnitSymbol);
     gl.activeTexture(WebGL2RenderingContext.TEXTURE0 + textureUnit);
-    (<any>shader)[textureLayoutSymbol] = null;
+    if (reset) {
+      (<any>shader)[textureLayoutSymbol] = null;
+    }
   }
 
   endDrawing(gl: GL, shader: ShaderProgram) {

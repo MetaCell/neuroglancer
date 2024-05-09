@@ -612,16 +612,21 @@ void main() {
         );
       }
     };
-    const bindChunkDrawing = (chunkFormat: ChunkFormat) => {
+    const bindChunkDrawing = (
+      chunkFormat: ChunkFormat,
+      firstBind: boolean = true,
+    ) => {
       if (shader !== null) {
         shader.bind();
         if (chunkFormat !== null) {
-          setControlsInShader(
-            gl,
-            shader,
-            this.shaderControlState,
-            shaderResult.parameters.parseResult.controls,
-          );
+          if (firstBind) {
+            setControlsInShader(
+              gl,
+              shader,
+              this.shaderControlState,
+              shaderResult.parameters.parseResult.controls,
+            );
+          }
           if (
             renderContext.depthBufferTexture !== undefined &&
             renderContext.depthBufferTexture !== null
@@ -641,8 +646,10 @@ void main() {
               "Depth buffer texture ID for volume rendering is undefined or null",
             );
           }
-          chunkFormat.beginDrawing(gl, shader);
-          chunkFormat.beginSource(gl, shader);
+          chunkFormat.beginDrawing(gl, shader, firstBind);
+          if (firstBind) {
+            chunkFormat.beginSource(gl, shader);
+          }
         }
       }
     };
