@@ -1091,13 +1091,15 @@ export class PerspectivePanel extends RenderedDataPanel {
           gl.clearColor(0.0, 0.0, 0.0, 1.0);
           gl.depthMask(false);
           gl.enable(WebGL2RenderingContext.DEPTH_TEST);
-          gl.enable(WebGL2RenderingContext.BLEND);
-          gl.blendFuncSeparate(
-            WebGL2RenderingContext.ONE,
-            WebGL2RenderingContext.ONE,
-            WebGL2RenderingContext.ZERO,
-            WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA,
-          );
+          if (needTwoRenderingPasses) {
+            gl.enable(WebGL2RenderingContext.BLEND);
+            gl.blendFuncSeparate(
+              WebGL2RenderingContext.ONE,
+              WebGL2RenderingContext.ONE,
+              WebGL2RenderingContext.ZERO,
+              WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA,
+            );
+          }
           gl.depthFunc(WebGL2RenderingContext.LESS);
           renderContext.emitter = perspectivePanelEmitOIT;
           renderContext.bindFramebuffer();
