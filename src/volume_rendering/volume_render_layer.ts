@@ -283,7 +283,7 @@ void emitRGBA(vec4 rgba) {
   savedIntensity = intensityChanged ? newIntensity : savedIntensity; 
   savedDepth = intensityChanged ? depthAtRayPosition : savedDepth;
   outputColor = intensityChanged ? newColor : outputColor;
-  emit(outputColor, savedDepth, savedIntensity);
+  emit(outputColor, savedDepth, savedIntensity, uPickId);
   defaultMaxProjectionIntensity = 0.0;
   userEmittedIntensity = -100.0;
 `;
@@ -311,6 +311,7 @@ void emitRGBA(vec4 rgba) {
 
           builder.addUniform("highp float", "uBrightnessFactor");
           builder.addUniform("highp float", "uGain");
+          builder.addUniform("highp uint", "uPickId");
           builder.addVarying("highp vec4", "vNormalizedPosition");
           builder.addTextureSampler(
             "sampler2D",
@@ -368,7 +369,7 @@ vec2 computeUVFromClipSpace(vec4 clipSpacePosition) {
 `;
             if (isProjectionMode(shaderParametersState.mode)) {
               glsl_emitWireframe = `
-  emit(outputColor, 1.0, uChunkNumber);
+  emit(outputColor, 1.0, uChunkNumber, uPickId);
             `;
             }
             builder.setFragmentMainFunction(`
@@ -625,6 +626,9 @@ void main() {
     gl.enable(WebGL2RenderingContext.CULL_FACE);
     gl.cullFace(WebGL2RenderingContext.FRONT);
 
+    const pickId = isProjectionMode(this.mode.value)
+      ? renderContext.pickIDs.register(this)
+      : 0;
     forEachVisibleVolumeRenderingChunk(
       renderContext.projectionParameters,
       this.localPosition.value,
@@ -802,6 +806,7 @@ void main() {
           }
           newSource = false;
           gl.uniform3fv(shader.uniform("uTranslation"), chunkPosition);
+          gl.uniform1ui(shader.uniform("uPickId"), pickId);
           drawBoxes(gl, 1, 1);
           ++presentCount;
         } else {
