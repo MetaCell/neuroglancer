@@ -80,7 +80,6 @@ def test_gain(shared_webdriver):
     WebDriverWait(shared_webdriver.driver, 60).until(
         lambda driver: driver.execute_script('return document.readyState') == 'complete'
     )
-    sleep(3)
     print("Layer loaded")
     canvas_element = WebDriverWait(shared_webdriver.driver, 10).until(
         EC.presence_of_element_located((By.CLASS_NAME, 'neuroglancer-layer-group-viewer'))
@@ -88,7 +87,6 @@ def test_gain(shared_webdriver):
     screenshot = canvas_element.screenshot_as_png
     with open('gain_screenshot.png', 'wb') as file:
         file.write(screenshot)
-    sleep(3)
     print("Screenshot taken")
      # Convert the screenshot to a NumPy array
     image = Image.open(io.BytesIO(screenshot))
@@ -112,20 +110,14 @@ def test_no_gain(shared_webdriver):
     WebDriverWait(shared_webdriver.driver, 60).until(
         lambda driver: driver.execute_script('return document.readyState') == 'complete'
     )
-    sleep(2)
-    # WebDriverWait(shared_webdriver.driver, 60).until(
-    #      EC.text_to_be_present_in_element((By.CSS_SELECTOR, '#neuroglancer-container > div > div:nth-child(2) > div.neuroglancer-side-panel-column > div.neuroglancer-side-panel > div.neuroglancer-tab-view.neuroglancer-layer-side-panel-tab-view > div.neuroglancer-stack-view > div > div:nth-child(6) > label > div.neuroglancer-render-scale-widget.neuroglancer-layer-control-control > div.neuroglancer-render-scale-widget-legend > div:nth-child(2)'), '8/8')
-    # )
-    
+   
     print("Layer loaded")
-    sleep(3)
     canvas_element = WebDriverWait(shared_webdriver.driver, 10).until(
         EC.presence_of_element_located((By.CLASS_NAME, 'neuroglancer-layer-group-viewer'))
     )
     screenshot = canvas_element.screenshot_as_png
     with open('no_gain_screenshot.png', 'wb') as file:
         file.write(screenshot)
-    sleep(3)
     print("Screenshot taken")
      # Convert the screenshot to a NumPy array
     image = Image.open(io.BytesIO(screenshot))
@@ -143,7 +135,6 @@ def test_no_gain(shared_webdriver):
 
 @pytest.mark.timeout(10)
 def test_gain_difference():
-    sleep(2)
     assert gain_avg > no_gain_avg, "The gain screenshot is not brighter than the no gain screenshot"
     
     
