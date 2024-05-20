@@ -53,6 +53,7 @@ def test_gain(webdriver):
     with webdriver.viewer.txn() as s:
         add_image_layer(s)
         s.layers["image"].volumeRenderingGain = 10
+    webdriver.viewer.ready.wait()
     webdriver.sync()
     screenshot_response = webdriver.viewer.screenshot(size=[10, 10])
     gain_screenshot = screenshot_response.screenshot
@@ -60,6 +61,7 @@ def test_gain(webdriver):
     assert gain_screenshot.image_pixels.shape == (10, 10, 4)
     with webdriver.viewer.txn() as s:
         s.layers["image"].volumeRenderingGain = 0
+    webdriver.viewer.ready.wait()
     webdriver.sync()
     screenshot_response = webdriver.viewer.screenshot(size=[10, 10])
     no_gain_screenshot = screenshot_response.screenshot
@@ -69,6 +71,7 @@ def test_gain(webdriver):
         no_gain_screenshot.image_pixels
     )
     assert np.all(gain_screenshot >= no_gain_screenshot)
+    
     # Check if the image contains valid pixel values
     # assert np.all(gain_screenshot >= 0) and np.all(
     #     gain_screenshot <= 255
