@@ -58,6 +58,10 @@ import type { TrackableRGB } from "#src/util/color.js";
 import type { Owned } from "#src/util/disposable.js";
 import type { ActionEvent } from "#src/util/event_action_map.js";
 import { registerActionListener } from "#src/util/event_action_map.js";
+import {
+  DownsamplingBasedOnFrameRateCalculator,
+  FrameTimingMethod,
+} from "#src/util/framerate.js";
 import { kAxes, kZeroVec4, mat4, vec3, vec4 } from "#src/util/geom.js";
 import { startRelativeMouseDrag } from "#src/util/mouse_drag.js";
 import type {
@@ -81,8 +85,11 @@ import { MultipleScaleBarTextures } from "#src/widget/scale_bar.js";
 import type { RPC } from "#src/worker_rpc.js";
 import { SharedObject } from "#src/worker_rpc.js";
 
+const REDRAW_DELAY_AFTER_CAMERA_MOVE = 300;
+
 export interface PerspectiveViewerState extends RenderedDataViewerState {
   wireFrame: WatchableValueInterface<boolean>;
+  adaptiveDownsampling: WatchableValueInterface<boolean>;
   orthographicProjection: TrackableBoolean;
   showSliceViews: TrackableBoolean;
   showScaleBar: TrackableBoolean;
@@ -185,6 +192,20 @@ v4f_fragColor = vec4(accum.rgb / accum.a, revealage);
 `);
 }
 
+// Copy the depth from opaque pass to the depth buffer for OIT.
+// This copy is required because the OIT depth buffer might be
+// smaller than the main depth buffer.
+function defineDepthCopyShader(builder: ShaderBuilder) {
+  builder.addOutputBuffer("vec4", "v4f_fragData0", 0);
+  builder.addOutputBuffer("vec4", "v4f_fragData1", 1);
+  builder.setFragmentMain(`
+  v4f_fragData0 = vec4(0.0, 0.0, 0.0, 1.0);
+  v4f_fragData1 = vec4(0.0, 0.0, 0.0, 1.0);
+  vec4 v0 = getValue0();
+  gl_FragDepth = 1.0 - v0.r;
+`);
+}
+
 // Copy the max projection color to the OIT buffer
 function defineMaxProjectionColorCopyShader(builder: ShaderBuilder) {
   builder.addOutputBuffer("vec4", "v4f_fragData0", 0);
@@ -262,6 +283,23 @@ export class PerspectivePanel extends RenderedDataPanel {
     return this.navigationState.displayDimensionRenderInfo;
   }
 
+  // the frame rate calculator is used to determine if downsampling should be applied
+  // after a camera move
+  // if a high downsample rate is applied, it persists for a few frames
+  // to avoid flickering when the camera is moving
+  private frameRateCalculator = new DownsamplingBasedOnFrameRateCalculator(
+    10 /* numberOfStoredFrameDeltas */,
+    8 /* maxDownsamplingFactor */,
+    16 /* desiredFrameTimingMs */,
+    60 /* downsamplingPersistenceDurationInFrames */,
+  );
+  private redrawAfterMoveTimeOutId = -1;
+  private hasTransparent = false;
+
+  get isCameraMoving() {
+    return this.redrawAfterMoveTimeOutId !== -1;
+  }
+
   /**
    * If boolean value is true, sliceView is shown unconditionally, regardless of the value of
    * this.viewer.showSliceViews.value.
@@ -326,6 +364,9 @@ export class PerspectivePanel extends RenderedDataPanel {
   );
   protected maxProjectionColorCopyHelper = this.registerDisposer(
     OffscreenCopyHelper.get(this.gl, defineMaxProjectionColorCopyShader, 2),
+  );
+  protected offscreenDepthCopyHelper = this.registerDisposer(
+    OffscreenCopyHelper.get(this.gl, defineDepthCopyShader, 1),
   );
   protected maxProjectionPickCopyHelper = this.registerDisposer(
     OffscreenCopyHelper.get(this.gl, defineMaxProjectionPickCopyShader, 2),
@@ -415,6 +456,23 @@ export class PerspectivePanel extends RenderedDataPanel {
       PerspectiveViewRenderLayer,
       this.viewer.visibleLayerRoles,
       this,
+    );
+
+    this.registerDisposer(
+      this.viewer.navigationState.changed.add(() => {
+        // Don't mark camera moving on picking requests
+        if (this.isMovingToMousePositionOnPick) {
+          return;
+        }
+        if (this.redrawAfterMoveTimeOutId !== -1) {
+          window.clearTimeout(this.redrawAfterMoveTimeOutId);
+        }
+        this.redrawAfterMoveTimeOutId = window.setTimeout(() => {
+          this.redrawAfterMoveTimeOutId = -1;
+          this.frameRateCalculator.resetLastFrameTime();
+          this.context.scheduleRedraw();
+        }, REDRAW_DELAY_AFTER_CAMERA_MOVE);
+      }),
     );
 
     registerActionListener(
@@ -717,7 +775,7 @@ export class PerspectivePanel extends RenderedDataPanel {
               this.gl.RGBA,
               this.gl.FLOAT,
             ),
-            depthBuffer: this.offscreenFramebuffer.depthBuffer!.addRef(),
+            depthBuffer: new DepthStencilRenderbuffer(this.gl),
           }),
         );
     }
@@ -911,9 +969,8 @@ export class PerspectivePanel extends RenderedDataPanel {
 
     const { visibleLayers } = this.visibleLayerTracker;
 
-    let hasTransparent = false;
+    this.hasTransparent = false;
     let hasMaxProjection = false;
-
     let hasAnnotation = false;
 
     // Draw fully-opaque layers first.
@@ -925,7 +982,7 @@ export class PerspectivePanel extends RenderedDataPanel {
           hasAnnotation = true;
         }
       } else {
-        hasTransparent = true;
+        this.hasTransparent = true;
         if (renderLayer.isVolumeRendering) {
           hasMaxProjection =
             hasMaxProjection ||
@@ -974,8 +1031,30 @@ export class PerspectivePanel extends RenderedDataPanel {
       /*dppass=*/ WebGL2RenderingContext.KEEP,
     );
 
-    if (hasTransparent) {
+    if (this.hasTransparent) {
       //Draw transparent objects.
+
+      let volumeRenderingBufferWidth = width;
+      let volumeRenderingBufferHeight = height;
+
+      if (this.viewer.adaptiveDownsampling.value && this.isCameraMoving) {
+        this.frameRateCalculator.setFrameDeltas(
+          this.context.getLastFrameTimesInMs(
+            this.frameRateCalculator.numberOfStoredFrameDeltas,
+          ),
+        );
+        const downsamplingFactor =
+          this.frameRateCalculator.calculateDownsamplingRateBasedOnFrameDeltas(
+            FrameTimingMethod.MEAN,
+          );
+        if (downsamplingFactor > 1) {
+          const originalRatio = width / height;
+          volumeRenderingBufferWidth = Math.round(width / downsamplingFactor);
+          volumeRenderingBufferHeight = Math.round(
+            volumeRenderingBufferWidth / originalRatio,
+          );
+        }
+      }
 
       // Create max projection buffer if needed.
       let bindMaxProjectionBuffer: () => void = () => {};
@@ -983,7 +1062,10 @@ export class PerspectivePanel extends RenderedDataPanel {
       if (hasMaxProjection) {
         const { maxProjectionConfiguration } = this;
         bindMaxProjectionBuffer = () => {
-          maxProjectionConfiguration.bind(width, height);
+          maxProjectionConfiguration.bind(
+            volumeRenderingBufferWidth,
+            volumeRenderingBufferHeight,
+          );
         };
         gl.depthMask(true);
         bindMaxProjectionBuffer();
@@ -996,7 +1078,10 @@ export class PerspectivePanel extends RenderedDataPanel {
 
         const { maxProjectionPickConfiguration } = this;
         bindMaxProjectionPickingBuffer = () => {
-          maxProjectionPickConfiguration.bind(width, height);
+          maxProjectionPickConfiguration.bind(
+            volumeRenderingBufferWidth,
+            volumeRenderingBufferHeight,
+          );
         };
         bindMaxProjectionPickingBuffer();
         gl.clear(
@@ -1005,15 +1090,25 @@ export class PerspectivePanel extends RenderedDataPanel {
         );
       }
 
+      // Copy the depth buffer from the offscreen framebuffer to the transparent framebuffer.
+      gl.depthMask(true);
+      gl.clearDepth(1.0);
+      const { transparentConfiguration } = this;
+      renderContext.bindFramebuffer = () => {
+        transparentConfiguration.bind(
+          volumeRenderingBufferWidth,
+          volumeRenderingBufferHeight,
+        );
+      };
+      renderContext.bindFramebuffer();
+      gl.clear(WebGL2RenderingContext.DEPTH_BUFFER_BIT);
+      this.offscreenDepthCopyHelper.draw(
+        this.offscreenFramebuffer.colorBuffers[OffscreenTextures.Z].texture,
+      );
+
       // Compute accumulate and revealage textures.
       gl.depthMask(false);
       gl.enable(WebGL2RenderingContext.BLEND);
-      const { transparentConfiguration } = this;
-      renderContext.bindFramebuffer = () => {
-        transparentConfiguration.bind(width, height);
-      };
-      renderContext.bindFramebuffer();
-      gl.clearDepth(1.0);
       gl.clearColor(0.0, 0.0, 0.0, 1.0);
       gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
       renderContext.emitter = perspectivePanelEmitOIT;
@@ -1024,6 +1119,7 @@ export class PerspectivePanel extends RenderedDataPanel {
         WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA,
       );
       renderContext.emitPickID = false;
+
       for (const [renderLayer, attachment] of visibleLayers) {
         if (renderLayer.isTransparent) {
           renderContext.depthBufferTexture =
@@ -1096,6 +1192,7 @@ export class PerspectivePanel extends RenderedDataPanel {
       // Copy transparent rendering result back to primary buffer.
       gl.disable(WebGL2RenderingContext.DEPTH_TEST);
       this.offscreenFramebuffer.bindSingle(OffscreenTextures.COLOR);
+      gl.viewport(0, 0, width, height);
       gl.blendFunc(
         WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA,
         WebGL2RenderingContext.SRC_ALPHA,
