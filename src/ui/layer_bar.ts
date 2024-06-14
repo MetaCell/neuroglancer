@@ -150,6 +150,10 @@ class LayerWidget extends RefCounted {
     registerLayerBarDropHandlers(this.panel, element, this.layer);
   }
 
+  setBackgroundColor(color: string) {
+    this.element.style.backgroundColor = color;
+  }
+
   update() {
     const { layer, element } = this;
     this.labelElementText.textContent = layer.name;
@@ -418,6 +422,7 @@ export class LayerBar extends RefCounted {
       const layerIndex = layer.nonArchivedLayerIndex;
       if (widget === undefined) {
         widget = new LayerWidget(layer, this);
+        widget.setBackgroundColor(layer.backgroundColor);
         this.layerWidgets.set(layer, widget);
       }
       widget.layerNumberElement.textContent = "" + (1 + layerIndex);
