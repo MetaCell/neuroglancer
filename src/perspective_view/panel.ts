@@ -425,8 +425,10 @@ export class PerspectivePanel extends RenderedDataPanel {
 
     this.registerDisposer(
       this.viewer.navigationState.changed.add(() => {
-        // Don't mark camera moving on picking requests
-        if (this.isMovingToMousePosition) {
+        // Don't mark camera moving on non dynamic updates
+        // TODO (SKM) - only need if VR is enabled
+        if (!context.dynamicCameraMovementInProgress) {
+          console.log("Camera not moving dynamically");
           return;
         }
         if (this.redrawAfterMoveTimeOutId !== -1) {
