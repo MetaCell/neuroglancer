@@ -278,6 +278,7 @@ export class PerspectivePanel extends RenderedDataPanel {
   protected visibleLayerTracker: Owned<
     VisibleRenderLayerTracker<PerspectivePanel, PerspectiveViewRenderLayer>
   >;
+  private redrawAfterMoveTimeOutId: number = -1;
 
   get rpc() {
     return this.sharedObject.rpc!;
@@ -287,6 +288,9 @@ export class PerspectivePanel extends RenderedDataPanel {
   }
   get displayDimensionRenderInfo() {
     return this.navigationState.displayDimensionRenderInfo;
+  }
+  get isCameraMoving() {
+    return this.redrawAfterMoveTimeOutId !== -1;
   }
 
   // the frame rate calculator is used to determine if downsampling should be applied
@@ -299,12 +303,7 @@ export class PerspectivePanel extends RenderedDataPanel {
     16 /* desiredFrameTimingMs */,
     60 /* downsamplingPersistenceDurationInFrames */,
   );
-  private redrawAfterMoveTimeOutId = -1;
   private hasTransparent = false;
-
-  get isCameraMoving() {
-    return this.redrawAfterMoveTimeOutId !== -1;
-  }
 
   /**
    * If boolean value is true, sliceView is shown unconditionally, regardless of the value of
@@ -473,8 +472,10 @@ export class PerspectivePanel extends RenderedDataPanel {
 
     this.registerDisposer(
       this.viewer.navigationState.changed.add(() => {
-        // Don't mark camera moving on picking requests
-        if (this.isMovingToMousePositionOnPick) {
+        // Don't mark camera moving on non dynamic updates
+        // TODO (SKM) - only need if VR is enabled
+        if (!context.dynamicCameraMovementInProgress) {
+          console.log("Camera not moving dynamically");
           return;
         }
         if (this.redrawAfterMoveTimeOutId !== -1) {
@@ -493,14 +494,16 @@ export class PerspectivePanel extends RenderedDataPanel {
       "rotate-via-mouse-drag",
       (e: ActionEvent<MouseEvent>) => {
         startRelativeMouseDrag(e.detail, (_event, deltaX, deltaY) => {
-          this.navigationState.pose.rotateRelative(
-            kAxes[1],
-            ((deltaX / 4.0) * Math.PI) / 180.0,
-          );
-          this.navigationState.pose.rotateRelative(
-            kAxes[0],
-            ((-deltaY / 4.0) * Math.PI) / 180.0,
-          );
+          this.context.withDynamicCameraMovement(() => {
+            this.navigationState.pose.rotateRelative(
+              kAxes[1],
+              ((deltaX / 4.0) * Math.PI) / 180.0,
+            );
+            this.navigationState.pose.rotateRelative(
+              kAxes[0],
+              ((-deltaY / 4.0) * Math.PI) / 180.0,
+            );
+          });
         });
       },
     );
@@ -996,6 +999,8 @@ export class PerspectivePanel extends RenderedDataPanel {
       alreadyEmittedPickID: false,
       bindFramebuffer,
       frameNumber: this.context.frameNumber,
+      sliceViewsPresent: this.sliceViews.size > 0,
+      cameraMovementInProgress: this.isCameraMoving,
     };
 
     mat4.copy(
@@ -1102,6 +1107,7 @@ export class PerspectivePanel extends RenderedDataPanel {
         };
         gl.depthMask(true);
         bindMaxProjectionBuffer();
+        renderContext.bindMaxProjectionBuffer = bindMaxProjectionBuffer;
         gl.clearColor(0.0, 0.0, 0.0, 0.0);
         gl.clearDepth(0.0);
         gl.clear(
