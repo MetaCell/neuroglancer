@@ -17,6 +17,7 @@
 import "#src/noselect.css";
 import "#src/perspective_view/panel.css";
 
+import { debounce } from "lodash-es";
 import type { PerspectiveViewAnnotationLayer } from "#src/annotation/renderlayer.js";
 import { AxesLineHelper, computeAxisLineMatrix } from "#src/axes_lines.js";
 import type { DisplayContext } from "#src/display_context.js";
@@ -253,7 +254,6 @@ export class PerspectivePanel extends RenderedDataPanel {
   protected visibleLayerTracker: Owned<
     VisibleRenderLayerTracker<PerspectivePanel, PerspectiveViewRenderLayer>
   >;
-  private redrawAfterMoveTimeOutId: number = -1;
 
   get rpc() {
     return this.sharedObject.rpc!;
@@ -263,9 +263,6 @@ export class PerspectivePanel extends RenderedDataPanel {
   }
   get displayDimensionRenderInfo() {
     return this.navigationState.displayDimensionRenderInfo;
-  }
-  get isCameraMoving() {
-    return this.redrawAfterMoveTimeOutId !== -1;
   }
 
   /**
@@ -350,6 +347,12 @@ export class PerspectivePanel extends RenderedDataPanel {
     this.sharedObject.sharedProjectionParameters.flush();
   }
 
+  private debouncedRedraw = this.registerCancellable(
+    debounce(() => {
+      this.context.scheduleRedraw();
+    }, REDRAW_DELAY_AFTER_CAMERA_MOVE),
+  );
+
   constructor(
     context: DisplayContext,
     element: HTMLElement,
@@ -425,19 +428,14 @@ export class PerspectivePanel extends RenderedDataPanel {
 
     this.registerDisposer(
       this.viewer.navigationState.changed.add(() => {
-        // Don't mark camera moving on non dynamic updates
         // TODO (SKM) - only need if VR is enabled
         if (!context.dynamicCameraMovementInProgress) {
           console.log("Camera not moving dynamically");
-          return;
+          this.debouncedRedraw.cancel();
+        } else {
+          console.log("Camera moving dynamically");
+          this.debouncedRedraw();
         }
-        if (this.redrawAfterMoveTimeOutId !== -1) {
-          window.clearTimeout(this.redrawAfterMoveTimeOutId);
-        }
-        this.redrawAfterMoveTimeOutId = window.setTimeout(() => {
-          this.redrawAfterMoveTimeOutId = -1;
-          this.context.scheduleRedraw();
-        }, REDRAW_DELAY_AFTER_CAMERA_MOVE);
       }),
     );
 
@@ -929,7 +927,7 @@ export class PerspectivePanel extends RenderedDataPanel {
       bindFramebuffer,
       frameNumber: this.context.frameNumber,
       sliceViewsPresent: this.sliceViews.size > 0,
-      cameraMovementInProgress: this.isCameraMoving,
+      cameraMovementInProgress: this.context.dynamicCameraMovementInProgress,
     };
 
     mat4.copy(
