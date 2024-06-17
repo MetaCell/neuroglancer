@@ -405,22 +405,22 @@ export class DisplayContext extends RefCounted implements FrameNumberCounter {
    */
   frameNumber = 0;
 
-  continousCameraMovementInProgress = false;
+  continuousCameraMovementInProgress = false;
 
-  withContinousCameraMovement<T>(callback: () => T): T {
-    const originalState = this.continousCameraMovementInProgress;
-    this.continousCameraMovementInProgress = true;
+  withContinuousCameraMovement<T>(callback: () => T): T {
+    const originalState = this.continuousCameraMovementInProgress;
+    this.continuousCameraMovementInProgress = true;
     try {
       return callback();
     } finally {
-      this.continousCameraMovementInProgress = originalState;
+      this.continuousCameraMovementInProgress = originalState;
     }
   }
 
   withDynamicCameraMovement<T>(callback: () => T): T {
-    this.continousCameraMovementInProgress = true;
+    this.continuousCameraMovementInProgress = true;
     const result = callback();
-    this.continousCameraMovementInProgress = false;
+    this.continuousCameraMovementInProgress = false;
     return result;
   }
 
