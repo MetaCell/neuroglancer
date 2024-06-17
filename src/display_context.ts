@@ -407,7 +407,7 @@ export class DisplayContext extends RefCounted implements FrameNumberCounter {
 
   dynamicCameraMovementInProgress = false;
 
-  withDynamicCameraMovement<T>(callback: () => T): T {
+  withDynamicCameraMovementO<T>(callback: () => T): T {
     const originalState = this.dynamicCameraMovementInProgress;
     this.dynamicCameraMovementInProgress = true;
     try {
@@ -415,6 +415,13 @@ export class DisplayContext extends RefCounted implements FrameNumberCounter {
     } finally {
       this.dynamicCameraMovementInProgress = originalState;
     }
+  }
+
+  withDynamicCameraMovement<T>(callback: () => T): T {
+    this.dynamicCameraMovementInProgress = true;
+    const result = callback();
+    this.dynamicCameraMovementInProgress = false;
+    return result;
   }
 
   resizeCallback = () => {
