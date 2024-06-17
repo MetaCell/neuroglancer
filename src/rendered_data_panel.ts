@@ -527,7 +527,9 @@ export abstract class RenderedDataPanel extends RenderedPanel {
           element,
           `rotate-relative-${axisName}${signStr}`,
           () => {
-            this.navigationState.pose.rotateRelative(kAxes[axis], sign * 0.1);
+            this.context.withDynamicCameraMovement(() =>
+              this.navigationState.pose.rotateRelative(kAxes[axis], sign * 0.1),
+            );
           },
         );
         const tempOffset = vec3.create();
@@ -538,7 +540,9 @@ export abstract class RenderedDataPanel extends RenderedPanel {
           offset[1] = 0;
           offset[2] = 0;
           offset[axis] = sign;
-          navigationState.pose.translateVoxelsRelative(offset);
+          this.context.withDynamicCameraMovement(() => {
+            navigationState.pose.translateVoxelsRelative(offset);
+          });
         });
       }
     }
@@ -548,8 +552,10 @@ export abstract class RenderedDataPanel extends RenderedPanel {
       "zoom-via-wheel",
       (event: ActionEvent<WheelEvent>) => {
         const e = event.detail;
-        this.onMousemove(e, false);
-        this.zoomByMouse(getWheelZoomAmount(e));
+        this.context.withDynamicCameraMovement(() => {
+          this.onMousemove(e, false);
+          this.zoomByMouse(getWheelZoomAmount(e));
+        });
       },
     );
 
