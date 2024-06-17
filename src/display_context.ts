@@ -405,6 +405,21 @@ export class DisplayContext extends RefCounted implements FrameNumberCounter {
    */
   frameNumber = 0;
 
+  /**
+   * Indicates if dynamic camera movement is in progress.
+   */
+  dynamicCameraMovementInProgress = false;
+
+  withDynamicCameraMovement<T>(callback: () => T): T {
+    const { dynamicCameraMovementInProgress } = this;
+    this.dynamicCameraMovementInProgress = true;
+    try {
+      return callback();
+    } finally {
+      this.dynamicCameraMovementInProgress = dynamicCameraMovementInProgress;
+    }
+  }
+
   resizeCallback = () => {
     ++this.resizeGeneration;
     this.scheduleRedraw();
