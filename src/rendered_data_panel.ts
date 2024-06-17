@@ -165,8 +165,6 @@ export abstract class RenderedDataPanel extends RenderedPanel {
   pickRequestPending = false;
 
   private mouseStateForcer = () => this.blockOnPickRequest();
-  protected isMovingToMousePosition: boolean = false;
-
   inputEventMap: EventActionMap;
 
   abstract navigationState: NavigationState;
@@ -569,7 +567,9 @@ export abstract class RenderedDataPanel extends RenderedPanel {
       "translate-via-mouse-drag",
       (e: ActionEvent<MouseEvent>) => {
         startRelativeMouseDrag(e.detail, (_event, deltaX, deltaY) => {
-          this.translateByViewportPixels(deltaX, deltaY);
+          this.context.withDynamicCameraMovement(() =>
+            this.translateByViewportPixels(deltaX, deltaY),
+          );
         });
       },
     );
@@ -579,7 +579,9 @@ export abstract class RenderedDataPanel extends RenderedPanel {
       "translate-in-plane-via-touchtranslate",
       (e: ActionEvent<TouchTranslateInfo>) => {
         const { detail } = e;
-        this.translateByViewportPixels(detail.deltaX, detail.deltaY);
+        this.context.withDynamicCameraMovement(() =>
+          this.translateByViewportPixels(detail.deltaX, detail.deltaY),
+        );
       },
     );
 
@@ -593,7 +595,9 @@ export abstract class RenderedDataPanel extends RenderedPanel {
         offset[0] = 0;
         offset[1] = 0;
         offset[2] = detail.deltaY + detail.deltaX;
-        navigationState.pose.translateVoxelsRelative(offset);
+        this.context.withDynamicCameraMovement(() =>
+          navigationState.pose.translateVoxelsRelative(offset),
+        );
       },
     );
 
@@ -617,9 +621,7 @@ export abstract class RenderedDataPanel extends RenderedPanel {
     registerActionListener(element, "move-to-mouse-position", () => {
       const { mouseState } = this.viewer;
       if (mouseState.updateUnconditionally()) {
-        this.isMovingToMousePosition = true;
         this.navigationState.position.value = mouseState.position;
-        this.isMovingToMousePosition = false;
       }
     });
 
