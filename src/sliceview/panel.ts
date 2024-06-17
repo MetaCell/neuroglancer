@@ -187,16 +187,18 @@ export class SliceViewPanel extends RenderedDataPanel {
               kAxes[1],
               pose.orientation.orientation,
             );
-            this.viewer.navigationState.pose.rotateAbsolute(
-              yAxis,
-              ((-deltaX / 4.0) * Math.PI) / 180.0,
-              initialPosition,
-            );
-            this.viewer.navigationState.pose.rotateAbsolute(
-              xAxis,
-              ((-deltaY / 4.0) * Math.PI) / 180.0,
-              initialPosition,
-            );
+            this.context.withDynamicCameraMovement(() => {
+              this.viewer.navigationState.pose.rotateAbsolute(
+                yAxis,
+                ((-deltaX / 4.0) * Math.PI) / 180.0,
+                initialPosition,
+              );
+              this.viewer.navigationState.pose.rotateAbsolute(
+                xAxis,
+                ((-deltaY / 4.0) * Math.PI) / 180.0,
+                initialPosition,
+              );
+            });
           });
         }
       },
