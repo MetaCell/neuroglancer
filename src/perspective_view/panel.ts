@@ -488,7 +488,7 @@ export class PerspectivePanel extends RenderedDataPanel {
     }
     this.registerDisposer(
       viewer.navigationState.changed.add(() => {
-        if (!context.dynamicCameraMovementInProgress) {
+        if (!context.continousCameraMovementInProgress) {
           console.log("Camera not moving dynamically");
           this.debouncedRedraw.cancel();
           } else {
@@ -926,7 +926,7 @@ export class PerspectivePanel extends RenderedDataPanel {
       bindFramebuffer,
       frameNumber: this.context.frameNumber,
       sliceViewsPresent: this.sliceViews.size > 0,
-      cameraMovementInProgress: this.context.dynamicCameraMovementInProgress,
+      cameraMovementInProgress: this.context.continousCameraMovementInProgress,
     };
 
     mat4.copy(
