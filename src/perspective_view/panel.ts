@@ -426,19 +426,6 @@ export class PerspectivePanel extends RenderedDataPanel {
       this,
     );
 
-    this.registerDisposer(
-      this.viewer.navigationState.changed.add(() => {
-        // TODO (SKM) - only need if VR is enabled
-        if (!context.dynamicCameraMovementInProgress) {
-          console.log("Camera not moving dynamically");
-          this.debouncedRedraw.cancel();
-        } else {
-          console.log("Camera moving dynamically");
-          this.debouncedRedraw();
-        }
-      }),
-    );
-
     registerActionListener(
       element,
       "rotate-via-mouse-drag",
@@ -499,6 +486,18 @@ export class PerspectivePanel extends RenderedDataPanel {
       showSliceViewsLabel.appendChild(showSliceViewsCheckbox.element);
       this.element.appendChild(showSliceViewsLabel);
     }
+    this.registerDisposer(
+      viewer.navigationState.changed.add(() => {
+        if (!context.dynamicCameraMovementInProgress) {
+          console.log("Camera not moving dynamically");
+          this.debouncedRedraw.cancel();
+          } else {
+          // TODO (SKM) - only need if VR is enabled
+          console.log("Camera moving dynamically");
+          this.debouncedRedraw();
+        }
+      }),
+    );
     this.registerDisposer(
       viewer.orthographicProjection.changed.add(() => {
         this.projectionParameters.update();
