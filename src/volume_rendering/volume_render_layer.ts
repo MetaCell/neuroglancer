@@ -326,7 +326,7 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
 `);
           let glsl_rgbaEmit = glsl_emitRGBAVolumeRendering;
           let glsl_finalEmit = `
-  emitAccumAndRevealage(outputColor, 1.0 - revealage, 0u);
+  emitAccumAndRevealage(vec4(1.0, 1.0, 1.0, 1.0), 1.0, uPickId);
 `;
           let glsl_emitIntensity = `
 void emitIntensity(float value) {
@@ -334,6 +334,7 @@ void emitIntensity(float value) {
 `;
           let glsl_handleMaxProjectionUpdate = ``;
           if (isProjectionMode(shaderParametersState.mode)) {
+            console.log("Using project mode");
             const glsl_intensityConversion =
               shaderParametersState.mode === VolumeRenderingModes.MIN
                 ? `1.0 - value`

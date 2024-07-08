@@ -142,10 +142,14 @@ void emitAccumAndRevealage(vec4 accum, float revealage, highp uint pickId) {
   v4f_fragData0 = vec4(accum.rgb, revealage);
   v4f_fragData1 = vec4(accum.a, 0.0, 0.0, 0.0);
 }
+// void emitAccumAndRevealage(vec4 accum, float revealage, highp uint pickId) {
+//   v4f_fragData0 = vec4(1.0, 1.0, 1.0, 1.0);
+//   v4f_fragData1 = vec4(1.0, 0.0, 0.0, 0.0);
+// }
 void emit(vec4 color, highp uint pickId) {
   float weight = computeOITWeight(color.a, gl_FragCoord.z);
   vec4 accum = color * weight;
-  emitAccumAndRevealage(accum, color.a, pickId);
+  emitAccumAndRevealage(vec4(1.0, 1.0, 1.0, 1.0), 1.0, pickId);
 }
 `,
 ];
@@ -291,6 +295,7 @@ export class PerspectivePanel extends RenderedDataPanel {
     VisibleRenderLayerTracker<PerspectivePanel, PerspectiveViewRenderLayer>
   >;
   private hasVolumeRendering = false;
+  private needVolumeRenderingCleanup = false;
 
   get rpc() {
     return this.sharedObject.rpc!;
@@ -1053,6 +1058,9 @@ export class PerspectivePanel extends RenderedDataPanel {
     }
     hasVolumeRenderingPick = false;
     this.hasVolumeRendering = hasVolumeRendering;
+    if (this.hasVolumeRendering) {
+      this.needVolumeRenderingCleanup = true;
+    }
     this.drawSliceViews(renderContext);
 
     if (hasAnnotation) {
@@ -1164,6 +1172,8 @@ export class PerspectivePanel extends RenderedDataPanel {
             volumeRenderingBufferHeight,
           );
         };
+      }
+      if (this.needVolumeRenderingCleanup) {
         bindVolumeRenderingBuffer();
         renderContext.bindVolumeRenderingBuffer = bindVolumeRenderingBuffer;
         gl.clearDepth(1.0);
@@ -1172,10 +1182,14 @@ export class PerspectivePanel extends RenderedDataPanel {
           WebGL2RenderingContext.COLOR_BUFFER_BIT |
             WebGL2RenderingContext.DEPTH_BUFFER_BIT,
         );
+      }
+      if (this.hasVolumeRendering) {
+        gl.disable(WebGL2RenderingContext.BLEND);
         // Copy the depth buffer from the offscreen framebuffer to the volume rendering framebuffer.
         this.offscreenDepthCopyHelper.draw(
           this.offscreenFramebuffer.colorBuffers[OffscreenTextures.Z].texture,
         );
+        gl.enable(WebGL2RenderingContext.BLEND);
       }
 
       const { transparentConfiguration } = this;
@@ -1203,6 +1217,11 @@ export class PerspectivePanel extends RenderedDataPanel {
         if (renderLayer.isVolumeRendering) {
           renderContext.depthBufferTexture =
             this.offscreenFramebuffer.colorBuffers[OffscreenTextures.Z].texture;
+          renderContext.emitter = perspectivePanelEmitOIT;
+          gl.disable(WebGL2RenderingContext.DEPTH_TEST);
+          bindVolumeRenderingBuffer();
+          renderLayer.draw(renderContext, attachment);
+          continue;
 
           const isVolumeProjectionLayer = isProjectionLayer(
             renderLayer as VolumeRenderingRenderLayer,
@@ -1300,6 +1319,7 @@ export class PerspectivePanel extends RenderedDataPanel {
         }
         // Draw regular transparent layers
         else if (renderLayer.isTransparent) {
+          console.log("Transparent Layer");
           if (
             currentTransparentRenderingState !==
             TransparentRenderingState.TRANSPARENT
@@ -1314,18 +1334,22 @@ export class PerspectivePanel extends RenderedDataPanel {
       }
       // Copy transparent rendering result back to primary buffer.
       gl.disable(WebGL2RenderingContext.DEPTH_TEST);
-      if (hasVolumeRendering) {
-        renderContext.bindFramebuffer();
-        this.transparentToTransparentCopyHelper.draw(
-          this.volumeRenderingConfiguration.colorBuffers[0].texture,
-          this.volumeRenderingConfiguration.colorBuffers[1].texture,
-        );
-      }
+      // if (hasVolumeRendering) {
+      //   renderContext.bindFramebuffer();
+      //   this.transparentToTransparentCopyHelper.draw(
+      //     this.volumeRenderingConfiguration.colorBuffers[0].texture,
+      //     this.volumeRenderingConfiguration.colorBuffers[1].texture,
+      //   );
+      // }
       gl.blendFunc(
         WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA,
         WebGL2RenderingContext.SRC_ALPHA,
       );
       this.offscreenFramebuffer.bindSingle(OffscreenTextures.COLOR);
+      this.transparencyCopyHelper.draw(
+        this.volumeRenderingConfiguration.colorBuffers[0].texture,
+        this.volumeRenderingConfiguration.colorBuffers[1].texture,
+      );
       this.transparencyCopyHelper.draw(
         transparentConfiguration.colorBuffers[0].texture,
         transparentConfiguration.colorBuffers[1].texture,
@@ -1362,25 +1386,25 @@ export class PerspectivePanel extends RenderedDataPanel {
         /*dppass=*/ WebGL2RenderingContext.REPLACE,
       );
       gl.stencilMask(2);
-      if (hasVolumeRenderingPick) {
-        this.maxProjectionPickCopyHelper.draw(
-          this.maxProjectionPickConfiguration.colorBuffers[0].texture /*depth*/,
-          this.maxProjectionPickConfiguration.colorBuffers[1].texture /*pick*/,
-        );
-      }
-      for (const [renderLayer, attachment] of visibleLayers) {
-        if (
-          !renderLayer.isTransparent ||
-          !renderLayer.transparentPickEnabled ||
-          renderLayer.isVolumeRendering
-        ) {
-          // Skip non-transparent layers and transparent layers with transparentPickEnabled=false.
-          // Volume rendering layers are handled separately and are combined in a pick buffer
-          continue;
-        } else {
-          renderLayer.draw(renderContext, attachment);
-        }
-      }
+      // if (hasVolumeRenderingPick) {
+      //   this.maxProjectionPickCopyHelper.draw(
+      //     this.maxProjectionPickConfiguration.colorBuffers[0].texture /*depth*/,
+      //     this.maxProjectionPickConfiguration.colorBuffers[1].texture /*pick*/,
+      //   );
+      // }
+      // for (const [renderLayer, attachment] of visibleLayers) {
+      //   if (
+      //     !renderLayer.isTransparent ||
+      //     !renderLayer.transparentPickEnabled ||
+      //     renderLayer.isVolumeRendering
+      //   ) {
+      //     // Skip non-transparent layers and transparent layers with transparentPickEnabled=false.
+      //     // Volume rendering layers are handled separately and are combined in a pick buffer
+      //     continue;
+      //   } else {
+      //     renderLayer.draw(renderContext, attachment);
+      //   }
+      // }
 
       gl.stencilFunc(
         /*func=*/ WebGL2RenderingContext.EQUAL,
