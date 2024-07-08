@@ -772,9 +772,10 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
     );
 
     const restoreDrawingBuffersAndState = () => {
-      const performedSecondPassForPicking =
-        !isProjectionMode(this.mode.value) &&
-        !renderContext.isContinuousCameraMotionInProgress;
+      // const performedSecondPassForPicking =
+      //   !isProjectionMode(this.mode.value) &&
+      //   !renderContext.isContinuousCameraMotionInProgress;
+      const performedSecondPassForPicking = false;
       // If the layer is in projection mode or the second pass for picking has been performed,
       // the max projection state is needed
       // the max projection buffer is not bound, because it is immediately read back
@@ -853,9 +854,7 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
       !renderContext.wireFrame &&
       !renderContext.sliceViewsPresent &&
       !renderContext.isContinuousCameraMotionInProgress;
-    const needPickingPass =
-      !isProjectionMode(this.mode.value) &&
-      !renderContext.isContinuousCameraMotionInProgress;
+    const needPickingPass = false;
     const hasPicking = isProjectionMode(this.mode.value) || needPickingPass;
 
     const pickId = hasPicking ? renderContext.pickIDs.register(this) : 0;

@@ -113,7 +113,7 @@ enum TransparentRenderingState {
 
 export const glsl_perspectivePanelEmit = `
 void emit(vec4 color, highp uint pickId) {
-  out_color = color;
+  out_color = vec4(1.0, 0.0, 0.0, 0.1);
   float zValue = 1.0 - gl_FragCoord.z;
   out_z = vec4(zValue, zValue, zValue, 1.0);
   float pickIdFloat = float(pickId);
@@ -1051,6 +1051,7 @@ export class PerspectivePanel extends RenderedDataPanel {
         }
       }
     }
+    hasVolumeRenderingPick = false;
     this.hasVolumeRendering = hasVolumeRendering;
     this.drawSliceViews(renderContext);
 
@@ -1206,9 +1207,7 @@ export class PerspectivePanel extends RenderedDataPanel {
           const isVolumeProjectionLayer = isProjectionLayer(
             renderLayer as VolumeRenderingRenderLayer,
           );
-          const needsSecondPickingPass =
-            !isVolumeProjectionLayer &&
-            !this.isContinuousCameraMotionInProgress;
+          const needsSecondPickingPass = false;
 
           // Bind the appropriate buffer and set state
           if (isVolumeProjectionLayer) {
