@@ -129,7 +129,8 @@ export const glsl_computeOITWeight = `
 float computeOITWeight(float alpha, float depth) {
   float a = min(1.0, alpha) * 8.0 + 0.01;
   float b = -depth * 0.95 + 1.0;
-  return a * a * a * b * b * b;
+  //return a * a * a * b * b * b;
+  return 1.0;
 }
 `;
 
