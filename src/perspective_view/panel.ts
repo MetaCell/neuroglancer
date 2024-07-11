@@ -170,13 +170,13 @@ export function maxProjectionEmit(builder: ShaderBuilder) {
   builder.addOutputBuffer("highp vec4", "out_intensity", 2);
   builder.addOutputBuffer("highp vec4", "out_pickId", 3);
   builder.addFragmentCode(`
-void emit(vec4 color, float depth, float intensity, highp uint pickId) {
+void emit(vec4 color, float depth, float intensity, float pickId) {
   float pickIdFloat = float(pickId);
   float bufferDepth = 1.0 - depth;
   out_color = color;
   out_z = vec4(bufferDepth, bufferDepth, bufferDepth, 1.0);
   out_intensity = vec4(intensity, intensity, intensity, 1.0);
-  out_pickId = vec4(pickIdFloat, pickIdFloat, pickIdFloat, 1.0);
+  out_pickId = vec4(pickId, pickId, pickId, 1.0);
 }`);
 }
 

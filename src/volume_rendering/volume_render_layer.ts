@@ -341,6 +341,7 @@ void emitIntensity(float value) {
             builder.addFragmentCode(`
 float savedDepth = 0.0;
 float savedIntensity = 0.0;
+float savedRaw = 0.0;
 vec4 newColor = vec4(0.0);
 float userEmittedIntensity = -100.0;
 `);
@@ -371,7 +372,9 @@ void emitRGBA(vec4 rgba) {
   savedIntensity = intensityChanged ? newIntensity : savedIntensity; 
   savedDepth = intensityChanged ? depthAtRayPosition : savedDepth;
   outputColor = intensityChanged ? newColor : outputColor;
-  emit(outputColor, savedDepth, savedIntensity, uPickId);
+  float rawValue = float(toRaw(getDataValue()));
+  savedRaw = intensityChanged ? rawValue : savedRaw;
+  emit(outputColor, savedDepth, savedIntensity, savedRaw);
   defaultMaxProjectionIntensity = 0.0;
   userEmittedIntensity = -100.0;
 `;
