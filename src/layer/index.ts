@@ -641,6 +641,7 @@ function dataSourcesToJson(sources: readonly LayerDataSource[]) {
 }
 
 export class ManagedUserLayer extends RefCounted {
+  backgroundColor: string = "#000";
   localCoordinateSpace = new TrackableCoordinateSpace();
   localCoordinateSpaceCombiner = new CoordinateSpaceCombiner(
     this.localCoordinateSpace,
@@ -2002,6 +2003,12 @@ function initializeLayerFromSpecNoRestoreState(
     verifyString,
     "auto",
   );
+  const layerBackgroundColor = verifyOptionalObjectProperty(
+    spec,
+    "backgroundColor",
+    verifyString,
+    "#222",
+  );
   managedLayer.archived = verifyOptionalObjectProperty(
     spec,
     "archived",
@@ -2020,6 +2027,7 @@ function initializeLayerFromSpecNoRestoreState(
   }
   const layerConstructor = layerTypes.get(layerType) || NewUserLayer;
   managedLayer.layer = new layerConstructor(managedLayer);
+  managedLayer.backgroundColor = layerBackgroundColor;
   return spec;
 }
 
