@@ -56,8 +56,8 @@ import {
 import type { WatchableValueInterface } from "#src/trackable_value.js";
 import { makeCachedDerivedWatchableValue } from "#src/trackable_value.js";
 import type { Borrowed, RefCounted } from "#src/util/disposable.js";
-import type { vec4 } from "#src/util/geom.js";
 import {
+  vec4,
   getFrustrumPlanes,
   mat3,
   mat3FromMat4,
@@ -80,7 +80,7 @@ const tempMat3 = mat3.create();
 // To validate the octrees and to determine the multiscale fragment responsible for each framebuffer
 // location, set `DEBUG_MULTISCALE_FRAGMENTS=true` and also set `DEBUG_PICKING=true` in
 // `src/object_picking.ts`.
-const DEBUG_MULTISCALE_FRAGMENTS = false;
+const DEBUG_MULTISCALE_FRAGMENTS = true;
 
 function copyMeshDataToGpu(
   gl: GL,
@@ -340,6 +340,16 @@ export class MeshShaderManager {
   ) {
     const indexBegin = fragmentChunk.meshData.subChunkOffsets[subChunkBegin];
     const indexEnd = fragmentChunk.meshData.subChunkOffsets[subChunkEnd];
+    console.log(
+      "trying to drawMultiscaleFragment",
+      indexBegin,
+      indexEnd,
+      fragmentChunk.meshData.subChunkOffsets,
+    );
+    if (indexBegin === indexEnd) {
+      console.log("drawMultiscaleFragment: skipping empty subchunk");
+      return;
+    }
     this.drawFragmentHelper(gl, shader, fragmentChunk, indexBegin, indexEnd);
   }
 
@@ -869,6 +879,16 @@ export class MultiscaleMeshLayer extends PerspectiveViewRenderLayer<ThreeDimensi
     let totalManifestChunks = 0;
     let presentManifestChunks = 0;
 
+    const lodCounts = new Map();
+    const colormap = {
+      0: vec4.fromValues(1, 0, 0, 1),
+      1: vec4.fromValues(0, 1, 0, 1),
+      2: vec4.fromValues(0, 0, 1, 1),
+      3: vec4.fromValues(1, 1, 0, 1),
+      4: vec4.fromValues(1, 0, 1, 1),
+      5: vec4.fromValues(0, 1, 1, 1),
+      6: vec4.fromValues(1, 1, 1, 1),
+    };
     forEachVisibleSegmentToDraw(
       displayState,
       this,
@@ -916,6 +936,7 @@ export class MultiscaleMeshLayer extends PerspectiveViewRenderLayer<ThreeDimensi
             return has;
           },
           (lod, chunkIndex, subChunkBegin, subChunkEnd) => {
+            lodCounts.set(lod, (lodCounts.get(lod) || 0) + 1);
             const fragmentKey = getMultiscaleFragmentKey(key, lod, chunkIndex);
             const fragmentChunk = fragmentChunks.get(fragmentKey)!;
             const x = octree[5 * chunkIndex];
@@ -958,6 +979,7 @@ export class MultiscaleMeshLayer extends PerspectiveViewRenderLayer<ThreeDimensi
                 chunkShape[1] * scale,
                 chunkShape[2] * scale,
               ]}`;
+              console.log(message);
               const pickIndex = renderContext.pickIDs.registerUint64(
                 this,
                 objectId,
@@ -968,6 +990,12 @@ export class MultiscaleMeshLayer extends PerspectiveViewRenderLayer<ThreeDimensi
                 meshShaderManager.setPickID(gl, shader, pickIndex!);
               }
             }
+            console.log("Drawing", fragmentKey, subChunkBegin, subChunkEnd);
+            meshShaderManager.setColor(
+              gl,
+              shader,
+              colormap[lod as keyof typeof colormap],
+            );
             meshShaderManager.drawMultiscaleFragment(
               gl,
               shader,
@@ -979,6 +1007,7 @@ export class MultiscaleMeshLayer extends PerspectiveViewRenderLayer<ThreeDimensi
         );
       },
     );
+    console.log("Done", lodCounts);
     renderScaleHistogram.add(
       Number.POSITIVE_INFINITY,
       Number.POSITIVE_INFINITY,
