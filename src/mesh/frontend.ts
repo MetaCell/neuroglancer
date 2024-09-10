@@ -341,9 +341,6 @@ export class MeshShaderManager {
   ) {
     const indexBegin = fragmentChunk.meshData.subChunkOffsets[subChunkBegin];
     const indexEnd = fragmentChunk.meshData.subChunkOffsets[subChunkEnd];
-    if (indexBegin === indexEnd && DEBUG_MULTISCALE_FRAGMENTS) {
-      console.warn("drawMultiscaleFragment: skipping empty subchunk");
-    }
     this.drawFragmentHelper(gl, shader, fragmentChunk, indexBegin, indexEnd);
   }
 
