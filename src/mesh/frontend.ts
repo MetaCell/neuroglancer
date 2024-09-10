@@ -55,6 +55,7 @@ import {
 } from "#src/segmentation_display_state/frontend.js";
 import type { WatchableValueInterface } from "#src/trackable_value.js";
 import { makeCachedDerivedWatchableValue } from "#src/trackable_value.js";
+import { hsvToRgb } from "#src/util/colorspace.js";
 import type { Borrowed, RefCounted } from "#src/util/disposable.js";
 import {
   vec4,
@@ -340,14 +341,8 @@ export class MeshShaderManager {
   ) {
     const indexBegin = fragmentChunk.meshData.subChunkOffsets[subChunkBegin];
     const indexEnd = fragmentChunk.meshData.subChunkOffsets[subChunkEnd];
-    console.log(
-      "trying to drawMultiscaleFragment",
-      indexBegin,
-      indexEnd,
-      fragmentChunk.meshData.subChunkOffsets,
-    );
-    if (indexBegin === indexEnd) {
-      console.log("drawMultiscaleFragment: skipping empty subchunk");
+    if (indexBegin === indexEnd && DEBUG_MULTISCALE_FRAGMENTS) {
+      console.warn("drawMultiscaleFragment: skipping empty subchunk");
       return;
     }
     this.drawFragmentHelper(gl, shader, fragmentChunk, indexBegin, indexEnd);
@@ -879,16 +874,6 @@ export class MultiscaleMeshLayer extends PerspectiveViewRenderLayer<ThreeDimensi
     let totalManifestChunks = 0;
     let presentManifestChunks = 0;
 
-    const lodCounts = new Map();
-    const colormap = {
-      0: vec4.fromValues(1, 0, 0, 1),
-      1: vec4.fromValues(0, 1, 0, 1),
-      2: vec4.fromValues(0, 0, 1, 1),
-      3: vec4.fromValues(1, 1, 0, 1),
-      4: vec4.fromValues(1, 0, 1, 1),
-      5: vec4.fromValues(0, 1, 1, 1),
-      6: vec4.fromValues(1, 1, 1, 1),
-    };
     forEachVisibleSegmentToDraw(
       displayState,
       this,
@@ -936,7 +921,6 @@ export class MultiscaleMeshLayer extends PerspectiveViewRenderLayer<ThreeDimensi
             return has;
           },
           (lod, chunkIndex, subChunkBegin, subChunkEnd) => {
-            lodCounts.set(lod, (lodCounts.get(lod) || 0) + 1);
             const fragmentKey = getMultiscaleFragmentKey(key, lod, chunkIndex);
             const fragmentChunk = fragmentChunks.get(fragmentKey)!;
             const x = octree[5 * chunkIndex];
@@ -990,12 +974,23 @@ export class MultiscaleMeshLayer extends PerspectiveViewRenderLayer<ThreeDimensi
                 meshShaderManager.setPickID(gl, shader, pickIndex!);
               }
             }
-            console.log("Drawing", fragmentKey, subChunkBegin, subChunkEnd);
-            meshShaderManager.setColor(
-              gl,
-              shader,
-              colormap[lod as keyof typeof colormap],
-            );
+            if (DEBUG_MULTISCALE_FRAGMENTS && renderContext.emitColor) {
+              // Draw the mesh with color corresponding to the lod.
+              const colormap: vec4[] = [];
+              manifest.lodScales.forEach((spatialScale) => {
+                const tempColor = vec4.create();
+                const saturation = 1;
+                let hue;
+                if (Number.isFinite(spatialScale)) {
+                  hue = (((Math.log2(spatialScale) * 0.1) % 1) + 1) % 1;
+                } else {
+                  hue = 0;
+                }
+                hsvToRgb(tempColor, hue, saturation, 1);
+                colormap.push(tempColor);
+              });
+              meshShaderManager.setColor(gl, shader, colormap[lod]);
+            }
             meshShaderManager.drawMultiscaleFragment(
               gl,
               shader,
@@ -1007,7 +1002,6 @@ export class MultiscaleMeshLayer extends PerspectiveViewRenderLayer<ThreeDimensi
         );
       },
     );
-    console.log("Done", lodCounts);
     renderScaleHistogram.add(
       Number.POSITIVE_INFINITY,
       Number.POSITIVE_INFINITY,
