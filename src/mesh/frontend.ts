@@ -962,7 +962,6 @@ export class MultiscaleMeshLayer extends PerspectiveViewRenderLayer<ThreeDimensi
                 chunkShape[1] * scale,
                 chunkShape[2] * scale,
               ]}`;
-              console.log(message);
               const pickIndex = renderContext.pickIDs.registerUint64(
                 this,
                 objectId,
