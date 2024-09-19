@@ -553,18 +553,19 @@ export function addToolKeyBindHandlers(
       },
       { capture: true },
     );
-    mousedownContext.registerEventListener(
-      window,
-      "mouseup",
-      (event: MouseEvent) => {
-        if (event.button !== 0 || mousedownContext === undefined) return;
-        event.preventDefault();
-        event.stopPropagation();
-        context.unregisterDisposer(mousedownContext);
-        mousedownContext.dispose();
-        mousedownContext = undefined;
-      },
-    );
+    //   mousedownContext.registerEventListener(
+    //     window,
+    //     "mouseup",
+    //     (event: MouseEvent) => {
+    //       if (event.button !== 0 || mousedownContext === undefined) return;
+    //       event.preventDefault();
+    //       event.stopPropagation();
+    //       context.unregisterDisposer(mousedownContext);
+    //       mousedownContext.dispose();
+    //       mousedownContext = undefined;
+    //     },
+    //   );
+    // });
   });
   element.addEventListener("click", (event) => {
     event.preventDefault();
