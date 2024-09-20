@@ -16,6 +16,7 @@
 
 import type { RenderedPanel } from "#src/display_context.js";
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
+import { MeshLayer } from "#src/mesh/frontend.js";
 import { MultiscaleMeshLayer } from "#src/mesh/frontend.js";
 import { RenderedDataPanel } from "#src/rendered_data_panel.js";
 import { RenderLayerRole } from "#src/renderlayer.js";
@@ -30,16 +31,10 @@ export function getViewerLayerResolutions(
   viewer: Viewer,
 ): Map<[string, string], any> {
   const layers = viewer.layerManager.visibleRenderLayers;
-  const panels = viewer.display.panels;
   const map = new Map();
 
-  // Get all the layers in at least one panel.
-  for (const panel of panels) {
-    if (!(panel instanceof RenderedDataPanel)) continue;
-  }
-
   for (const layer of layers) {
-    //const isLayerInAnyPanel =
+    console.log("layer", layer);
     if (layer.role === RenderLayerRole.DATA) {
       const layer_name = layer.userLayer!.managedLayer.name;
       if (layer instanceof ImageRenderLayer) {
@@ -63,6 +58,7 @@ export function getViewerLayerResolutions(
       } else if (layer instanceof SegmentationRenderLayer) {
         const isVisble = layer.visibleSourcesList.length > 0;
         if (!isVisble) {
+          console.log("SegmentationRenderLayer not visible", layer);
           continue;
         }
         const type = "SegmentationRenderLayer";
@@ -78,6 +74,14 @@ export function getViewerLayerResolutions(
         const type = "MultiscaleMeshLayer";
         const userLayer = layer.userLayer as SegmentationUserLayer;
         const resolution = userLayer.displayState.renderScaleTarget.value;
+        map.set([layer_name, type], { resolution });
+      } else if (layer instanceof MeshLayer) {
+        const isVisble = layer.visibility.visible;
+        if (!isVisble) {
+          continue;
+        }
+        const type = "MeshLayer";
+        const resolution = 0;
         map.set([layer_name, type], { resolution });
       }
     }

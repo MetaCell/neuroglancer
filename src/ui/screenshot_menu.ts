@@ -48,7 +48,8 @@ const layerNamesForUI = {
   ImageRenderLayer: "Image",
   VolumeRenderingRenderLayer: "Volume",
   SegmentationRenderLayer: "Segmentation",
-  MultiscaleMeshLayer: "Mesh",
+  MultiscaleMeshLayer: "Multi-scale Mesh",
+  MeshLayer: "Single-scale Mesh",
 };
 
 export class ScreenshotDialog extends Overlay {
@@ -336,7 +337,9 @@ export class ScreenshotDialog extends Overlay {
         roundingLevel = 0;
       }
 
-      return `${resolution.toFixed(roundingLevel)} ${unit}`;
+      return resolution === 0
+        ? "n/a"
+        : `${resolution.toFixed(roundingLevel)} ${unit}`;
     }
     const resolutionTable = this.layerResolutionTable;
     const resolutionMap = getViewerLayerResolutions(
