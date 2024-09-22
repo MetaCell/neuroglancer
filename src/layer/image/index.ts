@@ -527,14 +527,23 @@ class RenderingOptionsTab extends Tab {
     const { element } = this;
     element.classList.add("neuroglancer-image-dropdown");
 
+    const wrapper = document.createElement("div");
+    wrapper.className = "section-wrapper";
+
+    element.appendChild(wrapper)
+
     for (const control of LAYER_CONTROLS) {
-      element.appendChild(
+      wrapper.appendChild(
         addLayerControlToOptionsTab(this, layer, this.visibility, control),
       );
     }
 
     const spacer = document.createElement("div");
     spacer.style.flex = "1";
+
+    const shader = document.createElement("div");
+    shader.className = "shader";
+
 
     const topRow = document.createElement("div");
     topRow.className = "neuroglancer-image-dropdown-top-row";
@@ -555,13 +564,14 @@ class RenderingOptionsTab extends Tab {
       }),
     );
 
-    element.appendChild(topRow);
+    element.appendChild(shader);
+    shader.appendChild(topRow)
     element.appendChild(
       this.registerDisposer(
         new ChannelDimensionsWidget(layer.channelCoordinateSpaceCombiner),
       ).element,
     );
-    element.appendChild(this.codeWidget.element);
+    shader.appendChild(this.codeWidget.element);
     element.appendChild(
       this.registerDisposer(
         new ShaderControls(
@@ -575,6 +585,8 @@ class RenderingOptionsTab extends Tab {
         ),
       ).element,
     );
+
+    
   }
 }
 

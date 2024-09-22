@@ -64,13 +64,14 @@
     "html-webpack-plugin": "^5.6.0",
     "mini-css-extract-plugin": "^2.9.0",
     "prettier": "3.3.3",
+    "sass": "^1.78.0",
     "style-loader": "^4.0.0",
     "svg-inline-loader": "^0.8.2",
     "tsx": "^4.16.2",
     "typescript": "^5.5.4",
     "vitest": "^2.0.4",
     "webdriverio": "^8.39.1",
-    "webpack": "^5.93.0",
+    "webpack": "^5.94.0",
     "webpack-bundle-analyzer": "^4.10.2",
     "webpack-cli": "^5.1.4",
     "webpack-dev-server": "^5.0.4",
@@ -84,7 +85,8 @@
     "lodash-es": "^4.17.21",
     "nifti-reader-js": "^0.6.8",
     "numcodecs": "^0.3.1",
-    "pako": "^2.1.0"
+    "pako": "^2.1.0",
+    "sass-loader": "^16.0.1"
   },
   "overrides": {
     "@puppeteer/browsers": ">=2"

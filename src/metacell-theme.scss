@@ -1,0 +1,872 @@
+// Variables
+$black: #000000;
+$white: #ffffff;
+$dark80: #2B2B2B;
+$dark100: #141414;
+$warning60: #FFC652;
+$caramel60: #C1915D;
+$content100: #999CA0;
+$primary80: #5D89FF;
+$primary100: #1652F0;
+$background80: #1F1F1F;
+$background60: #292929;
+$stroke60: #383838;
+
+.metacell-theme {
+    .neuroglancer-layer-control-container {
+        margin: 0;
+    }
+
+    .close-button {
+        position: static;
+    }
+
+    .overlay-content {
+        border: 0.0625rem solid $background80;
+        background: $dark100;
+
+        .button-group {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+
+            button {
+                font-size: 0.75rem;
+                padding: 0.5rem 0.75rem;
+                height: 2rem;
+                font-weight: 500;
+                border-radius: 0;
+                border: none;
+                box-sizing: border-box;
+                cursor: pointer;
+                line-height: 1;
+                letter-spacing: -0.01em;
+                text-align: left;
+
+                &:disabled {
+                    opacity: 0.4;
+                    pointer-events: none;
+                }
+
+                &.text-primary {
+                    color: $primary80;
+                    background-color: transparent;
+                    border: none;
+                }
+
+                &.contained-primary {
+                    background-color: $primary100;
+                    color: $white;
+                }
+
+                &.outlined-primary {
+                    border: 0.0938rem solid $stroke60;
+                    background-color: transparent;
+                    color: $white;
+                }
+
+                &:first-of-type {
+                    margin-right: auto;
+                }
+
+                &:last-of-type {
+                    margin-left: 0.5rem;
+                }
+            }
+        }
+
+        .CodeMirror {
+            margin-bottom: 0.5rem;
+            border-radius: 0.25rem;
+
+            .CodeMirror-gutter-elt {
+                .CodeMirror-guttermarker-subtle {
+                    color: #FFFFFF99;
+                }
+            }
+        }
+    }
+
+    .neuroglancer-multiline-autocomplete-dropdown {
+        border-color: $background80;
+    }
+
+    .neuroglancer-multiline-autocomplete-completion {
+        &:hover {
+            outline-color: rgba(255, 255, 255, 0.2);
+        }
+    }
+
+    .neuroglancer-multiline-autocomplete-completion-description {
+        color: $content100;
+    }
+
+    .neuroglancer-multiline-autocomplete-completion-with-description {
+        padding: 0.5rem 1rem;
+    }
+
+    .neuroglancer-layer-item {
+        margin: 0;
+        border-color: $background80;
+        padding: 0.125rem 0.25rem;
+        gap: 0.25rem;
+
+        &[data-selected="true"] {
+            &:hover {
+                border-color: $primary100;
+            }
+        }
+
+        .neuroglancer-layer-item-label {
+            font-size: 0.875rem;
+            font-weight: 400;
+            line-height: 1.25rem;
+            color: $content100;
+            background-color: transparent;
+        }
+
+        .neuroglancer-layer-item-number {
+            font-size: 0.875rem;
+            font-weight: 500;
+            line-height: 1.125rem;
+            letter-spacing: -0.01em;
+            background-color: transparent;
+            color: $content100;
+        }
+    }
+
+    .neuroglancer-display-dimensions-widget-default,
+    .neuroglancer-depth-range-relative-checkbox-label {
+        display: inline-flex;
+        gap: 0.5rem;
+    }
+
+    .neuroglancer-layer-panel {
+        margin: 0;
+        padding: 0.5rem;
+        gap: 0.25rem;
+    }
+
+    .neuroglancer-display-dimensions-widget-default {
+        margin-top: 0.25rem;
+    }
+
+    .neuroglancer-display-dimensions-widget {
+        border-radius: 0.125rem;
+        background: rgba(20, 20, 21, 0.30);
+        backdrop-filter: blur(0.125rem);
+        padding: 0.25rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    // .neuroglancer-display-dimensions-widget-dimension-grid {
+    //     display: flex;
+    //     flex-direction: column;
+    //     gap: 0.25rem;
+    // }
+
+    .neuroglancer-depth-range-widget-grid {
+        margin: 0;
+    }
+
+    .neuroglancer-display-dimensions-widget input {
+        font-size: 0.75rem;
+        font-weight: 400;
+        line-height: 0.8731rem;
+    }
+
+    label.perspective-panel-show-slice-views {
+        font-size: 0.75rem;
+        font-weight: 400;
+        line-height: 1.125rem;
+        text-align: left;
+        color: $white;
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    &.neuroglancer-show-panel-borders .neuroglancer-panel {
+        border-width: 0.0625rem;
+        &:focus-within {
+            border-color: $primary100;
+        }
+    }
+
+    .neuroglancer-tool-button {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .section-wrapper,
+    .neuroglancer-segmentation-rendering-tab {
+        display: flex;
+        margin: 0 -0.5rem;
+        flex-direction: column;
+
+        .neuroglancer-layer-control-control {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            input[type="text"] {
+                width: 10ch;
+            }
+        }
+
+        
+
+        .neuroglancer-layer-control-label {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        & > label {
+            padding: 0.25rem 0.75rem;
+        }
+
+        
+
+        .range-slider {
+            gap: 0.5rem;
+            input[type="range"] {
+                width: 12ch;
+                margin: 0;
+            }
+
+            input[type="number"] {
+                // padding-right: 1.5rem;
+                width: auto !important;
+            }
+        }
+
+        .neuroglancer-render-scale-widget-legend {
+            font-size: 0.75rem;
+            font-weight: 400;
+            line-height: 0.975rem;
+            color: $content100;
+        }
+
+        .neuroglancer-layer-control-label-text-container {
+            font-size: 0.875rem;
+            font-weight: 400;
+            line-height: 1.25rem;
+            color: $content100;
+
+        }
+
+        select,
+        .range-slider input[type="number"],
+        input[type="text"] {
+            margin-left: 0;
+            height: 2.25rem;
+            border: 0.0625rem solid $dark80;
+            padding: 0.5rem;
+            box-sizing: border-box;
+            color: $white;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            background-color: $background80 !important;
+            overflow: hidden;
+            font-size: 0.875rem;
+            font-weight: 400;
+            line-height: 1.25rem;
+
+            &:focus {
+                outline: none;
+            }
+        }
+    }
+
+    
+
+    .shader {
+        margin: 0.5rem -0.5rem 0;
+        padding: 0.75rem;
+        background-color: $background80;
+
+        .neuroglancer-image-dropdown-top-row {
+            margin-bottom: 0.5rem;
+        }
+    }
+
+    .CodeMirror {
+        width: 100%;
+        box-sizing: border-box;
+        border: 0.0625rem solid $dark80;
+        color: rgba(255, 255, 255, 0.60);
+        background-color: $background60;
+    }
+    .CodeMirror-gutters {
+        background-color: $background80;
+        border-color: $dark80;
+    }
+    
+    .neuroglancer-tab-view {
+        & > .neuroglancer-stack-view {
+            & > .neuroglancer-tab-content {
+                padding: 0.5rem;
+            }
+        }
+    }
+
+    .neuroglancer-layer-data-sources-container {
+        gap: 0.5rem;
+    }
+
+    .neuroglancer-coordinate-space-transform-input-bounds, 
+    .neuroglancer-coordinate-space-transform-output-bounds {
+        color: $content100;
+    }
+
+    .neuroglancer-coordinate-space-transform-label {
+        color: $white;
+    }
+
+    .neuroglancer-coordinate-space-transform-input-name, 
+    input.neuroglancer-coordinate-space-transform-output-name {
+        color: $caramel60;
+    }
+
+    .neuroglancer-coordinate-space-transform-widget {
+        margin-top: 0.5rem;
+    }
+
+    .neuroglancer-layer-data-sources-source-id {
+        &:not(:empty) {
+            color: $caramel60;
+        }
+    }
+
+    .neuroglancer-selection-details-layer-title {
+        background-color: $background80;
+        padding: 0.125rem 0.25rem;
+        font-size: 0.875rem;
+        font-weight: 400;
+        line-height: 1.25rem;
+        color: $content100;
+    }
+
+    
+
+    .neuroglancer-selection-details-layer-body {
+        padding: 0.25rem;
+
+        .neuroglancer-selected-annotation-details-position-dim {
+            padding: 0;
+            font-size: 0.75rem;
+            color: $caramel60;
+            font-weight: 400;
+            line-height: 0.8731rem;
+        }
+
+        .neuroglancer-selected-annotation-details-position-coord {
+            font-size: 0.75rem;
+            font-weight: 400;
+            line-height: 0.8731rem;
+            margin: 0;
+            padding: 0;
+            color: $white;
+        }
+
+        .neuroglancer-annotation-details-description {
+            margin-top: 0.5rem;
+        }
+
+        .neuroglancer-selected-annotation-details-position-grid {
+            row-gap: 0.25rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .neuroglancer-selected-annotation-details-icon {
+            display: none;
+        }
+    
+        .neuroglancer-icon + .neuroglancer-icon {
+            margin-left: 0;
+        }
+    }
+
+    .neuroglancer-selection-details-layer {
+        border-color: $background80;
+        margin-bottom: 0;
+
+        &:first-of-type {
+            margin-top: 0;
+        }
+    }
+
+    .neuroglancer-coordinate-space-transform-widget-reset-buttons {
+        .neuroglancer-icon {
+            width: auto;
+            padding: 0 0.25rem;
+            margin-top: 0.25rem;
+        }
+    }
+
+    .neuroglancer-coordinate-space-transform-output-extend {
+        flex-direction: row;
+        gap: 0.25rem;
+        margin-top: 0.25rem;
+
+        .neuroglancer-icon {
+            width: auto;
+            gap: 0.125rem;
+            padding: 0;
+            font-size: 0.625rem;
+            font-weight: 400;
+            line-height: 0.8731rem;
+            padding: 0 0.25rem;
+
+            & + .neuroglancer-icon {
+                margin: 0;
+            }
+
+            svg {
+                width: 0.625rem;
+                height: 0.625rem;
+            }
+        }
+    }
+
+    .neuroglancer-layer-data-sources-source-messages {
+        margin: 0;
+    }
+
+    .neuroglancer-layer-data-source {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .neuroglancer-multiline-autocomplete {
+        margin: 0;
+        height: 2.25rem;
+        border: 0.0625rem solid $dark80;
+        padding: 0.5rem;
+        box-sizing: border-box;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        background-color: $background80 !important;
+        overflow: hidden;
+        font-size: 0.875rem;
+        font-weight: 400;
+        line-height: 1.25rem;
+    }
+
+    .neuroglancer-tab-view-bar {
+        height: 2.25rem;
+        background: $dark100;
+        padding: 0 0.25rem;
+        display: flex;
+        align-items: center;
+        border-color: $dark80;
+
+        .neuroglancer-tab-label {
+            position: relative;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            height: 100%;
+            font-size: 0.875rem;
+            font-weight: 500;
+            border: none;
+            line-height: 1.125rem;
+            letter-spacing: -0.01em;
+            padding: 0 0.75rem;
+            color: $content100;
+
+            &::before {
+                content: '';
+                width: 100%;
+                height: 0.0625rem;
+                position: absolute;
+                left: 0;
+                bottom: -0.0625rem;
+            }
+
+            &:hover {
+                color: $white;
+            }
+
+            &.neuroglancer-selected-tab-label {
+                background-color: transparent;
+                border: none;
+                padding: 0 0.75rem;
+                margin-bottom: 0;
+                color: $primary100;
+
+                &::before {
+                    background-color: $primary100;
+                }
+            }
+        }
+    }
+
+    .neuroglancer-viewer-top-row {
+        margin-bottom: 0;
+        height: 2.25rem;
+        padding: 0 0.5rem;
+        background-color: $dark100;
+        border-bottom: 0.0625rem solid $dark80;
+    }
+
+    .neuroglancer-position-dimension {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    .neuroglancer-position-dimension-coordinate {
+        font-size: 0.75rem;
+        font-weight: 400;
+        line-height: 0.8731rem;
+        margin: 0;
+        padding: 0;
+        color: $white;
+    }
+
+    .neuroglancer-position-widget {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+
+    .neuroglancer-position-dimension-scale-container {
+        margin-left: 0;
+        display: flex;
+        align-items: center;
+        margin-right: 0;
+    }
+
+    .neuroglancer-position-dimension-scale-container[data-is-empty="false"] {
+        margin-right: 0;
+
+        .neuroglancer-position-dimension-scale {
+            font-size: 0.75rem;
+            font-weight: 400;
+            line-height: 0.8731rem;
+            color: $content100;
+
+        }
+
+        &::before {
+            font-size: 0.75rem;
+            font-weight: 400;
+            line-height: 0.8731rem;
+            color: $content100;
+        }
+
+        &::after {
+            font-size: 0.75rem;
+            font-weight: 400;
+            line-height: 0.8731rem;
+            color: $content100;
+        }
+    }
+
+    .neuroglancer-position-dimension-name {
+        padding: 0;
+        font-size: 0.75rem;
+        color: $caramel60;
+        font-weight: 400;
+        line-height: 0.8731rem;
+    }
+
+    .neuroglancer-icon {
+        width: 1.25rem;
+        height: 1.25rem;
+        padding: 0;
+        border-radius: 0.125rem;
+        margin: 0;
+
+        &+.neuroglancer-icon {
+            margin-left: 0.25rem;
+        }
+
+        &.dark-background[data-checked="true"] {
+            background-color: $background60;
+
+            svg {
+                stroke: $white;
+            }
+        }
+
+        &:hover {
+            background-color: $background60;
+
+            svg {
+                stroke: $white;
+            }
+        }
+
+
+        svg {
+            stroke: $content100;
+        }
+    }
+
+    .neuroglancer-mouse-position-widget {
+        font-size: 0.75rem;
+        font-weight: 400;
+        line-height: 0.8731rem;
+        color: $warning60;
+        margin-left: 0.75rem;
+    }
+
+    .neuroglancer-side-panel-column {
+        background-color: $dark100;
+    }
+
+    .neuroglancer-resize-gutter-horizontal {
+        padding: 0;
+        background-color: $background80;
+    }
+
+    .neuroglancer-layer-list-panel-items {
+        padding: 0.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .neuroglancer-side-panel-titlebar {
+        padding: 0.375rem 0.75rem;
+        background-color: transparent !important;
+    }
+
+    .neuroglancer-side-panel-title {
+        font-size: 0.875rem;
+        font-weight: 500;
+        line-height: 1.125rem;
+        letter-spacing: -0.01em;
+        color: $white;
+    }
+
+    .neuroglancer-layer-list-panel-item {
+        border-color: $background80;
+        margin: 0;
+        padding: 0.125rem 0.25rem;
+        align-items: center;
+
+        &[data-archived="true"] {
+
+            .neuroglancer-layer-list-panel-item-number,
+            .neuroglancer-layer-side-panel-name {
+                color: #4F5254;
+            }
+
+            .neuroglancer-icon svg {
+                color: #4F5254;
+                stroke: #4F5254;
+            }
+        }
+
+        &[data-selected="true"] {
+            border-color: $primary100;
+            background-color: $background80;
+
+            .neuroglancer-layer-list-panel-item-controls,
+            .neuroglancer-layer-list-panel-item-delete {
+                display: inline-flex;
+            }
+        }
+
+        input[type="checkbox"] {
+            margin: 0.25rem;
+        }
+    }
+
+    .neuroglancer-layer-side-panel-name {
+        font-size: 0.875rem;
+        font-weight: 400;
+        line-height: 1.25rem;
+        text-align: left;
+        color: $content100;
+        padding: 0 0.5rem;
+    }
+
+    .neuroglancer-layer-list-panel-item-number {
+        background-color: transparent;
+        font-size: 0.875rem;
+        font-weight: 500;
+        line-height: 1;
+        margin: 0 0.25rem;
+        letter-spacing: -0.01em;
+        color: $content100;
+
+        &+div {
+            display: flex;
+
+
+
+            .neuroglancer-icon+.neuroglancer-icon {
+                margin-left: 0;
+            }
+        }
+    }
+
+    // .neuroglancer-settings-body {
+    //     display: flex;
+    //     flex-wrap: wrap;
+    //     flex-direction: row-reverse;
+    // }
+
+    .neuroglancer-settings-scroll-container {
+        &>label {
+            padding: 0 0.75rem;
+            align-items: center;
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 400;
+            color: $content100;
+            line-height: 1.25rem;
+            gap: 1rem;
+
+            input {
+                margin: 0;
+                &[type='text'] {
+                    height: 2.25rem;
+                    border: 0.0625rem solid $dark80;
+                    padding: 0.5rem;
+                    box-sizing: border-box;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                    background-color: $background80 !important;
+                    overflow: hidden;
+                    font-size: 0.875rem;
+                    font-weight: 400;
+                    line-height: 1.25rem;
+                    width: 15ch;
+                    &:focus {
+                        outline: none;
+                    }
+                }
+
+                &[type='color'] {
+                    border: none;
+                    width: 2rem;
+                }
+
+                &[type='checkbox'] {
+                    width: auto;
+                }
+            }
+        }
+    }
+
+    .neuroglancer-selection-details-position-dimension {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    .neuroglancer-selection-details-position-dimension-name {
+        padding: 0;
+        font-size: 0.75rem;
+        color: $caramel60;
+        font-weight: 400;
+        line-height: 0.8731rem;
+    }
+
+    .neuroglancer-selection-details-position-dimension-coordinate {
+        font-size: 0.75rem;
+        font-weight: 400;
+        line-height: 0.8731rem;
+        margin: 0;
+        padding: 0;
+        color: $white;
+    }
+
+    .neuroglancer-selection-details-position-dimension {
+        & + .neuroglancer-icon {
+            margin-left: auto;
+        }
+        & + .neuroglancer-selection-details-position-dimension {
+            margin: 0;
+        }
+    }
+
+    .neuroglancer-selection-details-position {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .neuroglancer-selection-details-body {
+        padding: 0.375rem 0.75rem;
+    }
+
+    .neuroglancer-settings-title {
+        width: 100%;
+        padding: 0.375rem 0.75rem;
+        background-color: $dark100 !important;
+        font-size: 0.875rem;
+        font-weight: 500;
+        line-height: 1.125rem;
+        color: $white !important;
+        letter-spacing: -0.01em;
+        box-sizing: border-box;
+        position: sticky;
+        top: 0;
+        left: 0;
+        margin: 0;
+
+        &:focus {
+            outline: none;
+        }
+    }
+
+    .neuroglancer-help-scroll-container {
+
+        padding: 0 0.75rem;
+
+        .dt {
+            // width: 50%;
+            // margin: 0;
+            // padding-top: 0.375rem;
+            font-size: 0.75rem;
+            color: $caramel60;
+            font-weight: 400;
+            line-height: 0.8731rem;
+
+        }
+
+        .dd {
+            // width: 50%;
+            // margin: 0;
+            // padding-top: 0.375rem;
+            margin: 0.5rem 0 1rem 4ex;
+            font-size: 0.75rem;
+            color: $white;
+            font-weight: 400;
+            line-height: 0.8731rem;
+
+        }
+
+        h2 {
+            width: 100%;
+            padding: 0.375rem 0.75rem;
+            margin: 0 -0.75rem 0.75rem;
+            background-color: $dark100;
+            font-size: 0.875rem;
+            color: $white;
+            font-weight: 500;
+            line-height: 1.125rem;
+            letter-spacing: -0.01em;
+        }
+    }
+
+    .neuroglancer-resize-gutter-vertical {
+        height: 0.5rem;
+        background-color: $black;
+        padding: 0;
+        border-top: 0.0625rem solid $background80;
+        border-bottom: 0.0625rem solid $background80;
+    }
+}

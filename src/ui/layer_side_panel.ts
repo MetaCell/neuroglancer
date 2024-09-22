@@ -62,6 +62,7 @@ export class LayerNameWidget extends RefCounted {
     super();
     const { element } = this;
     element.classList.add("neuroglancer-layer-side-panel-name");
+    element.placeholder = "Enter panel name";
     element.spellcheck = false;
     element.autocomplete = "off";
     const keyboardHandler = this.registerDisposer(
