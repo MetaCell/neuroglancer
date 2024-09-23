@@ -17,7 +17,7 @@
 .neuroglancer-tool-key-binding {
   display: inline-block;
   color: #0ff;
-  font: 9pt monospace;
+  font-size: 9pt monospace;
   white-space: pre;
 }
 

@@ -188,7 +188,6 @@ interferes with our click handling.  Setting `pointer-events: none;` avoids that
 }
 
 .neuroglancer-position-dimension-playback {
-  font-family: sans-serif;
   font-size: 10pt;
   display: flex;
   flex-direction: column;
