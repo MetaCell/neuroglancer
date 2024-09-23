@@ -43,7 +43,7 @@
 
 .neuroglancer-annotation-tool-status-widget-layer-number {
   display: inline-block;
-  font: 10pt sans-serif;
+  font-size: 10pt;
   font-weight: bold;
   background-color: #9a7518;
 }
@@ -70,7 +70,7 @@
 .neuroglancer-annotation-tool-status-widget-description {
   display: inline-block;
   color: #3c3;
-  font: 10pt sans-serif;
+  font-size: 10pt;
   white-space: nowrap;
 }
 

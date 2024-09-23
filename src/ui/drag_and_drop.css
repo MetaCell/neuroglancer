@@ -20,6 +20,6 @@
   z-index: 1000;
   background-color: yellow;
   color: black;
-  font: 10pt sans-serif;
+  font-size: 10pt;
   padding: 2px;
 }

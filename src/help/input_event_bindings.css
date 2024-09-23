@@ -19,7 +19,6 @@
   flex: 1;
   height: 0px;
   min-height: 0px;
-  font-family: sans-serif;
   display: flex;
   flex-direction: column;
 }

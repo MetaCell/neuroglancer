@@ -230,7 +230,7 @@
   box-shadow: none;
   border: 0;
   margin: 0;
-  font: 10pt sans-serif;
+  font-size: 10pt;
   pointer-events: auto;
 }
 
@@ -302,7 +302,7 @@
 
 .neuroglancer-segment-list-header-label {
   cursor: pointer;
-  font: 10pt sans-serif;
+  font-size: 10pt;
 }
 
 .neuroglancer-segment-list-header

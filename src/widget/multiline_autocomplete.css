@@ -23,7 +23,6 @@
 
 .neuroglancer-multiline-autocomplete-hint,
 .neuroglancer-multiline-autocomplete-input {
-  font-family: monospace;
   color: #fff;
   word-wrap: break-word;
 }
@@ -44,7 +43,6 @@
 .neuroglancer-multiline-autocomplete-hint,
 .neuroglancer-multiline-autocomplete-input,
 .neuroglancer-multiline-autocomplete-completion {
-  font-family: monospace;
   font-size: medium;
 }
 

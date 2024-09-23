@@ -26,7 +26,7 @@
   align-items: center;
   justify-content: center;
   color: white;
-  font: 12px sans-serif;
+  font-size: 12px;
   cursor: pointer;
   font-weight: 900;
   margin-left: 1px;

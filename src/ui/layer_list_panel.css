@@ -38,7 +38,6 @@
 }
 
 .neuroglancer-layer-list-panel-item-number {
-  font-family: sans-serif;
   background-color: var(--layer-number-color);
   color: white;
   font-weight: bold;
