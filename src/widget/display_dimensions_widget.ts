@@ -322,6 +322,23 @@ export class DisplayDimensionsWidget extends RefCounted {
     depthGridContainer.classList.add("neuroglancer-depth-range-widget-grid");
     element.appendChild(depthGridContainer);
 
+    const setScaleInputBox = document.createElement("input");
+    setScaleInputBox.type = "number";
+    setScaleInputBox.step = "any";
+    setScaleInputBox.min = "-1";
+    setScaleInputBox.max = "Infinity";
+    element.appendChild(setScaleInputBox);
+    setScaleInputBox.addEventListener("input", () => {
+      const { canonicalVoxelFactors, displayDimensionScales } =
+        this.displayDimensionRenderInfo.value;
+      const scale = Number(setScaleInputBox.value);
+      // TEMP just take the first
+      const i = 0;
+      const desiredZoomLevel =
+        (scale * canonicalVoxelFactors[i]) / displayDimensionScales[i];
+      this.zoom.value = desiredZoomLevel;
+    });
+
     const relativeCheckboxLabel = document.createElement("label");
     const relativeCheckbox = document.createElement("input");
     relativeCheckbox.type = "checkbox";
