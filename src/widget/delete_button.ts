@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import svg_bin from "ikonate/icons/bin.svg?raw";
+import svg_bin from "#src/ui/images/bin.svg?raw";
 import type { MakeIconOptions } from "#src/widget/icon.js";
 import { makeIcon } from "#src/widget/icon.js";
 

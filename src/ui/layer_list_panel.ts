@@ -15,7 +15,6 @@
  */
 
 import "#src/ui/layer_list_panel.css";
-import svg_controls_alt from "ikonate/icons/controls-alt.svg?raw";
 import svg_eye_crossed from "ikonate/icons/eye-crossed.svg?raw";
 import svg_eye from "ikonate/icons/eye.svg?raw";
 import type {
@@ -25,6 +24,7 @@ import type {
 } from "#src/layer/index.js";
 import { deleteLayer } from "#src/layer/index.js";
 import { TrackableBooleanCheckbox } from "#src/trackable_boolean.js";
+import svg_controls_alt from "#src/ui/images/controls.svg?raw";
 import type { DropLayers } from "#src/ui/layer_drag_and_drop.js";
 import {
   registerLayerBarDragLeaveHandler,
@@ -134,16 +134,19 @@ function makeSelectedLayerSidePanelCheckboxIcon(layer: ManagedUserLayer) {
 class LayerListItem extends RefCounted {
   element = document.createElement("div");
   numberElement = document.createElement("div");
+  labelElement = document.createElement("label");
   generation = -1;
   constructor(
     public panel: LayerListPanel,
     public layer: ManagedUserLayer,
   ) {
     super();
-    const { element, numberElement } = this;
+    const { element, numberElement, labelElement } = this;
+    labelElement.classList.add("metacell-neuroglancer-checkbox-label");
     element.classList.add("neuroglancer-layer-list-panel-item");
     numberElement.classList.add("neuroglancer-layer-list-panel-item-number");
-    element.appendChild(
+    element.appendChild(labelElement);
+    labelElement.appendChild(
       this.registerDisposer(
         new TrackableBooleanCheckbox(
           {
@@ -165,9 +168,6 @@ class LayerListItem extends RefCounted {
     );
     element.appendChild(numberElement);
     element.appendChild(
-      this.registerDisposer(new LayerVisibilityWidget(layer)).element,
-    );
-    element.appendChild(
       this.registerDisposer(new LayerNameWidget(layer)).element,
     );
     element.appendChild(
@@ -182,6 +182,9 @@ class LayerListItem extends RefCounted {
     });
     deleteButton.classList.add("neuroglancer-layer-list-panel-item-delete");
     element.appendChild(deleteButton);
+    element.appendChild(
+      this.registerDisposer(new LayerVisibilityWidget(layer)).element,
+    );
     registerLayerDragHandlers(panel, element, layer, {
       isLayerListPanel: true,
       getLayoutSpec: () => undefined,
@@ -310,20 +313,23 @@ export class LayerListPanel extends SidePanel {
       yield self.layerDropZone;
     }
     updateChildren(this.itemContainer, getItems());
-    let title = "Layers";
+    const title = "Layers";
+    const titleParagraphElement = document.createElement("p");
+    titleParagraphElement.classList.add("metacell-neuroglancer-side-panel-title-paragraph");
+    let subTitle = " ";
     if (numVisible || numHidden || numArchived) {
-      title += " (";
       let sep = "";
       if (numVisible + numHidden) {
-        title += `${numVisible}/${numHidden + numVisible} visible`;
+        subTitle += `${numVisible}/${numHidden + numVisible} visible`;
         sep = ", ";
       }
       if (numArchived) {
-        title += `${sep}${numArchived} archived`;
+        subTitle += `${sep}${numArchived} archived`;
       }
-      title += ")";
     }
     this.titleElement.textContent = title;
+    titleParagraphElement.textContent = subTitle;
+    this.titleElement.appendChild(titleParagraphElement);
   }
 }
 

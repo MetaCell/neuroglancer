@@ -643,13 +643,22 @@ $stroke60: #383838;
     .neuroglancer-side-panel-title {
         font-size: 0.875rem;
         font-weight: 500;
-        line-height: 1.125rem;
+        line-height: 100%;
         letter-spacing: -0.01em;
         color: $white;
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        .metacell-neuroglancer-side-panel-title-paragraph {
+            color: $content100;
+            font-weight: 400;
+            position: relative;
+            top: -0.15rem;
+        }
     }
 
     .neuroglancer-layer-list-panel-item {
-        border-color: $background80;
+    
         margin: 0;
         padding: 0.125rem 0.25rem;
         align-items: center;
@@ -658,15 +667,34 @@ $stroke60: #383838;
 
             .neuroglancer-layer-list-panel-item-number,
             .neuroglancer-layer-side-panel-name {
-                color: #4F5254;
+                color: #fff;
             }
 
             .neuroglancer-icon svg {
+                color: #fff;
+                stroke: #fff;
+            }
+            .neuroglancer-layer-list-panel-item-number + div svg {
                 color: #4F5254;
                 stroke: #4F5254;
             }
+            .neuroglancer-checkbox-label {
+                &:after {
+                    content: "";
+                    background: url('../src/ui/images/selected.svg') no-repeat;
+                    width: 1rem;
+                    height: 1rem;
+                    display: block;
+                }
+                input {
+                    margin: 0.25rem;
+                    opacity: 0;
+                    position: absolute;
+                  
+                }
+            }
         }
-
+       
         &[data-selected="true"] {
             border-color: $primary100;
             background-color: $background80;
@@ -676,10 +704,79 @@ $stroke60: #383838;
                 display: inline-flex;
             }
         }
-
-        input[type="checkbox"] {
-            margin: 0.25rem;
+     
+        &[data-archived="false"] {
+            border-color: $background80;
+            background: transparent;
+            .neuroglancer-icon svg {
+                color: #4F5254;
+                stroke: #4F5254;
+            }
+            .metacell-neuroglancer-checkbox-label {
+                &:after {
+                    content: "";
+                    background: url('../src/ui/images/unselected.svg')  no-repeat;
+                    width: 1rem;
+                    height: 1rem;
+                    display: block;
+                }
+                input {
+                    margin: 0.25rem;
+                    opacity: 0;
+                    position: absolute;
+                  
+                }
+            }
         }
+
+        .container {
+            position: relative;
+            padding-left: 30px; /* Space for the checkbox */
+            cursor: pointer;
+            display: inline-block;
+            margin: 10px;
+        }
+        
+        .container input {
+            display: none; /* Hide the default checkbox */
+        }
+        
+        .container::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 20px; /* Size of the custom checkbox */
+            height: 20px;
+            border: 2px solid #ccc; /* Border color */
+            border-radius: 4px; /* Rounded corners */
+            background-color: white; /* Background color */
+            transition: background-color 0.2s, border-color 0.2s; /* Smooth transitions */
+        }
+        
+        .container input:checked + label::before {
+            background-color: #4CAF50; /* Background color when checked */
+            border-color: #4CAF50; /* Border color when checked */
+        }
+        
+        .container::after {
+            content: '';
+            position: absolute;
+            left: 6px; /* Position for the checkmark */
+            top: 9px; /* Position for the checkmark */
+            width: 5px;
+            height: 10px;
+            border: solid white; /* Checkmark color */
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
+            opacity: 0; /* Hide checkmark by default */
+            transition: opacity 0.2s; /* Smooth transition */
+        }
+        
+        .container input:checked + label::after {
+            opacity: 1; /* Show checkmark when checked */
+        }
+        
     }
 
     .neuroglancer-layer-side-panel-name {
@@ -755,6 +852,25 @@ $stroke60: #383838;
 
                 &[type='checkbox'] {
                     width: auto;
+                    -webkit-appearance: none;
+                    &:before {
+                        content: "";
+                        background: url('../src/ui/images/unselected.svg') no-repeat;
+                        width: 1rem;
+                        height: 1rem;
+                        display: block;
+                        opacity: 1;
+                    }
+                    &:checked {
+                        &:before {
+                            content: "";
+                            background: url('../src/ui/images/selected.svg') no-repeat;
+                            width: 1rem;
+                            height: 1rem;
+                            display: block;
+                        }
+                       
+                    }
                 }
             }
         }
