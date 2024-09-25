@@ -675,7 +675,8 @@ $content10:#4F5254;
         align-items: center;
 
         &[data-archived="true"] {
-
+            border-color: $primary100;
+            background-color: $background80;
             .neuroglancer-layer-list-panel-item-number,
             .neuroglancer-layer-side-panel-name {
                 color: $white;
@@ -722,8 +723,7 @@ $content10:#4F5254;
         }
        
         &[data-selected="true"] {
-            border-color: $primary100;
-            background-color: $background80;
+           
 
             .neuroglancer-layer-list-panel-item-controls,
             .neuroglancer-layer-list-panel-item-delete {
@@ -766,6 +766,13 @@ $content10:#4F5254;
         
     }
     .neuroglancer-layer-list-panel-item-not-visible {
+        .neuroglancer-layer-side-panel-name,
+        .neuroglancer-layer-list-panel-item-number {
+          color: $content10 !important;
+        }
+        svg {
+            stroke: $content100 !important
+        }
         &:hover {
             background: $background80;
             border-color: $dark80;
