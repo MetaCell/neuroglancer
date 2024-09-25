@@ -144,6 +144,11 @@ class LayerListItem extends RefCounted {
     const { element, numberElement, labelElement } = this;
     labelElement.classList.add("metacell-neuroglancer-checkbox-label");
     element.classList.add("neuroglancer-layer-list-panel-item");
+    if(!layer?.visible) {
+      element.classList.add("neuroglancer-layer-list-panel-item-not-visible");
+    } else {
+      element.classList.remove("neuroglancer-layer-list-panel-item-not-visible");
+    }
     numberElement.classList.add("neuroglancer-layer-list-panel-item-number");
     element.appendChild(labelElement);
     labelElement.appendChild(

@@ -11,7 +11,10 @@ $primary100: #1652F0;
 $background80: #1F1F1F;
 $background60: #292929;
 $stroke60: #383838;
-
+$content10:#4F5254;
+* {
+    font-family: Graphik;
+}
 .metacell-theme {
     .neuroglancer-layer-control-container {
         margin: 0;
@@ -19,6 +22,14 @@ $stroke60: #383838;
 
     .close-button {
         position: static;
+    }
+    .neuroglancer-icon {
+        &[title="Close panel"] {
+            svg {
+                color: $white;
+                stroke: $white;
+            }
+        }
     }
 
     .overlay-content {
@@ -667,18 +678,33 @@ $stroke60: #383838;
 
             .neuroglancer-layer-list-panel-item-number,
             .neuroglancer-layer-side-panel-name {
-                color: #fff;
+                color: $white;
             }
 
             .neuroglancer-icon svg {
-                color: #fff;
-                stroke: #fff;
+                color: $white;
+                stroke: $white;
             }
             .neuroglancer-layer-list-panel-item-number + div svg {
-                color: #4F5254;
-                stroke: #4F5254;
+                color:$content10;
+                stroke:$content10;
             }
-            .neuroglancer-checkbox-label {
+            .metacell-neuroglancer-checkbox-label {
+                &:after {
+                    content: "";
+                    background: url('../src/ui/images/selected.svg') no-repeat;
+                    width: 1rem;
+                    height: 1rem;
+                    display: block;
+                }
+                input {
+                    margin: 0.25rem;
+                    opacity: 0;
+                    position: absolute;
+                  
+                }
+            }
+            .metacell-neuroglancer-checkbox-label {
                 &:after {
                     content: "";
                     background: url('../src/ui/images/selected.svg') no-repeat;
@@ -704,13 +730,22 @@ $stroke60: #383838;
                 display: inline-flex;
             }
         }
-     
+        &[data-selected="false"] {
+            .neuroglancer-icon svg {
+                color: $content100;
+                stroke: $content100;
+            }
+        }
         &[data-archived="false"] {
             border-color: $background80;
             background: transparent;
+            &:hover {
+                background: $background80;
+                border-color: $dark80;
+            }
             .neuroglancer-icon svg {
-                color: #4F5254;
-                stroke: #4F5254;
+                color:$content10;
+                stroke:$content10;
             }
             .metacell-neuroglancer-checkbox-label {
                 &:after {
@@ -728,58 +763,16 @@ $stroke60: #383838;
                 }
             }
         }
-
-        .container {
-            position: relative;
-            padding-left: 30px; /* Space for the checkbox */
-            cursor: pointer;
-            display: inline-block;
-            margin: 10px;
-        }
-        
-        .container input {
-            display: none; /* Hide the default checkbox */
-        }
-        
-        .container::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 20px; /* Size of the custom checkbox */
-            height: 20px;
-            border: 2px solid #ccc; /* Border color */
-            border-radius: 4px; /* Rounded corners */
-            background-color: white; /* Background color */
-            transition: background-color 0.2s, border-color 0.2s; /* Smooth transitions */
-        }
-        
-        .container input:checked + label::before {
-            background-color: #4CAF50; /* Background color when checked */
-            border-color: #4CAF50; /* Border color when checked */
-        }
-        
-        .container::after {
-            content: '';
-            position: absolute;
-            left: 6px; /* Position for the checkmark */
-            top: 9px; /* Position for the checkmark */
-            width: 5px;
-            height: 10px;
-            border: solid white; /* Checkmark color */
-            border-width: 0 2px 2px 0;
-            transform: rotate(45deg);
-            opacity: 0; /* Hide checkmark by default */
-            transition: opacity 0.2s; /* Smooth transition */
-        }
-        
-        .container input:checked + label::after {
-            opacity: 1; /* Show checkmark when checked */
-        }
         
     }
-
+    .neuroglancer-layer-list-panel-item-not-visible {
+        &:hover {
+            background: $background80;
+            border-color: $dark80;
+        }
+    }
     .neuroglancer-layer-side-panel-name {
+        font-family: "Graphik";
         font-size: 0.875rem;
         font-weight: 400;
         line-height: 1.25rem;
@@ -813,22 +806,31 @@ $stroke60: #383838;
     //     flex-wrap: wrap;
     //     flex-direction: row-reverse;
     // }
-
+    .neuroglancer-settings-body {
+        input[type="text"] {
+            &::placeholder {
+                color: $white;
+            }
+        }
+    }
     .neuroglancer-settings-scroll-container {
         &>label {
             padding: 0 0.75rem;
             align-items: center;
-            margin-top: 0.5rem;
+            margin-top: 1.5rem;
             font-size: 0.875rem;
             font-weight: 400;
             color: $content100;
             line-height: 1.25rem;
             gap: 1rem;
-
+            &.neuroglancer-number-input {
+                margin-top: 0.5rem;
+            }
             input {
                 margin: 0;
                 &[type='text'] {
                     height: 2.25rem;
+                    font-family: Graphik;
                     border: 0.0625rem solid $dark80;
                     padding: 0.5rem;
                     box-sizing: border-box;
@@ -840,6 +842,7 @@ $stroke60: #383838;
                     font-weight: 400;
                     line-height: 1.25rem;
                     width: 15ch;
+                    color: $content100;
                     &:focus {
                         outline: none;
                     }
@@ -919,6 +922,7 @@ $stroke60: #383838;
     }
 
     .neuroglancer-settings-title {
+        font-family: Graphik;
         width: 100%;
         padding: 0.375rem 0.75rem;
         background-color: $dark100 !important;
