@@ -97,9 +97,10 @@ class LayerVisibilityWidget extends RefCounted {
       const visible = this.layer.visible;
       hideIcon.style.display = visible ? "" : "none";
       showIcon.style.display = !visible ? "" : "none";
-      if(visible){
-        hideIcon?.parentElement?.parentElement?.classList.remove("neuroglancer-layer-list-panel-item-not-visible")
-      }
+      hideIcon?.parentElement?.parentElement?.classList.toggle(
+        "neuroglancer-layer-list-panel-item-not-visible",
+        !visible
+      );
     };
     updateView();
     this.registerDisposer(layer.layerChanged.add(updateView));

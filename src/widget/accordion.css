@@ -1,0 +1,24 @@
+.accordion {
+  /* border: 1px solid #ddd; */
+  /* border-radius: 4px; */
+  background-color: #141414;
+}
+
+.accordion-item {
+  border-bottom: 1px solid #ddd;
+}
+
+.accordion-title {
+  padding: 10px;
+  cursor: pointer;
+  background-color: #141414;
+}
+
+.accordion-title:hover {
+  background-color: #141414;
+}
+
+.accordion-content {
+  padding: 10px;
+  display: none; /* Hide by default */
+}

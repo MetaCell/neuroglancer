@@ -60,6 +60,7 @@ import {
 import { EventActionMap, MouseEventBinder } from "#src/util/mouse_bindings.js";
 import { formatScaleWithUnitAsString, parseScale } from "#src/util/si_units.js";
 import { makeIcon } from "#src/widget/icon.js";
+import { makeAddMoreButton } from "#src/widget/metacell_add_button.js";
 
 function updateInputFieldWidth(
   element: HTMLInputElement,
@@ -244,7 +245,7 @@ export class CoordinateSpaceTransformWidget extends RefCounted {
     upper: HTMLDivElement;
   }[] = [];
   private addSourceDimensionIcon = makeIcon({ svg: svg_plus, text: "S" });
-  private addOutputDimensionIcon = makeIcon({ svg: svg_plus, text: "V" });
+  private addOutputDimensionIcon = makeAddMoreButton({ svg: svg_plus, text: "add dimension" });
   private addOutputDimensionCell = document.createElement("div");
   private addOutputDimensionInput = makeOutputNameElement();
   private inputScaleModified: boolean[] = [];
@@ -355,7 +356,7 @@ export class CoordinateSpaceTransformWidget extends RefCounted {
     addOutputDimensionCell.classList.add(
       "neuroglancer-coordinate-space-transform-output-extend",
     );
-    const extendOutputDimensionsTitle = "Embed in additional output dimension";
+    const extendOutputDimensionsTitle = "add dimension";
     const extendSourceDimensionsTitle = "Extend to additional source dimension";
     addOutputDimensionIcon.title = extendOutputDimensionsTitle;
     addSourceDimensionIcon.title = extendSourceDimensionsTitle;
