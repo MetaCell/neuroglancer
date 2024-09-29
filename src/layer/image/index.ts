@@ -78,6 +78,8 @@ import {
   setControlsInShader,
   ShaderControlState,
 } from "#src/webgl/shader_ui_controls.js";
+import type { AccordionItem } from "#src/widget/accordion.js";
+import { Accordion } from "#src/widget/accordion.js";
 import { ChannelDimensionsWidget } from "#src/widget/channel_dimensions_widget.js";
 import { makeCopyButton } from "#src/widget/copy_button.js";
 import type { DependentViewContext } from "#src/widget/dependent_view_widget.js";
@@ -101,6 +103,7 @@ import {
   ShaderControls,
 } from "#src/widget/shader_controls.js";
 import { Tab } from "#src/widget/tab_view.js";
+
 
 const OPACITY_JSON_KEY = "opacity";
 const BLEND_JSON_KEY = "blend";
@@ -478,8 +481,11 @@ const LAYER_CONTROLS: LayerControlDefinition<ImageUserLayer>[] = [
     toolJson: OPACITY_JSON_KEY,
     ...rangeLayerControl((layer) => ({ value: layer.opacity })),
   },
+];
+
+const VOLUME_LAYER_CONTROLS: LayerControlDefinition<ImageUserLayer>[] = [
   {
-    label: "Volume rendering (experimental)",
+    label: "Mode",
     toolJson: VOLUME_RENDERING_JSON_KEY,
     ...enumLayerControl((layer) => layer.volumeRenderingMode),
   },
@@ -520,74 +526,142 @@ for (const control of LAYER_CONTROLS) {
   registerLayerControl(ImageUserLayer, control);
 }
 
+for (const control of VOLUME_LAYER_CONTROLS) {
+  registerLayerControl(ImageUserLayer, control);
+}
+
 class RenderingOptionsTab extends Tab {
   codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
+
   constructor(public layer: ImageUserLayer) {
     super();
     const { element } = this;
     element.classList.add("neuroglancer-image-dropdown");
 
-    const wrapper = document.createElement("div");
-    wrapper.className = "section-wrapper";
+    // Create the accordion items
+    const slice2DAccordion = this.createSlice2DAccordion();
+    const volumeRenderingAccordion = this.createVolumeRenderingAccordion();
+    const channelsAccordion = this.createChannelsAccordion();
 
-    element.appendChild(wrapper)
+    // Create the accordion and add the items
+    const accordion = new Accordion([
+      slice2DAccordion,
+      volumeRenderingAccordion,
+      channelsAccordion,
+    ]);
+
+    // Append the accordion to the element
+    element.appendChild(accordion.getElement());
+  }
+
+  // Create Slice 2D Accordion
+  private createSlice2DAccordion(): AccordionItem {
+    const containerDiv = document.createElement("div");
+    containerDiv.className = "slice-2d-container";
 
     for (const control of LAYER_CONTROLS) {
-      wrapper.appendChild(
-        addLayerControlToOptionsTab(this, layer, this.visibility, control),
+      containerDiv.appendChild(
+        addLayerControlToOptionsTab(this, this.layer, this.visibility, control),
       );
     }
 
-    const spacer = document.createElement("div");
-    spacer.style.flex = "1";
+    return {
+      title: "Slice 2D",
+      content: containerDiv,
+    };
+  }
 
-    const shader = document.createElement("div");
-    shader.className = "shader";
+  // Create Volume Rendering Accordion
+  private createVolumeRenderingAccordion(): AccordionItem {
+    const containerDiv = document.createElement("div");
+    containerDiv.className = "volume-rendering-container";
 
+    for (const control of VOLUME_LAYER_CONTROLS) {
+      containerDiv.appendChild(
+        addLayerControlToOptionsTab(this, this.layer, this.visibility, control),
+      );
+    }
 
+    return {
+      title: "Volume Rendering",
+      content: containerDiv,
+    };
+  }
+
+  private createChannelsAccordion(): AccordionItem {
+    const containerDiv = document.createElement("div");
+    containerDiv.className = "channels-container";
+  
+    // Create the Shader section
+    const shaderDiv = document.createElement("div");
+    shaderDiv.className = "shader";
+  
+    // Top row containing shader text and buttons
     const topRow = document.createElement("div");
     topRow.className = "neuroglancer-image-dropdown-top-row";
-    topRow.appendChild(document.createTextNode("Shader"));
+  
+    const shaderText = document.createTextNode("Shader");
+    topRow.appendChild(shaderText);
+  
+    // Spacer
+    const spacer = document.createElement("div");
+    spacer.style.flex = "1";
     topRow.appendChild(spacer);
+  
+    // Maximize button
     topRow.appendChild(
       makeMaximizeButton({
         title: "Show larger editor view",
         onClick: () => {
-          new ShaderCodeOverlay(this.layer);
+          new ShaderCodeOverlay(this.layer); // Show the larger shader code editor overlay
         },
-      }),
+      })
     );
+  
+    // Help button
     topRow.appendChild(
       makeHelpButton({
         title: "Documentation on image layer rendering",
         href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
-      }),
+      })
     );
-
-    element.appendChild(shader);
-    shader.appendChild(topRow)
-    element.appendChild(
+  
+    shaderDiv.appendChild(topRow);
+  
+    // Channel Dimensions Widget
+    shaderDiv.appendChild(
       this.registerDisposer(
-        new ChannelDimensionsWidget(layer.channelCoordinateSpaceCombiner),
-      ).element,
+        new ChannelDimensionsWidget(this.layer.channelCoordinateSpaceCombiner)
+      ).element
     );
-    shader.appendChild(this.codeWidget.element);
-    element.appendChild(
+  
+    // Shader code widget (editor)
+    shaderDiv.appendChild(this.codeWidget.element);
+  
+    // Shader controls
+    shaderDiv.appendChild(
       this.registerDisposer(
         new ShaderControls(
-          layer.shaderControlState,
+          this.layer.shaderControlState,
           this.layer.manager.root.display,
           this.layer,
           {
             visibility: this.visibility,
             legendShaderOptions: this.layer.getLegendShaderOptions(),
-          },
-        ),
-      ).element,
+          }
+        )
+      ).element
     );
-
-    
+  
+    // Add the entire shader section to the container
+    containerDiv.appendChild(shaderDiv);
+  
+    return {
+      title: "Channels",
+      content: containerDiv,
+    };
   }
+  
 }
 
 class ShaderCodeOverlay extends Overlay {

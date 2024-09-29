@@ -299,7 +299,7 @@ export class LoadedDataSourceView extends RefCounted {
     }
 
     return {
-        title: "Enabled Components",
+        title: "Enabled components",
         content: containerDiv,
     };
 }
@@ -322,7 +322,7 @@ export class LoadedDataSourceView extends RefCounted {
     }
 
     return {
-      title: "Scale and Translation",
+      title: "Scale and translation",
       content: containerDiv,
     };
   }
@@ -408,7 +408,7 @@ export class DataSourceView extends RefCounted {
     containerDiv.appendChild(urlInput.element);
 
     return {
-      title: "Data Sources",
+      title: "Data source",
       content: containerDiv, // Convert the content to HTML
     };
   }

@@ -16,8 +16,10 @@
 
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import { SKELETON_RENDERING_SHADER_CONTROL_TOOL_ID } from "#src/layer/segmentation/json_keys.js";
-import { LAYER_CONTROLS } from "#src/layer/segmentation/layer_controls.js";
+import { VISIBILITY_LAYER_CONTROLS, APPEARANCE_LAYER_CONTROLS, SLICE2D_LAYER_CONTROLS, MESH_LAYER_CONTROLS, SKELETONS_LAYER_CONTROLS } from "#src/layer/segmentation/layer_controls.js";
 import { Overlay } from "#src/overlay.js";
+import type { AccordionItem } from "#src/widget/accordion.js";
+import { Accordion } from "#src/widget/accordion.js";
 import { DependentViewWidget } from "#src/widget/dependent_view_widget.js";
 import { makeHelpButton } from "#src/widget/help_button.js";
 import { addLayerControlToOptionsTab } from "#src/widget/layer_control.js";
@@ -40,37 +42,134 @@ export class DisplayOptionsTab extends Tab {
   constructor(public layer: SegmentationUserLayer) {
     super();
     const { element } = this;
-    element.classList.add("neuroglancer-segmentation-rendering-tab");
+    element.classList.add("neuroglancer-segmentation-rendering-tab")
 
+    // Create the accordion and add the items
+    const visibilityAccordion = this.createVisibilityAccordion();
+    const appearanceAccordion = this.createAppearanceAccordion();
+    const slice2DAccordion = this.createSlice2DAccordion();
+    const mesh3DAccordion = this.createMesh3DAccordion();
+    const channelsAccordion = this.createChannelsAccordion();
+    const skeletonAccordion = this.createSkeletonAccordion();
+
+    const accordion = new Accordion([
+      visibilityAccordion,
+      skeletonAccordion,
+      appearanceAccordion,
+      slice2DAccordion,
+      mesh3DAccordion,
+      channelsAccordion,
+    ]);
+
+    // Append the accordion to the element
+    element.appendChild(accordion.getElement());
+  }
+
+  // Create Slice 2D Accordion
+  private createVisibilityAccordion(): AccordionItem {
+    const containerDiv = document.createElement("div");
+    containerDiv.className = "visibility-container";
+
+    for (const control of VISIBILITY_LAYER_CONTROLS) {
+      containerDiv.appendChild(
+        addLayerControlToOptionsTab(this, this.layer, this.visibility, control),
+      );
+    }
+    
+    const widget = this.registerDisposer(
+      new LinkedLayerGroupWidget(this.layer.displayState.linkedSegmentationGroup),
+    );
+    widget.label.textContent = "Linked to: ";
+    containerDiv.appendChild(widget.element);
+    
+    return {
+      title: "Visibility",
+      content: containerDiv,
+    };
+  }
+
+  // Create the Appearance Accordion section
+  private createAppearanceAccordion(): AccordionItem {
+    const containerDiv = document.createElement("div");
+    containerDiv.className = "appearance-container";
+
+    for (const control of APPEARANCE_LAYER_CONTROLS) {
+      containerDiv.appendChild(
+        addLayerControlToOptionsTab(this, this.layer, this.visibility, control),
+      );
+    }
     // Linked segmentation control
-    {
-      const widget = this.registerDisposer(
-        new LinkedLayerGroupWidget(layer.displayState.linkedSegmentationGroup),
+    const widget = this.registerDisposer(
+      new LinkedLayerGroupWidget(
+        this.layer.displayState.linkedSegmentationColorGroup,
+      ),
+    );
+    widget.label.textContent = "Colors linked to: ";
+    containerDiv.appendChild(widget.element);
+    
+    return {
+      title: "Appearance",
+      content: containerDiv,
+    };
+  }
+
+  // Create the Slice 2D Accordion section
+  private createSlice2DAccordion(): AccordionItem {
+    const containerDiv = document.createElement("div");
+    containerDiv.className = "slice2d-container";
+
+    for (const control of SLICE2D_LAYER_CONTROLS) {
+      containerDiv.appendChild(
+        addLayerControlToOptionsTab(this, this.layer, this.visibility, control),
       );
-      widget.label.textContent = "Linked to: ";
-      element.appendChild(widget.element);
     }
 
-    // Linked segmentation control
-    {
-      const widget = this.registerDisposer(
-        new LinkedLayerGroupWidget(
-          layer.displayState.linkedSegmentationColorGroup,
-        ),
+    return {
+      title: "Slice 2D",
+      content: containerDiv,
+    };
+  }
+
+  // Create the Mesh 3D Accordion section
+  private createMesh3DAccordion(): AccordionItem {
+    const containerDiv = document.createElement("div");
+    containerDiv.className = "mesh3d-container";
+
+    for (const control of MESH_LAYER_CONTROLS) {
+      containerDiv.appendChild(
+        addLayerControlToOptionsTab(this, this.layer, this.visibility, control),
       );
-      widget.label.textContent = "Colors linked to: ";
-      element.appendChild(widget.element);
     }
 
-    for (const control of LAYER_CONTROLS) {
-      element.appendChild(
-        addLayerControlToOptionsTab(this, layer, this.visibility, control),
+    return {
+      title: "Mesh 3D",
+      content: containerDiv,
+    };
+  }
+
+  // Create the Skeleton 3D Accordion section
+  private createSkeletonAccordion(): AccordionItem {
+    const containerDiv = document.createElement("div");
+    containerDiv.className = "skeleton-container";
+
+    for (const control of SKELETONS_LAYER_CONTROLS) {
+      containerDiv.appendChild(
+        addLayerControlToOptionsTab(this, this.layer, this.visibility, control),
       );
     }
 
+    return {
+      title: "Skeletons",
+      content: containerDiv,
+    };
+  }
+
+  private createChannelsAccordion(): AccordionItem {
+    const containerDiv = document.createElement("div");
+    containerDiv.className = "shader-container";
     const skeletonControls = this.registerDisposer(
       new DependentViewWidget(
-        layer.hasSkeletonsLayer,
+        this.layer.hasSkeletonsLayer,
         (hasSkeletonsLayer, parent, refCounted) => {
           if (!hasSkeletonsLayer) return;
           const topRow = document.createElement("div");
@@ -103,7 +202,7 @@ export class DisplayOptionsTab extends Tab {
           parent.appendChild(
             refCounted.registerDisposer(
               new ShaderControls(
-                layer.displayState.skeletonRenderingOptions.shaderControlState,
+                this.layer.displayState.skeletonRenderingOptions.shaderControlState,
                 this.layer.manager.root.display,
                 this.layer,
                 {
@@ -118,7 +217,11 @@ export class DisplayOptionsTab extends Tab {
         this.visibility,
       ),
     );
-    element.appendChild(skeletonControls.element);
+    containerDiv.appendChild(skeletonControls.element)
+    return {
+      title: "Channels",
+      content: containerDiv,
+    };
   }
 }
 
