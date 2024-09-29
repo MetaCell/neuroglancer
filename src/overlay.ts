@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+import svg_plus from "ikonate/icons/plus.svg?raw";
 import { AutomaticallyFocusedElement } from "#src/util/automatic_focus.js";
 import { RefCounted } from "#src/util/disposable.js";
 import {
@@ -21,6 +21,7 @@ import {
   KeyboardEventBinder,
 } from "#src/util/keyboard_bindings.js";
 import "#src/overlay.css";
+import { makeIcon } from "#src/widget/icon.js";
 
 export const overlayKeyboardHandlerPriority = 100;
 
@@ -44,7 +45,34 @@ export class Overlay extends RefCounted {
     const content = (this.content = document.createElement("div"));
     this.registerDisposer(new AutomaticallyFocusedElement(content));
     content.className = "overlay-content";
+    content.classList.add("neuroglancer-state-editor")
     container.appendChild(content);
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "overlay-header";
+
+    const heading = document.createElement("p");
+    heading.className = "overlay-heading";
+    heading.textContent = "Code editor";
+
+    wrapper.appendChild(heading);
+
+    wrapper.appendChild(
+      makeIcon({
+        svg: svg_plus,
+        onClick: () => {
+        },
+      }),
+    );
+
+    wrapper.appendChild(
+      makeIcon({
+        svg: svg_plus,
+        onClick: () => {
+        },
+      }),
+    );
+    this.content.appendChild(wrapper)
     document.body.appendChild(container);
     this.registerDisposer(new KeyboardEventBinder(this.container, this.keyMap));
     this.registerEventListener(container, "action:close", () => {

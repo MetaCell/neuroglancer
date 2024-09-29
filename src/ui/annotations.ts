@@ -647,7 +647,7 @@ export class AnnotationLayerView extends Tab {
       removeChildren(headerRow);
       headerRow.appendChild(symbolPlaceholder);
       let i = 0;
-      let gridTemplate = "[symbol] 2ch";
+      let gridTemplate = "[symbol] 2.5ch";
       const addDimension = (
         coordinateSpace: CoordinateSpace,
         dimIndex: number,
@@ -685,7 +685,7 @@ export class AnnotationLayerView extends Tab {
         addDimension(localCoordinateSpace, localDim);
       }
       headerRow.appendChild(deletePlaceholder);
-      gridTemplate += " [delete] 2ch";
+      gridTemplate += " [delete] 2.5ch";
       this.gridTemplate = gridTemplate;
       headerRow.style.gridTemplateColumns = gridTemplate;
       this.prevCoordinateSpaceGeneration = this.curCoordinateSpaceGeneration;

@@ -102,7 +102,9 @@ import {
   registerLayerShaderControlsTool,
   ShaderControls,
 } from "#src/widget/shader_controls.js";
+import { makeFooterBtnGroup } from "#src/widget/shader_overlay_footer.js";
 import { Tab } from "#src/widget/tab_view.js";
+// import { formatWithOptions } from "util";
 
 
 const OPACITY_JSON_KEY = "opacity";
@@ -670,6 +672,7 @@ class ShaderCodeOverlay extends Overlay {
     super();
     this.content.classList.add("neuroglancer-image-layer-shader-overlay");
     this.content.appendChild(this.codeWidget.element);
+    this.content.appendChild(makeFooterBtnGroup());
     this.codeWidget.textEditor.refresh();
   }
 }

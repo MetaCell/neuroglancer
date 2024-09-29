@@ -40,6 +40,7 @@ export class LinkedLayerGroupWidget extends RefCounted {
       linkedLayers,
       unlinkButton,
     } = this;
+    topRow.classList.add("neuroglancer-label-dropdown-right-gap");
     topRow.appendChild(label);
     topRow.appendChild(selectElement);
     topRow.appendChild(unlinkButton);

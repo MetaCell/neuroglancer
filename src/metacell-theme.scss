@@ -8,6 +8,7 @@ $warning60: #FFC652;
 $caramel60: #C1915D;
 $content100: #999CA0;
 $primary80: #5D89FF;
+$primary120: #002FAC;
 $error100: #D33030;
 $primary100: #1652F0;
 $background80: #1F1F1F;
@@ -234,6 +235,7 @@ $codenumber: #4EBBD3;
         .range-slider {
             gap: 0.5rem;
             align-items: center;
+            justify-content: flex-end;
             input[type="range"] {
                 width: 10ch;
                 margin: 0;
@@ -279,6 +281,9 @@ $codenumber: #4EBBD3;
             color: $content100;
             outline: 0;
             border: 0.0625rem solid $dark80;
+            &:focus {
+                border-color: $primary120;
+            }
         }
     }
     .neuroglancer-annotations-view-dimension {
@@ -309,9 +314,13 @@ $codenumber: #4EBBD3;
     }
     .neuroglancer-annotation-list-entry {
         background: transparent !important;
+        .neuroglancer-annotation-icon {
+            font-size: 1rem;
+            position: relative;
+            top: -2.5px;
+        }
     }
     .neuroglancer-annotation-coordinate {
-        font-family: Graphik !important;
         font-size: 0.75rem;
         text-align: left;
         font-weight: 400;
@@ -652,6 +661,11 @@ $codenumber: #4EBBD3;
         .accordion-item {
             border-bottom: 1px solid $dark80;
             position: relative;
+            .neuroglancer-label-dropdown-right-gap {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }
             .appearance-container {
                 .neuroglancer-layer-control-container {
                     &:nth-child(1) {
@@ -745,6 +759,15 @@ $codenumber: #4EBBD3;
                 color: $content100;
                 font-size: 0.75rem;
                 font-weight: 400;
+                line-height: 100%;
+                display: flex;
+                flex-direction: column;
+                gap: 0.25rem;
+                div {
+                    &:empty {
+                        display: none;
+                    }
+                }
             }
             .slice2d-container,
             .slice-2d-container,.volume-rendering-container,
