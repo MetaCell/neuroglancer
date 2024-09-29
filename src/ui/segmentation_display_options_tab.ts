@@ -80,6 +80,7 @@ export class DisplayOptionsTab extends Tab {
       new LinkedLayerGroupWidget(this.layer.displayState.linkedSegmentationGroup),
     );
     widget.label.textContent = "Linked to: ";
+    widget.label.classList.add("neuroglancer-label-linkedto");
     containerDiv.appendChild(widget.element);
     
     return {
@@ -105,6 +106,7 @@ export class DisplayOptionsTab extends Tab {
       ),
     );
     widget.label.textContent = "Colors linked to: ";
+    widget.label.classList.add("neuroglancer-label-linkedto");
     containerDiv.appendChild(widget.element);
     
     return {

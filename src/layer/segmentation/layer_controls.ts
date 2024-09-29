@@ -29,18 +29,19 @@ export const VISIBILITY_LAYER_CONTROLS: LayerControlDefinition<SegmentationUserL
 
 export const APPEARANCE_LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
   {
-    label: "Seeded random colours",
-    title: "Color segments based on a hash of their id",
-    toolJson: json_keys.COLOR_SEED_JSON_KEY,
-    ...colorSeedLayerControl(),
-  },
-  {
     label: "Colours",
     title:
       "Use a fixed color for all segments without an explicitly-specified color",
     toolJson: json_keys.SEGMENT_DEFAULT_COLOR_JSON_KEY,
     ...fixedColorLayerControl(),
   },
+  {
+    label: "Seeded random colours",
+    title: "Color segments based on a hash of their id",
+    toolJson: json_keys.COLOR_SEED_JSON_KEY,
+    ...colorSeedLayerControl(),
+  },
+
   {
     label: "Saturation",
     toolJson: json_keys.SATURATION_JSON_KEY,

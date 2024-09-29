@@ -675,6 +675,7 @@ export class AnnotationUserLayer extends Base {
       label.title =
         "Display all annotations if filtering by related segments is enabled but no segments are selected";
       label.appendChild(checkbox.element);
+      label.classList.add("neuroglass-ignore-label");
       tab.element.appendChild(label);
     }
     tab.element.appendChild(
