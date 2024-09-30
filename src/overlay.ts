@@ -13,7 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import svg_plus from "ikonate/icons/plus.svg?raw";
+import close from "ikonate/icons/close.svg?raw";
+import svg_plus from "#src/ui/images/expandIcon.svg?raw";
 import { AutomaticallyFocusedElement } from "#src/util/automatic_focus.js";
 import { RefCounted } from "#src/util/disposable.js";
 import {
@@ -67,7 +68,7 @@ export class Overlay extends RefCounted {
 
     wrapper.appendChild(
       makeIcon({
-        svg: svg_plus,
+        svg: close,
         onClick: () => {
         },
       }),

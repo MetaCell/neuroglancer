@@ -30,7 +30,7 @@ $codenumber: #4EBBD3;
         background: $background80;
     }
     .cm-s-default {
-        .cm-string {
+        .cm-string,.cm-comment {
             font-size: 0.75rem;
             font-weight: 400;
             color: $codestring;
@@ -40,7 +40,12 @@ $codenumber: #4EBBD3;
             font-weight: 400;
             color: $codenumber;
         }
-        .cm-atom {
+        .cm-word {
+            font-size: 0.75rem;
+            font-weight: 400;
+            color: rgba(255, 255, 255, 0.60);
+        }
+        .cm-atom, .cm-keyword {
             font-size: 0.75rem;
             font-weight: 400;
             color: $codetrue;
@@ -340,12 +345,36 @@ $codenumber: #4EBBD3;
     .overlay-content {
         border: 0.0625rem solid $background80;
         background: $dark100;
+        outline: 0 !important;
+        padding-top: 0;
+        .CodeMirror {
+            height: 300px;
+        }
+        .overlay-header {
+            display: flex;
+            align-items: center;
+            border-bottom: 0.0625rem solid $background80;
+            margin: 0 -0.75rem 0.75rem;
+            padding: 0 0.75rem;
+            p {
+                margin-right: auto;
+                color: $white;
+                font-size: 0.875rem;
+                font-style: normal;
+                font-weight: 500;
+            }
+            svg {
+                stroke: $content100;
+            }
+        }
 
         .button-group {
             display: flex;
             align-items: center;
             justify-content: flex-end;
-
+            border-top: 0.0625rem solid $background80;
+            margin: 0.75rem -0.75rem 0;
+            padding: 0.75rem 0.75rem 0;
             button {
                 font-size: 0.75rem;
                 padding: 0.5rem 0.75rem;
@@ -1181,6 +1210,11 @@ $codenumber: #4EBBD3;
         padding: 0 0.5rem;
         background-color: $dark100;
         border-bottom: 0.0625rem solid $dark80;
+        .neuroglancer-icon {
+            svg {
+                stroke: $content100;
+            }
+        }
     }
 
     .neuroglancer-position-dimension {

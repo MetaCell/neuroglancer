@@ -100,6 +100,7 @@ import { formatScaleWithUnitAsString } from "#src/util/si_units.js";
 import { NullarySignal, Signal } from "#src/util/signal.js";
 import { Uint64 } from "#src/util/uint64.js";
 import * as vector from "#src/util/vector.js";
+import { Accordion } from "#src/widget/accordion.js";
 import { makeAddButton } from "#src/widget/add_button.js";
 import { ColorWidget } from "#src/widget/color.js";
 import { makeCopyButton } from "#src/widget/copy_button.js";
@@ -382,6 +383,10 @@ export class AnnotationLayerView extends Tab {
   ) {
     super();
     this.element.classList.add("neuroglancer-annotation-layer-view");
+    // Annotatiion toolbox list accordion container
+    const containerDiv = document.createElement("div");
+    containerDiv.className = "annotations-toolbox-container";
+
     this.registerDisposer(this.visibility.changed.add(() => this.updateView()));
     this.registerDisposer(
       this.annotationStates.changed.add(() =>
@@ -407,7 +412,15 @@ export class AnnotationLayerView extends Tab {
         colorPicker.element,
       ),
     );
+    const colorLabel = document.createElement("label");
+    colorLabel.className = "annotations-colobox-label";
+    colorLabel.textContent = "Colour";
+
+    
+    toolbox.appendChild(colorLabel);
+
     toolbox.appendChild(colorPicker.element);
+    
     const { mutableControls } = this;
     const pointButton = makeIcon({
       text: annotationTypeHandlers[AnnotationType.POINT].icon,
@@ -446,12 +459,15 @@ export class AnnotationLayerView extends Tab {
     });
     mutableControls.appendChild(ellipsoidButton);
     toolbox.appendChild(mutableControls);
-    this.element.appendChild(toolbox);
 
-    this.element.appendChild(this.headerRow);
+    containerDiv.appendChild(toolbox);
+
+    containerDiv.appendChild(this.headerRow);
+
     const { virtualList } = this;
     virtualList.element.classList.add("neuroglancer-annotation-list");
-    this.element.appendChild(virtualList.element);
+
+    containerDiv.appendChild(virtualList.element);
     this.virtualList.element.addEventListener("mouseleave", () => {
       this.displayState.hoverState.value = undefined;
     });
@@ -484,6 +500,16 @@ export class AnnotationLayerView extends Tab {
     this.updateCoordinateSpace();
     this.updateAttachedAnnotationLayerStates();
     this.updateSelectionView();
+
+    const accordion = new Accordion([
+      {
+        title: "Annotations",
+        content: containerDiv,
+      }
+    ]);
+
+    // Append the accordion to the element
+    this.element.appendChild(accordion.getElement());
   }
 
   private getRenderedAnnotationListElement(
