@@ -1884,7 +1884,7 @@ export function UserLayerWithAnnotationsMixin<
                 idElement.classList.add(
                   "neuroglancer-annotation-property-label",
                 );
-                idElement.textContent = "ID";
+                idElement.textContent = "ID :";
                 label.appendChild(idElement);
                 const valueElement = document.createElement("span");
                 valueElement.classList.add(
@@ -2008,7 +2008,7 @@ export function UserLayerWithAnnotationsMixin<
                   } else {
                     const description = document.createElement("textarea");
                     description.value = annotation.description || "";
-                    description.rows = 3;
+                    description.rows = 2;
                     description.className =
                       "neuroglancer-annotation-details-description";
                     description.placeholder = "Description";
