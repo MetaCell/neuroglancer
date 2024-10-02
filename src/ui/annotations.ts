@@ -415,7 +415,16 @@ export class AnnotationLayerView extends Tab {
     const colorLabel = document.createElement("label");
     colorLabel.className = "annotations-colobox-label";
     colorLabel.textContent = "Colour";
-
+    // Hide color label if color widget is not visible
+    this.registerDisposer(
+      new ElementVisibilityFromTrackableBoolean(
+        makeCachedLazyDerivedWatchableValue(
+          (shader) => shader.match(/\bdefaultColor\b/) !== null,
+          displayState.shaderControls.processedFragmentMain,
+        ),
+        colorLabel,
+      ),
+    );
     
     toolbox.appendChild(colorLabel);
 
@@ -1884,7 +1893,7 @@ export function UserLayerWithAnnotationsMixin<
                 idElement.classList.add(
                   "neuroglancer-annotation-property-label",
                 );
-                idElement.textContent = "ID :";
+                idElement.textContent = "ID:";
                 label.appendChild(idElement);
                 const valueElement = document.createElement("span");
                 valueElement.classList.add(
