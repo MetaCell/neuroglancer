@@ -37,7 +37,7 @@ interferes with our click handling.  Setting `pointer-events: none;` avoids that
   box-shadow: none;
   border: 0;
   margin: 0;
-  font-family: DejaVu Sans Mono;
+  font-family: monospace;
   font-size: medium;
 }
 
