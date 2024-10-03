@@ -1438,75 +1438,9 @@ $datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0
             border-color: $background80;
             .neuroglancer-layer-list-panel-item-number,
             .neuroglancer-layer-side-panel-name {
-                color: $content100;
-            }
-
-            .neuroglancer-icon svg {
-                color: $content100;
-            }
-            .neuroglancer-layer-list-panel-item-number + div svg {
                 color: $content10;
             }
 
-            .metacell-neuroglancer-checkbox-label {
-                margin: 0.25rem;
-                &:after {
-                    content: "";
-                    background: url('../src/ui/images/selected.svg') no-repeat;
-                    width: 1rem;
-                    height: 1rem;
-                    display: block;
-                }
-                input {
-                    margin: 0.25rem;
-                    opacity: 0;
-                    position: absolute;
-                  
-                }
-            }
-
-            .metacell-neuroglancer-checkbox-label {
-                margin: 0.25rem;
-                &:after {
-                    content: "";
-                    background: url('../src/ui/images/selected.svg') no-repeat;
-                    width: 1rem;
-                    height: 1rem;
-                    display: block;
-                }
-                input {
-                    margin: 0.25rem;
-                    opacity: 0;
-                    position: absolute;
-                  
-                }
-            }
-
-            &[data-selected="true"] {
-                background-color: $background80;
-                border-color: $primary100;
-                .neuroglancer-layer-list-panel-item-controls {
-                    visibility: visible;
-                    display: flex;
-                }
-                .neuroglancer-layer-list-panel-item-controls svg {
-                    color: $white !important;
-                }
-            }
-        }
-
-        &[data-archived="false"] {
-            border-color: $background80;
-            background: transparent;
-
-            .neuroglancer-layer-list-panel-item-number,
-            .neuroglancer-layer-side-panel-name {
-                color: $content10;
-            }
-            .neuroglancer-icon svg {
-                color: $content100 !important;
-            }
-            
             &:hover {
                 background: $background80;
                 border-color: $dark80;
@@ -1528,6 +1462,7 @@ $datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0
                     visibility: visible;
                 }
             }
+
             .metacell-neuroglancer-checkbox-label {
                 margin: 0.25rem;
                 &:after {
@@ -1544,12 +1479,98 @@ $datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0
                   
                 }
             }
+
+            &[data-selected="true"] {
+                background-color: $background80;
+                border-color: $primary100;
+                .neuroglancer-layer-side-panel-name,
+                .neuroglancer-layer-list-panel-item-number {
+                    color: $content100;
+                }
+                .neuroglancer-icon svg {
+                    color: $content100;
+                }
+                .neuroglancer-layer-list-panel-item-controls {
+                    visibility: visible;
+                    display: flex;
+                }
+                .neuroglancer-layer-list-panel-item-controls svg {
+                    color: $white !important;
+                }
+            }
+        }
+
+        &[data-archived="false"] {
+            border-color: $background80;
+            background: transparent;
+
+            .neuroglancer-layer-list-panel-item-number,
+            .neuroglancer-layer-side-panel-name {
+                color: $content100;
+            }
+
+            &:hover {
+                background: $background80;
+                border-color: $dark80;
+                .neuroglancer-layer-side-panel-name,
+                .neuroglancer-layer-list-panel-item-number {
+                    color: $white;
+                }
+                .neuroglancer-icon svg {
+                    color: $content100;
+                }
+                .neuroglancer-icon {
+                    &+.neuroglancer-icon {
+                        visibility: visible;
+                        display: flex;
+                   }
+                }
+                .neuroglancer-layer-list-panel-item-controls {
+                    display: flex;
+                    visibility: visible;
+                }
+            }
+
+            .metacell-neuroglancer-checkbox-label {
+                margin: 0.25rem;
+                &:after {
+                    content: "";
+                    background: url('../src/ui/images/selected.svg') no-repeat;
+                    width: 1rem;
+                    height: 1rem;
+                    display: block;
+                }
+                input {
+                    margin: 0.25rem;
+                    opacity: 0;
+                    position: absolute;
+                  
+                }
+            }
+
+            .metacell-neuroglancer-checkbox-label {
+                margin: 0.25rem;
+                &:after {
+                    content: "";
+                    background: url('../src/ui/images/selected.svg') no-repeat;
+                    width: 1rem;
+                    height: 1rem;
+                    display: block;
+                }
+                input {
+                    margin: 0.25rem;
+                    opacity: 0;
+                    position: absolute;
+                  
+                }
+            }
+
             &[data-selected="true"] {
                 border-color: $primary100;
                 background-color: $background80;
                 .neuroglancer-layer-side-panel-name,
                 .neuroglancer-layer-list-panel-item-number {
-                    color: $content100;
+                    color: $white;
                 }
                 .neuroglancer-layer-list-panel-item-controls {
                     display: flex;
@@ -1558,6 +1579,12 @@ $datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0
                 .neuroglancer-layer-list-panel-item-controls svg {
                     color: $white !important;
                 }
+            }
+            &[data-selected="true"].neuroglancer-layer-list-panel-item-not-visible {
+                .neuroglancer-layer-side-panel-name,
+                .neuroglancer-layer-list-panel-item-number {
+                    color: $content100 !important;
+                }   
             }
         }
 
