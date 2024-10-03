@@ -814,11 +814,57 @@ $datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0
         width: fit-content;
         font-size: 0.875rem;
     }
+      
+    .neuroglancer-display-dimensions-widget-default input {
+        width: 1rem;
+        height: 1rem;
+        position: relative;
+        appearance: none;
+        cursor: pointer;
+    }
+      
+    .neuroglancer-display-dimensions-widget-default input::after {
+        content: "";
+        background: url('../src/ui/images/unselected.svg') no-repeat;
+        width: 1rem;
+        height: 1rem;
+        display: block;
+        position: absolute;
+        top: 0;
+        left: 0;
+    }
+      
+    .neuroglancer-display-dimensions-widget-default input:checked::after {
+        background: url('../src/ui/images/selected.svg') no-repeat;
+    }
 
     .neuroglancer-depth-range-relative-checkbox-label input {
         width: 1rem;
         height: 1rem;
         margin: 0.25rem;
+    }
+
+    .neuroglancer-depth-range-relative-checkbox-label input {
+        width: 1rem;
+        height: 1rem;
+        position: relative;
+        appearance: none;
+        cursor: pointer;
+    }
+      
+    .neuroglancer-depth-range-relative-checkbox-label input::after {
+        content: "";
+        background: url('../src/ui/images/unselected.svg') no-repeat;
+        width: 1rem;
+        height: 1rem;
+        display: block;
+        position: absolute;
+        top: 0;
+        left: 0;
+    }
+      
+    .neuroglancer-depth-range-relative-checkbox-label input:checked::after {
+        background: url('../src/ui/images/selected.svg') no-repeat;
     }
 
     .neuroglancer-display-dimensions-widget {
@@ -859,10 +905,28 @@ $datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0
         align-items: center;
         gap: 0.25rem;
     }
-
+      
     label.perspective-panel-show-slice-views input {
         width: 1rem;
         height: 1rem;
+        position: relative;
+        appearance: none;
+        cursor: pointer;
+    }
+      
+    label.perspective-panel-show-slice-views input::after {
+        content: "";
+        background: url('../src/ui/images/unselected.svg') no-repeat;
+        width: 1rem;
+        height: 1rem;
+        display: block;
+        position: absolute;
+        top: 0;
+        left: 0;
+    }
+      
+    label.perspective-panel-show-slice-views input:checked::after {
+        background: url('../src/ui/images/selected.svg') no-repeat;
     }
 
     &.neuroglancer-show-panel-borders .neuroglancer-panel {
