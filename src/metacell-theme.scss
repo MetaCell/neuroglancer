@@ -22,31 +22,26 @@ $codenumber: #4EBBD3;
     font-family: Graphik;
     box-sizing: border-box;
 }
-/* Global scrollbar styling */
-* {
-    /* For Firefox */
-    scrollbar-width: thin;
-    scrollbar-color: #888 #f1f1f1;
-}
-
-/* WebKit browsers (Chrome, Safari, Edge) */
-*::-webkit-scrollbar {
-    width: 12px;
-}
-
-*::-webkit-scrollbar-track {
-    background: #f1f1f1;
-}
-
-*::-webkit-scrollbar-thumb {
-    background-color: #888;
-    border-radius: 10px;
-    border: 3px solid #f1f1f1;
-}
-
-*::-webkit-scrollbar-thumb:hover {
-    background-color: #555;
-}
+::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  /* Track */
+  ::-webkit-scrollbar-track {
+    background: $dark100;
+    border-radius: 0.125rem;
+  }
+   
+  /* Handle */
+  ::-webkit-scrollbar-thumb {
+    background: $background60;
+    border-radius: 0.125rem;
+  }
+  
+  /* Handle on hover */
+  ::-webkit-scrollbar-thumb:hover {
+    background: $background60; 
+  }
 .metacell-theme {
     .CodeMirror-gutter {
         background: $dark100;
@@ -58,7 +53,9 @@ $codenumber: #4EBBD3;
             font-family: monospace;
         }
     }
-    
+    input[type=color] {
+        border: $dark80 0.094rem solid;
+    }
     .cm-s-default {
      
         .cm-string,.cm-comment {
@@ -123,6 +120,18 @@ $codenumber: #4EBBD3;
         }
     }
     .neuroglancer-viewer-top-row {
+        .neuroglancer-annotation-tool-status {
+            margin-right: 0.5rem;
+        }
+        .neuroglancer-icon.neuroglancer-checkbox-icon {
+            width: auto;
+            height: auto;
+            div {
+                font-size: 0.75rem;
+                font-weight: 400;
+                padding: 0 0.25rem;
+            }
+        }
         .neuroglancer-annotation-tool-status-widget {
             display: flex;
             gap: 0.25rem;
@@ -228,9 +237,19 @@ $codenumber: #4EBBD3;
             padding: 0.75rem;
             gap: 0.25rem;
             .neuroglancer-annotation-shader-property {
+                font-family: monospace;
                 font-size: 0.75rem;
                 font-style: normal;
                 font-weight: 400;
+                * {
+                    font-family: monospace;
+                }
+            }
+            .neuroglancer-annotation-shader-property-type {
+                color: $codestring;
+            }
+            .neuroglancer-annotation-shader-property-identifier {
+                color: rgba(255, 255, 255, 0.6);
             }
         }
         .neuroglancer-segmentation-dropdown-skeleton-shader-header {
@@ -319,7 +338,6 @@ $codenumber: #4EBBD3;
     }
     input[type="color"] {
         -webkit-appearance: none;
-        border: none;
         padding: 0;
     }
     input[type="color"]::-webkit-color-swatch-wrapper {
@@ -563,6 +581,7 @@ $codenumber: #4EBBD3;
             border-bottom: 0.0625rem solid $background80;
             margin: 0 -0.75rem 0.75rem;
             padding: 0 0.75rem;
+
             p {
                 margin-right: auto;
                 color: $white;
@@ -572,6 +591,18 @@ $codenumber: #4EBBD3;
             }
             svg {
                 stroke: $content100;
+            }
+
+            .overlay-heading {
+                + .neuroglancer-icon {
+                    background-image: url('../src/ui/images/expand_view.svg');
+                    background-repeat: no-repeat;
+                    background-position: center;
+                    background-size: 0.875rem;
+                    svg {
+                        display: none;
+                    }
+                }
             }
         }
 
@@ -1021,13 +1052,44 @@ $codenumber: #4EBBD3;
                 color: $content100;
                 font-size: 0.875rem;
                 ~ button {
-                    background: url('../src/ui/images/link_off.svg') no-repeat;
+                    background-color: transparent;
+                    background-image: url('../src/ui/images/link_off.svg');
+                    background-repeat: no-repeat;
                     background-position: center;
                     border: 0;
+                    width: 1.4rem;
+                    height: 1.4rem;
+                    border-radius: 0.25rem;
                     float: right;
                     text-indent: -999px;
                     cursor: pointer;
-                    margin: 0.5rem 0 0 0.5rem;
+                    margin: 0.15rem 0 0 0.5rem;
+                    position: relative;
+                    &:after {
+                        background: $dark80;
+                        content: "Unlink";
+                        display: block;
+                        text-indent: 0;
+                        position: absolute;
+                        right: 0;
+                        font-size: 0.75rem;
+                        top: 100%;
+                        margin: 0.25rem 0 0;
+                        padding: 0.35rem 0.35rem;
+                        color: $white;
+                        border-radius: 4px;
+                        opacity: 0;
+                    }
+                    &:hover {
+                        background-image: url('../src/ui/images/link_on.svg');
+                        background-repeat: no-repeat;
+                        background-position: center;
+                        background-color: $dark80;
+                        &:after {
+                            opacity: 1;
+                        }
+                    }
+                   
                 }
             }
         }
@@ -1850,8 +1912,8 @@ $codenumber: #4EBBD3;
                 }
 
                 &[type='color'] {
-                    border: none;
                     width: 4rem;
+                    height: 1.5rem;
                 }
 
                 &[type='checkbox'] {
