@@ -210,6 +210,8 @@ $codenumber: #4EBBD3;
     }
 }
 .metacell-theme {
+
+
     .CodeMirror-gutter {
         background: $dark100;
     }
@@ -561,11 +563,18 @@ $codenumber: #4EBBD3;
             }
         }
         .neuroglancer-annotation-list {
-            max-height: 200px;
-            height: auto;     
+            height: 220px;
+            overflow: auto;
+            .list-scroll-container {
+                height: auto !important;
+                div {
+                    top: auto !important;
+                }
+            }
         }
         .neuroglancer-annotation-list-header {
-            margin-top: 1.375rem;
+            margin-top: 1.25rem;
+            padding: 0 0.3rem;
         }
         .neuroglancer-render-scale-widget-legend {
             color: $content100;
@@ -713,10 +722,26 @@ $codenumber: #4EBBD3;
 
     .neuroglancer-annotation-list-entry {
         background: transparent !important;
-        margin: 0.875rem 0 0;
+        margin: 0.25rem 0 0;
         border-radius: 0.125rem;
         border: 1px solid transparent;
         padding: 0.25rem;
+        .annotation-point {
+            background: url('../src/ui/images/circle.svg') no-repeat;
+            text-indent: -999px;
+        }
+        .annotation-box {
+            background: url('../src/ui/images/square.svg') no-repeat;
+            text-indent: -999px;
+        }
+        .annotation-line {
+            background: url('../src/ui/images/linear_scale.svg') no-repeat;
+            text-indent: -999px;
+        }
+       .annotation-ellipsoid {
+            background: url('../src/ui/images/filter_tilt_shift.svg') no-repeat;
+            text-indent: -999px;
+        }
         .neuroglancer-annotation-list-entry-delete {
             background-image: url('../src/ui/images/delete-white.svg');
             background-repeat: no-repeat;
@@ -725,14 +750,16 @@ $codenumber: #4EBBD3;
                 display: none;
             }
         }
-        &:hover, &.neuroglancer-annotation-selected {
+        &:hover {
+            background: $background80 !important;
+        } 
+        &.neuroglancer-annotation-selected {
             border-color: $primary100;
             background: $background80 !important;
         }
         .neuroglancer-annotation-icon {
             font-size: 1rem;
             position: relative;
-            top: -2.5px;
         }
     }
     .neuroglancer-annotation-list-entry-delete ~ .neuroglancer-annotation-description {
@@ -1874,6 +1901,9 @@ $codenumber: #4EBBD3;
             margin: 0;
             &[data-checked="true"] {
                 background-color: transparent;
+                &:hover {
+                    background-color: $background80;
+                }
             }
         }
         .neuroglancer-icon {
