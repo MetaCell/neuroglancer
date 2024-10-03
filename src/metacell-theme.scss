@@ -703,7 +703,7 @@ $datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0
             &[data-visible="false"] {
                 .neuroglancer-layer-item-label,
                 .neuroglancer-layer-item-number {
-                    color: $content10;
+                    color: $content100;
                 }
     
                 &:hover {
@@ -715,12 +715,24 @@ $datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0
                         color: $content100 !important;
                     }
                 }
+
+                &[data-pick="true"] {
+                    border-color: $primary120;
+                    background-color: $dark100;
+                    &:hover {
+                        background-color: $dark100;
+                        .neuroglancer-layer-item-label {
+                            color: $content100;
+                        }
+                    }
+                }
             }
 
             &[data-pick="true"] {
                 border-color: $primary120;
                 background-color: $dark100;
                 &:hover {
+                    background-color: $dark100;
                     .neuroglancer-layer-item-label {
                         color: $white;
                     }
@@ -732,7 +744,7 @@ $datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0
             border-color: $background80;
             .neuroglancer-layer-item-label,
             .neuroglancer-layer-item-number {
-                color: $content10;
+                color: $content100;
             }
 
             &:hover {
@@ -743,6 +755,16 @@ $datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0
                 }
                 .neuroglancer-icon svg {
                     color: $content100 !important;
+                }
+            }
+            &[data-pick="true"] {
+                border-color: $primary120;
+                &:hover {
+                    border-color: $primary120;
+                    background-color: transparent;
+                    .neuroglancer-layer-item-label {
+                        color: $content100;
+                    }
                 }
             }
         }
