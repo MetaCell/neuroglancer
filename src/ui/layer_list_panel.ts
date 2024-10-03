@@ -15,8 +15,6 @@
  */
 
 import "#src/ui/layer_list_panel.css";
-import svg_eye_crossed from "ikonate/icons/eye-crossed.svg?raw";
-import svg_eye from "ikonate/icons/eye.svg?raw";
 import type {
   LayerManager,
   ManagedUserLayer,
@@ -24,7 +22,9 @@ import type {
 } from "#src/layer/index.js";
 import { deleteLayer } from "#src/layer/index.js";
 import { TrackableBooleanCheckbox } from "#src/trackable_boolean.js";
-import svg_controls_alt from "#src/ui/images/controls.svg?raw";
+import svg_eye from "#src/ui/images/svg_eye.svg?raw";
+import svg_eye_crossed from "#src/ui/images/svg_eye_crossed.svg?raw";
+import tune from "#src/ui/images/tune.svg?raw";
 import type { DropLayers } from "#src/ui/layer_drag_and_drop.js";
 import {
   registerLayerBarDragLeaveHandler,
@@ -128,7 +128,7 @@ function makeSelectedLayerSidePanelCheckboxIcon(layer: ManagedUserLayer) {
       backgroundScheme: "dark",
       enableTitle: "Show layer side panel",
       disableTitle: "Hide layer side panel",
-      svg: svg_controls_alt,
+      svg: tune,
     },
   );
   icon.element.classList.add("neuroglancer-layer-list-panel-item-controls");

@@ -20,8 +20,9 @@
 
 .neuroglancer-show-panel-borders .neuroglancer-panel {
   border-style: solid;
-  border-color: black;
+  border-color: #1f1f1f;
   border-width: 2px;
+  border-radius: 2px;
 }
 
 .neuroglancer-panel:focus-within {

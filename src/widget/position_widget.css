@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-.neuroglancer-position-widget {
+ .neuroglancer-position-widget {
   display: inline-flex;
   align-items: center;
 }
@@ -37,7 +37,7 @@ interferes with our click handling.  Setting `pointer-events: none;` avoids that
   box-shadow: none;
   border: 0;
   margin: 0;
-  font-family: monospace;
+  font-family: DejaVu Sans Mono;
   font-size: medium;
 }
 

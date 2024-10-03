@@ -19,7 +19,6 @@
  */
 
 import "#src/ui/layer_side_panel.css";
-
 import svg_cursor from "ikonate/icons/cursor.svg?raw";
 import type {
   ManagedUserLayer,
@@ -38,6 +37,7 @@ import {
   observeWatchable,
 } from "#src/trackable_value.js";
 import { popDragStatus, pushDragStatus } from "#src/ui/drag_and_drop.js";
+import pushpin from "#src/ui/images/pushpin.svg?raw";
 import type { UserLayerSidePanelState } from "#src/ui/layer_side_panel_state.js";
 import { LAYER_SIDE_PANEL_DEFAULT_LOCATION } from "#src/ui/layer_side_panel_state.js";
 import type { DragSource, SidePanelManager } from "#src/ui/side_panel.js";
@@ -210,9 +210,10 @@ class LayerSidePanel extends SidePanel {
         new CheckboxIcon(pinWatchable, {
           // Note: \ufe0e forces text display, as otherwise the pin icon
           // may as an emoji with color.
-          text: "📌\ufe0e",
+          // text: "📌\ufe0e",
           enableTitle: "Pin panel to this layer",
           disableTitle: "Unpin panel to this layer",
+          svg: pushpin
         }),
       ).element,
     );
