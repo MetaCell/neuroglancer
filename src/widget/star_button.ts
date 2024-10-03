@@ -16,7 +16,7 @@
 
 import "#src/widget/star_button.css";
 
-import svg_star from "#src/ui/images/star_rate.svg?raw";
+import svg_star from "ikonate/icons/star.svg?raw";
 import type { MakeIconOptions } from "#src/widget/icon.js";
 import { makeIcon } from "#src/widget/icon.js";
 
