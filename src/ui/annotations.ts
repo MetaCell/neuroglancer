@@ -33,6 +33,7 @@ import type {
   Line,
 } from "#src/annotation/index.js";
 import {
+  addAnnotationClassToIcon,
   AnnotationPropertySerializer,
   AnnotationSource,
   annotationToJson,
@@ -878,6 +879,8 @@ export class AnnotationLayerView extends Tab {
     const icon = document.createElement("div");
     icon.className = "neuroglancer-annotation-icon";
     icon.textContent = annotationTypeHandlers[annotation.type].icon;
+    console.log(annotationTypeHandlers[annotation.type])
+    addAnnotationClassToIcon(icon, annotation.type);
     element.appendChild(icon);
 
     let deleteButton: HTMLElement | undefined;

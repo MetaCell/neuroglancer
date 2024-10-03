@@ -465,6 +465,7 @@ export class VirtualList extends RefCounted {
       renderParams.anchorIndex,
     );
     const totalHeight = sizes.getEstimatedTotalSize() || 0;
+    body.classList.add("list-scroll-container")
     body.style.height = `${totalHeight}px`;
     topItems.style.top = `${renderParams.anchorOffset - topSize}px`;
     bottomItems.style.top = `${renderParams.anchorOffset}px`;
