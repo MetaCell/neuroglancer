@@ -294,6 +294,10 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         .neuroglancer-annotation-tool-status {
             margin-right: 0.5rem;
         }
+        .neuroglancer-icon {
+            color: $content100;
+        }
+
         .neuroglancer-icon.neuroglancer-checkbox-icon {
             width: auto;
             height: auto;
@@ -1170,6 +1174,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     &.neuroglancer-show-panel-borders .neuroglancer-panel {
         border-width: 0.125rem;
         box-shadow: $datapanelshadow;
+        border-color: $background80;
         &:focus-within {
             border-color: $primary100;
         }
@@ -2601,5 +2606,9 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         padding: 0;
         border-top: 0.0625rem solid $background80;
         border-bottom: 0.0625rem solid $background80;
+    }
+
+    .neuroglancer-data-panel-layout-controls > button:hover {
+        color: $primary120;
     }
 }
