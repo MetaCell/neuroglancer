@@ -237,7 +237,6 @@ $codenumber: #4EBBD3;
         gap: 0.5rem;
         margin-left: 1rem;
     }
-    .neuroglancer-invlerp-legend-panel,
     .neuroglancer-invlerp-cdfpanel {
         height: 3.125rem;
     }
@@ -252,7 +251,9 @@ $codenumber: #4EBBD3;
         font-size: 0.75rem;
         font-style: normal;
         font-weight: 400;
-       
+        &:focus {
+            border-color: $primary100;
+        }
      }
     .CodeMirror-gutter {
         background: $dark100;
