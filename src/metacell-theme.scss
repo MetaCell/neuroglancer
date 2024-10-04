@@ -19,6 +19,7 @@ $codestring: #D3BE4E;
 $codetrue: #814ED3;
 $codenumber: #4EBBD3;
 $datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0, 0, 0, 0.72);
+$codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
 * {
     font-family: Graphik;
     box-sizing: border-box;
@@ -880,7 +881,7 @@ $datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0
 
             .CodeMirror-gutter-elt {
                 .CodeMirror-guttermarker-subtle {
-                    color: #FFFFFF99;
+                    color: $codeMirrorGuttermarkerSubtleColor;
                 }
             }
         }
@@ -1320,7 +1321,7 @@ $datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0
         }
     }
     .accordion {
-        background-color: #141414;
+        background-color: $dark100;
         .accordion-item {
             border-bottom: 1px solid $dark80;
             position: relative;
