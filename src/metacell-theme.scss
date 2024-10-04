@@ -968,11 +968,20 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         min-height: 1.875rem;
 
         &[data-selected="true"] {
-            border-color: $background80;
-            background-color: $dark100;
+            border-color: $primary120;
+
+            &:hover {
+                border-color: $primary120;
+                background-color: transparent;
+            }
 
             &[data-visible="false"] {
-                .neuroglancer-layer-item-label,
+                border-color: $primary120 !important;
+                background-color: transparent !important;
+                .neuroglancer-layer-item-label {
+                    color: $white !important;
+                }
+
                 .neuroglancer-layer-item-number {
                     color: $content100;
                 }
@@ -986,26 +995,25 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                         color: $content100 !important;
                     }
                 }
-
                 &[data-pick="true"] {
-                    border-color: $primary120;
-                    background-color: $dark100;
                     &:hover {
-                        background-color: $dark100;
-                        .neuroglancer-layer-item-label {
-                            color: $content100;
-                        }
+                        background-color: $dark100 !important;
                     }
                 }
             }
 
             &[data-pick="true"] {
                 border-color: $primary120;
-                background-color: $dark100;
+                .neuroglancer-layer-item-label {
+                    background-color: $primary120;
+                }
+    
                 &:hover {
+                    border-color: $primary120;
                     background-color: $dark100;
                     .neuroglancer-layer-item-label {
                         color: $white;
+                        background-color: $primary120;
                     }
                 }
             }
@@ -1013,7 +1021,11 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
 
         &[data-visible="false"] {
             border-color: $background80;
-            .neuroglancer-layer-item-label,
+            
+            .neuroglancer-layer-item-label {
+                color: $white;
+            }
+
             .neuroglancer-layer-item-number {
                 color: $content100;
             }
@@ -1022,31 +1034,26 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                 border-color: $background80;
                 background-color: $dark100;
                 .neuroglancer-layer-item-label {
-                    color: $content100;
+                    color: $white;
                 }
                 .neuroglancer-icon svg {
                     color: $content100 !important;
                 }
             }
-            &[data-pick="true"] {
-                border-color: $primary120;
-                &:hover {
-                    border-color: $primary120;
-                    background-color: transparent;
-                    .neuroglancer-layer-item-label {
-                        color: $content100;
-                    }
-                }
-            }
         }
 
         &[data-pick="true"] {
-            border-color: $primary120;
+            border-color: $background80;
+            .neuroglancer-layer-item-label {
+                background-color: $primary120;
+            }
+
             &:hover {
-                border-color: $primary120;
-                background-color: transparent;
+                border-color: $background80;
+                background-color: $dark100;
                 .neuroglancer-layer-item-label {
                     color: $white;
+                    background-color: $primary120;
                 }
             }
         }
@@ -1055,7 +1062,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             font-size: 0.875rem;
             font-weight: 400;
             line-height: 1.25rem;
-            color: $content100;
+            color: $white;
             background-color: transparent;
         }
 
@@ -2191,9 +2198,12 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
 
         &[data-archived="true"] {
             border-color: $background80;
-            .neuroglancer-layer-list-panel-item-number,
-            .neuroglancer-layer-side-panel-name {
+
+            .neuroglancer-layer-list-panel-item-number {
                 color: $content10;
+            }
+            .neuroglancer-layer-side-panel-name {
+                color: $content100;
             }
 
             &:hover {
@@ -2259,9 +2269,11 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             border-color: $background80;
             background: transparent;
 
-            .neuroglancer-layer-list-panel-item-number,
-            .neuroglancer-layer-side-panel-name {
+            .neuroglancer-layer-list-panel-item-number {
                 color: $content100;
+            }
+            .neuroglancer-layer-side-panel-name {
+                color: $white;
             }
 
             &:hover {
@@ -2335,12 +2347,6 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                     color: $white !important;
                 }
             }
-            &[data-selected="true"].neuroglancer-layer-list-panel-item-not-visible {
-                .neuroglancer-layer-side-panel-name,
-                .neuroglancer-layer-list-panel-item-number {
-                    color: $content100 !important;
-                }   
-            }
         }
 
         .neuroglancer-icon {
@@ -2369,10 +2375,8 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         text-align: center;
     }
     .neuroglancer-layer-list-panel-item-not-visible {
-        .neuroglancer-layer-side-panel-name,
         .neuroglancer-layer-list-panel-item-number {
-          color: $content10;
-       
+          color: $content100;
         }
         .neuroglancer-icon {
             display: flex;
@@ -2388,7 +2392,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         &:hover {
             background: $background80;
             border-color: $dark80;
-            .neuroglancer-layer-side-panel-name,
+
             .neuroglancer-layer-list-panel-item-number {
                 color: $content100 !important;
             }
@@ -2400,6 +2404,14 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             .neuroglancer-layer-list-panel-item-delete {
                 display: flex;
                 visibility: visible;
+            }
+        }
+        &[data-selected="true"] {
+            .neuroglancer-layer-side-panel-name {
+                color: $white;
+            }
+            .neuroglancer-layer-list-panel-item-number {
+                color: $content100 !important;
             }
         }
     }
