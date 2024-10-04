@@ -30,7 +30,6 @@
   .neuroglancer-icon
   svg {
   color: #999;
-  stroke: #999;
 }
 
 .neuroglancer-layer-list-panel-item:hover {
@@ -42,14 +41,4 @@
   color: white;
   font-weight: bold;
   display: inline-block;
-}
-
-.neuroglancer-layer-list-panel-item:not(:hover)
-  > .neuroglancer-layer-list-panel-item-delete {
-  display: none;
-}
-
-.neuroglancer-layer-list-panel-item:not(:hover)
-  > .neuroglancer-layer-list-panel-item-controls {
-  display: none;
 }

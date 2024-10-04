@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 
-import svg_close from "ikonate/icons/close.svg?raw";
+// import svg_close from "ikonate/icons/close.svg?raw";
+import close from "#src/ui/images/close.svg?raw";
 import type { MakeIconOptions } from "#src/widget/icon.js";
 import { makeIcon } from "#src/widget/icon.js";
 
 export function makeCloseButton(options: MakeIconOptions = {}) {
-  return makeIcon({ svg: svg_close, ...options });
+  return makeIcon({ svg: close, ...options });
 }

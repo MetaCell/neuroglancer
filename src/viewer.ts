@@ -17,10 +17,6 @@
 import "#src/viewer.css";
 import "#src/ui/layer_data_sources_tab.js";
 import "#src/noselect.css";
-import svg_controls_alt from "ikonate/icons/controls-alt.svg?raw";
-import svg_layers from "ikonate/icons/layers.svg?raw";
-import svg_list from "ikonate/icons/list.svg?raw";
-import svg_settings from "ikonate/icons/settings.svg?raw";
 import { debounce } from "lodash-es";
 import type { FrameNumberCounter } from "#src/chunk_manager/frontend.js";
 import {
@@ -82,6 +78,12 @@ import {
   observeWatchable,
   TrackableValue,
 } from "#src/trackable_value.js";
+import code from "#src/ui/images/code.svg?raw";
+import formatlistbulleted from "#src/ui/images/formatlistbulleted.svg?raw";
+import layers from "#src/ui/images/layers.svg?raw";
+import questionmark from "#src/ui/images/questionmark.svg?raw";
+import settings from "#src/ui/images/settings.svg?raw";
+import tune from "#src/ui/images/tune.svg?raw";
 import {
   LayerArchiveCountWidget,
   LayerListPanel,
@@ -773,7 +775,7 @@ export class Viewer extends RefCounted implements ViewerState {
       const { layerListPanelState } = this;
       const button = this.registerDisposer(
         new CheckboxIcon(layerListPanelState.location.watchableVisible, {
-          svg: svg_layers,
+          svg: layers,
           backgroundScheme: "dark",
           enableTitle: "Show layer list panel",
           disableTitle: "Hide layer list panel",
@@ -797,7 +799,7 @@ export class Viewer extends RefCounted implements ViewerState {
       const { selectionDetailsState } = this;
       const button = this.registerDisposer(
         new CheckboxIcon(selectionDetailsState.location.watchableVisible, {
-          svg: svg_list,
+          svg: formatlistbulleted,
           backgroundScheme: "dark",
           enableTitle: "Show selection details panel",
           disableTitle: "Hide selection details panel",
@@ -826,7 +828,7 @@ export class Viewer extends RefCounted implements ViewerState {
             changed: selectedLayer.location.locationChanged,
           },
           {
-            svg: svg_controls_alt,
+            svg: tune,
             backgroundScheme: "dark",
             enableTitle: "Show layer side panel",
             disableTitle: "Hide layer side panel",
@@ -843,7 +845,7 @@ export class Viewer extends RefCounted implements ViewerState {
     }
 
     {
-      const button = makeIcon({ text: "{}", title: "Edit JSON state" });
+      const button = makeIcon({ title: "Edit JSON state", svg: code });
       this.registerEventListener(button, "click", () => {
         this.editJsonState();
       });
@@ -860,10 +862,11 @@ export class Viewer extends RefCounted implements ViewerState {
       const { helpPanelState } = this;
       const button = this.registerDisposer(
         new CheckboxIcon(helpPanelState.location.watchableVisible, {
-          text: "?",
+          // text: "?",
           backgroundScheme: "dark",
           enableTitle: "Show help panel",
           disableTitle: "Hide help panel",
+          svg: questionmark
         }),
       );
       this.registerDisposer(
@@ -879,7 +882,7 @@ export class Viewer extends RefCounted implements ViewerState {
       const { settingsPanelState } = this;
       const button = this.registerDisposer(
         new CheckboxIcon(settingsPanelState.location.watchableVisible, {
-          svg: svg_settings,
+          svg: settings,
           backgroundScheme: "dark",
           enableTitle: "Show settings panel",
           disableTitle: "Hide settings panel",

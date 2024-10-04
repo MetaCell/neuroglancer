@@ -16,12 +16,12 @@
 
 import "#src/noselect.css";
 import "#src/ui/layer_bar.css";
-import svg_plus from "ikonate/icons/plus.svg?raw";
 import type { ManagedUserLayer } from "#src/layer/index.js";
 import { addNewLayer, deleteLayer, makeLayer } from "#src/layer/index.js";
 import type { LayerGroupViewer } from "#src/layer_group_viewer.js";
 import { NavigationLinkType } from "#src/navigation_state.js";
 import type { WatchableValueInterface } from "#src/trackable_value.js";
+import add from "#src/ui/images/add.svg?raw";
 import type { DropLayers } from "#src/ui/layer_drag_and_drop.js";
 import {
   registerLayerBarDragLeaveHandler,
@@ -254,7 +254,7 @@ export class LayerBar extends RefCounted {
     this.element.appendChild(this.layerWidgetInsertionPoint);
 
     const addButton = makeIcon({
-      svg: svg_plus,
+      svg: add,
       title:
         "Click to add layer, control+click/right click/⌘+click to add local annotation layer.",
     });
