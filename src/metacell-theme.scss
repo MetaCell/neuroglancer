@@ -59,6 +59,27 @@ $codenumber: #4EBBD3;
     margin: 0 auto;
     bottom: 1.5rem;
     background: transparent;
+    .neuroglancer-invlerp-widget {
+        display: flex;
+        align-items: center;
+    }
+    .neuroglancer-invlerp-widget-bounds {
+        display: flex;
+        align-items: center;
+        input[type=text] {
+            width: 2.375rem !important;
+        }
+    }
+    .neuroglancer-invlerp-legend-panel,
+    .neuroglancer-invlerp-cdfpanel {
+        height: 1.875rem;
+        width: 6.25rem;
+        margin-right: 0.5rem;
+        canvas {
+            height: 1.875rem !important;
+            width: 6.25rem !important;
+        }
+    }
     li {
         width: 50rem;
         margin: 0 auto;
@@ -210,8 +231,29 @@ $codenumber: #4EBBD3;
     }
 }
 .metacell-theme {
-
-
+    .neuroglancer-invlerp-widget {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        margin-left: 1rem;
+    }
+    .neuroglancer-invlerp-legend-panel,
+    .neuroglancer-invlerp-cdfpanel {
+        height: 3.125rem;
+    }
+    .neuroglancer-invlerp-widget-window-bound,
+    .neuroglancer-invlerp-widget-range-bound {
+        width: 2.375rem !important;
+        background: $background60;
+        border: 1px solid $stroke60;
+        padding: 0.25rem;
+        color: $content100;
+        outline: 0;
+        font-size: 0.75rem;
+        font-style: normal;
+        font-weight: 400;
+       
+     }
     .CodeMirror-gutter {
         background: $dark100;
     }
@@ -299,6 +341,9 @@ $codenumber: #4EBBD3;
                 font-size: 0.75rem;
                 font-weight: 400;
                 padding: 0 0.25rem;
+                &:empty {
+                    display: none;
+                }
             }
         }
         .neuroglancer-annotation-tool-status-widget {
@@ -528,7 +573,7 @@ $codenumber: #4EBBD3;
             }
         }
         .annotations-toolbox-container {
-            margin: 1rem 0;
+            margin: 0 0 1rem;
         }
         .neuroglancer-annotation-toolbox {
             justify-content: space-between;
@@ -684,6 +729,12 @@ $codenumber: #4EBBD3;
             }
         }
         
+    }
+  
+    .CodeMirror.cm-s-default.neuroglancer-shader-code-widget + .neuroglancer-tab-content {
+        .neuroglancer-layer-options-control-container {
+            padding: 0 1rem;
+        }
     }
     .neuroglancer-layer-control-container {
         margin: 0;
