@@ -28,6 +28,14 @@ import {
 } from "#src/trackable_value.js";
 import { arraysEqual, arraysEqualWithPredicate } from "#src/util/array.js";
 import {
+  parseRGBColorSpecification,
+  serializeColor,
+  TrackableRGB,
+} from "#src/util/color.js";
+import { DataType } from "#src/util/data_type.js";
+import { RefCounted } from "#src/util/disposable.js";
+import { kZeroVec4, vec3, vec4 } from "#src/util/geom.js";
+import {
   parseArray,
   parseFixedLengthArray,
   verifyFiniteFloat,
@@ -38,7 +46,6 @@ import {
 } from "#src/util/json.js";
 import type { DataTypeInterval } from "#src/util/lerp.js";
 import {
-  computeInvlerp,
   computeLerp,
   convertDataTypeInterval,
   dataTypeIntervalToJson,
@@ -589,18 +596,18 @@ function parseTransferFunctionDirective(
   const channelRank = imageData?.channelRank;
   const errors = [];
   let channel = new Array(channelRank).fill(0);
-  let color = vec3.fromValues(1.0, 1.0, 1.0);
-  let range: DataTypeInterval | undefined;
-  const controlPoints = new Array<ControlPoint>();
-  const parsedControlPoints = new Array<ParsedControlPoint>();
+  let defaultColor = vec3.fromValues(1.0, 1.0, 1.0);
+  let window: DataTypeInterval | undefined;
+  let sortedControlPoints = new SortedControlPoints(
+    [],
+    dataType !== undefined ? dataType : DataType.FLOAT32,
+  );
   let specifedPoints = false;
   if (valueType !== "transferFunction") {
     errors.push("type must be transferFunction");
   }
   if (dataType === undefined) {
     errors.push("image data must be provided to use a transfer function");
-  } else {
-    range = defaultDataTypeRange[dataType];
   }
   for (const [key, value] of parameters) {
     try {
@@ -609,13 +616,13 @@ function parseTransferFunctionDirective(
           channel = parseInvlerpChannel(value, channel.length);
           break;
         }
-        case "color": {
-          color = parseRGBColorSpecification(value);
+        case "defaultColor": {
+          defaultColor = parseRGBColorSpecification(value);
           break;
         }
-        case "range": {
+        case "window": {
           if (dataType !== undefined) {
-            range = validateDataTypeInterval(
+            window = validateDataTypeInterval(
               parseDataTypeInterval(value, dataType),
             );
           }
@@ -624,8 +631,9 @@ function parseTransferFunctionDirective(
         case "controlPoints": {
           specifedPoints = true;
           if (dataType !== undefined) {
-            parsedControlPoints.push(
-              ...convertTransferFunctionControlPoints(value, dataType),
+            sortedControlPoints = parseTransferFunctionControlPoints(
+              value,
+              dataType,
             );
           }
           break;
@@ -639,57 +647,21 @@ function parseTransferFunctionDirective(
     }
   }
 
-  if (range === undefined) {
-    if (dataType !== undefined) range = defaultDataTypeRange[dataType];
-    else range = [0, 1] as [number, number];
+  if (window === undefined) {
+    window = sortedControlPoints.range;
   }
   // Set a simple black to white transfer function if no control points are specified.
-  if (controlPoints.length === 0 && !specifedPoints) {
-    const transferFunctionRange = [0, TRANSFER_FUNCTION_LENGTH - 1] as [
-      number,
-      number,
-    ];
-    const startPoint = computeLerp(
-      transferFunctionRange,
-      DataType.UINT16,
-      0.4,
-    ) as number;
-    const endPoint = computeLerp(
-      transferFunctionRange,
-      DataType.UINT16,
-      0.7,
-    ) as number;
-    controlPoints.push({
-      position: startPoint,
-      color: vec4.fromValues(0, 0, 0, 0),
-    });
-    controlPoints.push({
-      position: endPoint,
-      color: vec4.fromValues(255, 255, 255, 255),
-    });
-  } else {
-    // Parse control points from the shader code and sort them
-    for (const controlPoint of parsedControlPoints) {
-      let normalizedPosition = computeInvlerp(range, controlPoint.position);
-      normalizedPosition = Math.min(Math.max(0, normalizedPosition), 1)
-      const position = computeLerp(
-        [0, TRANSFER_FUNCTION_LENGTH - 1],
-        DataType.UINT16,
-        normalizedPosition,
-      ) as number;
-      controlPoints.push({ position: position, color: controlPoint.color });
-    }
-    const pointPositions = new Set<number>();
-    for (let i = 0; i < controlPoints.length; i++) {
-      const controlPoint = controlPoints[i];
-      if (pointPositions.has(controlPoint.position)) {
-        errors.push(
-          `Duplicate control point position: ${parsedControlPoints[i].position}`,
-        );
-      }
-      pointPositions.add(controlPoint.position);
-    }
-    controlPoints.sort((a, b) => a.position - b.position);
+  if (
+    sortedControlPoints.length === 0 &&
+    !specifedPoints &&
+    dataType !== undefined
+  ) {
+    const startPoint = computeLerp(window, dataType, 0.4) as number;
+    const endPoint = computeLerp(window, dataType, 0.7) as number;
+    sortedControlPoints.addPoint(new ControlPoint(startPoint, kZeroVec4));
+    sortedControlPoints.addPoint(
+      new ControlPoint(endPoint, vec4.fromValues(255, 255, 255, 255)),
+    );
   }
   if (errors.length > 0) {
     return { errors };
@@ -698,7 +670,12 @@ function parseTransferFunctionDirective(
     control: {
       type: "transferFunction",
       dataType,
-      default: { controlPoints, channel, color, range },
+      default: {
+        sortedControlPoints,
+        channel,
+        defaultColor,
+        window,
+      },
     } as ShaderTransferFunctionControl,
     errors: undefined,
   };
@@ -1070,22 +1047,19 @@ class TrackablePropertyInvlerpParameters extends TrackableValue<PropertyInvlerpP
   }
 }
 
-export interface TransferFunctionParameters {
-  controlPoints: ControlPoint[];
-  channel: number[];
-  color: vec3;
-  range: DataTypeInterval;
-}
-
-function convertTransferFunctionControlPoints(
-  value: unknown,
+function parseTransferFunctionControlPoints(
+  controlPointsDefinition: unknown,
   dataType: DataType,
 ) {
-  return parseArray(value, (x) => {
+  const parsedPoints = parseArray(controlPointsDefinition, (x) => {
     // Validate input length and types
+    const allowedInput =
+      dataType === DataType.UINT64
+        ? typeof x[0] === "string" || typeof x[0] === "number"
+        : typeof x[0] === "number";
     if (
       x.length !== 3 ||
-      typeof x[0] !== "number" ||
+      !allowedInput ||
       typeof x[1] !== "string" ||
       typeof x[2] !== "number"
     ) {
@@ -1095,33 +1069,7 @@ function convertTransferFunctionControlPoints(
         )}`,
       );
     }
-
-    // Validate values
-    let position: number | Uint64;
-    if (dataType !== DataType.UINT64) {
-      const defaultRange = defaultDataTypeRange[dataType] as [number, number];
-      position = verifyFiniteFloat(x[0]);
-      if (position < defaultRange[0] || position > defaultRange[1]) {
-        throw new Error(
-          `Expected x in range [${defaultRange[0]}, ${
-            defaultRange[1]
-          }], but received: ${JSON.stringify(x[0])}`,
-        );
-      }
-    } else {
-      const defaultRange = defaultDataTypeRange[dataType] as [Uint64, Uint64];
-      position = Uint64.fromNumber(x[0]);
-      if (
-        Uint64.less(position, defaultRange[0]) ||
-        Uint64.less(defaultRange[1], position)
-      ) {
-        throw new Error(
-          `Expected x in range [${defaultRange[0]}, ${
-            defaultRange[1]
-          }], but received: ${JSON.stringify(x[0])}`,
-        );
-      }
-    }
+    const inputValue = parseDataTypeValue(dataType, x[0]);
 
     if (x[1].length !== 7 || x[1][0] !== "#") {
       throw new Error(
@@ -1136,122 +1084,56 @@ function convertTransferFunctionControlPoints(
       );
     }
     const color = parseRGBColorSpecification(x[1]);
-    return {
-      position: position,
-      color: vec4.fromValues(
+    function floatToUint8(float: number) {
+      return Math.min(255, Math.max(Math.round(float * 255), 0));
+    }
+    return new ControlPoint(
+      inputValue,
+      vec4.fromValues(
         floatToUint8(color[0]),
         floatToUint8(color[1]),
         floatToUint8(color[2]),
         floatToUint8(x[2]),
       ),
-    };
-  });
-}
-
-function parseTransferFunctionControlPoints(
-  value: unknown,
-  range: DataTypeInterval,
-  dataType: DataType,
-) {
-  function parsePosition(position: number): number {
-    const toConvert =
-      dataType === DataType.UINT64 ? Uint64.fromNumber(position) : position;
-    let normalizedPosition = computeInvlerp(range, toConvert);
-    normalizedPosition = Math.min(Math.max(0, normalizedPosition), 1);
-    const positionInTransferFunction = computeLerp(
-      [0, TRANSFER_FUNCTION_LENGTH - 1],
-      DataType.UINT16,
-      normalizedPosition,
-    ) as number;
-    return positionInTransferFunction;
-  }
-  const parsedPoints = parseArray(value, (x) => {
-    if (
-      x.input === undefined ||
-      x.color === undefined ||
-      x.opacity === undefined
-    ) {
-      throw new Error(
-        `Expected object with position and color and opacity properties, but received: ${JSON.stringify(
-          x,
-        )}`,
-      );
-    }
-    if (typeof x.input !== "number") {
-      throw new Error(
-        `Expected position as number but received: ${JSON.stringify(
-          x.input,
-        )}`,
-      );
-    }
-    const color = parseRGBColorSpecification(x.color);
-    if (typeof x.opacity !== "number") {
-      throw new Error(
-        `Expected opacity as number but received: ${JSON.stringify(x.opacity)}`,
-      );
-    }
-    const opacity = floatToUint8(Math.max(0, Math.min(1, x.opacity)));
-    const rgbaColor = vec4.fromValues(
-      floatToUint8(color[0]),
-      floatToUint8(color[1]),
-      floatToUint8(color[2]),
-      opacity,
     );
-    return {
-      position: parsePosition(x.input),
-      color: rgbaColor,
-    };
   });
-  // Check all points are in separate bins
-  const encounteredBins: number[] = [];
-  for (const point of parsedPoints) {
-    if (encounteredBins.includes(point.position)) {
-      throw new Error(
-        `Transfer function control points fall in the same bin. Increase the distance between the points, or reduce the range of the input space`,
-      );
-    }
-    encounteredBins.push(point.position);
-  }
-  return parsedPoints;
+  return new SortedControlPoints(parsedPoints, dataType);
 }
 
-function parseTransferFunctionParameters(
+export function parseTransferFunctionParameters(
   obj: unknown,
   dataType: DataType,
   defaultValue: TransferFunctionParameters,
 ): TransferFunctionParameters {
   if (obj === undefined) return defaultValue;
   verifyObject(obj);
-  const range = verifyOptionalObjectProperty(
-    obj,
-    "range",
-    (x) => parseDataTypeInterval(x, dataType),
-    defaultValue.range,
-  );
-  const controlPoints = verifyOptionalObjectProperty(
+  const sortedControlPoints = verifyOptionalObjectProperty(
     obj,
     "controlPoints",
-    (x) => parseTransferFunctionControlPoints(x, range, dataType),
-    defaultValue.controlPoints.map((x) => ({
-      position: x.position,
-      color: x.color,
-    })),
+    (x) => parseTransferFunctionControlPoints(x, dataType),
+    defaultValue.sortedControlPoints,
+  );
+  const window = verifyOptionalObjectProperty(
+    obj,
+    "window",
+    (x) => parseDataTypeInterval(x, dataType),
+    defaultValue.window,
   );
   return {
-    controlPoints: controlPoints,
+    sortedControlPoints,
     channel: verifyOptionalObjectProperty(
       obj,
       "channel",
       (x) => parseInvlerpChannel(x, defaultValue.channel.length),
       defaultValue.channel,
     ),
-    color: verifyOptionalObjectProperty(
+    defaultColor: verifyOptionalObjectProperty(
       obj,
-      "color",
+      "defaultColor",
       (x) => parseRGBColorSpecification(x),
-      defaultValue.color,
+      defaultValue.defaultColor,
     ),
-    range: range,
+    window,
   };
 }
 
@@ -1259,99 +1141,84 @@ function copyTransferFunctionParameters(
   defaultValue: TransferFunctionParameters,
 ) {
   return {
-    controlPoints: defaultValue.controlPoints.map((x) => ({
-      position: x.position,
-      color: x.color,
-    })),
-    channel: defaultValue.channel,
-    color: defaultValue.color,
-    range: defaultValue.range,
+    ...defaultValue,
+    sortedControlPoints: defaultValue.sortedControlPoints.copy(),
   };
 }
 
-class TrackableTransferFunctionParameters extends TrackableValue<TransferFunctionParameters> {
+export class TrackableTransferFunctionParameters extends TrackableValue<TransferFunctionParameters> {
   constructor(
     public dataType: DataType,
     public defaultValue: TransferFunctionParameters,
   ) {
-    // Make a copy of the default value so that we can modify it without affecting the original.
-    // This is necessary because the default value is compared with the current value to determine
-    // whether the value has changed -> which is necessary for the changed signal to be emitted.
+    // Create a copy of the default value to enable detecting changes
+    // to the control points in the trackable value.
     const defaultValueCopy = copyTransferFunctionParameters(defaultValue);
     super(defaultValueCopy, (obj) =>
-      parseTransferFunctionParameters(obj, dataType, defaultValue),
+      parseTransferFunctionParameters(obj, dataType, defaultValueCopy),
     );
   }
 
-  controlPointsToJson(
-    controlPoints: ControlPoint[],
-    range: DataTypeInterval,
-    dataType: DataType,
-  ) {
-    function positionToJson(position: number) {
-      let normalizedPosition = computeInvlerp(
-        [0, TRANSFER_FUNCTION_LENGTH - 1],
-        position,
-      );
-      normalizedPosition = Math.min(Math.max(0, normalizedPosition), 1)
-      const positionInOriginalRange = computeLerp(
-        range,
-        dataType,
-        normalizedPosition,
-      );
+  controlPointsToJson(controlPoints: ControlPoint[], dataType: DataType) {
+    function inputToJson(inputValue: number | Uint64) {
       if (dataType === DataType.UINT64) {
-        return (positionInOriginalRange as Uint64).toNumber();
+        return (inputValue as Uint64).toJSON();
       }
-      return positionInOriginalRange;
+      return inputValue;
     }
 
-    return controlPoints.map((x) => ({
-      input: positionToJson(x.position),
-      color: serializeColor(
-        vec3.fromValues(x.color[0] / 255, x.color[1] / 255, x.color[2] / 255),
+    return controlPoints.map((x) => [
+      inputToJson(x.inputValue),
+      serializeColor(
+        vec3.fromValues(
+          x.outputColor[0] / 255,
+          x.outputColor[1] / 255,
+          x.outputColor[2] / 255,
+        ),
       ),
-      opacity: x.color[3] / 255,
-    }));
+      x.outputColor[3] / 255,
+    ]);
   }
 
   toJSON() {
     const {
-      value: { channel, controlPoints, color },
+      value: { channel, sortedControlPoints, defaultColor, window },
       dataType,
       defaultValue,
     } = this;
-    const range = this.value.range;
-    const rangeJson = dataTypeIntervalToJson(
-      range,
+    const windowJson = dataTypeIntervalToJson(
+      window,
       dataType,
-      defaultValue.range,
+      defaultValue.window,
     );
     const channelJson = arraysEqual(defaultValue.channel, channel)
       ? undefined
       : channel;
-    const colorJson = arraysEqual(defaultValue.color, color)
+    const colorJson = arraysEqual(defaultValue.defaultColor, defaultColor)
       ? undefined
-      : serializeColor(this.value.color);
+      : serializeColor(defaultColor);
     const controlPointsJson = arraysEqualWithPredicate(
-      defaultValue.controlPoints,
-      controlPoints,
-      (a, b) => arraysEqual(a.color, b.color) && a.position === b.position,
+      defaultValue.sortedControlPoints.controlPoints,
+      sortedControlPoints.controlPoints,
+      (a, b) =>
+        arraysEqual(a.outputColor, b.outputColor) &&
+        a.inputValue === b.inputValue,
     )
       ? undefined
-      : this.controlPointsToJson(this.value.controlPoints, range, dataType);
+      : this.controlPointsToJson(sortedControlPoints.controlPoints, dataType);
     if (
-      rangeJson === undefined &&
       channelJson === undefined &&
       colorJson === undefined &&
-      controlPointsJson === undefined
+      controlPointsJson === undefined &&
+      windowJson === undefined
     ) {
       return undefined;
     }
     return {
-      range: rangeJson,
       channel: channelJson,
-      color: colorJson,
+      defaultColor: colorJson,
       controlPoints: controlPointsJson,
+      window: windowJson,
     };
   }
 }
@@ -1808,8 +1675,7 @@ function setControlInShader(
         shader,
         uName,
         control.dataType,
-        value.controlPoints,
-        value.range,
+        value.sortedControlPoints,
       );
   }
 }

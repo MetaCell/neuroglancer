@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2023 Google Inc.
+ * Copyright 2024 Google Inc.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -14,101 +14,128 @@
  * limitations under the License.
  */
 
-import "#/widget/transfer_function.css";
+import "#src/widget/transfer_function.css";
 
-import { CoordinateSpaceCombiner } from "#/coordinate_transform";
-import { DisplayContext, IndirectRenderedPanel } from "#/display_context";
-import { UserLayer } from "#/layer";
-import { Position } from "#/navigation_state";
-import {
-  makeCachedDerivedWatchableValue,
-  WatchableValueInterface,
-} from "#/trackable_value";
-import { ToolActivation } from "#/ui/tool";
+import type { CoordinateSpaceCombiner } from "#src/coordinate_transform.js";
+import type { DisplayContext } from "#src/display_context.js";
+import { IndirectRenderedPanel } from "#src/display_context.js";
+import type { UserLayer } from "#src/layer/index.js";
+import { Position } from "#src/navigation_state.js";
+import type { WatchableValueInterface } from "#src/trackable_value.js";
+import { makeCachedDerivedWatchableValue } from "#src/trackable_value.js";
+import type { ToolActivation } from "#src/ui/tool.js";
 import {
   arraysEqual,
   arraysEqualWithPredicate,
   findClosestMatchInSortedArray,
-} from "#/util/array";
-import { DATA_TYPE_SIGNED, DataType } from "#/util/data_type";
-import { RefCounted } from "#/util/disposable";
+} from "#src/util/array.js";
+import { DATA_TYPE_SIGNED, DataType } from "#src/util/data_type.js";
+import { RefCounted } from "#src/util/disposable.js";
 import {
   EventActionMap,
   registerActionListener,
-} from "#/util/event_action_map";
-import { vec3, vec4 } from "#/util/geom";
-import { computeLerp, DataTypeInterval, parseDataTypeValue } from "#/util/lerp";
-import { MouseEventBinder } from "#/util/mouse_bindings";
-import { startRelativeMouseDrag } from "#/util/mouse_drag";
-import { WatchableVisibilityPriority } from "#/visibility_priority/frontend";
-import { Buffer, getMemoizedBuffer } from "#/webgl/buffer";
-import { GL } from "#/webgl/context";
+} from "#src/util/event_action_map.js";
+import { kZeroVec4, vec3, vec4 } from "#src/util/geom.js";
+import type { DataTypeInterval } from "#src/util/lerp.js";
+import {
+  computeInvlerp,
+  computeLerp,
+  defaultDataTypeRange,
+  getIntervalBoundsEffectiveFraction,
+  parseDataTypeValue,
+} from "#src/util/lerp.js";
+import { MouseEventBinder } from "#src/util/mouse_bindings.js";
+import { startRelativeMouseDrag } from "#src/util/mouse_drag.js";
+import type { Uint64 } from "#src/util/uint64.js";
+import { getWheelZoomAmount } from "#src/util/wheel_zoom.js";
+import type { WatchableVisibilityPriority } from "#src/visibility_priority/frontend.js";
+import type { Buffer } from "#src/webgl/buffer.js";
+import { getMemoizedBuffer } from "#src/webgl/buffer.js";
+import type { GL } from "#src/webgl/context.js";
+import type { HistogramSpecifications } from "#src/webgl/empirical_cdf.js";
 import {
   defineInvlerpShaderFunction,
   enableLerpShaderFunction,
-} from "#/webgl/lerp";
+} from "#src/webgl/lerp.js";
 import {
   defineLineShader,
   drawLines,
   initializeLineShader,
   VERTICES_PER_LINE,
-} from "#/webgl/lines";
-import { drawQuads } from "#/webgl/quad";
-import { createGriddedRectangleArray } from "#/webgl/rectangle_grid_buffer";
-import { ShaderBuilder, ShaderCodePart, ShaderProgram } from "#/webgl/shader";
-import { getShaderType } from "#/webgl/shader_lib";
-import { TransferFunctionParameters } from "#/webgl/shader_ui_controls";
-import { setRawTextureParameters } from "#/webgl/texture";
-import { ColorWidget } from "#/widget/color";
+} from "#src/webgl/lines.js";
+import { drawQuads } from "#src/webgl/quad.js";
+import { createGriddedRectangleArray } from "#src/webgl/rectangle_grid_buffer.js";
+import type { ShaderCodePart, ShaderProgram } from "#src/webgl/shader.js";
+import { ShaderBuilder } from "#src/webgl/shader.js";
+import { getShaderType } from "#src/webgl/shader_lib.js";
+import { setRawTextureParameters } from "#src/webgl/texture.js";
+import { ColorWidget } from "#src/widget/color.js";
 import {
   getUpdatedRangeAndWindowParameters,
   updateInputBoundValue,
   updateInputBoundWidth,
-} from "#/widget/invlerp";
-import { LayerControlFactory, LayerControlTool } from "#/widget/layer_control";
-import { PositionWidget } from "#/widget/position_widget";
-import { Tab } from "#/widget/tab_view";
-import { Uint64 } from "#/util/uint64";
+  createCDFLineShader,
+  NUM_CDF_LINES,
+} from "#src/widget/invlerp.js";
+import type {
+  LayerControlFactory,
+  LayerControlTool,
+} from "#src/widget/layer_control.js";
+import { PositionWidget } from "#src/widget/position_widget.js";
+import { Tab } from "#src/widget/tab_view.js";
 
-export const TRANSFER_FUNCTION_LENGTH = 1024;
+const TRANSFER_FUNCTION_PANEL_SIZE = 512;
 export const NUM_COLOR_CHANNELS = 4;
 const POSITION_VALUES_PER_LINE = 4; // x1, y1, x2, y2
-const CONTROL_POINT_X_GRAB_DISTANCE = TRANSFER_FUNCTION_LENGTH / 40;
-const TRANSFER_FUNCTION_BORDER_WIDTH = 10;
+const CONTROL_POINT_X_GRAB_DISTANCE = 0.05;
+const TRANSFER_FUNCTION_BORDER_WIDTH = 0.05;
 
 const transferFunctionSamplerTextureUnit = Symbol(
   "transferFunctionSamplerTexture",
 );
+const histogramSamplerTextureUnit = Symbol("histogramSamplerTexture");
 
-export interface ControlPoint {
-  /** The bin that the point's x value lies in - int between 0 and TRANSFER_FUNCTION_LENGTH - 1 */
-  position: number;
-  /** Color of the point as 4 uint8 values */
-  color: vec4;
-}
-
-/**
- * A parsed control point could have a position represented as a Uint64
- * This will later be converted to a number between 0 and TRANSFER_FUNCTION_LENGTH - 1
- * And then stored as a control point
- */
-export interface ParsedControlPoint {
-  position: number | Uint64;
-  color: vec4;
-}
+const defaultTransferFunctionSizes: Record<DataType, number> = {
+  [DataType.UINT8]: 256,
+  [DataType.INT8]: 256,
+  [DataType.UINT16]: 8192,
+  [DataType.INT16]: 8192,
+  [DataType.UINT32]: 8192,
+  [DataType.INT32]: 8192,
+  [DataType.UINT64]: 8192,
+  [DataType.FLOAT32]: 8192,
+};
 
 /**
- * Options to update the transfer function texture
+ * Options to update a lookup table texture with a direct lookup table
  */
-export interface TransferFunctionTextureOptions {
-  /** If lookupTable is defined, it will be used to update the texture directly.
-   * A lookup table is a series of color values (0 - 255) between control points
+export interface LookupTableTextureOptions {
+  /** A lookup table is a series of color values (0 - 255) for each index in the transfer function texture
    */
-  lookupTable?: Uint8Array;
-  /** If lookupTable is undefined, controlPoints will be used to generate a lookup table as a first step */
-  controlPoints?: ControlPoint[];
+  lookupTable: LookupTable;
   /** textureUnit to update with the new transfer function texture data */
   textureUnit: number | undefined;
+}
+
+/**
+ * Options to update a transfer function texture using control points
+ */
+export interface ControlPointTextureOptions {
+  /** controlPoints will be used to generate a lookup table as a first step */
+  sortedControlPoints: SortedControlPoints;
+  /** textureUnit to update with the new transfer function texture data */
+  textureUnit: number | undefined;
+  /** Data type of the control points */
+  dataType: DataType;
+  /** Lookup table number of elements*/
+  lookupTableSize: number;
+}
+
+export interface TransferFunctionParameters {
+  sortedControlPoints: SortedControlPoints;
+  window: DataTypeInterval;
+  channel: number[];
+  defaultColor: vec3;
 }
 
 interface CanvasPosition {
@@ -117,147 +144,336 @@ interface CanvasPosition {
 }
 
 /**
- * Fill a lookup table with color values between control points via linear interpolation.
- * Everything before the first point is transparent,
- * everything after the last point has the color of the last point.
- *
- * @param out The lookup table to fill
- * @param controlPoints The control points to interpolate between
+ * Transfer functions are controlled via a set of control points
+ * with an input value and an output RGBA color (Uint8).
+ * These control points are interpolated between to form a lookup table
+ * which maps an input data value to an RGBA color.
+ * Such a lookup table is used to form a texture, which can be sampled
+ * from during rendering.
  */
-export function lerpBetweenControlPoints(
-  out: Uint8Array,
-  controlPoints: ControlPoint[],
-) {
-  function addLookupValue(index: number, color: vec4) {
-    out[index] = color[0];
-    out[index + 1] = color[1];
-    out[index + 2] = color[2];
-    out[index + 3] = color[3];
+export class ControlPoint {
+  constructor(
+    public inputValue: number | Uint64,
+    public outputColor: vec4 = kZeroVec4,
+  ) {}
+
+  /** Convert the input value to a normalized value between 0 and 1 */
+  normalizedInput(range: DataTypeInterval): number {
+    return computeInvlerp(range, this.inputValue);
   }
 
-  // Edge case: no control points - all transparent
-  if (controlPoints.length === 0) {
-    out.fill(0);
-    return;
+  /** Convert the input value to an integer index into the transfer function lookup texture */
+  transferFunctionIndex(
+    dataRange: DataTypeInterval,
+    transferFunctionSize: number,
+  ): number {
+    return Math.floor(
+      this.normalizedInput(dataRange) * (transferFunctionSize - 1),
+    );
   }
-  const firstPoint = controlPoints[0];
+  interpolateColor(other: ControlPoint, t: number): vec4 {
+    const outputColor = vec4.create();
+    for (let i = 0; i < 4; ++i) {
+      outputColor[i] = computeLerp(
+        [this.outputColor[i], other.outputColor[i]],
+        DataType.UINT8,
+        t,
+      ) as number;
+    }
+    return outputColor;
+  }
+  static copyFrom(other: ControlPoint) {
+    const inputValue = other.inputValue;
+    const outputColor = vec4.clone(other.outputColor);
+    return new ControlPoint(inputValue, outputColor);
+  }
+}
 
-  // Edge case: first control point is not at 0 - fill in transparent values
-  if (firstPoint.position > 0) {
-    const transparent = vec4.fromValues(0, 0, 0, 0);
-    for (let i = 0; i < firstPoint.position; ++i) {
-      const index = i * NUM_COLOR_CHANNELS;
-      addLookupValue(index, transparent);
+export class SortedControlPoints {
+  public range: DataTypeInterval;
+  constructor(
+    public controlPoints: ControlPoint[] = [],
+    public dataType: DataType,
+    private autoComputeRange: boolean = true,
+  ) {
+    this.controlPoints = controlPoints;
+    this.range = defaultDataTypeRange[dataType];
+    this.sortAndComputeRange();
+  }
+  get length() {
+    return this.controlPoints.length;
+  }
+  addPoint(controlPoint: ControlPoint) {
+    const { inputValue, outputColor } = controlPoint;
+    const exactMatch = this.controlPoints.findIndex(
+      (point) => point.inputValue === inputValue,
+    );
+    if (exactMatch !== -1) {
+      this.updatePointColor(exactMatch, outputColor);
+    }
+    const newPoint = new ControlPoint(inputValue, outputColor);
+    this.controlPoints.push(newPoint);
+    this.sortAndComputeRange();
+  }
+  removePoint(index: number) {
+    this.controlPoints.splice(index, 1);
+    this.computeRange();
+  }
+  updatePoint(index: number, controlPoint: ControlPoint): number {
+    this.controlPoints[index] = controlPoint;
+    const value = controlPoint.inputValue;
+    const outputValue = controlPoint.outputColor;
+    this.sortAndComputeRange();
+    // Return the index of the original point after sorting
+    for (let i = 0; i < this.controlPoints.length; ++i) {
+      if (
+        this.controlPoints[i].inputValue === value &&
+        arraysEqual(this.controlPoints[i].outputColor, outputValue)
+      ) {
+        return i;
+      }
+    }
+    return -1;
+  }
+  updatePointColor(index: number, color: vec4 | vec3) {
+    let outputColor = vec4.create();
+    if (color.length === 3) {
+      const opacity = this.controlPoints[index].outputColor[3];
+      outputColor = vec4.fromValues(color[0], color[1], color[2], opacity);
+    } else {
+      outputColor = vec4.clone(color as vec4);
+    }
+    this.controlPoints[index].outputColor = outputColor;
+  }
+  findNearestControlPointIndex(inputValue: number | Uint64) {
+    const controlPoint = new ControlPoint(inputValue);
+    const valueToFind = controlPoint.normalizedInput(this.range);
+    return this.findNearestControlPointIndexByNormalizedInput(valueToFind);
+  }
+  findNearestControlPointIndexByNormalizedInput(normalizedInput: number) {
+    return findClosestMatchInSortedArray(
+      this.controlPoints.map((point) => point.normalizedInput(this.range)),
+      normalizedInput,
+      (a, b) => a - b,
+    );
+  }
+  private sortAndComputeRange() {
+    this.controlPoints.sort(
+      (a, b) => a.normalizedInput(this.range) - b.normalizedInput(this.range),
+    );
+    this.computeRange();
+  }
+  private computeRange() {
+    if (this.autoComputeRange) {
+      if (this.controlPoints.length == 0) {
+        this.range = defaultDataTypeRange[this.dataType];
+      } else if (this.controlPoints.length === 1) {
+        let rangeEnd = defaultDataTypeRange[this.dataType][1];
+        if (
+          this.dataType === DataType.FLOAT32 &&
+          rangeEnd <= this.controlPoints[0].inputValue
+        ) {
+          rangeEnd = (this.controlPoints[0].inputValue as number) + 1;
+        }
+        this.range = [
+          this.controlPoints[0].inputValue,
+          rangeEnd,
+        ] as DataTypeInterval;
+      } else {
+        this.range = [
+          this.controlPoints[0].inputValue,
+          this.controlPoints[this.controlPoints.length - 1].inputValue,
+        ] as DataTypeInterval;
+      }
+    }
+    if (this.range[0] === this.range[1]) {
+      this.range = defaultDataTypeRange[this.dataType];
     }
   }
+  copy() {
+    const copy = new SortedControlPoints(
+      [],
+      this.dataType,
+      this.autoComputeRange,
+    );
+    copy.range = this.range;
+    copy.controlPoints = this.controlPoints.map((point) =>
+      ControlPoint.copyFrom(point),
+    );
+    return copy;
+  }
+}
 
-  // Interpolate between control points and fill to end with last color
-  let controlPointIndex = 0;
-  for (let i = firstPoint.position; i < TRANSFER_FUNCTION_LENGTH; ++i) {
-    const currentPoint = controlPoints[controlPointIndex];
-    const nextPoint =
-      controlPoints[Math.min(controlPointIndex + 1, controlPoints.length - 1)];
-    const lookupIndex = i * NUM_COLOR_CHANNELS;
-    if (currentPoint === nextPoint) {
-      addLookupValue(lookupIndex, currentPoint.color);
-    } else {
-      const t =
-        (i - currentPoint.position) /
-        (nextPoint.position - currentPoint.position);
-      const lerpedColor = lerpUint8Color(
-        currentPoint.color,
-        nextPoint.color,
-        t,
-      );
-      addLookupValue(lookupIndex, lerpedColor);
-      if (i === nextPoint.position) {
-        controlPointIndex++;
+export class LookupTable {
+  outputValues: Uint8Array;
+  constructor(public lookupTableSize: number) {
+    this.outputValues = new Uint8Array(
+      lookupTableSize * NUM_COLOR_CHANNELS,
+    ).fill(0);
+  }
+
+  resize(newSize: number) {
+    this.lookupTableSize = newSize;
+    this.outputValues = new Uint8Array(newSize * NUM_COLOR_CHANNELS).fill(0);
+  }
+
+  /**
+   * Fill a lookup table with color values between control points via linear interpolation.
+   * Everything before the first point is transparent,
+   * everything after the last point has the color of the last point.
+   *
+   * @param controlPoints The control points to interpolate between
+   * @param dataRange The range of the input data space
+   */
+  updateFromControlPoints(
+    sortedControlPoints: SortedControlPoints,
+    window: DataTypeInterval | undefined = undefined,
+  ) {
+    const range = window ? window : sortedControlPoints.range;
+    const { controlPoints } = sortedControlPoints;
+    const out = this.outputValues;
+    const size = this.lookupTableSize;
+    function addLookupValue(index: number, color: vec4) {
+      out[index] = color[0];
+      out[index + 1] = color[1];
+      out[index + 2] = color[2];
+      out[index + 3] = color[3];
+    }
+    /**
+     *  Convert the control point input value to an index in the transfer function lookup table
+     */
+    function toTransferFunctionSpace(controlPoint: ControlPoint) {
+      return controlPoint.transferFunctionIndex(range, size);
+    }
+
+    // If no control points - return all transparent
+    if (controlPoints.length === 0) {
+      out.fill(0);
+      return;
+    }
+
+    // If first control point not at 0 - fill in transparent values
+    // up to the first point
+    const firstInputValue = toTransferFunctionSpace(controlPoints[0]);
+    if (firstInputValue > 0) {
+      const transparent = vec4.fromValues(0, 0, 0, 0);
+      for (let i = 0; i < firstInputValue; ++i) {
+        const index = i * NUM_COLOR_CHANNELS;
+        addLookupValue(index, transparent);
+      }
+    }
+
+    // Interpolate between control points and fill to end with last color
+    let controlPointIndex = 0;
+    for (let i = firstInputValue; i < size; ++i) {
+      const currentPoint = controlPoints[controlPointIndex];
+      const lookupIndex = i * NUM_COLOR_CHANNELS;
+      if (controlPointIndex === controlPoints.length - 1) {
+        addLookupValue(lookupIndex, currentPoint.outputColor);
+      } else {
+        const nextPoint = controlPoints[controlPointIndex + 1];
+        const currentPointIndex = toTransferFunctionSpace(currentPoint);
+        const nextPointIndex = toTransferFunctionSpace(nextPoint);
+        const t =
+          (i - currentPointIndex) / (nextPointIndex - currentPointIndex);
+        const lerpedColor = currentPoint.interpolateColor(nextPoint, t);
+        addLookupValue(lookupIndex, lerpedColor);
+        if (i >= nextPointIndex) {
+          controlPointIndex++;
+        }
       }
     }
   }
-}
-
-/**
- * Convert a [0, 1] float to a uint8 value between 0 and 255
- */
-export function floatToUint8(float: number) {
-  return Math.min(255, Math.max(Math.round(float * 255), 0));
-}
-
-/**
- * Linearly interpolate between each component of two vec4s (color values)
- */
-function lerpUint8Color(startColor: vec4, endColor: vec4, t: number) {
-  const color = vec4.create();
-  for (let i = 0; i < 4; ++i) {
-    color[i] = computeLerp(
-      [startColor[i], endColor[i]],
-      DataType.UINT8,
-      t,
-    ) as number;
+  static equal(a: LookupTable, b: LookupTable) {
+    return arraysEqual(a.outputValues, b.outputValues);
   }
-  return color;
+  copy() {
+    const copy = new LookupTable(this.lookupTableSize);
+    copy.outputValues.set(this.outputValues);
+    return copy;
+  }
 }
 
 /**
- * Represent the underlying transfer function lookup table as a texture
+ * Handles a linked lookup table and control points for a transfer function.
  */
-export class TransferFunctionTexture extends RefCounted {
-  texture: WebGLTexture | null = null;
-  width: number = TRANSFER_FUNCTION_LENGTH;
-  height = 1;
-  private priorOptions: TransferFunctionTextureOptions | undefined = undefined;
+export class TransferFunction extends RefCounted {
+  lookupTable: LookupTable;
+  constructor(
+    public dataType: DataType,
+    public trackable: WatchableValueInterface<TransferFunctionParameters>,
+    size: number = defaultTransferFunctionSizes[dataType],
+  ) {
+    super();
+    this.lookupTable = new LookupTable(size);
+    this.updateLookupTable();
+  }
+  get sortedControlPoints() {
+    return this.trackable.value.sortedControlPoints;
+  }
+  get range() {
+    return this.sortedControlPoints.range;
+  }
+  get size() {
+    return this.lookupTable.lookupTableSize;
+  }
+  updateLookupTable(window: DataTypeInterval | undefined = undefined) {
+    this.lookupTable.updateFromControlPoints(this.sortedControlPoints, window);
+  }
+  addPoint(controlPoint: ControlPoint) {
+    this.sortedControlPoints.addPoint(controlPoint);
+  }
+  updatePoint(index: number, controlPoint: ControlPoint): number {
+    return this.sortedControlPoints.updatePoint(index, controlPoint);
+  }
+  removePoint(index: number) {
+    this.sortedControlPoints.removePoint(index);
+  }
+  updatePointColor(index: number, color: vec4 | vec3) {
+    this.sortedControlPoints.updatePointColor(index, color);
+  }
+  findNearestControlPointIndex(
+    normalizedInputValue: number,
+    dataWindow: DataTypeInterval,
+  ) {
+    const absoluteValue = computeLerp(
+      dataWindow,
+      this.dataType,
+      normalizedInputValue,
+    );
+    return this.sortedControlPoints.findNearestControlPointIndex(absoluteValue);
+  }
+}
 
+abstract class BaseLookupTexture extends RefCounted {
+  texture: WebGLTexture | null = null;
+  protected width: number;
+  protected height = 1;
+  protected priorOptions:
+    | LookupTableTextureOptions
+    | ControlPointTextureOptions
+    | undefined = undefined;
   constructor(public gl: GL | null) {
     super();
   }
-
-  optionsEqual(
-    existingOptions: TransferFunctionTextureOptions | undefined,
-    newOptions: TransferFunctionTextureOptions,
+  /**
+   * Compare the existing options to the new options to determine if the texture needs to be updated
+   */
+  abstract optionsEqual(
+    newOptions: LookupTableTextureOptions | ControlPointTextureOptions,
+  ): boolean;
+  abstract createLookupTable(
+    options: LookupTableTextureOptions | ControlPointTextureOptions,
+  ): LookupTable;
+  abstract setOptions(
+    options: LookupTableTextureOptions | ControlPointTextureOptions,
+  ): void;
+  updateAndActivate(
+    options: LookupTableTextureOptions | ControlPointTextureOptions,
   ) {
-    if (existingOptions === undefined) return false;
-    let lookupTableEqual = true;
-    if (
-      existingOptions.lookupTable !== undefined &&
-      newOptions.lookupTable !== undefined
-    ) {
-      lookupTableEqual = arraysEqual(
-        existingOptions.lookupTable,
-        newOptions.lookupTable,
-      );
-    }
-    let controlPointsEqual = true;
-    if (
-      existingOptions.controlPoints !== undefined &&
-      newOptions.controlPoints !== undefined
-    ) {
-      controlPointsEqual = arraysEqualWithPredicate(
-        existingOptions.controlPoints,
-        newOptions.controlPoints,
-        (a, b) => a.position === b.position && arraysEqual(a.color, b.color),
-      );
-    }
-    const textureUnitEqual =
-      existingOptions.textureUnit === newOptions.textureUnit;
-
-    return lookupTableEqual && controlPointsEqual && textureUnitEqual;
-  }
-
-  updateAndActivate(options: TransferFunctionTextureOptions) {
     const { gl } = this;
     if (gl === null) return;
     let { texture } = this;
-
-    // Verify input
-    if (
-      options.lookupTable === undefined &&
-      options.controlPoints === undefined
-    ) {
-      throw new Error(
-        "Either lookupTable or controlPoints must be defined for transfer function texture",
-      );
-    }
 
     function activateAndBindTexture(gl: GL, textureUnit: number | undefined) {
       if (textureUnit === undefined) {
@@ -268,11 +484,10 @@ export class TransferFunctionTexture extends RefCounted {
       gl.activeTexture(WebGL2RenderingContext.TEXTURE0 + textureUnit);
       gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, texture);
     }
-
     // If the texture is already up to date, just bind and activate it
-    if (texture !== null && this.optionsEqual(this.priorOptions, options)) {
+    if (texture !== null && this.optionsEqual(options)) {
       activateAndBindTexture(gl, options.textureUnit);
-      return;
+      return this.width * this.height;
     }
     // If the texture has not been created yet, create it
     if (texture === null) {
@@ -281,41 +496,109 @@ export class TransferFunctionTexture extends RefCounted {
     // Update the texture
     activateAndBindTexture(gl, options.textureUnit);
     setRawTextureParameters(gl);
-    let lookupTable = options.lookupTable;
-    if (lookupTable === undefined) {
-      lookupTable = new Uint8Array(
-        TRANSFER_FUNCTION_LENGTH * NUM_COLOR_CHANNELS,
-      );
-      lerpBetweenControlPoints(lookupTable, options.controlPoints!);
-    }
+    const lookupTable = this.createLookupTable(options);
+
     gl.texImage2D(
       WebGL2RenderingContext.TEXTURE_2D,
       0,
       WebGL2RenderingContext.RGBA,
       this.width,
-      1,
+      this.height,
       0,
       WebGL2RenderingContext.RGBA,
       WebGL2RenderingContext.UNSIGNED_BYTE,
-      lookupTable,
+      lookupTable.outputValues,
     );
 
     // Update the prior options to the current options for future comparisons
-    // Make a copy of the options for the purpose of comparison
-    this.priorOptions = {
-      textureUnit: options.textureUnit,
-      lookupTable: options.lookupTable?.slice(),
-      controlPoints: options.controlPoints?.map((point) => ({
-        position: point.position,
-        color: vec4.clone(point.color),
-      })),
-    };
+    this.setOptions(options);
+    return this.width * this.height;
   }
-
+  setTextureWidthAndHeightFromSize(size: number) {
+    this.width = size;
+  }
   disposed() {
     this.gl?.deleteTexture(this.texture);
     this.texture = null;
+    this.priorOptions = undefined;
     super.disposed();
+  }
+}
+
+/**
+ * Represent the underlying transfer function lookup table as a texture
+ */
+class DirectLookupTableTexture extends BaseLookupTexture {
+  texture: WebGLTexture | null = null;
+  protected priorOptions: LookupTableTextureOptions | undefined = undefined;
+
+  constructor(public gl: GL | null) {
+    super(gl);
+  }
+  optionsEqual(newOptions: LookupTableTextureOptions) {
+    const existingOptions = this.priorOptions;
+    if (existingOptions === undefined) return false;
+    const lookupTableEqual = LookupTable.equal(
+      existingOptions.lookupTable,
+      newOptions.lookupTable,
+    );
+    const textureUnitEqual =
+      existingOptions.textureUnit === newOptions.textureUnit;
+    return lookupTableEqual && textureUnitEqual;
+  }
+  createLookupTable(options: LookupTableTextureOptions): LookupTable {
+    this.setTextureWidthAndHeightFromSize(options.lookupTable.lookupTableSize);
+    return options.lookupTable;
+  }
+  setOptions(options: LookupTableTextureOptions) {
+    this.priorOptions = {
+      ...options,
+      lookupTable: options.lookupTable.copy(),
+    };
+  }
+}
+
+export class ControlPointTexture extends BaseLookupTexture {
+  protected priorOptions: ControlPointTextureOptions | undefined;
+  constructor(public gl: GL | null) {
+    super(gl);
+  }
+  optionsEqual(newOptions: ControlPointTextureOptions): boolean {
+    const existingOptions = this.priorOptions;
+    if (existingOptions === undefined) return false;
+    const controlPointsEqual = arraysEqualWithPredicate(
+      existingOptions.sortedControlPoints.controlPoints,
+      newOptions.sortedControlPoints.controlPoints,
+      (a, b) =>
+        a.inputValue === b.inputValue &&
+        arraysEqual(a.outputColor, b.outputColor),
+    );
+    const textureUnitEqual =
+      existingOptions.textureUnit === newOptions.textureUnit;
+    const dataTypeEqual = existingOptions.dataType === newOptions.dataType;
+    return controlPointsEqual && textureUnitEqual && dataTypeEqual;
+  }
+  setOptions(options: ControlPointTextureOptions) {
+    this.priorOptions = {
+      ...options,
+      sortedControlPoints: options.sortedControlPoints.copy(),
+    };
+  }
+  createLookupTable(options: ControlPointTextureOptions): LookupTable {
+    const lookupTableSize = this.ensureTextureSize(options.lookupTableSize);
+    if (lookupTableSize === undefined) return new LookupTable(0);
+    this.setTextureWidthAndHeightFromSize(lookupTableSize);
+    const lookupTable = new LookupTable(lookupTableSize);
+    const sortedControlPoints = options.sortedControlPoints;
+    lookupTable.updateFromControlPoints(sortedControlPoints);
+    return lookupTable;
+  }
+  ensureTextureSize(size: number) {
+    const gl = this.gl;
+    if (gl === null) return;
+    const maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+    const tableTextureSize = Math.min(size, maxTextureSize);
+    return tableTextureSize;
   }
 }
 
@@ -324,7 +607,7 @@ export class TransferFunctionTexture extends RefCounted {
  * handle shader updates for elements of the canvas
  */
 class TransferFunctionPanel extends IndirectRenderedPanel {
-  texture: TransferFunctionTexture;
+  texture: DirectLookupTableTexture;
   private textureVertexBuffer: Buffer;
   private textureVertexBufferArray: Float32Array;
   private controlPointsVertexBuffer: Buffer;
@@ -336,62 +619,72 @@ class TransferFunctionPanel extends IndirectRenderedPanel {
   get drawOrder() {
     return 1;
   }
-  controlPointsLookupTable = this.registerDisposer(
-    new ControlPointsLookupTable(this.parent.dataType, this.parent.trackable),
+  transferFunction = this.registerDisposer(
+    new TransferFunction(
+      this.parent.dataType,
+      this.parent.trackable,
+      TRANSFER_FUNCTION_PANEL_SIZE,
+    ),
   );
   controller = this.registerDisposer(
     new TransferFunctionController(
       this.element,
       this.parent.dataType,
-      this.controlPointsLookupTable,
+      this.transferFunction,
       () => this.parent.trackable.value,
       (value: TransferFunctionParameters) => {
         this.parent.trackable.value = value;
       },
     ),
   );
+  private dataValuesBuffer = this.registerDisposer(
+    getMemoizedBuffer(this.gl, WebGL2RenderingContext.ARRAY_BUFFER, () => {
+      const array = new Uint8Array(NUM_CDF_LINES * VERTICES_PER_LINE);
+      for (let i = 0; i < NUM_CDF_LINES; ++i) {
+        for (let j = 0; j < VERTICES_PER_LINE; ++j) {
+          array[i * VERTICES_PER_LINE + j] = i;
+        }
+      }
+      return array;
+    }),
+  ).value;
+
   constructor(public parent: TransferFunctionWidget) {
     super(parent.display, document.createElement("div"), parent.visibility);
-    const { element } = this;
+    const { element, gl } = this;
     element.classList.add("neuroglancer-transfer-function-panel");
     this.textureVertexBufferArray = createGriddedRectangleArray(
-      TRANSFER_FUNCTION_LENGTH,
+      TRANSFER_FUNCTION_PANEL_SIZE,
     );
-    this.texture = this.registerDisposer(new TransferFunctionTexture(this.gl));
+    this.texture = this.registerDisposer(new DirectLookupTableTexture(gl));
+
+    function createBuffer(dataArray: Float32Array) {
+      return getMemoizedBuffer(
+        gl,
+        WebGL2RenderingContext.ARRAY_BUFFER,
+        () => dataArray,
+      ).value;
+    }
     this.textureVertexBuffer = this.registerDisposer(
-      getMemoizedBuffer(
-        this.gl,
-        WebGL2RenderingContext.ARRAY_BUFFER,
-        () => this.textureVertexBufferArray,
-      ),
-    ).value;
+      createBuffer(this.textureVertexBufferArray),
+    );
     this.controlPointsVertexBuffer = this.registerDisposer(
-      getMemoizedBuffer(
-        this.gl,
-        WebGL2RenderingContext.ARRAY_BUFFER,
-        () => this.controlPointsPositionArray,
-      ),
-    ).value;
+      createBuffer(this.controlPointsPositionArray),
+    );
     this.controlPointsColorBuffer = this.registerDisposer(
-      getMemoizedBuffer(
-        this.gl,
-        WebGL2RenderingContext.ARRAY_BUFFER,
-        () => this.controlPointsColorArray,
-      ),
-    ).value;
+      createBuffer(this.controlPointsColorArray),
+    );
     this.linePositionBuffer = this.registerDisposer(
-      getMemoizedBuffer(
-        this.gl,
-        WebGL2RenderingContext.ARRAY_BUFFER,
-        () => this.linePositionArray,
-      ),
-    ).value;
+      createBuffer(this.linePositionArray),
+    );
   }
 
   updateTransferFunctionPointsAndLines() {
     // Normalize position to [-1, 1] for shader (x axis)
-    function normalizePosition(position: number) {
-      return (position / (TRANSFER_FUNCTION_LENGTH - 1)) * 2 - 1;
+    const window = this.parent.trackable.value.window;
+    function normalizeInput(input: number | Uint64) {
+      const lerpedInput = computeInvlerp(window, input);
+      return lerpedInput * 2 - 1;
     }
     // Normalize opacity to [-1, 1] for shader (y axis)
     function normalizeOpacity(opacity: number) {
@@ -407,98 +700,160 @@ class TransferFunctionPanel extends IndirectRenderedPanel {
       positions: vec4,
     ): number {
       for (let i = 0; i < VERTICES_PER_LINE; ++i) {
-        array[index++] = normalizePosition(positions[0]);
-        array[index++] = normalizeOpacity(positions[1]);
-        array[index++] = normalizePosition(positions[2]);
-        array[index++] = normalizeOpacity(positions[3]);
+        array[index++] = positions[0];
+        array[index++] = positions[1];
+        array[index++] = positions[2];
+        array[index++] = positions[3];
       }
       return index;
     }
+    function isInWindow(normalizedInput: number) {
+      return normalizedInput >= -1 && normalizedInput <= 1;
+    }
 
-    const controlPoints =
-      this.controlPointsLookupTable.trackable.value.controlPoints;
-    let numLines = controlPoints.length === 0 ? 0 : controlPoints.length;
+    const { transferFunction } = this;
+    const { controlPoints } =
+      transferFunction.trackable.value.sortedControlPoints;
+    let numLines = Math.max(controlPoints.length - 1, 0);
     const colorChannels = NUM_COLOR_CHANNELS - 1; // ignore alpha
     const colorArray = new Float32Array(controlPoints.length * colorChannels);
     const positionArray = new Float32Array(controlPoints.length * 2);
-    let positionArrayIndex = 0;
+    let linePositionArrayIndex = 0;
     let lineFromLeftEdge = null;
     let lineToRightEdge = null;
+    // Map all control points to normalized values for the shader
+    const normalizedControlPoints = controlPoints.map((point) => {
+      const input = normalizeInput(point.inputValue);
+      const output = normalizeOpacity(point.outputColor[3]);
+      return { input, output };
+    });
 
+    // Create start and end lines if there are any control points
     if (controlPoints.length > 0) {
-      // If the start point is above 0, need to draw a line from the left edge
-      if (controlPoints[0].position > 0) {
-        numLines += 1;
-        lineFromLeftEdge = vec4.fromValues(0, 0, controlPoints[0].position, 0);
-      }
-      // If the end point is less than the transfer function length, need to draw a line to the right edge
-      const endPoint = controlPoints[controlPoints.length - 1];
-      if (endPoint.position < TRANSFER_FUNCTION_LENGTH - 1) {
-        numLines += 1;
-        lineToRightEdge = vec4.fromValues(
-          endPoint.position,
-          endPoint.color[3],
-          TRANSFER_FUNCTION_LENGTH - 1,
-          endPoint.color[3],
-        );
+      // Try to find the first and last point in the window
+
+      const {
+        firstPointIndexInWindow,
+        lastPointIndexInWindow,
+        pointClosestToLeftEdge,
+        pointClosestToRightEdge,
+      } = findPointsNearWindowBounds();
+      // If there are no points in the window, check if everything is left or right of the window
+      // Draw a single line from the left edge to the right edge if all points are left of the window
+      if (firstPointIndexInWindow === null) {
+        const allPointsLeftOfWindow =
+          normalizedControlPoints[controlPoints.length - 1].input < -1;
+        const allPointsRightOfWindow = normalizedControlPoints[0].input > 1;
+        if (allPointsLeftOfWindow) {
+          drawHorizontalLineFromPointOutsideLeftWindow();
+        }
+        // There are no points in the window, but points on either side
+        // Draw lines from the leftmost and rightmost points starting
+        // from the left edge and ending at the right edge via interpolation
+        else if (!allPointsRightOfWindow && controlPoints.length > 1) {
+          drawLineBetweenPointsBothOutsideWindow(
+            pointClosestToLeftEdge,
+            pointClosestToRightEdge,
+          );
+        }
+      } else {
+        const firstPointInWindow =
+          normalizedControlPoints[firstPointIndexInWindow];
+        if (firstPointInWindow.input > -1) {
+          // If there is a value to the left, draw a line from the point outside the window to the first point in the window
+          if (firstPointIndexInWindow > 0) {
+            drawLineBetweenPointInWindowAndLeftPointOutsideWindow(
+              firstPointIndexInWindow,
+              firstPointInWindow,
+            );
+          }
+          // If the first point in the window is the leftmost point, draw a 0 line up to the point
+          else {
+            lineFromLeftEdge = vec4.fromValues(
+              firstPointInWindow.input,
+              -1,
+              firstPointInWindow.input,
+              firstPointInWindow.output,
+            );
+          }
+          numLines += 1;
+        }
+        // Need to draw a line from the last control point in the window to the right edge
+        const lastPointInWindow =
+          normalizedControlPoints[lastPointIndexInWindow!];
+        if (lastPointInWindow.input < 1) {
+          // If there is a value to the right, draw a line from the last point in the window to the point outside the window
+          if (lastPointIndexInWindow! < controlPoints.length - 1) {
+            drawLineBetweenPointInWindowAndRightPointOutsideWindow(
+              lastPointIndexInWindow,
+              lastPointInWindow,
+            );
+          }
+          // If the last point in the window is the rightmost point, draw a line from the point to the right edge
+          else {
+            lineToRightEdge = vec4.fromValues(
+              lastPointInWindow.input,
+              lastPointInWindow.output,
+              1,
+              lastPointInWindow.output,
+            );
+          }
+          numLines += 1;
+        }
       }
     }
 
-    // Create line positions
-    const linePositionArray = new Float32Array(
-      numLines * VERTICES_PER_LINE * POSITION_VALUES_PER_LINE,
-    );
-    if (lineFromLeftEdge !== null) {
-      positionArrayIndex = addLine(
-        linePositionArray,
-        positionArrayIndex,
-        lineFromLeftEdge,
-      );
-    }
-
-    // Draw a vertical line up to the first control point
-    if (numLines !== 0) {
-      const startPoint = controlPoints[0];
-      const lineStartEndPoints = vec4.fromValues(
-        startPoint.position,
-        0,
-        startPoint.position,
-        startPoint.color[3],
-      );
-      positionArrayIndex = addLine(
-        linePositionArray,
-        positionArrayIndex,
-        lineStartEndPoints,
-      );
-    }
+    const lines: vec4[] = [];
     // Update points and draw lines between control points
     for (let i = 0; i < controlPoints.length; ++i) {
       const colorIndex = i * colorChannels;
       const positionIndex = i * 2;
-      const { color, position } = controlPoints[i];
-      colorArray[colorIndex] = normalizeColor(color[0]);
-      colorArray[colorIndex + 1] = normalizeColor(color[1]);
-      colorArray[colorIndex + 2] = normalizeColor(color[2]);
-      positionArray[positionIndex] = normalizePosition(position);
-      positionArray[positionIndex + 1] = normalizeOpacity(color[3]);
+      const inputValue = normalizedControlPoints[i].input;
+      const outputValue = normalizedControlPoints[i].output;
+      const { outputColor } = controlPoints[i];
+      colorArray[colorIndex] = normalizeColor(outputColor[0]);
+      colorArray[colorIndex + 1] = normalizeColor(outputColor[1]);
+      colorArray[colorIndex + 2] = normalizeColor(outputColor[2]);
+      positionArray[positionIndex] = inputValue;
+      positionArray[positionIndex + 1] = outputValue;
 
       // Don't create a line for the last point
       if (i === controlPoints.length - 1) break;
-      const linePosition = vec4.fromValues(
-        position,
-        color[3],
-        controlPoints[i + 1].position,
-        controlPoints[i + 1].color[3],
+      if (!(isInWindow(inputValue) && isInWindow(outputValue))) continue;
+      numLines += 1;
+      const lineBetweenPoints = vec4.fromValues(
+        inputValue,
+        outputValue,
+        normalizedControlPoints[i + 1].input,
+        normalizedControlPoints[i + 1].output,
       );
-      positionArrayIndex = addLine(
+      lines.push(lineBetweenPoints);
+    }
+
+    // Create and fill the line position array
+    const linePositionArray = new Float32Array(
+      numLines * POSITION_VALUES_PER_LINE * VERTICES_PER_LINE,
+    );
+
+    if (lineFromLeftEdge !== null) {
+      linePositionArrayIndex = addLine(
         linePositionArray,
-        positionArrayIndex,
-        linePosition,
+        linePositionArrayIndex,
+        lineFromLeftEdge,
       );
     }
 
+    for (const lineBetweenPoints of lines) {
+      linePositionArrayIndex = addLine(
+        linePositionArray,
+        linePositionArrayIndex,
+        lineBetweenPoints,
+      );
+    }
+
+    // Draw a horizontal line out from the last point
     if (lineToRightEdge !== null) {
-      addLine(linePositionArray, positionArrayIndex, lineToRightEdge);
+      addLine(linePositionArray, linePositionArrayIndex, lineToRightEdge);
     }
 
     // Update buffers
@@ -508,7 +863,127 @@ class TransferFunctionPanel extends IndirectRenderedPanel {
     this.controlPointsVertexBuffer.setData(this.controlPointsPositionArray);
     this.controlPointsColorBuffer.setData(this.controlPointsColorArray);
     this.linePositionBuffer.setData(this.linePositionArray);
+
+    function drawLineBetweenPointInWindowAndRightPointOutsideWindow(
+      lastPointIndexInWindow: number | null,
+      lastPointInWindow: { input: number; output: number },
+    ) {
+      const pointAfterWindow =
+        normalizedControlPoints[lastPointIndexInWindow! + 1];
+      const interpFactor = computeInvlerp(
+        [lastPointInWindow.input, pointAfterWindow.input],
+        1,
+      );
+      const lineEndY = computeLerp(
+        [lastPointInWindow.output, pointAfterWindow.output],
+        DataType.FLOAT32,
+        interpFactor,
+      ) as number;
+      lineToRightEdge = vec4.fromValues(
+        lastPointInWindow.input,
+        lastPointInWindow.output,
+        1,
+        lineEndY,
+      );
+    }
+
+    function drawLineBetweenPointInWindowAndLeftPointOutsideWindow(
+      firstPointIndexInWindow: number,
+      firstPointInWindow: { input: number; output: number },
+    ) {
+      const pointBeforeWindow =
+        normalizedControlPoints[firstPointIndexInWindow - 1];
+      const interpFactor = computeInvlerp(
+        [pointBeforeWindow.input, firstPointInWindow.input],
+        -1,
+      );
+      const lineStartY = computeLerp(
+        [pointBeforeWindow.output, firstPointInWindow.output],
+        DataType.FLOAT32,
+        interpFactor,
+      ) as number;
+      lineFromLeftEdge = vec4.fromValues(
+        -1,
+        lineStartY,
+        firstPointInWindow.input,
+        firstPointInWindow.output,
+      );
+    }
+
+    function drawLineBetweenPointsBothOutsideWindow(
+      pointClosestToLeftEdge: { input: number; output: number } | null,
+      pointClosestToRightEdge: { input: number; output: number } | null,
+    ) {
+      numLines += 1;
+      if (pointClosestToLeftEdge === null || pointClosestToRightEdge === null) {
+        throw new Error(
+          "Could not find points closest to the left and right edges",
+        );
+      }
+      const leftInterpFactor = computeInvlerp(
+        [pointClosestToLeftEdge.input, pointClosestToRightEdge.input],
+        -1,
+      );
+      const rightInterpFactor = computeInvlerp(
+        [pointClosestToLeftEdge.input, pointClosestToRightEdge.input],
+        1,
+      );
+      const leftLineY = computeLerp(
+        [pointClosestToLeftEdge.output, pointClosestToRightEdge.output],
+        DataType.FLOAT32,
+        leftInterpFactor,
+      ) as number;
+      const rightLineY = computeLerp(
+        [pointClosestToLeftEdge.output, pointClosestToRightEdge.output],
+        DataType.FLOAT32,
+        rightInterpFactor,
+      ) as number;
+      lineFromLeftEdge = vec4.fromValues(-1, leftLineY, 1, rightLineY);
+    }
+
+    function findPointsNearWindowBounds() {
+      let firstPointIndexInWindow = null;
+      let lastPointIndexInWindow = null;
+      let pointClosestToLeftEdge = null;
+      let pointClosestToRightEdge = null;
+      for (let i = 0; i < controlPoints.length; ++i) {
+        const point = normalizedControlPoints[i];
+        if (isInWindow(point.input)) {
+          firstPointIndexInWindow = firstPointIndexInWindow ?? i;
+          lastPointIndexInWindow = i;
+        }
+        if (point.input < -1) {
+          pointClosestToLeftEdge = point;
+        } else if (point.input > 1) {
+          pointClosestToRightEdge = point;
+          break;
+        }
+      }
+      return {
+        firstPointIndexInWindow,
+        lastPointIndexInWindow,
+        pointClosestToLeftEdge,
+        pointClosestToRightEdge,
+      };
+    }
+
+    function drawHorizontalLineFromPointOutsideLeftWindow() {
+      const indexOfReferencePoint = controlPoints.length - 1;
+      numLines += 1;
+      const referenceOpacity =
+        normalizedControlPoints[indexOfReferencePoint].output;
+      lineFromLeftEdge = vec4.fromValues(
+        -1,
+        referenceOpacity,
+        1,
+        referenceOpacity,
+      );
+    }
   }
+
+  private histogramLineShader = this.registerDisposer(
+    (() => createCDFLineShader(this.gl, histogramSamplerTextureUnit))(),
+  );
 
   private transferFunctionLineShader = this.registerDisposer(
     (() => {
@@ -523,7 +998,7 @@ vec4 end = vec4(aLineStartEnd[2], aLineStartEnd[3], 0.0, 1.0);
 emitLine(start, end, 1.0);
 `);
       builder.setFragmentMain(`
-out_color = vec4(0.0, 1.0, 1.0, getLineAlpha());
+out_color = vec4(0.35, 0.35, 0.35, getLineAlpha());
 `);
       return builder.build();
     })(),
@@ -565,6 +1040,8 @@ gl_Position = vec4(aVertexPosition, 0.0, 1.0);
 gl_PointSize = 14.0;
 vColor = aVertexColor;
 `);
+      // Draw control points as circles with a border
+      // The border is white if the color is dark, black if the color is light
       builder.setFragmentMain(`
 float vColorSum = vColor.r + vColor.g + vColor.b;
 vec3 bordercolor = vec3(0.0, 0.0, 0.0);
@@ -587,6 +1064,7 @@ out_color = tempColor * alpha;
       gl,
       transferFunctionShader,
       controlPointsShader,
+      histogramLineShader: lineShader,
     } = this;
     this.setGLLogicalViewport();
     gl.clearColor(0.0, 0.0, 0.0, 0.0);
@@ -605,7 +1083,7 @@ out_color = tempColor * alpha;
         transferFunctionShader.attribute("aVertexPosition");
       gl.uniform1f(
         transferFunctionShader.uniform("uTransferFunctionEnd"),
-        TRANSFER_FUNCTION_LENGTH - 1,
+        TRANSFER_FUNCTION_PANEL_SIZE - 1,
       );
       this.textureVertexBuffer.bindToVertexAttrib(
         aVertexPosition,
@@ -616,13 +1094,49 @@ out_color = tempColor * alpha;
         transferFunctionSamplerTextureUnit,
       );
       this.texture.updateAndActivate({
-        lookupTable: this.controlPointsLookupTable.lookupTable,
+        lookupTable: this.transferFunction.lookupTable,
         textureUnit,
       });
-      drawQuads(this.gl, TRANSFER_FUNCTION_LENGTH, 1);
+      drawQuads(this.gl, TRANSFER_FUNCTION_PANEL_SIZE, 1);
       gl.disableVertexAttribArray(aVertexPosition);
       gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, null);
     }
+    // Draw CDF lines
+    if (this.parent.histogramSpecifications.producerVisibility.visible) {
+      const { renderViewport } = this;
+      lineShader.bind();
+      initializeLineShader(
+        lineShader,
+        {
+          width: renderViewport.logicalWidth,
+          height: renderViewport.logicalHeight,
+        },
+        /*featherWidthInPixels=*/ 1.0,
+      );
+      const histogramTextureUnit = lineShader.textureUnit(
+        histogramSamplerTextureUnit,
+      );
+      gl.uniform1f(
+        lineShader.uniform("uBoundsFraction"),
+        getIntervalBoundsEffectiveFraction(
+          this.parent.dataType,
+          this.parent.trackable.value.window,
+        ),
+      );
+      gl.activeTexture(WebGL2RenderingContext.TEXTURE0 + histogramTextureUnit);
+      gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, this.parent.texture);
+      setRawTextureParameters(gl);
+      const aDataValue = lineShader.attribute("aDataValue");
+      this.dataValuesBuffer.bindToVertexAttribI(
+        aDataValue,
+        /*componentsPerVertexAttribute=*/ 1,
+        /*attributeType=*/ WebGL2RenderingContext.UNSIGNED_BYTE,
+      );
+      drawLines(gl, /*linesPerInstance=*/ NUM_CDF_LINES, /*numInstances=*/ 1);
+      gl.disableVertexAttribArray(aDataValue);
+      gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, null);
+    }
+
     // Draw lines and control points on top of transfer function - if there are any
     if (this.controlPointsPositionArray.length > 0) {
       const { renderViewport } = this;
@@ -673,7 +1187,7 @@ out_color = tempColor * alpha;
     gl.disable(WebGL2RenderingContext.BLEND);
   }
   update() {
-    this.controlPointsLookupTable.lookupTableFromControlPoints();
+    this.transferFunction.updateLookupTable(this.parent.trackable.value.window);
     this.updateTransferFunctionPointsAndLines();
   }
   isReady() {
@@ -682,170 +1196,13 @@ out_color = tempColor * alpha;
 }
 
 /**
- * Lookup table for control points. Handles adding, removing, and updating control points as well as
- * consequent updates to the underlying lookup table formed from the control points.
+ * Create the bounds on the UI window inputs for the transfer function widget
  */
-class ControlPointsLookupTable extends RefCounted {
-  lookupTable: Uint8Array;
-  constructor(
-    public dataType: DataType,
-    public trackable: WatchableValueInterface<TransferFunctionParameters>,
-  ) {
-    super();
-    this.lookupTable = new Uint8Array(
-      TRANSFER_FUNCTION_LENGTH * NUM_COLOR_CHANNELS,
-    ).fill(0);
-  }
-  positionToIndex(position: number) {
-    let positionAsIndex = Math.floor(position * (TRANSFER_FUNCTION_LENGTH - 1));
-    if (positionAsIndex < TRANSFER_FUNCTION_BORDER_WIDTH) {
-      positionAsIndex = 0;
-    }
-    if (
-      TRANSFER_FUNCTION_LENGTH - 1 - positionAsIndex <
-      TRANSFER_FUNCTION_BORDER_WIDTH
-    ) {
-      positionAsIndex = TRANSFER_FUNCTION_LENGTH - 1;
-    }
-    return positionAsIndex;
-  }
-  opacityToUint8(opacity: number) {
-    let opacityAsUint8 = floatToUint8(opacity);
-    if (opacityAsUint8 <= TRANSFER_FUNCTION_BORDER_WIDTH) {
-      opacityAsUint8 = 0;
-    } else if (opacityAsUint8 >= 255 - TRANSFER_FUNCTION_BORDER_WIDTH) {
-      opacityAsUint8 = 255;
-    }
-    return opacityAsUint8;
-  }
-  findNearestControlPointIndex(position: number) {
-    return findClosestMatchInSortedArray(
-      this.trackable.value.controlPoints.map((point) => point.position),
-      this.positionToIndex(position),
-      (a, b) => a - b,
-    );
-  }
-  grabControlPoint(position: number, opacity: number) {
-    const desiredPosition = this.positionToIndex(position);
-    const desiredOpacity = this.opacityToUint8(opacity);
-    const nearestIndex = this.findNearestControlPointIndex(position);
-    if (nearestIndex === -1) {
-      return -1;
-    }
-    const controlPoints = this.trackable.value.controlPoints;
-    const nearestPosition = controlPoints[nearestIndex].position;
-    if (
-      Math.abs(nearestPosition - desiredPosition) >
-      CONTROL_POINT_X_GRAB_DISTANCE
-    ) {
-      return -1;
-    }
-
-    // If points are nearby in X space, use Y space to break ties
-    const nextPosition = controlPoints[nearestIndex + 1]?.position;
-    const nextDistance = nextPosition !== undefined ? Math.abs(nextPosition - desiredPosition) : CONTROL_POINT_X_GRAB_DISTANCE + 1;
-    const previousPosition = controlPoints[nearestIndex - 1]?.position;
-    const previousDistance = previousPosition !== undefined ? Math.abs(previousPosition - desiredPosition) : CONTROL_POINT_X_GRAB_DISTANCE + 1;
-    const possibleValues: [number, number][] = [];
-    if (nextDistance <= CONTROL_POINT_X_GRAB_DISTANCE) {
-      possibleValues.push([
-        nearestIndex + 1,
-        Math.abs(controlPoints[nearestIndex + 1].color[3] - desiredOpacity),
-      ]);
-    }
-    if (previousDistance <= CONTROL_POINT_X_GRAB_DISTANCE) {
-      possibleValues.push([
-        nearestIndex - 1,
-        Math.abs(controlPoints[nearestIndex - 1].color[3] - desiredOpacity),
-      ]);
-    }
-    possibleValues.push([
-      nearestIndex,
-      Math.abs(controlPoints[nearestIndex].color[3] - desiredOpacity),
-    ]);
-    possibleValues.sort((a, b) => a[1] - b[1]);
-    return possibleValues[0][0];
-  }
-  addPoint(position: number, opacity: number, color: vec3) {
-    const colorAsUint8 = vec3.fromValues(
-      floatToUint8(color[0]),
-      floatToUint8(color[1]),
-      floatToUint8(color[2]),
-    );
-    const opacityAsUint8 = this.opacityToUint8(opacity);
-    const controlPoints = this.trackable.value.controlPoints;
-    const positionAsIndex = this.positionToIndex(position);
-    const existingIndex = controlPoints.findIndex(
-      (point) => point.position === positionAsIndex,
-    );
-    if (existingIndex !== -1) {
-      controlPoints.splice(existingIndex, 1);
-    }
-    controlPoints.push({
-      position: positionAsIndex,
-      color: vec4.fromValues(
-        colorAsUint8[0],
-        colorAsUint8[1],
-        colorAsUint8[2],
-        opacityAsUint8,
-      ),
-    });
-    controlPoints.sort((a, b) => a.position - b.position);
-  }
-  lookupTableFromControlPoints() {
-    const { lookupTable } = this;
-    const { controlPoints } = this.trackable.value;
-    lerpBetweenControlPoints(lookupTable, controlPoints);
-  }
-  updatePoint(index: number, position: number, opacity: number) {
-    const { controlPoints } = this.trackable.value;
-    let positionAsIndex = this.positionToIndex(position);
-    const opacityAsUint8 = this.opacityToUint8(opacity);
-    const color = controlPoints[index].color;
-    controlPoints[index] = {
-      position: positionAsIndex,
-      color: vec4.fromValues(color[0], color[1], color[2], opacityAsUint8),
-    };
-    const exsitingPositions = new Set<number>();
-    let positionToFind = positionAsIndex;
-    for (const point of controlPoints) {
-      if (exsitingPositions.has(point.position)) {
-        positionToFind = positionToFind === 0 ? 1 : positionToFind - 1;
-        controlPoints[index].position = positionToFind;
-        break;
-      }
-      exsitingPositions.add(point.position);
-    }
-    controlPoints.sort((a, b) => a.position - b.position);
-    const newControlPointIndex = controlPoints.findIndex(
-      (point) => point.position === positionToFind,
-    );
-    return newControlPointIndex;
-  }
-  setPointColor(index: number, color: vec3) {
-    const { controlPoints } = this.trackable.value;
-    const colorAsUint8 = vec3.fromValues(
-      floatToUint8(color[0]),
-      floatToUint8(color[1]),
-      floatToUint8(color[2]),
-    );
-    controlPoints[index].color = vec4.fromValues(
-      colorAsUint8[0],
-      colorAsUint8[1],
-      colorAsUint8[2],
-      controlPoints[index].color[3],
-    );
-  }
-}
-
-/**
- * Create the bounds on the UI range inputs for the transfer function widget
- */
-function createRangeBoundInputs(
+function createWindowBoundInputs(
   dataType: DataType,
   model: WatchableValueInterface<TransferFunctionParameters>,
 ) {
-  function createRangeBoundInput(endpoint: number): HTMLInputElement {
+  function createWindowBoundInput(endpoint: number): HTMLInputElement {
     const e = document.createElement("input");
     e.addEventListener("focus", () => {
       e.select();
@@ -856,31 +1213,34 @@ function createRangeBoundInputs(
     e.autocomplete = "off";
     e.title = `${
       endpoint === 0 ? "Lower" : "Upper"
-    } bound for transfer function range`;
+    } window for transfer function`;
     return e;
   }
 
   const container = document.createElement("div");
-  container.classList.add("neuroglancer-transfer-function-range-bounds");
-  const inputs = [createRangeBoundInput(0), createRangeBoundInput(1)];
+  container.classList.add("neuroglancer-transfer-function-window-bounds");
+  const inputs = [createWindowBoundInput(0), createWindowBoundInput(1)];
   for (let endpointIndex = 0; endpointIndex < 2; ++endpointIndex) {
     const input = inputs[endpointIndex];
     input.addEventListener("input", () => {
       updateInputBoundWidth(input);
     });
     input.addEventListener("change", () => {
-      const existingBounds = model.value.range;
+      const existingBounds = model.value.window;
       const intervals = { range: existingBounds, window: existingBounds };
       try {
         const value = parseDataTypeValue(dataType, input.value);
-        const range = getUpdatedRangeAndWindowParameters(
+        const window = getUpdatedRangeAndWindowParameters(
           intervals,
           "window",
           endpointIndex,
           value,
           /*fitRangeInWindow=*/ true,
         ).window;
-        model.value = { ...model.value, range };
+        if (window[0] === window[1]) {
+          throw new Error("Window bounds cannot be equal");
+        }
+        model.value = { ...model.value, window };
       } catch {
         updateInputBoundValue(input, existingBounds[endpointIndex]);
       }
@@ -898,6 +1258,7 @@ const inputEventMap = EventActionMap.fromObject({
   "shift?+mousedown0": { action: "add-or-drag-point" },
   "shift+dblclick0": { action: "remove-point" },
   "shift?+mousedown2": { action: "change-point-color" },
+  "shift?+wheel": { action: "zoom-via-wheel" },
 });
 
 /**
@@ -908,7 +1269,7 @@ class TransferFunctionController extends RefCounted {
   constructor(
     public element: HTMLElement,
     public dataType: DataType,
-    private controlPointsLookupTable: ControlPointsLookupTable,
+    private transferFunction: TransferFunction,
     public getModel: () => TransferFunctionParameters,
     public setModel: (value: TransferFunctionParameters) => void,
   ) {
@@ -931,16 +1292,13 @@ class TransferFunctionController extends RefCounted {
       "remove-point",
       (actionEvent) => {
         const mouseEvent = actionEvent.detail;
-        const nearestIndex = this.findNearestControlPointIndex(mouseEvent);
+        const nearestIndex = this.findControlPointIfNearCursor(mouseEvent);
         if (nearestIndex !== -1) {
-          this.controlPointsLookupTable.trackable.value.controlPoints.splice(
-            nearestIndex,
-            1,
-          );
+          this.transferFunction.removePoint(nearestIndex);
           this.updateValue({
             ...this.getModel(),
-            controlPoints:
-              this.controlPointsLookupTable.trackable.value.controlPoints,
+            sortedControlPoints:
+              this.transferFunction.trackable.value.sortedControlPoints,
           });
         }
       },
@@ -950,49 +1308,115 @@ class TransferFunctionController extends RefCounted {
       "change-point-color",
       (actionEvent) => {
         const mouseEvent = actionEvent.detail;
-        const nearestIndex = this.findNearestControlPointIndex(mouseEvent);
+        const nearestIndex = this.findControlPointIfNearCursor(mouseEvent);
         if (nearestIndex !== -1) {
-          const color = this.controlPointsLookupTable.trackable.value.color;
-          this.controlPointsLookupTable.setPointColor(nearestIndex, color);
+          const color = this.transferFunction.trackable.value.defaultColor;
+          const colorInAbsoluteValue =
+            this.convertPanelSpaceColorToAbsoluteValue(color);
+          this.transferFunction.updatePointColor(
+            nearestIndex,
+            colorInAbsoluteValue,
+          );
           this.updateValue({
             ...this.getModel(),
-            controlPoints:
-              this.controlPointsLookupTable.trackable.value.controlPoints,
+            sortedControlPoints:
+              this.transferFunction.trackable.value.sortedControlPoints,
+          });
+        }
+      },
+    );
+    registerActionListener<WheelEvent>(
+      element,
+      "zoom-via-wheel",
+      (actionEvent) => {
+        const wheelEvent = actionEvent.detail;
+        const zoomAmount = getWheelZoomAmount(wheelEvent);
+        const relativeX = this.getTargetFraction(wheelEvent);
+        const { dataType } = this;
+        const model = this.getModel();
+        const newLower = computeLerp(
+          model.window,
+          dataType,
+          relativeX * (1 - zoomAmount),
+        );
+        const newUpper = computeLerp(
+          model.window,
+          dataType,
+          (1 - relativeX) * zoomAmount + relativeX,
+        );
+        if (newLower !== newUpper) {
+          this.setModel({
+            ...model,
+            window: [newLower, newUpper] as DataTypeInterval,
           });
         }
       },
     );
   }
+  /**
+   * Get fraction of distance in x along bounding rect for a MouseEvent.
+   */
+  getTargetFraction(event: MouseEvent) {
+    const clientRect = this.element.getBoundingClientRect();
+    return (event.clientX - clientRect.left) / clientRect.width;
+  }
   updateValue(value: TransferFunctionParameters | undefined) {
     if (value === undefined) return;
     this.setModel(value);
   }
-  findNearestControlPointIndex(event: MouseEvent) {
-    const { normalizedX, normalizedY } = this.getControlPointPosition(
-      event,
-    ) as CanvasPosition;
-    return this.controlPointsLookupTable.grabControlPoint(
-      normalizedX,
-      normalizedY,
+  convertPanelSpaceInputToAbsoluteValue(inputValue: number) {
+    return computeLerp(
+      this.transferFunction.trackable.value.window,
+      this.dataType,
+      inputValue,
     );
   }
+  convertPanelSpaceColorToAbsoluteValue(color: vec3 | vec4) {
+    if (color.length === 3) {
+      // If color is vec3
+      return vec3.fromValues(
+        Math.round(color[0] * 255),
+        Math.round(color[1] * 255),
+        Math.round(color[2] * 255),
+      );
+    } else {
+      // If color is vec4
+      return vec4.fromValues(
+        Math.round(color[0] * 255),
+        Math.round(color[1] * 255),
+        Math.round(color[2] * 255),
+        Math.round(color[3] * 255),
+      );
+    }
+  }
   addControlPoint(event: MouseEvent): TransferFunctionParameters | undefined {
-    const color = this.controlPointsLookupTable.trackable.value.color;
-    const nearestIndex = this.findNearestControlPointIndex(event);
+    const color = this.transferFunction.trackable.value.defaultColor;
+    const nearestIndex = this.findControlPointIfNearCursor(event);
     if (nearestIndex !== -1) {
       this.currentGrabbedControlPointIndex = nearestIndex;
       return undefined;
     }
-    const { normalizedX, normalizedY } = this.getControlPointPosition(
-      event,
-    ) as CanvasPosition;
-    this.controlPointsLookupTable.addPoint(normalizedX, normalizedY, color);
+    const position = this.getControlPointPosition(event);
+    if (position === undefined) return undefined;
+    const { normalizedX, normalizedY } = position;
+    const outputColor = vec4.fromValues(
+      color[0],
+      color[1],
+      color[2],
+      normalizedY,
+    );
+    this.transferFunction.addPoint(
+      new ControlPoint(
+        this.convertPanelSpaceInputToAbsoluteValue(normalizedX),
+        this.convertPanelSpaceColorToAbsoluteValue(outputColor) as vec4,
+      ),
+    );
     this.currentGrabbedControlPointIndex =
-      this.findNearestControlPointIndex(event);
+      this.findControlPointIfNearCursor(event);
     return {
       ...this.getModel(),
-      controlPoints:
-        this.controlPointsLookupTable.trackable.value.controlPoints,
+      sortedControlPoints:
+        this.transferFunction.trackable.value.sortedControlPoints,
     };
   }
   moveControlPoint(event: MouseEvent): TransferFunctionParameters | undefined {
@@ -1000,24 +1424,30 @@ class TransferFunctionController extends RefCounted {
       const position = this.getControlPointPosition(event);
       if (position === undefined) return undefined;
       const { normalizedX, normalizedY } = position;
-      this.currentGrabbedControlPointIndex =
-        this.controlPointsLookupTable.updatePoint(
-          this.currentGrabbedControlPointIndex,
-          normalizedX,
-          normalizedY,
-        );
+      const newColor =
+        this.transferFunction.trackable.value.sortedControlPoints.controlPoints[
+          this.currentGrabbedControlPointIndex
+        ].outputColor;
+      newColor[3] = Math.round(normalizedY * 255);
+      this.currentGrabbedControlPointIndex = this.transferFunction.updatePoint(
+        this.currentGrabbedControlPointIndex,
+        new ControlPoint(
+          this.convertPanelSpaceInputToAbsoluteValue(normalizedX),
+          newColor,
+        ),
+      );
       return {
         ...this.getModel(),
-        controlPoints:
-          this.controlPointsLookupTable.trackable.value.controlPoints,
+        sortedControlPoints:
+          this.transferFunction.trackable.value.sortedControlPoints,
       };
     }
     return undefined;
   }
   getControlPointPosition(event: MouseEvent): CanvasPosition | undefined {
     const clientRect = this.element.getBoundingClientRect();
-    const normalizedX = (event.clientX - clientRect.left) / clientRect.width;
-    const normalizedY = (clientRect.bottom - event.clientY) / clientRect.height;
+    let normalizedX = (event.clientX - clientRect.left) / clientRect.width;
+    let normalizedY = (clientRect.bottom - event.clientY) / clientRect.height;
     if (
       normalizedX < 0 ||
       normalizedX > 1 ||
@@ -1025,7 +1455,114 @@ class TransferFunctionController extends RefCounted {
       normalizedY > 1
     )
       return undefined;
+
+    // Near the borders of the transfer function, snap the control point to the border
+    if (normalizedX < TRANSFER_FUNCTION_BORDER_WIDTH / 3) {
+      normalizedX = 0.0;
+    } else if (normalizedX > 1 - TRANSFER_FUNCTION_BORDER_WIDTH / 3) {
+      normalizedX = 1.0;
+    }
+    if (normalizedY < TRANSFER_FUNCTION_BORDER_WIDTH) {
+      normalizedY = 0.0;
+    } else if (normalizedY > 1 - TRANSFER_FUNCTION_BORDER_WIDTH) {
+      normalizedY = 1.0;
+    }
+
     return { normalizedX, normalizedY };
+  }
+  /**
+   * Find the nearest control point to the cursor or -1 if no control point is near the cursor.
+   * If multiple control points are near the cursor in X, the control point with the smallest
+   * distance in the Y direction is returned.
+   */
+  findControlPointIfNearCursor(event: MouseEvent) {
+    const { transferFunction } = this;
+    const { window } = transferFunction.trackable.value;
+    const numControlPoints =
+      transferFunction.sortedControlPoints.controlPoints.length;
+    function convertControlPointInputToPanelSpace(controlPointIndex: number) {
+      if (controlPointIndex < 0 || controlPointIndex >= numControlPoints) {
+        return null;
+      }
+      return computeInvlerp(
+        window,
+        transferFunction.sortedControlPoints.controlPoints[controlPointIndex]
+          .inputValue,
+      );
+    }
+    function convertControlPointOpacityToPanelSpace(controlPointIndex: number) {
+      if (controlPointIndex < 0 || controlPointIndex >= numControlPoints) {
+        return null;
+      }
+      return (
+        transferFunction.sortedControlPoints.controlPoints[controlPointIndex]
+          .outputColor[3] / 255
+      );
+    }
+    const position = this.getControlPointPosition(event);
+    if (position === undefined) return -1;
+    const mouseXPosition = position.normalizedX;
+    const mouseYPosition = position.normalizedY;
+    const nearestControlPointIndex =
+      transferFunction.findNearestControlPointIndex(mouseXPosition, window);
+    if (nearestControlPointIndex === -1) {
+      return -1;
+    }
+    const nearestControlPointPanelPosition =
+      convertControlPointInputToPanelSpace(nearestControlPointIndex)!;
+    if (
+      Math.abs(mouseXPosition - nearestControlPointPanelPosition) >
+      CONTROL_POINT_X_GRAB_DISTANCE
+    ) {
+      return -1;
+    }
+    // If points are nearby in X space, use Y space to break ties
+    const possibleMatches: [number, number][] = [
+      [
+        nearestControlPointIndex,
+        Math.abs(
+          convertControlPointOpacityToPanelSpace(nearestControlPointIndex)! -
+            mouseYPosition,
+        ),
+      ],
+    ];
+    const nextPosition = convertControlPointInputToPanelSpace(
+      nearestControlPointIndex + 1,
+    );
+    const nextDistance =
+      nextPosition !== null
+        ? Math.abs(nextPosition - mouseXPosition)
+        : Infinity;
+    if (nextDistance <= CONTROL_POINT_X_GRAB_DISTANCE) {
+      possibleMatches.push([
+        nearestControlPointIndex + 1,
+        Math.abs(
+          convertControlPointOpacityToPanelSpace(
+            nearestControlPointIndex + 1,
+          )! - mouseYPosition,
+        ),
+      ]);
+    }
+
+    const previousPosition = convertControlPointInputToPanelSpace(
+      nearestControlPointIndex - 1,
+    );
+    const previousDistance =
+      previousPosition !== null
+        ? Math.abs(previousPosition - mouseXPosition)
+        : Infinity;
+    if (previousDistance <= CONTROL_POINT_X_GRAB_DISTANCE) {
+      possibleMatches.push([
+        nearestControlPointIndex - 1,
+        Math.abs(
+          convertControlPointOpacityToPanelSpace(
+            nearestControlPointIndex - 1,
+          )! - mouseYPosition,
+        ),
+      ]);
+    }
+    const bestMatch = possibleMatches.sort((a, b) => a[1] - b[1])[0][0];
+    return bestMatch;
   }
 }
 
@@ -1037,21 +1574,32 @@ class TransferFunctionWidget extends Tab {
     new TransferFunctionPanel(this),
   );
 
-  range = createRangeBoundInputs(this.dataType, this.trackable);
+  window = createWindowBoundInputs(this.dataType, this.trackable);
+
+  get texture() {
+    return this.histogramSpecifications.getFramebuffers(this.display.gl)[
+      this.histogramIndex
+    ].colorBuffers[0].texture;
+  }
   constructor(
     visibility: WatchableVisibilityPriority,
     public display: DisplayContext,
     public dataType: DataType,
     public trackable: WatchableValueInterface<TransferFunctionParameters>,
+    public histogramSpecifications: HistogramSpecifications,
+    public histogramIndex: number,
   ) {
     super(visibility);
+    this.registerDisposer(
+      histogramSpecifications.visibility.add(this.visibility),
+    );
     const { element } = this;
     element.classList.add("neuroglancer-transfer-function-widget");
     element.appendChild(this.transferFunctionPanel.element);
 
     // Range bounds element
-    element.appendChild(this.range.container);
-    this.range.container.dispatchEvent(new Event("change"));
+    element.appendChild(this.window.container);
+    this.window.container.dispatchEvent(new Event("change"));
 
     // Color picker element
     const colorPickerDiv = document.createElement("div");
@@ -1059,7 +1607,7 @@ class TransferFunctionWidget extends Tab {
     const colorPicker = this.registerDisposer(
       new ColorWidget(
         makeCachedDerivedWatchableValue(
-          (x: TransferFunctionParameters) => x.color,
+          (x: TransferFunctionParameters) => x.defaultColor,
           [trackable],
         ),
         () => vec3.fromValues(1, 1, 1),
@@ -1070,13 +1618,13 @@ class TransferFunctionWidget extends Tab {
     colorPicker.element.addEventListener("change", () => {
       trackable.value = {
         ...this.trackable.value,
-        color: colorPicker.model.value,
+        defaultColor: colorPicker.model.value,
       };
     });
     colorPicker.element.addEventListener("input", () => {
       trackable.value = {
         ...this.trackable.value,
-        color: colorPicker.model.value,
+        defaultColor: colorPicker.model.value,
       };
     });
     colorPickerDiv.appendChild(colorPicker.element);
@@ -1088,10 +1636,14 @@ class TransferFunctionWidget extends Tab {
         this.updateControlPointsAndDraw();
       }),
     );
-    updateInputBoundValue(this.range.inputs[0], this.trackable.value.range[0]);
-    updateInputBoundValue(this.range.inputs[1], this.trackable.value.range[1]);
   }
   updateView() {
+    for (let i = 0; i < 2; ++i) {
+      updateInputBoundValue(
+        this.window.inputs[i],
+        this.trackable.value.window[i],
+      );
+    }
     this.transferFunctionPanel.scheduleRedraw();
   }
   updateControlPointsAndDraw() {
@@ -1130,10 +1682,11 @@ vec4 ${name}_(float inputValue) {
 }
 vec4 ${name}(${shaderType} inputValue) {
   float v = computeInvlerp(inputValue, uLerpParams_${name});
-  return ${name}_(clamp(v, 0.0, 1.0));
+  defaultMaxProjectionIntensity = v;
+  return v < 0.0 ? vec4(0.0, 0.0, 0.0, 0.0) : ${name}_(clamp(v, 0.0, 1.0));
 }
 vec4 ${name}() {
-  return ${name}(getInterpolatedDataValue(${channel.join(",")}));
+  return ${name}(getDataValue(${channel.join(",")}));
 }
 `;
   if (dataType !== DataType.UINT64 && dataType !== DataType.FLOAT32) {
@@ -1159,11 +1712,10 @@ export function enableTransferFunctionShader(
   shader: ShaderProgram,
   name: string,
   dataType: DataType,
-  controlPoints: ControlPoint[],
-  interval: DataTypeInterval,
+  sortedControlPoints: SortedControlPoints,
+  lookupTableSize: number = defaultTransferFunctionSizes[dataType],
 ) {
   const { gl } = shader;
-
   const texture = shader.transferFunctionTextures.get(
     `TransferFunction.${name}`,
   );
@@ -1171,21 +1723,24 @@ export function enableTransferFunctionShader(
   if (texture === undefined) {
     shader.transferFunctionTextures.set(
       `TransferFunction.${name}`,
-      new TransferFunctionTexture(gl),
+      new ControlPointTexture(gl),
     );
   }
-  shader.bindAndUpdateTransferFunctionTexture(
+  const textureSize = shader.bindAndUpdateTransferFunctionTexture(
     `TransferFunction.${name}`,
-    controlPoints,
+    sortedControlPoints,
+    dataType,
+    lookupTableSize,
   );
+  if (textureSize === undefined) {
+    throw new Error("Failed to create transfer function texture");
+  }
 
   // Bind the length of the lookup table to the shader as a uniform
-  gl.uniform1f(
-    shader.uniform(`uTransferFunctionEnd_${name}`),
-    TRANSFER_FUNCTION_LENGTH - 1,
-  );
+  gl.uniform1f(shader.uniform(`uTransferFunctionEnd_${name}`), textureSize - 1);
 
   // Use the lerp shader function to grab an index into the lookup table
+  const interval = sortedControlPoints.range;
   enableLerpShaderFunction(shader, name, dataType, interval);
 }
 
@@ -1208,6 +1763,8 @@ export function transferFunctionLayerControl<LayerType extends UserLayer>(
     watchableValue: WatchableValueInterface<TransferFunctionParameters>;
     defaultChannel: number[];
     channelCoordinateSpaceCombiner: CoordinateSpaceCombiner | undefined;
+    histogramSpecifications: HistogramSpecifications;
+    histogramIndex: number;
     dataType: DataType;
   },
 ): LayerControlFactory<LayerType, TransferFunctionWidget> {
@@ -1217,6 +1774,8 @@ export function transferFunctionLayerControl<LayerType extends UserLayer>(
         watchableValue,
         channelCoordinateSpaceCombiner,
         defaultChannel,
+        histogramSpecifications,
+        histogramIndex,
         dataType,
       } = getter(layer);
 
@@ -1265,6 +1824,8 @@ export function transferFunctionLayerControl<LayerType extends UserLayer>(
           options.display,
           dataType,
           watchableValue,
+          histogramSpecifications,
+          histogramIndex,
         ),
       );
       return { control, controlElement: control.element };
