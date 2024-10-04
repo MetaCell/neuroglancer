@@ -1,3 +1,13 @@
+/* Variables */
+:root {
+  --white: #FFF;
+  --panelItemBorder: #aaa;
+  --panelItemBorderSelected: #3c3;
+  --panelItemBorderArchived: #666;
+  --panelItemIcon: #999;
+  --panelItemHoverBgColor: #333;
+}
+
 .neuroglancer-layer-list-panel-items {
   display: flex;
   flex-direction: column;
@@ -12,16 +22,16 @@
   display: flex;
   flex-direction: row;
   padding: 2px;
-  border: 1px solid #aaa;
+  border: 1px solid var(--panelItemBorder);
   margin: 2px;
 }
 
 .neuroglancer-layer-list-panel-item[data-selected="true"] {
-  border-color: #3c3;
+  border-color: var(--panelItemBorderSelected);
 }
 
 .neuroglancer-layer-list-panel-item[data-archived="true"] {
-  border-color: #666;
+  border-color: var(--panelItemBorderArchived);
 }
 
 .neuroglancer-layer-list-panel-item[data-archived="true"]
@@ -29,16 +39,16 @@
 .neuroglancer-layer-list-panel-item[data-archived="true"]
   .neuroglancer-icon
   svg {
-  color: #999;
+  color: var(--panelItemIcon);
 }
 
 .neuroglancer-layer-list-panel-item:hover {
-  background-color: #333;
+  background-color: var(--panelItemHoverBgColor);
 }
 
 .neuroglancer-layer-list-panel-item-number {
   background-color: var(--layer-number-color);
-  color: white;
+  color: var(--white);
   font-weight: bold;
   display: inline-block;
 }

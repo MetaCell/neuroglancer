@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 
+/* Variables */
+:root {
+  --white:#ffffff;
+  --primary120: #002FAC;
+}
+
 .neuroglancer-data-panel-layout-controls {
   position: absolute;
   top: 2px;
@@ -31,11 +37,11 @@
   align-self: top;
   align-items: center;
   justify-content: center;
-  border: 1px solid white;
+  border: 1px solid var(--white);
   font-size: 15px;
   width: 18px;
   height: 18px;
-  color: white;
+  color: var(--white);
 }
 
 .neuroglancer-data-panel-layout-controls > button > div {
@@ -47,5 +53,5 @@
 }
 
 .neuroglancer-data-panel-layout-controls > button:hover {
-  color: #002FAC;
+  color: var(--primary120);
 }

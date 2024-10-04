@@ -13,6 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/* Variables */
+:root {
+  --content100: #999CA0;
+}
+
+
  .neuroglancer-icon {
   display: inline-flex;
   text-decoration: none;
@@ -25,7 +31,7 @@
   border-radius: 20%;
   align-items: center;
   justify-content: center;
-  color: #999CA0;
+  color: var(--content100);
   font-size: 12px;
   cursor: pointer;
   font-weight: 900;
