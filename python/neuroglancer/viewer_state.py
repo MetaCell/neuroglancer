@@ -189,9 +189,9 @@ class OpacityTool(Tool):
 
 
 @export_tool
-class VolumeRenderingTool(Tool):
+class VolumeRenderingModeTool(Tool):
     __slots__ = ()
-    TOOL_TYPE = "volumeRendering"
+    TOOL_TYPE = "volumeRenderingMode"
 
 
 @export_tool
@@ -523,13 +523,20 @@ class InvlerpParameters(JsonObjectWrapper):
 
 
 @export
+class ControlPointsSpec(JsonObjectWrapper):
+    input = wrapped_property("input", optional(numbers.Number))
+    color = wrapped_property("color", optional(str))
+    opacity = wrapped_property("opacity", optional(float))
+
+
+@export
 class TransferFunctionParameters(JsonObjectWrapper):
-    window = wrapped_property("window", optional(array_wrapper(numbers.Number, 2)))
+    range = wrapped_property("range", optional(array_wrapper(numbers.Number, 2)))
     channel = wrapped_property("channel", optional(typed_list(int)))
     controlPoints = wrapped_property(
-        "controlPoints", optional(typed_list(typed_list(number_or_string)))
+        "controlPoints", optional(typed_list(ControlPointsSpec))
     )
-    defaultColor = wrapped_property("defaultColor", optional(str))
+    color = wrapped_property("color", optional(str))
 
 
 _UINT64_STR_PATTERN = re.compile("[0-9]+")
@@ -579,8 +586,8 @@ class ImageLayer(Layer, _AnnotationLayerOptions):
     )
     opacity = wrapped_property("opacity", optional(float, 0.5))
     blend = wrapped_property("blend", optional(str))
-    volume_rendering_mode = volumeRenderingMode = VolumeRendering = volume_rendering = (
-        wrapped_property("volumeRendering", optional(bool_or_string, False))
+    volume_rendering_mode = volumeRenderingMode = wrapped_property(
+        "volumeRenderingMode", optional(str)
     )
     volume_rendering_gain = volumeRenderingGain = wrapped_property(
         "volumeRenderingGain", optional(float, 0)

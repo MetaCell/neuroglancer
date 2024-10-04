@@ -102,39 +102,8 @@ function getShaderLayerControlFactory<LayerType extends UserLayer>(
         channelCoordinateSpaceCombiner:
           shaderControlState.channelCoordinateSpaceCombiner,
         defaultChannel: control.default.channel,
-        histogramSpecifications: shaderControlState.histogramSpecifications,
-        histogramIndex: calculateHistogramIndex(),
       }));
     }
-  }
-
-  function calculateHistogramIndex(controlType: string = control.type) {
-    const isMatchingControlType = (otherControlType: string) => {
-      if (
-        controlType === "imageInvlerp" ||
-        controlType === "transferFunction"
-      ) {
-        return (
-          otherControlType === "imageInvlerp" ||
-          otherControlType === "transferFunction"
-        );
-      } else if (controlType === "propertyInvlerp") {
-        return otherControlType === "propertyInvlerp";
-      } else {
-        throw new Error(`${controlType} does not support histogram index.`);
-      }
-    };
-    let histogramIndex = 0;
-    for (const [
-      otherName,
-      {
-        control: { type: otherType },
-      },
-    ] of shaderControlState.state) {
-      if (otherName === controlId) break;
-      if (isMatchingControlType(otherType)) histogramIndex++;
-    }
-    return histogramIndex;
   }
 }
 

@@ -66,9 +66,8 @@ import {
 } from "#src/volume_rendering/base.js";
 import type { TrackableVolumeRenderingModeValue } from "#src/volume_rendering/trackable_volume_rendering_mode.js";
 import {
-  VolumeRenderingModes,
-  isProjectionMode,
-  trackableShaderModeValue,
+  VOLUME_RENDERING_MODES,
+  isProjection,
 } from "#src/volume_rendering/trackable_volume_rendering_mode.js";
 import {
   drawBoxes,
@@ -152,37 +151,7 @@ export interface VolumeRenderingRenderLayerOptions {
 
 interface VolumeRenderingShaderParameters {
   numChannelDimensions: number;
-  mode: VolumeRenderingModes;
-}
-
-interface StoredChunkDataForMultipass {
-  chunk: VolumeChunk;
-  fixedPositionWithinChunk: Uint32Array;
-  chunkDisplayDimensionIndices: number[];
-  channelToChunkDimensionIndices: readonly number[];
-  chunkDataDisplaySize: vec3;
-  chunkFormat: ChunkFormat | null | undefined;
-}
-
-interface ShaderSetupUniforms {
-  uNearLimitFraction: number;
-  uFarLimitFraction: number;
-  uMaxSteps: number;
-  uBrightnessFactor: number;
-  uGain: number;
-  uPickId: number;
-  uLowerClipBound: vec3;
-  uUpperClipBound: vec3;
-  uModelViewProjectionMatrix: mat4;
-  uInvModelViewProjectionMatrix: mat4;
-}
-
-/**
- * Represents the uniform variables used by the shader for each chunk in the volume rendering layer.
- */
-interface PerChunkShaderUniforms {
-  uTranslation: vec3;
-  uChunkDataSize: vec3;
+  mode: VOLUME_RENDERING_MODES;
 }
 
 const tempMat4 = mat4.create();
@@ -230,12 +199,6 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
     VolumeRenderingShaderParameters
   >;
 
-  private histogramShaderGetter: ParameterizedContextDependentShaderGetter<
-    { chunkFormat: ChunkFormat },
-    ShaderControlsBuilderState,
-    VolumeRenderingShaderParameters
-  >;
-
   get gl() {
     return this.multiscaleSource.chunkManager.gl;
   }
@@ -265,40 +228,16 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
     this.depthSamplesTarget = options.depthSamplesTarget;
     this.chunkResolutionHistogram = options.chunkResolutionHistogram;
     this.mode = options.mode;
-    this.modeOverride = trackableShaderModeValue();
-    this.dataHistogramSpecifications =
-      this.shaderControlState.histogramSpecifications;
-    this.histogramIndexBuffer = this.registerDisposer(
-      getMemoizedBuffer(
-        this.gl,
-        WebGL2RenderingContext.ARRAY_BUFFER,
-        () => new Uint8Array(HISTOGRAM_SAMPLES_PER_INSTANCE),
-      ),
-    );
     this.registerDisposer(
       this.chunkResolutionHistogram.visibility.add(this.visibility),
     );
-    this.registerDisposer(
-      this.dataHistogramSpecifications.producerVisibility.add(this.visibility),
-    );
     const extraParameters = this.registerDisposer(
       makeCachedDerivedWatchableValue(
-        (
-          space: CoordinateSpace,
-          mode: VolumeRenderingModes,
-          modeOverride: VolumeRenderingModes,
-          dataHistogramChannelSpecifications: HistogramChannelSpecification[],
-        ) => ({
+        (space: CoordinateSpace, mode: VOLUME_RENDERING_MODES) => ({
           numChannelDimensions: space.rank,
-          mode: modeOverride === VolumeRenderingModes.OFF ? mode : modeOverride,
-          dataHistogramChannelSpecifications,
+          mode,
         }),
-        [
-          this.channelCoordinateSpace,
-          this.mode,
-          this.modeOverride,
-          this.dataHistogramSpecifications.channels,
-        ],
+        [this.channelCoordinateSpace, this.mode],
       ),
     );
     this.shaderGetter = parameterizedContextDependentShaderGetter(
@@ -330,50 +269,38 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
 `;
           let glsl_emitIntensity = `
 void emitIntensity(float value) {
-}
-`;
-          let glsl_handleMaxProjectionUpdate = ``;
-          if (isProjectionMode(shaderParametersState.mode)) {
-            const glsl_intensityConversion =
-              shaderParametersState.mode === VolumeRenderingModes.MIN
-                ? `1.0 - value`
-                : `value`;
+}`;
+          let glsl_continualEmit = ``;
+          if (isProjection(shaderParametersState.mode)) {
             builder.addFragmentCode(`
+float newIntensity = 0.0;
 float savedDepth = 0.0;
 float savedIntensity = 0.0;
-vec4 newColor = vec4(0.0);
-float userEmittedIntensity = -100.0;
 `);
             glsl_emitIntensity = `
-float convertIntensity(float value) {
-  return clamp(${glsl_intensityConversion}, 0.0, 1.0);
-}
 void emitIntensity(float value) {
-  userEmittedIntensity = value;
-}
-float getIntensity() {
-  float intensity = userEmittedIntensity > -100.0 ? userEmittedIntensity : defaultMaxProjectionIntensity;
-  return convertIntensity(intensity);
-}
-`;
+  newIntensity = clamp(value, 0.0, 1.0);
+}`;
+            if (shaderParametersState.mode === VOLUME_RENDERING_MODES.MIN) {
+              glsl_emitIntensity = `
+void emitIntensity(float value) {
+  newIntensity = clamp(1.0 - value, 0.0, 1.0);
+}`;
+            }
             glsl_rgbaEmit = `
 void emitRGBA(vec4 rgba) {
+  float intensityChanged = step(savedIntensity, newIntensity - 0.00001);
   float alpha = clamp(rgba.a, 0.0, 1.0);
-  newColor = vec4(rgba.rgb * alpha, alpha);
+  outputColor = mix(outputColor, vec4(rgba.rgb * alpha, alpha), intensityChanged);
+  savedIntensity = mix(savedIntensity, newIntensity, intensityChanged); 
+  savedDepth = mix(savedDepth, depthAtRayPosition, intensityChanged);
 }
 `;
             glsl_finalEmit = `
   gl_FragDepth = savedIntensity;
 `;
-            glsl_handleMaxProjectionUpdate = `
-  float newIntensity = getIntensity();
-  bool intensityChanged = newIntensity > savedIntensity;
-  savedIntensity = intensityChanged ? newIntensity : savedIntensity; 
-  savedDepth = intensityChanged ? depthAtRayPosition : savedDepth;
-  outputColor = intensityChanged ? newColor : outputColor;
-  emit(outputColor, savedDepth, savedIntensity, uPickId);
-  defaultMaxProjectionIntensity = 0.0;
-  userEmittedIntensity = -100.0;
+            glsl_continualEmit = `
+  emit(outputColor, savedDepth, savedIntensity);
 `;
           }
           emitter(builder);
@@ -428,13 +355,14 @@ void userMain();
             "curChunkPosition",
           );
           builder.addFragmentCode([
-            glsl_emitIntensity,
             glsl_rgbaEmit,
+            glsl_emitIntensity,
             `
 void emitRGB(vec3 rgb) {
   emitRGBA(vec4(rgb, 1.0));
 }
 void emitGrayscale(float value) {
+  emitIntensity(value);
   emitRGBA(vec4(value, value, value, value));
 }
 void emitTransparent() {
@@ -455,9 +383,9 @@ vec2 computeUVFromClipSpace(vec4 clipSpacePosition) {
             let glsl_emitWireframe = `
   emit(outputColor, 0u);
 `;
-            if (isProjectionMode(shaderParametersState.mode)) {
+            if (isProjection(shaderParametersState.mode)) {
               glsl_emitWireframe = `
-  emit(outputColor, 1.0, uChunkNumber, uPickId);
+  emit(outputColor, 1.0, uChunkNumber);
             `;
             }
             builder.setFragmentMainFunction(`
@@ -518,7 +446,7 @@ void main() {
     }
     curChunkPosition = position - uTranslation;
     userMain();
-    ${glsl_handleMaxProjectionUpdate}
+    ${glsl_continualEmit}
   }
   ${glsl_finalEmit}
 }

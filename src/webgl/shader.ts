@@ -169,9 +169,9 @@ export class ShaderProgram extends RefCounted {
   textureUnits: Map<any, number>;
   vertexShaderInputBinders: { [name: string]: VertexShaderInputBinder } = {};
   vertexDebugOutputs?: VertexDebugOutput[];
-  transferFunctionTextures: Map<any, ControlPointTexture> = new Map<
+  transferFunctionTextures: Map<any, TransferFunctionTexture> = new Map<
     any,
-    ControlPointTexture
+    TransferFunctionTexture
   >();
 
   constructor(
@@ -256,10 +256,8 @@ export class ShaderProgram extends RefCounted {
   }
 
   bindAndUpdateTransferFunctionTexture(
-    symbol: symbol | string,
-    sortedControlPoints: SortedControlPoints,
-    dataType: DataType,
-    lookupTableSize: number,
+    symbol: Symbol | string,
+    controlPoints: ControlPoint[],
   ) {
     const textureUnit = this.textureUnits.get(symbol);
     if (textureUnit === undefined) {
@@ -271,12 +269,7 @@ export class ShaderProgram extends RefCounted {
         `Invalid transfer function texture symbol: ${symbol.toString()}`,
       );
     }
-    return texture.updateAndActivate({
-      textureUnit,
-      sortedControlPoints,
-      dataType,
-      lookupTableSize,
-    });
+    texture.updateAndActivate({ textureUnit, controlPoints });
   }
 
   unbindTransferFunctionTextures() {

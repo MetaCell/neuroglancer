@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2024 Google Inc.
+ * Copyright 2023 Google Inc.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-import { getMemoizedBuffer } from "#src/webgl/buffer.js";
-import type { GL } from "#src/webgl/context.js";
-import { VERTICES_PER_QUAD } from "#src/webgl/quad.js";
+import { getMemoizedBuffer } from "#/webgl/buffer";
+import { GL } from "#/webgl/context";
+import { VERTICES_PER_QUAD } from "#/webgl/quad";
 
 /**
  * Create a Float32Array of vertices gridded in a rectangle
@@ -56,8 +56,8 @@ export function createGriddedRectangleArray(
 }
 
 /**
- * Get a buffer of vertices representing a rectangle that is gridded
- * along the x dimension, useful for drawing grids, such as a lookup table / heatmap
+ * Get a buffer of vertices gridded in a rectangle, useful for drawing grids, e.g. for a histogram
+ * or a lookup table / heatmap
  */
 export function getGriddedRectangleBuffer(
   gl: GL,
