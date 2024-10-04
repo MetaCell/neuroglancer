@@ -2353,6 +2353,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
              &+.neuroglancer-icon {
                 display: flex;
                 visibility: hidden;
+                margin-left: 0.25rem;
             }
             &:hover {
                 svg {
@@ -2381,6 +2382,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         .neuroglancer-icon {
             display: flex;
             visibility: hidden;
+            margin-left: 0.25rem;
         }
         .neuroglancer-layer-list-panel-item-controls {
             display: flex;
