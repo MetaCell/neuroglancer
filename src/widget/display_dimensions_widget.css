@@ -13,17 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* Variables */
-:root {
-  --white: #FFF;
-  --widgetBgColor: rgba(0, 0, 0, 0.3);
-}
+
 .neuroglancer-display-dimensions-widget {
   position: absolute;
   cursor: default;
   top: 2px;
   left: 2px;
-  background-color: var(--widgetBgColor);
+  background-color: rgba(0, 0, 0, 0.3);
 }
 
 .neuroglancer-display-dimensions-widget-dimension-grid {
@@ -46,7 +42,7 @@
 .neuroglancer-display-dimensions-widget input,
 .neuroglancer-display-dimensions-widget {
   font-family: DejaVu Sans Mono;
-  color: var(--white);
+  color: white;
   line-height: 18px;
 }
 

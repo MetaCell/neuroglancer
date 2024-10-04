@@ -13,24 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* Variables */
-:root {
-  --white: #FFF;
-  --background80: #1f1f1f;
-}
+
 .neuroglancer-panel {
   flex: 1;
 }
 
 .neuroglancer-show-panel-borders .neuroglancer-panel {
   border-style: solid;
-  border-color: var(--background80);
+  border-color: #1f1f1f;
   border-width: 2px;
   border-radius: 2px;
 }
 
 .neuroglancer-panel:focus-within {
-  border-color: var(--white);
+  border-color: white;
 }
 
 .neuroglancer-layer-group-viewer {
