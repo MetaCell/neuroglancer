@@ -386,6 +386,9 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     .neuroglancer-layer-side-panel-type {
         background: transparent;
     }
+    .neuroglancer-layer-side-panel-type, .neuroglancer-layer-side-panel-type-measure {
+        font-family: Graphik;
+    }
     .neuroglancer-related-segment-list {
         .neuroglancer-related-segment-list-header {
             gap: 0.375rem;
@@ -663,6 +666,10 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                 }
             }
         }
+    }
+
+    .neuroglancer-layer-side-panel-tab-view {
+        font-family: Graphik;
     }
 
     .neuroglancer-annotations-tab,
@@ -1245,9 +1252,10 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     }
 
     &.neuroglancer-show-panel-borders .neuroglancer-panel {
-        border-width: 0.125rem;
+        border-width: 0.063rem;
         box-shadow: $datapanelshadow;
         border-color: $background80;
+        border-radius: 0.125rem;
         &:focus-within {
             border-color: $primary100;
         }

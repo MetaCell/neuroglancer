@@ -45,3 +45,7 @@
   width: 15px;
   height: 15px;
 }
+
+.neuroglancer-data-panel-layout-controls > button:hover {
+  color: #6ff;
+}

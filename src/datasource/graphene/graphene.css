@@ -23,7 +23,7 @@
   padding: 2px;
   margin: auto 0;
   background-color: red;
-  font-size: 12px;
+  font: 12px sans-serif;
   font-weight: 900;
 }
 
