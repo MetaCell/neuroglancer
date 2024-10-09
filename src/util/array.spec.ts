@@ -22,6 +22,7 @@ import {
   spliceArray,
   tile2dArray,
   transposeArray2d,
+  findClosestMatchInSortedArray,
 } from "#src/util/array.js";
 
 describe("partitionArray", () => {

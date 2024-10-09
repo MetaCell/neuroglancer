@@ -43,6 +43,7 @@ import { colorLayerControl } from "#src/widget/layer_control_color.js";
 import { propertyInvlerpLayerControl } from "#src/widget/layer_control_property_invlerp.js";
 import { rangeLayerControl } from "#src/widget/layer_control_range.js";
 import { Tab } from "#src/widget/tab_view.js";
+import { transferFunctionLayerControl } from "#src/widget/transfer_function.js";
 
 export interface LegendShaderOptions
   extends ParameterizedEmitterDependentShaderOptions {
@@ -74,16 +75,6 @@ function getShaderLayerControlFactory<LayerType extends UserLayer>(
     case "checkbox":
       return checkboxLayerControl(() => controlState.trackable);
     case "imageInvlerp": {
-      let histogramIndex = 0;
-      for (const [
-        otherName,
-        {
-          control: { type: otherType },
-        },
-      ] of shaderControlState.state) {
-        if (otherName === controlId) break;
-        if (otherType === "imageInvlerp") ++histogramIndex;
-      }
       return channelInvlerpLayerControl(() => ({
         dataType: control.dataType,
         defaultChannel: control.default.channel,
@@ -91,26 +82,16 @@ function getShaderLayerControlFactory<LayerType extends UserLayer>(
         channelCoordinateSpaceCombiner:
           shaderControlState.channelCoordinateSpaceCombiner,
         histogramSpecifications: shaderControlState.histogramSpecifications,
-        histogramIndex,
+        histogramIndex: calculateHistogramIndex(),
         legendShaderOptions: layerShaderControls.legendShaderOptions,
       }));
     }
     case "propertyInvlerp": {
-      let histogramIndex = 0;
-      for (const [
-        otherName,
-        {
-          control: { type: otherType },
-        },
-      ] of shaderControlState.state) {
-        if (otherName === controlId) break;
-        if (otherType === "propertyInvlerp") ++histogramIndex;
-      }
       return propertyInvlerpLayerControl(() => ({
         properties: control.properties,
         watchableValue: controlState.trackable,
         histogramSpecifications: shaderControlState.histogramSpecifications,
-        histogramIndex,
+        histogramIndex: calculateHistogramIndex(),
         legendShaderOptions: layerShaderControls.legendShaderOptions,
       }));
     }
@@ -121,8 +102,39 @@ function getShaderLayerControlFactory<LayerType extends UserLayer>(
         channelCoordinateSpaceCombiner:
           shaderControlState.channelCoordinateSpaceCombiner,
         defaultChannel: control.default.channel,
+        histogramSpecifications: shaderControlState.histogramSpecifications,
+        histogramIndex: calculateHistogramIndex(),
       }));
     }
+  }
+
+  function calculateHistogramIndex(controlType: string = control.type) {
+    const isMatchingControlType = (otherControlType: string) => {
+      if (
+        controlType === "imageInvlerp" ||
+        controlType === "transferFunction"
+      ) {
+        return (
+          otherControlType === "imageInvlerp" ||
+          otherControlType === "transferFunction"
+        );
+      } else if (controlType === "propertyInvlerp") {
+        return otherControlType === "propertyInvlerp";
+      } else {
+        throw new Error(`${controlType} does not support histogram index.`);
+      }
+    };
+    let histogramIndex = 0;
+    for (const [
+      otherName,
+      {
+        control: { type: otherType },
+      },
+    ] of shaderControlState.state) {
+      if (otherName === controlId) break;
+      if (isMatchingControlType(otherType)) histogramIndex++;
+    }
+    return histogramIndex;
   }
 }
 

@@ -544,7 +544,7 @@ export class CoordinateSpacePlaybackVelocity extends RefCounted {
       },
       set value(enabled: boolean) {
         self.modifyDimension(id, (oldInfo) =>
-          enabled ? oldInfo ?? new DimensionPlaybackVelocity() : undefined,
+          enabled ? (oldInfo ?? new DimensionPlaybackVelocity()) : undefined,
         );
       },
     };
@@ -1430,6 +1430,19 @@ export function displayDimensionRenderInfosEqual(
     arraysEqual(a.displayDimensionUnits, b.displayDimensionUnits) &&
     arraysEqual(a.displayDimensionScales, b.displayDimensionScales)
   );
+}
+
+export function validateDisplayDimensionRenderInfoProperty(
+  obj: { displayDimensionRenderInfo: DisplayDimensionRenderInfo },
+  expected: DisplayDimensionRenderInfo,
+): boolean {
+  const actual = obj.displayDimensionRenderInfo;
+  if (actual === expected) return true;
+  if (displayDimensionRenderInfosEqual(actual, expected)) {
+    obj.displayDimensionRenderInfo = expected;
+    return true;
+  }
+  return false;
 }
 
 export class WatchableDisplayDimensionRenderInfo extends RefCounted {

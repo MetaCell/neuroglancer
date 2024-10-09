@@ -165,6 +165,7 @@ export abstract class RenderedDataPanel extends RenderedPanel {
   pickRequestPending = false;
 
   private mouseStateForcer = () => this.blockOnPickRequest();
+  protected isMovingToMousePosition: boolean = false;
 
   inputEventMap: EventActionMap;
 
@@ -446,6 +447,8 @@ export abstract class RenderedDataPanel extends RenderedPanel {
     this.attemptToIssuePickRequest();
   }
 
+  protected isMovingToMousePositionOnPick = false;
+
   constructor(
     context: Borrowed<DisplayContext>,
     element: HTMLElement,
@@ -505,18 +508,22 @@ export abstract class RenderedDataPanel extends RenderedPanel {
     });
 
     registerActionListener(element, "zoom-in", () => {
+      this.context.flagContinuousCameraMotion();
       this.navigationState.zoomBy(0.5);
     });
 
     registerActionListener(element, "zoom-out", () => {
+      this.context.flagContinuousCameraMotion();
       this.navigationState.zoomBy(2.0);
     });
 
     registerActionListener(element, "depth-range-decrease", () => {
+      this.context.flagContinuousCameraMotion();
       this.navigationState.depthRange.value *= 0.5;
     });
 
     registerActionListener(element, "depth-range-increase", () => {
+      this.context.flagContinuousCameraMotion();
       this.navigationState.depthRange.value *= 2;
     });
 
@@ -528,11 +535,13 @@ export abstract class RenderedDataPanel extends RenderedPanel {
           element,
           `rotate-relative-${axisName}${signStr}`,
           () => {
+            this.context.flagContinuousCameraMotion();
             this.navigationState.pose.rotateRelative(kAxes[axis], sign * 0.1);
           },
         );
         const tempOffset = vec3.create();
         registerActionListener(element, `${axisName}${signStr}`, () => {
+          this.context.flagContinuousCameraMotion();
           const { navigationState } = this;
           const offset = tempOffset;
           offset[0] = 0;
@@ -548,6 +557,7 @@ export abstract class RenderedDataPanel extends RenderedPanel {
       element,
       "zoom-via-wheel",
       (event: ActionEvent<WheelEvent>) => {
+        this.context.flagContinuousCameraMotion();
         const e = event.detail;
         this.onMousemove(e, false);
         this.zoomByMouse(getWheelZoomAmount(e));
@@ -558,6 +568,7 @@ export abstract class RenderedDataPanel extends RenderedPanel {
       element,
       "adjust-depth-range-via-wheel",
       (event: ActionEvent<WheelEvent>) => {
+        this.context.flagContinuousCameraMotion();
         const e = event.detail;
         this.navigationState.depthRange.value *= getWheelZoomAmount(e);
       },
@@ -568,6 +579,7 @@ export abstract class RenderedDataPanel extends RenderedPanel {
       "translate-via-mouse-drag",
       (e: ActionEvent<MouseEvent>) => {
         startRelativeMouseDrag(e.detail, (_event, deltaX, deltaY) => {
+          this.context.flagContinuousCameraMotion();
           this.translateByViewportPixels(deltaX, deltaY);
         });
       },
@@ -577,6 +589,7 @@ export abstract class RenderedDataPanel extends RenderedPanel {
       element,
       "translate-in-plane-via-touchtranslate",
       (e: ActionEvent<TouchTranslateInfo>) => {
+        this.context.flagContinuousCameraMotion();
         const { detail } = e;
         this.translateByViewportPixels(detail.deltaX, detail.deltaY);
       },
@@ -586,6 +599,7 @@ export abstract class RenderedDataPanel extends RenderedPanel {
       element,
       "translate-z-via-touchtranslate",
       (e: ActionEvent<TouchTranslateInfo>) => {
+        this.context.flagContinuousCameraMotion();
         const { detail } = e;
         const { navigationState } = this;
         const offset = tempVec3;
@@ -601,6 +615,7 @@ export abstract class RenderedDataPanel extends RenderedPanel {
         element,
         `z+${amount}-via-wheel`,
         (event: ActionEvent<WheelEvent>) => {
+          this.context.flagContinuousCameraMotion();
           const e = event.detail;
           const { navigationState } = this;
           const offset = tempVec3;
@@ -734,6 +749,7 @@ export abstract class RenderedDataPanel extends RenderedPanel {
       element,
       "zoom-via-touchpinch",
       (e: ActionEvent<TouchPinchInfo>) => {
+        this.context.flagContinuousCameraMotion();
         const { detail } = e;
         this.handleMouseMove(detail.centerX, detail.centerY);
         const ratio = detail.prevDistance / detail.distance;

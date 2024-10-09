@@ -64,7 +64,7 @@ import { makeValueOrError } from "#src/util/error.js";
 import { verifyOptionalObjectProperty } from "#src/util/json.js";
 import {
   trackableShaderModeValue,
-  VOLUME_RENDERING_MODES,
+  VolumeRenderingModes,
 } from "#src/volume_rendering/trackable_volume_rendering_mode.js";
 import {
   getVolumeRenderingDepthSamplesBoundsLogScale,
@@ -278,7 +278,7 @@ export class ImageUserLayer extends Base {
         );
         context.registerDisposer(
           registerNested((context, volumeRenderingMode) => {
-            if (volumeRenderingMode === VOLUME_RENDERING_MODES.OFF) return;
+            if (volumeRenderingMode === VolumeRenderingModes.OFF) return;
             context.registerDisposer(
               this.addRenderLayer(volumeRenderLayer.addRef()),
             );
@@ -308,9 +308,16 @@ export class ImageUserLayer extends Base {
     );
     verifyOptionalObjectProperty(
       specification,
-      VOLUME_RENDERING_MODE_JSON_KEY,
-      (volumeRenderingMode) =>
-        this.volumeRenderingMode.restoreState(volumeRenderingMode),
+      VOLUME_RENDERING_JSON_KEY,
+      (volumeRenderingMode) => {
+        if (typeof volumeRenderingMode === "boolean") {
+          this.volumeRenderingMode.value = volumeRenderingMode
+            ? VolumeRenderingModes.ON
+            : VolumeRenderingModes.OFF;
+        } else {
+          this.volumeRenderingMode.restoreState(volumeRenderingMode);
+        }
+      },
     );
     verifyOptionalObjectProperty(
       specification,
@@ -336,7 +343,7 @@ export class ImageUserLayer extends Base {
     x[CROSS_SECTION_RENDER_SCALE_JSON_KEY] =
       this.sliceViewRenderScaleTarget.toJSON();
     x[CHANNEL_DIMENSIONS_JSON_KEY] = this.channelCoordinateSpace.toJSON();
-    x[VOLUME_RENDERING_MODE_JSON_KEY] = this.volumeRenderingMode.toJSON();
+    x[VOLUME_RENDERING_JSON_KEY] = this.volumeRenderingMode.toJSON();
     x[VOLUME_RENDERING_GAIN_JSON_KEY] = this.volumeRenderingGain.toJSON();
     x[VOLUME_RENDERING_DEPTH_SAMPLES_JSON_KEY] =
       this.volumeRenderingDepthSamplesTarget.toJSON();
@@ -473,7 +480,7 @@ const LAYER_CONTROLS: LayerControlDefinition<ImageUserLayer>[] = [
   },
   {
     label: "Volume rendering (experimental)",
-    toolJson: VOLUME_RENDERING_MODE_JSON_KEY,
+    toolJson: VOLUME_RENDERING_JSON_KEY,
     ...enumLayerControl((layer) => layer.volumeRenderingMode),
   },
   {
@@ -482,7 +489,7 @@ const LAYER_CONTROLS: LayerControlDefinition<ImageUserLayer>[] = [
     isValid: (layer) =>
       makeCachedDerivedWatchableValue(
         (volumeRenderingMode) =>
-          volumeRenderingMode === VOLUME_RENDERING_MODES.ON,
+          volumeRenderingMode === VolumeRenderingModes.ON,
         [layer.volumeRenderingMode],
       ),
     ...rangeLayerControl((layer) => ({
@@ -496,7 +503,7 @@ const LAYER_CONTROLS: LayerControlDefinition<ImageUserLayer>[] = [
     isValid: (layer) =>
       makeCachedDerivedWatchableValue(
         (volumeRenderingMode) =>
-          volumeRenderingMode !== VOLUME_RENDERING_MODES.OFF,
+          volumeRenderingMode !== VolumeRenderingModes.OFF,
         [layer.volumeRenderingMode],
       ),
     ...renderScaleLayerControl(

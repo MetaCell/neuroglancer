@@ -14,8 +14,13 @@
  * limitations under the License.
  */
 
+import type { DataType } from "#src/util/data_type.js";
 import { RefCounted } from "#src/util/disposable.js";
 import type { GL } from "#src/webgl/context.js";
+import type {
+  ControlPointTexture,
+  SortedControlPoints,
+} from "#src/widget/transfer_function.js";
 
 const DEBUG_SHADER = false;
 
@@ -164,9 +169,9 @@ export class ShaderProgram extends RefCounted {
   textureUnits: Map<any, number>;
   vertexShaderInputBinders: { [name: string]: VertexShaderInputBinder } = {};
   vertexDebugOutputs?: VertexDebugOutput[];
-  transferFunctionTextures: Map<any, TransferFunctionTexture> = new Map<
+  transferFunctionTextures: Map<any, ControlPointTexture> = new Map<
     any,
-    TransferFunctionTexture
+    ControlPointTexture
   >();
 
   constructor(
@@ -251,8 +256,10 @@ export class ShaderProgram extends RefCounted {
   }
 
   bindAndUpdateTransferFunctionTexture(
-    symbol: Symbol | string,
-    controlPoints: ControlPoint[],
+    symbol: symbol | string,
+    sortedControlPoints: SortedControlPoints,
+    dataType: DataType,
+    lookupTableSize: number,
   ) {
     const textureUnit = this.textureUnits.get(symbol);
     if (textureUnit === undefined) {
@@ -264,7 +271,12 @@ export class ShaderProgram extends RefCounted {
         `Invalid transfer function texture symbol: ${symbol.toString()}`,
       );
     }
-    texture.updateAndActivate({ textureUnit, controlPoints });
+    return texture.updateAndActivate({
+      textureUnit,
+      sortedControlPoints,
+      dataType,
+      lookupTableSize,
+    });
   }
 
   unbindTransferFunctionTextures() {
@@ -616,6 +628,7 @@ precision highp int;
 ${this.uniformsCode}
 ${this.attributesCode}
 ${this.varyingsCodeVS}
+float defaultMaxProjectionIntensity = 0.0;
 ${this.vertexCode}
 void main() {
 ${this.vertexMain}
@@ -628,6 +641,7 @@ precision highp int;
 ${this.uniformsCode}
 ${this.varyingsCodeFS}
 ${this.outputBufferCode}
+float defaultMaxProjectionIntensity = 0.0;
 ${this.fragmentCode}
 ${this.fragmentMain}
 `;
