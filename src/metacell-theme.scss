@@ -59,12 +59,16 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     right: 0;
     left: 0;
     margin: 0 auto;
+    display: block;
     bottom: 1.5rem;
+    text-align: center;
     background: transparent;
+    .neuroglancer-transfer-function-widget,
     .neuroglancer-invlerp-widget {
         display: flex;
         align-items: center;
     }
+    .neuroglancer-transfer-function-window-bounds,
     .neuroglancer-invlerp-widget-bounds {
         display: flex;
         align-items: center;
@@ -72,6 +76,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             width: 2.375rem !important;
         }
     }
+    .neuroglancer-transfer-function-panel,
     .neuroglancer-invlerp-legend-panel,
     .neuroglancer-invlerp-cdfpanel {
         height: 1.875rem;
@@ -83,13 +88,13 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         }
     }
     li {
-        width: 50rem;
+        width: 95% !important;
         margin: 0 auto;
         border-radius: 0.125rem;
         background: $background60;
         border-color: $stroke60;
         color: $content100;
-        display: flex !important;
+        display: inline-flex !important;
         font-size: 0.875rem;
         align-items: center;
         padding: 0rem 1rem;
@@ -99,11 +104,23 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             flex: none;
         }
     }
+    .neuroglancer-transfer-function-color-picker {
+        margin-right: 1rem;
+    }
     .neuroglancer-tool-status {
         justify-content: space-between;
         .neuroglancer-layer-control-control {
             max-width: 100%;
             margin: 0;
+        }
+        .neuroglancer-layer-control-label-container {
+            display: flex;
+            .neuroglancer-position-widget {
+                .neuroglancer-position-dimension-coordinate {
+                    width: 3rem !important;
+                    text-align: left;
+                }
+            }
         }
         .neuroglancer-tool-status-body {
             flex: 1;
@@ -389,9 +406,9 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     .neuroglancer-related-segment-list {
         .neuroglancer-related-segment-list-header {
             gap: 0.375rem;
-            div {
+            div[title="Copy segment IDs"] {
                 svg {
-                    stroke: $content100;
+                    stroke: transparent;
                 }
                 &:nth-child(1) {
                     order: 1;
@@ -1659,6 +1676,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                 margin-right: 0.5rem;
                 width: 1.125rem;
                 justify-content: center;
+                flex: none;
                 align-items: center;
                 height: 1.125rem;
                 font-family: monospace;
@@ -1687,11 +1705,24 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             font-weight: 500;
             gap: 0.5rem;
             margin: 1.25rem 0 0 1rem;
+           
             .neuroglancer-icon {
                 width: auto;
                 svg {
                     stroke-width: 0;
 
+                }
+            }
+            &[title="add dimension"] {
+                .neuroglancer-icon {
+                    width: auto;
+                    svg {
+                        width: 0.875rem !important;
+                        height: 0.875rem !important;
+                        stroke: $content100;
+                        stroke-width: 2 !important;
+    
+                    }
                 }
             }
         }
@@ -1840,7 +1871,19 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     .neuroglancer-selection-details-layer {
         border-color: $background80;
         margin-bottom: 0;
-
+        input[type="checkbox"] {
+            background: url('../src/ui/images/unselected.svg') no-repeat;
+            width: 1rem;
+            height: 1rem;
+            margin: 0;
+            -webkit-appearance: none;
+            margin-right: 0.5rem;
+            &:checked {
+                background: url('../src/ui/images/selected.svg') no-repeat;
+                width: 1rem;
+                height: 1rem;
+            }
+        }
         &:first-of-type {
             margin-top: 0;
             position: relative;
@@ -2022,7 +2065,6 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     .neuroglancer-position-dimension {
         display: flex;
         align-items: center;
-        gap: 0.3rem;
         line-height: 0;
     }
 
@@ -2030,9 +2072,9 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         font-size: 0.75rem;
         font-weight: 400;
         line-height: 0.8731rem;
-        margin: 0;
+        margin-left: 0.25rem;
         padding: 0;
-        text-align: center;
+        text-align: left;
         color: $white;
     }
 
@@ -2040,10 +2082,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         display: flex;
         align-items: center;
         .neuroglancer-position-dimension + .neuroglancer-position-dimension {
-            margin-left: 0.3rem;
-        }
-        .neuroglancer-position-dimension-coordinate {
-            margin: 0;
+            margin-left: 0;
         }
         .neuroglancer-icon {
             margin-left: 0.25rem;
@@ -2578,6 +2617,12 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         align-items: center;
         gap: 0.5rem;
         margin-bottom: 0.5rem;
+        div[title="Copy position"] {
+            color: $content100;
+            svg {
+                stroke: transparent !important;
+            }
+        }
     }
 
     .neuroglancer-selection-details-body {
@@ -2586,7 +2631,19 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             width: 0.875rem;
             height: 0.875rem;
         }
-        
+        input[type="checkbox"] {
+            background: url('../src/ui/images/unselected.svg') no-repeat;
+            width: 1rem;
+            height: 1rem;
+            margin: 0;
+            -webkit-appearance: none;
+            margin-right: 0.5rem;
+            &:checked {
+                background: url('../src/ui/images/selected.svg') no-repeat;
+                width: 1rem;
+                height: 1rem;
+            }
+        }
         .neuroglancer-selection-details-value-grid-value {
             font-size: 0.75rem;
             font-weight: 400;
