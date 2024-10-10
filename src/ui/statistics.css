@@ -21,7 +21,7 @@
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  font-size: 10pt;
+  font: 10pt sans-serif;
 }
 
 .neuroglancer-statistics-panel-body > table {
