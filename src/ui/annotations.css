@@ -143,7 +143,7 @@ textarea.neuroglancer-annotation-details-description {
   align-self: stretch;
   background-color: #222;
   color: white;
-  font-size: 10pt;
+  font: 10pt sans-serif;
   border: 0px;
   outline: 0px;
   resize: none;
@@ -153,7 +153,7 @@ textarea.neuroglancer-annotation-details-description {
 div.neuroglancer-annotation-details-description {
   align-self: stretch;
   color: white;
-  font-size: 10pt;
+  font: 10pt sans-serif;
 }
 
 .neuroglancer-annotation-details-position {
@@ -230,6 +230,7 @@ div.neuroglancer-annotation-details-description {
 }
 
 .neuroglancer-related-segment-list-title {
+  font-family: sans-serif;
   font-size: small;
   background-color: #333;
 }
@@ -247,6 +248,7 @@ div.neuroglancer-annotation-details-description {
 .neuroglancer-annotation-property {
   display: flex;
   flex-direction: row;
+  font-family: sans-serif;
   font-size: small;
   user-select: text;
 }
@@ -277,5 +279,6 @@ input.neuroglancer-segment-list-entry-id {
 }
 
 .neuroglancer-selection-annotation-status {
+  font-family: sans-serif;
   font-size: small;
 }
