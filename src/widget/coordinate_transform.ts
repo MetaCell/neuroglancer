@@ -244,7 +244,7 @@ export class CoordinateSpaceTransformWidget extends RefCounted {
     lower: HTMLDivElement;
     upper: HTMLDivElement;
   }[] = [];
-  private addSourceDimensionIcon = makeIcon({ svg: svg_plus, text: "S" });
+  private addSourceDimensionIcon = makeIcon({ svg: svg_plus, text: "add source dimension" });
   private addOutputDimensionIcon = makeAddMoreButton({ svg: svg_plus, text: "add dimension" });
   private addOutputDimensionCell = document.createElement("div");
   private addOutputDimensionInput = makeOutputNameElement();
@@ -356,7 +356,7 @@ export class CoordinateSpaceTransformWidget extends RefCounted {
     addOutputDimensionCell.classList.add(
       "neuroglancer-coordinate-space-transform-output-extend",
     );
-    const extendOutputDimensionsTitle = "add dimension";
+    const extendOutputDimensionsTitle = "Embed in additional output dimension";
     const extendSourceDimensionsTitle = "Extend to additional source dimension";
     addOutputDimensionIcon.title = extendOutputDimensionsTitle;
     addSourceDimensionIcon.title = extendSourceDimensionsTitle;

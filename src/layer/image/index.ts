@@ -602,7 +602,7 @@ class RenderingOptionsTab extends Tab {
     const topRow = document.createElement("div");
     topRow.className = "neuroglancer-image-dropdown-top-row";
   
-    const shaderText = document.createTextNode("Shader");
+    const shaderText = document.createTextNode("Shader code");
     topRow.appendChild(shaderText);
   
     // Spacer
@@ -659,7 +659,7 @@ class RenderingOptionsTab extends Tab {
     containerDiv.appendChild(shaderDiv);
   
     return {
-      title: "Channels",
+      title: "Shader",
       content: containerDiv,
     };
   }

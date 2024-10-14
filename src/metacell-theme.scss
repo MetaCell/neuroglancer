@@ -63,8 +63,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     bottom: 1.5rem;
     text-align: center;
     background: transparent;
-    .neuroglancer-transfer-function-widget,
-    .neuroglancer-invlerp-widget {
+    .neuroglancer-transfer-function-widget {
         display: flex;
         align-items: center;
     }
@@ -76,9 +75,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             width: 2.375rem !important;
         }
     }
-    .neuroglancer-transfer-function-panel,
-    .neuroglancer-invlerp-legend-panel,
-    .neuroglancer-invlerp-cdfpanel {
+    .neuroglancer-transfer-function-panel {
         height: 1.875rem;
         width: 6.25rem;
         margin-right: 0.5rem;
@@ -97,8 +94,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         display: inline-flex !important;
         font-size: 0.875rem;
         align-items: center;
-        padding: 0rem 1rem;
-        height: 2.75rem;
+        padding: 1rem;
         canvas {
             width: 12.5rem !important;
             flex: none;
@@ -110,11 +106,11 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     .neuroglancer-tool-status {
         justify-content: space-between;
         .neuroglancer-layer-control-control {
-            max-width: 100%;
-            margin: 0;
+            // max-width: 100%;
+            // margin: 0;
         }
         .neuroglancer-layer-control-label-container {
-            display: flex;
+            // display: flex;
             .neuroglancer-position-widget {
                 .neuroglancer-position-dimension-coordinate {
                     width: 3rem !important;
@@ -140,7 +136,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             color: $content100;
             font-style: normal;
             margin-left: auto;
-            padding: 0;
+            padding: 0 0 0 2rem;
             font-weight: 400;
         }
         .neuroglancer-tool-status-header-container {
@@ -249,6 +245,27 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             }
         }
     }
+    .neuroglancer-invlerp-widget  {
+        input[type=text] {
+            margin-right: 0;
+        }
+        .neuroglancer-invlerp-widget-range-spacer {
+            .neuroglancer-icon {
+                svg {
+                    stroke-width: 1;
+                    stroke: $content100;
+                }
+            }
+        }
+    }
+    .neuroglancer-invlerp-cdfpanel, .neuroglancer-invlerp-legend-panel {
+        margin: 0.5rem 0;
+        height: 2.5rem;
+        canvas {
+            width: 100% !important;
+        }
+    }
+    
 }
 .metacell-theme {
     .neuroglancer-invlerp-widget,.neuroglancer-transfer-function-widget {
@@ -256,6 +273,24 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         flex-direction: column;
         gap: 0.5rem;
         margin-left: 1rem;
+    }
+    .neuroglancer-selection-details {
+        div[title="Previous selection"] {
+            // background-image: url('../src/ui/images/expand_less.svg') ;
+            background-repeat: no-repeat;
+            background-position: center center;
+            svg {
+                display: none;
+            }
+        }
+        div[title="Next selection"] {
+            // background-image: url('../src/ui/images/expand_more.svg') ;
+            background-repeat: no-repeat;
+            background-position: center center;
+            svg {
+                display: none;
+            }
+        }
     }
     .neuroglancer-invlerp-cdfpanel {
         height: 3.125rem;
@@ -281,7 +316,6 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         background: $dark100;
     }
     .CodeMirror-lines {
-        background: $background80;
         font-family: monospace;
         * {
             font-family: monospace;
@@ -589,13 +623,6 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         label {
             color: $content100;
         }
-        .neuroglancer-render-scale-widget-legend {
-            div {
-                &:empty {
-                    display: none;
-                }
-            }
-        }
         .annotations-toolbox-container {
             margin: 0 0 1rem;
         }
@@ -738,8 +765,8 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             }
 
             input[type="number"] {
-                // padding-right: 1.5rem;
-                width: 3rem !important;
+                padding-right: 0 !important;
+                width: 4rem !important;
             }
         }
         .neuroglancer-layer-side-panel-title {
@@ -1535,11 +1562,6 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                 display: flex;
                 flex-direction: column;
                 gap: 0.25rem;
-                div {
-                    &:empty {
-                        display: none;
-                    }
-                }
             }
             .slice2d-container,
             .slice-2d-container,.volume-rendering-container,
@@ -1723,7 +1745,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
 
                 }
             }
-            &[title="add dimension"] {
+            &[title="Embed in additional output dimension"] {
                 .neuroglancer-icon {
                     width: auto;
                     svg {
@@ -1940,7 +1962,10 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         flex-direction: row;
         gap: 0.25rem;
         margin-top: 0.25rem;
-
+        div[title="Extend to additional source dimension"] svg {
+            stroke: $content100;
+            stroke-width: 2 !important;
+        }
         .neuroglancer-icon {
             width: auto;
             gap: 0.125rem;
@@ -2103,6 +2128,9 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         .neuroglancer-icon {
             margin-left: 0.25rem;
         }
+        .neuroglancer-position-dimension-dropdown {
+            top: 100%;
+        }
     }
 
 
@@ -2196,6 +2224,9 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     .neuroglancer-resize-gutter-horizontal {
         padding: 0;
         background-color: $background80;
+        + .neuroglancer-side-panel-column {
+            position: relative;
+        }
     }
 
     .neuroglancer-layer-list-panel-items {
@@ -2646,6 +2677,12 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         .neuroglancer-icon {
             width: 0.875rem;
             height: 0.875rem;
+            &[title="Add related segment ID"] {
+                svg {
+                    stroke-width: 2 !important;
+                    stroke: $content100
+                }
+            }
         }
         input[type="checkbox"] {
             background: url('../src/ui/images/unselected.svg') no-repeat;
