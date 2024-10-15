@@ -136,7 +136,8 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             color: $content100;
             font-style: normal;
             margin-left: auto;
-            padding: 0 0 0 2rem;
+            padding: 0 2rem;
+            width: 65%;
             font-weight: 400;
         }
         .neuroglancer-tool-status-header-container {
@@ -260,9 +261,11 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     }
     .neuroglancer-invlerp-cdfpanel, .neuroglancer-invlerp-legend-panel {
         margin: 0.5rem 0;
-        height: 2.5rem;
+        height: 3.125rem;
+        width: 11.875rem;
         canvas {
             width: 100% !important;
+            height: 100% !important;
         }
     }
     
@@ -276,7 +279,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     }
     .neuroglancer-selection-details {
         div[title="Previous selection"] {
-            // background-image: url('../src/ui/images/expand_less.svg') ;
+            background-image: url('../src/ui/images/expand_less.svg') ;
             background-repeat: no-repeat;
             background-position: center center;
             svg {
@@ -284,7 +287,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             }
         }
         div[title="Next selection"] {
-            // background-image: url('../src/ui/images/expand_more.svg') ;
+            background-image: url('../src/ui/images/expand_more.svg') ;
             background-repeat: no-repeat;
             background-position: center center;
             svg {
@@ -632,12 +635,12 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             input[type=color] {
                 width: 4.063rem;
                 height: 1.5rem;
-                ~ div {
-                    display: flex !important;
-                    position: absolute;
-                    right: 0;
-                    top: 0.875rem;
-                }
+                // ~ div {
+                //     display: flex !important;
+                //     position: absolute;
+                //     right: 0;
+                //     top: 0.875rem;
+                // }
             }
             .neuroglancer-icon {
                 color: $content100;
@@ -663,9 +666,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             overflow: auto;
             .list-scroll-container {
                 height: auto !important;
-                div {
-                    top: auto !important;
-                }
+               
             }
         }
         .neuroglancer-annotation-list-header {
@@ -802,9 +803,9 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                 .neuroglancer-layer-options-control-container {
                     padding: 0.25rem 0 0.5rem;
                     margin: 0;
-                    .neuroglancer-layer-control-label {
-                        width: 6rem;
-                    }
+                    // .neuroglancer-layer-control-label {
+                    //     width: 6rem;
+                    // }
                 }
             }
         }
@@ -1837,14 +1838,14 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             position: relative;
             .neuroglancer-selected-annotation-details-position-coord {
                 + .neuroglancer-icon {
-                    transform: translate(7.5rem, 0);
+                    transform: translate(0.25rem, 0);
                 }
             }
             .neuroglancer-selected-annotation-details-delete {
                 background-image: url('../src/ui/images/delete.svg');
                 background-repeat: no-repeat;
                 background-position: center;
-                transform: translate(4.9rem, 0);
+                transform: translate(0.25rem, 0);
                 svg {
                     display: none;
                 }
@@ -1875,10 +1876,10 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             border: 1px solid $dark80;
             color: $content100;
             padding: 0.5rem;
-            resize: both;
-            overflow: auto;
-            height: 2.25rem;
+            height: 3.25rem;
             font-family: Graphik;
+            resize: none;
+            overflow-y: scroll;
             &::placeholder {
                 font-weight: 400;
                 font-size: 0.875rem;
@@ -2130,6 +2131,9 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         }
         .neuroglancer-position-dimension-dropdown {
             top: 100%;
+            .neuroglancer-position-dimension-plot {
+                overflow: inherit;
+            }
         }
     }
 
