@@ -2499,6 +2499,9 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         .neuroglancer-layer-list-panel-item-number {
           color: $content100;
         }
+        .neuroglancer-layer-side-panel-name {
+            text-decoration: line-through;
+        }
         .neuroglancer-icon {
             display: flex;
             visibility: hidden;
@@ -2534,6 +2537,18 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             }
             .neuroglancer-layer-list-panel-item-number {
                 color: $content100 !important;
+            }
+        }
+        &[data-archived="false"] {
+            &[data-selected="true"] {
+                .neuroglancer-layer-list-panel-item-number {
+                    color: $white !important;
+                }
+            }
+            &:hover {
+                .neuroglancer-layer-list-panel-item-number {
+                    color: $white !important;
+                }
             }
         }
     }
