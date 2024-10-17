@@ -123,6 +123,8 @@ export class ScreenshotDialog extends Overlay {
   private filenameAndButtonsContainer: HTMLDivElement;
   private screenshotSizeText: HTMLDivElement;
   private warningElement: HTMLDivElement;
+  private footerScreenshotActionBtnsContainer: HTMLDivElement;
+  private progressText: HTMLParagraphElement;
   private statisticsKeyToCellMap: Map<string, HTMLTableCellElement> = new Map();
   private layerResolutionKeyToCellMap: Map<string, HTMLTableCellElement> =
     new Map();
@@ -134,6 +136,9 @@ export class ScreenshotDialog extends Overlay {
       this.populatePanelResolutionTable();
     }, 500),
   );
+  private screenshotWidth: number = 0;
+  private screenshotHeight: number = 0;
+  private screenshotSelectedValues: HTMLElement;
   constructor(private screenshotManager: ScreenshotManager) {
     super();
 
@@ -152,21 +157,33 @@ export class ScreenshotDialog extends Overlay {
   private setupHelpTooltips() {
     const generalSettingsTooltip = document.createElement("div");
     generalSettingsTooltip.classList.add("neuroglancer-screenshot-tooltip");
-    generalSettingsTooltip.title =
-      "In the main viewer, see the settings (cog icon, top right) for options to turn off the axis line indicators, the scale bar, and the default annotations (yellow bounding box)";
+    generalSettingsTooltip.setAttribute("data-tooltip",
+      "In the main viewer, see the settings (cog icon, top right) for options to turn off the axis line indicators, the scale bar, and the default annotations (yellow bounding box)");
     generalSettingsTooltip.textContent = "?";
 
     const orthographicSettingsTooltip = document.createElement("div");
     orthographicSettingsTooltip.classList.add("neuroglancer-screenshot-tooltip");
-    orthographicSettingsTooltip.title =
-      "In the main viewer, press 'o' to toggle between perspective and orthographic views";
+    orthographicSettingsTooltip.setAttribute("data-tooltip",
+      "In the main viewer, press 'o' to toggle between perspective and orthographic views");
     orthographicSettingsTooltip.textContent = "?";
 
-    return { generalSettingsTooltip, orthographicSettingsTooltip };
+    const scaleFactorHelpTooltip = document.createElement("div");
+    scaleFactorHelpTooltip.classList.add("neuroglancer-screenshot-tooltip");
+    scaleFactorHelpTooltip.setAttribute("data-tooltip",
+      "Adjusting the scale will zoom out 2D cross-section panels by that factor unless the box is ticked to keep FOV fixed with scale changes. 3D panels always have fixed FOV regardless of the setting and scale factor.");
+    scaleFactorHelpTooltip.textContent = "?";
+    
+    return { generalSettingsTooltip, orthographicSettingsTooltip, scaleFactorHelpTooltip };
   }
 
   private initializeUI() {
     this.content.classList.add("neuroglancer-screenshot-dialog");
+
+    const titleText = document.createElement("h2");
+    titleText.classList.add(
+      "screenshot-title-heading",
+    );
+    titleText.textContent = "Screenshot";
 
     this.closeMenuButton = this.createButton(
       "Close",
@@ -186,27 +203,81 @@ export class ScreenshotDialog extends Overlay {
     this.filenameAndButtonsContainer.classList.add(
       "neuroglancer-screenshot-filename-and-buttons",
     );
-    this.filenameAndButtonsContainer.appendChild(this.createNameInput());
-    this.filenameAndButtonsContainer.appendChild(this.takeScreenshotButton);
-    this.filenameAndButtonsContainer.appendChild(this.forceScreenshotButton);
-
+    const menuText = document.createElement("h3");
+    menuText.classList.add(
+      "screenshot-title-subheading",
+    );
+    menuText.textContent = "Settings";
     const tooltip = this.setupHelpTooltips();
+    menuText.appendChild(tooltip.generalSettingsTooltip);
+    this.filenameAndButtonsContainer.appendChild(menuText);
+
+    const nameInputLabel = document.createElement("label");
+    nameInputLabel.textContent = "Screenshot name";
+    this.filenameAndButtonsContainer.appendChild(nameInputLabel);
+    this.filenameAndButtonsContainer.appendChild(this.createNameInput());
 
     const closeAndHelpContainer = document.createElement("div");
     closeAndHelpContainer.classList.add(
       "neuroglancer-screenshot-close-and-help",
     );
-    closeAndHelpContainer.appendChild(tooltip.generalSettingsTooltip);
+
+    closeAndHelpContainer.appendChild(titleText);
     closeAndHelpContainer.appendChild(this.closeMenuButton);
 
     this.content.appendChild(closeAndHelpContainer);
-    this.content.appendChild(this.cancelScreenshotButton);
+    
     this.content.appendChild(this.filenameAndButtonsContainer);
     this.content.appendChild(this.createScaleRadioButtons());
-    this.content.appendChild(tooltip.orthographicSettingsTooltip);
-    this.content.appendChild(this.createPanelResolutionTable());
-    this.content.appendChild(this.createLayerResolutionTable());
+    // this.content.appendChild(tooltip.orthographicSettingsTooltip);
+
+    const previewContainer = document.createElement("div");
+    previewContainer.classList.add(
+      "screenshot-resolution-preview-container",
+    );
+    const settingsPreview = document.createElement("div");
+    settingsPreview.classList.add(
+      "screenshot-resolution-table",
+    );
+    const previewLabel = document.createElement("h2");
+    previewLabel.textContent="Preview";
+
+    this.screenshotSizeText = document.createElement("div");
+    this.screenshotSizeText.classList.add("neuroglancer-screenshot-size-text");
+    const screenshotLabel = document.createElement("h3");
+    screenshotLabel.textContent="Screenshot size";
+    this.screenshotSelectedValues = document.createElement("span");
+    this.screenshotSelectedValues.textContent = `${this.screenshotWidth}px, ${this.screenshotHeight}pxpx`;
+    const screenshotCopyBtn = document.createElement("button");
+    screenshotCopyBtn.classList.add("screenshot-copy-icon");
+    screenshotCopyBtn.setAttribute("data-tooltip", "Copy to clipboard");
+    this.screenshotSizeText.appendChild(screenshotLabel);
+    this.screenshotSizeText.appendChild(this.screenshotSelectedValues);
+    this.screenshotSizeText.appendChild(screenshotCopyBtn);
+
+    previewContainer.appendChild(previewLabel);
+    previewContainer.appendChild(settingsPreview);
+    settingsPreview.appendChild(this.screenshotSizeText);
+    settingsPreview.appendChild(this.createPanelResolutionTable());
+    settingsPreview.appendChild(this.createLayerResolutionTable());
+
+    this.content.appendChild(previewContainer);
     this.content.appendChild(this.createStatisticsTable());
+
+    this.footerScreenshotActionBtnsContainer = document.createElement("div");
+    this.footerScreenshotActionBtnsContainer.classList.add(
+      "screenshot-footer-container",
+    );
+    this.progressText = document.createElement("p");
+    this.progressText.classList.add(
+      "screenshot-progress-text",
+    );
+    this.footerScreenshotActionBtnsContainer.appendChild(this.progressText);
+    this.footerScreenshotActionBtnsContainer.appendChild(this.cancelScreenshotButton);
+    this.footerScreenshotActionBtnsContainer.appendChild(this.takeScreenshotButton);
+    this.footerScreenshotActionBtnsContainer.appendChild(this.forceScreenshotButton);
+    this.content.appendChild(this.footerScreenshotActionBtnsContainer);
+
     this.updateUIBasedOnMode();
     this.populatePanelResolutionTable();
     this.throttledUpdateTableStatistics();
@@ -238,7 +309,7 @@ export class ScreenshotDialog extends Overlay {
   private createNameInput(): HTMLInputElement {
     const nameInput = document.createElement("input");
     nameInput.type = "text";
-    nameInput.placeholder = "Enter optional filename...";
+    nameInput.placeholder = "Enter optional screenshot name";
     nameInput.classList.add("neuroglancer-screenshot-name-input");
     return (this.nameInput = nameInput);
   }
@@ -259,13 +330,15 @@ export class ScreenshotDialog extends Overlay {
   private createScaleRadioButtons() {
     const scaleMenu = document.createElement("div");
     scaleMenu.classList.add("neuroglancer-screenshot-scale-menu");
-
-    this.screenshotSizeText = document.createElement("div");
-    this.screenshotSizeText.classList.add("neuroglancer-screenshot-size-text");
-    scaleMenu.appendChild(this.screenshotSizeText);
+    // scaleMenu.appendChild(this.screenshotSizeText);
 
     const scaleLabel = document.createElement("label");
-    scaleLabel.textContent = "Screenshot scale factor:";
+    scaleLabel.classList.add('screenshot-scale-factor')
+    scaleLabel.textContent = "Screenshot scale factor";
+
+    const tooltip = this.setupHelpTooltips();
+    scaleLabel.appendChild(tooltip.scaleFactorHelpTooltip);
+
     scaleMenu.appendChild(scaleLabel);
 
     this.warningElement = document.createElement("div");
@@ -284,6 +357,7 @@ export class ScreenshotDialog extends Overlay {
       input.classList.add("neuroglancer-screenshot-scale-radio");
 
       label.appendChild(input);
+      
       label.appendChild(document.createTextNode(`${scale}x`));
 
       scaleMenu.appendChild(label);
@@ -296,6 +370,7 @@ export class ScreenshotDialog extends Overlay {
     scaleMenu.appendChild(this.warningElement);
 
     const keepSliceFOVFixedDiv = document.createElement("div");
+    keepSliceFOVFixedDiv.classList.add('screenshot-keep-slice-label');
     keepSliceFOVFixedDiv.textContent = "Keep slice FOV fixed with scale change";
 
     const keepSliceFOVFixedCheckbox = document.createElement("input");
@@ -326,15 +401,27 @@ export class ScreenshotDialog extends Overlay {
     this.statisticsTable.classList.add(
       "neuroglancer-screenshot-statistics-table",
     );
-    this.statisticsTable.title = "Screenshot statistics";
+    this.statisticsTable.title = "Screenshot progress";
 
     const headerRow = this.statisticsTable.createTHead().insertRow();
     const keyHeader = document.createElement("th");
-    keyHeader.textContent = "Screenshot statistics";
+    keyHeader.textContent = "Screenshot progress";
     headerRow.appendChild(keyHeader);
     const valueHeader = document.createElement("th");
     valueHeader.textContent = "";
     headerRow.appendChild(valueHeader);
+
+    const descriptionRow = this.statisticsTable.createTHead().insertRow();
+    const descriptionkeyHeader = document.createElement("th");
+    descriptionkeyHeader.colSpan = 2;
+    
+    descriptionkeyHeader.textContent = "Screenshot will take when all the chunks are loaded. If GPU memory is full, screenshot will only take the successfully loaded chunks.";
+    
+    const descriptionLearnMoreLink = document.createElement("a");
+    descriptionLearnMoreLink.text = "Learn more";
+    
+    descriptionkeyHeader.appendChild(descriptionLearnMoreLink);
+    descriptionRow.appendChild(descriptionkeyHeader);
 
     // Populate inital table elements with placeholder text
     const orderedStatsRow: UIScreenshotStatistics = {
@@ -367,6 +454,10 @@ export class ScreenshotDialog extends Overlay {
     const headerRow = resolutionTable.createTHead().insertRow();
     const keyHeader = document.createElement("th");
     keyHeader.textContent = "Panel type";
+
+    const tooltip = this.setupHelpTooltips();
+    keyHeader.appendChild(tooltip.orthographicSettingsTooltip);
+
     headerRow.appendChild(keyHeader);
     const physicalValueHeader = document.createElement("th");
     physicalValueHeader.textContent = "Physical resolution";
@@ -499,7 +590,17 @@ export class ScreenshotDialog extends Overlay {
     } else {
       this.warningElement.textContent = "";
     }
-    this.screenshotSizeText.textContent = `Screenshot size: ${screenshotSize.width}px, ${screenshotSize.height}px`;
+    this.screenshotWidth = screenshotSize.width;
+    this.screenshotHeight = screenshotSize.height;
+    // Update the screenshot size display whenever dimensions change
+    this.updateScreenshotSizeDisplay();
+    // this.screenshotSizeText.textContent = `Screenshot size: ${screenshotSize.width}px, ${screenshotSize.height}px`;
+  }
+
+  private updateScreenshotSizeDisplay() {
+    if (this.screenshotSelectedValues) {
+      this.screenshotSelectedValues.textContent = `${this.screenshotWidth}px x ${this.screenshotHeight}px`;
+    }
   }
 
   private parseStatistics(
@@ -544,12 +645,14 @@ export class ScreenshotDialog extends Overlay {
       this.forceScreenshotButton.disabled = true;
       this.cancelScreenshotButton.disabled = true;
       this.takeScreenshotButton.disabled = false;
+      this.progressText.textContent = ""
       this.closeMenuButton.disabled = false;
       this.forceScreenshotButton.title = "";
     } else {
       this.forceScreenshotButton.disabled = false;
       this.cancelScreenshotButton.disabled = false;
       this.takeScreenshotButton.disabled = true;
+      this.progressText.textContent = "Screenshot in progress..."
       this.closeMenuButton.disabled = true;
       this.forceScreenshotButton.title =
         "Force a screenshot of the current view without waiting for all data to be loaded and rendered";
