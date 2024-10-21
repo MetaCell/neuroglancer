@@ -321,15 +321,11 @@ export class GlobalToolBinder extends RefCounted {
   activate(key: string): Borrowed<Tool> | undefined {
     const tool = this.get(key);
     if (tool === undefined) {
-      this.deactivate_();
       return;
     }
     this.debounceDeactivate.cancel();
     const activeTool = this.activeTool_;
     if (tool === activeTool?.tool) {
-      if (tool.toggle) {
-        this.deactivate_();
-      }
       return;
     }
     if (activeTool !== undefined) {
@@ -346,11 +342,7 @@ export class GlobalToolBinder extends RefCounted {
         window,
         "keydown",
         (event: KeyboardEvent) => {
-          // Prevent other key input while tool is activated.  This
-          // prevents `shift+key` from being interpreted as text input
-          // if an input element becomes focused.
-          event.stopPropagation();
-          event.preventDefault();
+          event;
         },
       );
       activation.registerEventListener(
@@ -358,12 +350,12 @@ export class GlobalToolBinder extends RefCounted {
         "keyup",
         (event: KeyboardEvent) => {
           if (event.code === expectedCode) {
-            this.debounceDeactivate();
+            console.log("keyup")
+            //this.debounceDeactivate();
           }
         },
       );
       activation.registerEventListener(window, "blur", () => {
-        this.debounceDeactivate();
       });
     }
     tool.activate(activation);
