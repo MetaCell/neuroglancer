@@ -36,7 +36,7 @@ export class Accordion {
       // Event listener to toggle the content display
       titleElement.addEventListener("click", () => {
         const isVisible = contentElement.style.display === "block";
-        this.toggleContent(contentElement, !isVisible); // Toggle content
+        this.toggleContent(itemElement, contentElement, !isVisible); // Pass the itemElement to toggle the expanded class
       });
 
       itemElement.appendChild(titleElement);
@@ -45,13 +45,26 @@ export class Accordion {
     }
   }
 
-  private toggleContent(contentElement: HTMLElement, shouldShow: boolean) {
+  private toggleContent(itemElement: HTMLElement, contentElement: HTMLElement, shouldShow: boolean) {
     if (shouldShow) {
       contentElement.style.display = "block";
       contentElement.classList.add("show");
+
+      // Add 'accordion-expanded' to both the main accordion element and the current item
+      this.element.classList.add("accordion-expanded");
+      itemElement.classList.add("accordion-expanded");
     } else {
       contentElement.style.display = "none";
       contentElement.classList.remove("show");
+
+      // Remove 'accordion-expanded' from both the main accordion element and the current item
+      itemElement.classList.remove("accordion-expanded");
+
+      // Check if any other items are expanded before removing from the main accordion element
+      const anyExpanded = this.element.querySelector(".accordion-item.accordion-expanded");
+      if (!anyExpanded) {
+        this.element.classList.remove("accordion-expanded");
+      }
     }
   }
 

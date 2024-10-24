@@ -337,6 +337,7 @@ export class VirtualList extends RefCounted {
       bottomItems.style.minWidth = "100%";
     } else {
       scrollContent.style.width = "100%";
+      scrollContent.style.height = "100%";
       header.style.width = "100%";
       bottomItems.style.width = "100%";
     }
