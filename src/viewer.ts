@@ -67,6 +67,7 @@ import {
 } from "#src/navigation_state.js";
 import { overlaysOpen } from "#src/overlay.js";
 import { allRenderLayerRoles, RenderLayerRole } from "#src/renderlayer.js";
+import { dispatchToParent, getDeepClonedState, type SessionUpdatePayload } from "#src/services/stateService.ts";
 import { StatusMessage } from "#src/status.js";
 import {
   ElementVisibilityFromTrackableBoolean,
@@ -677,6 +678,20 @@ export class Viewer extends RefCounted implements ViewerState {
     this.registerDisposer(
       new PlaybackManager(this.display, this.position, this.velocity),
     );
+
+    // @metacell
+    // Register a disposer to listen for state changes propagated them the main frame.
+    this.registerDisposer(
+      this.state.changed.add(() => {
+        const payload: SessionUpdatePayload = {
+          url: window.location.href,
+          state: getDeepClonedState(this)
+        };
+
+        dispatchToParent("STATE_UPDATE", payload);
+      })
+    );
+    // end @metacell
   }
 
   private updateShowBorders() {
