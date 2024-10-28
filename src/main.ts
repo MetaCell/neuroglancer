@@ -19,5 +19,6 @@
  */
 import { setupDefaultViewer } from "#src/ui/default_viewer_setup.js";
 import "#src/util/google_tag_manager.js";
+import "#src/metacell-theme.scss";
 
 setupDefaultViewer();

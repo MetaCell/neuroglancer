@@ -35,13 +35,15 @@
   box-shadow: none;
   margin: 0;
   border: 0;
-  padding: 2px;
+  padding: 0;
+  width: 0.5rem;
 }
 
 .neuroglancer-display-dimensions-widget input,
 .neuroglancer-display-dimensions-widget {
-  font-family: monospace;
+  font-family: DejaVu Sans Mono;
   color: white;
+  line-height: 18px;
 }
 
 .neuroglancer-display-dimensions-widget-dimension:hover {
@@ -57,7 +59,7 @@
   align-items: end;
   display: inline-block;
   white-space: nowrap;
-  margin-left: 2px;
+  margin-left: 4px;
 }
 
 .neuroglancer-display-dimensions-widget-scale {
@@ -81,6 +83,7 @@
 .neuroglancer-display-dimensions-widget-scale {
   text-align: right;
   margin-left: 5px;
+  font-size: 0.875rem;
 }
 
 .neuroglancer-display-dimensions-widget:not(:hover):not([data-active="true"])
@@ -116,7 +119,9 @@
 }
 
 .neuroglancer-display-dimensions-widget-default input {
-  margin-right: 3px;
+  margin: 0.25rem;
+  width: 1rem;
+  height: 1rem;
 }
 
 .neuroglancer-depth-range-widget-grid {

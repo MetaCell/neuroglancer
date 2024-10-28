@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-import svg_bin from "ikonate/icons/bin.svg?raw";
+import svg_bin from "#src/ui/images/delete.svg?raw";
 import type { MakeIconOptions } from "#src/widget/icon.js";
 import { makeIcon } from "#src/widget/icon.js";
 
 export function makeDeleteButton(options: MakeIconOptions = {}) {
   const icon = makeIcon({ svg: svg_bin, ...options });
   const svg = icon.firstElementChild as HTMLElement;
-  svg.style.fill = "white";
+  svg.style.color = "white";
   return icon;
 }

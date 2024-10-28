@@ -51,8 +51,10 @@ import {
 } from "#src/util/dom.js";
 import type { MessageList } from "#src/util/message_list.js";
 import { MessageSeverity } from "#src/util/message_list.js";
-import { makeAddButton } from "#src/widget/add_button.js";
+import type { AccordionItem } from "#src/widget/accordion.ts";
+import { Accordion } from "#src/widget/accordion.ts";
 import { CoordinateSpaceTransformWidget } from "#src/widget/coordinate_transform.js";
+import { makeAddMoreButton } from "#src/widget/metacell_add_button.js";
 import {
   AutocompleteTextInput,
   makeCompletionElementWithDescription,
@@ -237,54 +239,92 @@ export class LoadedDataSourceView extends RefCounted {
   constructor(public source: Borrowed<LoadedLayerDataSource>) {
     super();
     const { element } = this;
+
+    // Create accordion items
+    const accordionItems = [
+      this.createEnabledComponentsItem(),
+      this.createScaleAndTranslationItem(),
+    ];
+
+    // Create and append the accordion
+    const accordion = new Accordion(accordionItems);
+    element.appendChild(accordion.getElement());
+
+    this.registerDisposer(() => removeFromParent(this.element));
+  }
+
+  private createEnabledComponentsItem(): AccordionItem {
+    const containerDiv = document.createElement("div");
+    containerDiv.classList.add("data-source-container", "enabled-components-container");
     const enableDefaultSubsourcesLabel = document.createElement("label");
     enableDefaultSubsourcesLabel.classList.add(
-      "neuroglancer-layer-data-sources-source-default",
+        "neuroglancer-layer-data-sources-source-default",
     );
+    const source = this.source;
     enableDefaultSubsourcesLabel.appendChild(
       this.registerDisposer(
         new TrackableBooleanCheckbox({
-          changed: source.enabledSubsourcesChanged,
-          get value() {
-            return source.enableDefaultSubsources;
-          },
-          set value(value: boolean) {
-            if (source.enableDefaultSubsources === value) return;
-            source.enableDefaultSubsources = value;
-            if (value) {
-              for (const subsource of source.subsources) {
-                subsource.enabled = subsource.subsourceEntry.default;
-              }
-            }
-            source.enabledSubsourcesChanged.dispatch();
-          },
-        }),
-      ).element,
+            changed: source.enabledSubsourcesChanged,
+            get value() {
+                return source.enableDefaultSubsources;
+            },
+            set value(value: boolean) {
+                if (source.enableDefaultSubsources === value) return;
+                source.enableDefaultSubsources = value;
+                if (value) {
+                    for (const subsource of source.subsources) {
+                        subsource.enabled = subsource.subsourceEntry.default;
+                    }
+                }
+                source.enabledSubsourcesChanged.dispatch();
+            },
+          })
+        ).element
     );
+
     enableDefaultSubsourcesLabel.appendChild(
-      document.createTextNode("Enable default subsource set"),
+        document.createTextNode("Enable default subsource set")
     );
     enableDefaultSubsourcesLabel.title =
-      "Enable the default set of subsources for this data source.";
-    element.appendChild(enableDefaultSubsourcesLabel);
+        "Enable the default set of subsources for this data source.";
+
+    // Append the label to the Enabled components container
+    containerDiv.appendChild(enableDefaultSubsourcesLabel);
+
     for (const subsource of source.subsources) {
-      element.appendChild(
-        this.registerDisposer(new DataSourceSubsourceView(source, subsource))
-          .element,
-      );
+        containerDiv.appendChild(
+            this.registerDisposer(new DataSourceSubsourceView(source, subsource))
+                .element
+        );
     }
-    const { transform } = source;
+
+    return {
+        title: "Enabled components",
+        content: containerDiv,
+    };
+}
+
+
+  private createScaleAndTranslationItem(): AccordionItem {
+    const containerDiv = document.createElement("div");
+    containerDiv.classList.add("data-source-container", "transform-container");
+    const { transform } = this.source;
     if (transform.mutableSourceRank || transform.value.sourceRank !== 0) {
       const transformWidget = this.registerDisposer(
         new CoordinateSpaceTransformWidget(
-          source.transform,
-          source.layer.localCoordinateSpaceCombiner,
-          source.layer.manager.root.coordinateSpaceCombiner,
-        ),
+          this.source.transform,
+          this.source.layer.localCoordinateSpaceCombiner,
+          this.source.layer.manager.root.coordinateSpaceCombiner
+        )
       );
-      this.element.appendChild(transformWidget.element);
+      // Append the translation widget to the Transform container
+      containerDiv.appendChild(transformWidget.element);
     }
-    this.registerDisposer(() => removeFromParent(this.element));
+
+    return {
+      title: "Scale and translation",
+      content: containerDiv,
+    };
   }
 }
 
@@ -340,15 +380,37 @@ export class DataSourceView extends RefCounted {
       }
       source.spec = { ...existingSpec, url };
     };
+    
     urlInput.onCommit.add(updateUrlFromView);
 
     const { element } = this;
     element.classList.add("neuroglancer-layer-data-source");
-    element.appendChild(urlInput.element);
+
+    const accordionItems = [
+      this.createDataSourceItem(urlInput), // Create the Data Source item
+    ];
+  
+    element.classList.add("neuroglancer-layer-data-source");
+    // Create and append the accordion
+    const accordion = new Accordion(accordionItems);
+    element.appendChild(accordion.getElement());
+
     element.appendChild(
       this.registerDisposer(new MessagesView(source.messages)).element,
     );
+
     this.updateView();
+  }
+
+  private createDataSourceItem(urlInput: SourceUrlAutocomplete): AccordionItem {
+    const containerDiv = document.createElement("div");
+    containerDiv.classList.add("data-source-container");
+    containerDiv.appendChild(urlInput.element);
+
+    return {
+      title: "Data source",
+      content: containerDiv, // Convert the content to HTML
+    };
   }
 
   updateView() {
@@ -380,6 +442,7 @@ export class DataSourceView extends RefCounted {
     removeFromParent(this.element);
     super.disposed();
   }
+  
 }
 
 function changeLayerTypeToDetected(userLayer: UserLayer) {
@@ -396,8 +459,8 @@ function changeLayerTypeToDetected(userLayer: UserLayer) {
 export class LayerDataSourcesTab extends Tab {
   generation = -1;
   private sourceViews = new Map<LayerDataSource, DataSourceView>();
-  private addDataSourceIcon = makeAddButton({
-    title: "Add additional data source",
+  private addDataSourceIcon = makeAddMoreButton({
+    title: "add data source",
   });
   private layerTypeDetection = document.createElement("div");
   private layerTypeElement = document.createElement("span");

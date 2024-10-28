@@ -14,24 +14,69 @@
  * limitations under the License.
  */
 
-.range-slider {
+ .range-slider {
   display: flex;
-  flex-direction: row;
-  white-space: nowrap;
-  justify-content: flex-end;
+  align-items: center;
 }
 
 .range-slider input[type="range"] {
-  background: transparent;
-  flex-basis: 0px;
+  -webkit-appearance: none; /* Override default styling */
+  width: 100%; /* Set width to fit the parent */
+  margin: 10px 0; /* Space above and below the slider */
+  background: transparent; /* No background for the range input */
 }
 
-.range-slider input[type="number"] {
-  background-color: rgba(255, 255, 255, 0.3);
-  color: #fff;
-  border: 0px;
+/* Unfilled track color */
+.range-slider input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px; /* Height of the track */
+  background: rgba(31, 31, 31, 1); /* Unfilled track color */
+  border-radius: 0; /* Straight edges */
 }
 
 .range-slider input[type="range"]::-moz-range-track {
-  background-color: white;
+  height: 4px; /* Height of the track */
+  background: rgba(31, 31, 31, 1); /* Unfilled track color */
 }
+
+/* Filled track color */
+.range-slider input[type="range"]::-webkit-slider-runnable-track {
+  background: linear-gradient(to right, rgba(22, 82, 240, 1) var(--value), rgba(31, 31, 31, 1) var(--value));
+}
+
+.range-slider input[type="range"]::-moz-range-track {
+  background: linear-gradient(to right, rgba(22, 82, 240, 1) var(--value), rgba(31, 31, 31, 1) var(--value));
+}
+
+/* Thumb styles */
+.range-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; /* Override default styling */
+  width: 9.43px; /* Width of the thumb */
+  height: 12px; /* Height of the thumb */
+  background: rgba(22, 82, 240, 1); /* Thumb color */
+  border: 1px solid transparent; /* Optional: border style */
+  cursor: pointer; /* Cursor changes to pointer when hovering */
+  margin-top: -4px; /* Center the thumb on the track */
+}
+
+.range-slider input[type="range"]::-moz-range-thumb {
+  width: 9.43px; /* Width of the thumb for Firefox */
+  height: 12px; /* Height of the thumb for Firefox */
+  background: rgba(22, 82, 240, 1); /* Thumb color */
+  border: 1px solid transparent; /* Optional: border style */
+  cursor: pointer; /* Cursor changes to pointer when hovering */
+}
+
+.range-slider input[type="range"]::-ms-thumb {
+  width: 9.43px; /* Width of the thumb for Internet Explorer */
+  height: 12px; /* Height of the thumb for Internet Explorer */
+  background: rgba(22, 82, 240, 1); /* Thumb color */
+  border: 1px solid transparent; /* Optional: border style */
+}
+
+/* Optional: Number input styling */
+.range-slider input[type="number"] {
+  margin-left: 10px; /* Space between the slider and numeric input */
+}
+
+
+

@@ -15,9 +15,6 @@
  */
 
 import "#src/ui/layer_list_panel.css";
-import svg_controls_alt from "ikonate/icons/controls-alt.svg?raw";
-import svg_eye_crossed from "ikonate/icons/eye-crossed.svg?raw";
-import svg_eye from "ikonate/icons/eye.svg?raw";
 import type {
   LayerManager,
   ManagedUserLayer,
@@ -25,6 +22,9 @@ import type {
 } from "#src/layer/index.js";
 import { deleteLayer } from "#src/layer/index.js";
 import { TrackableBooleanCheckbox } from "#src/trackable_boolean.js";
+import svg_eye from "#src/ui/images/svg_eye.svg?raw";
+import svg_eye_crossed from "#src/ui/images/svg_eye_crossed.svg?raw";
+import tune from "#src/ui/images/tune.svg?raw";
 import type { DropLayers } from "#src/ui/layer_drag_and_drop.js";
 import {
   registerLayerBarDragLeaveHandler,
@@ -97,6 +97,10 @@ class LayerVisibilityWidget extends RefCounted {
       const visible = this.layer.visible;
       hideIcon.style.display = visible ? "" : "none";
       showIcon.style.display = !visible ? "" : "none";
+      hideIcon?.parentElement?.parentElement?.classList.toggle(
+        "neuroglancer-layer-list-panel-item-not-visible",
+        !visible
+      );
     };
     updateView();
     this.registerDisposer(layer.layerChanged.add(updateView));
@@ -124,7 +128,7 @@ function makeSelectedLayerSidePanelCheckboxIcon(layer: ManagedUserLayer) {
       backgroundScheme: "dark",
       enableTitle: "Show layer side panel",
       disableTitle: "Hide layer side panel",
-      svg: svg_controls_alt,
+      svg: tune,
     },
   );
   icon.element.classList.add("neuroglancer-layer-list-panel-item-controls");
@@ -134,16 +138,24 @@ function makeSelectedLayerSidePanelCheckboxIcon(layer: ManagedUserLayer) {
 class LayerListItem extends RefCounted {
   element = document.createElement("div");
   numberElement = document.createElement("div");
+  labelElement = document.createElement("label");
   generation = -1;
   constructor(
     public panel: LayerListPanel,
     public layer: ManagedUserLayer,
   ) {
     super();
-    const { element, numberElement } = this;
+    const { element, numberElement, labelElement } = this;
+    labelElement.classList.add("metacell-neuroglancer-checkbox-label");
     element.classList.add("neuroglancer-layer-list-panel-item");
+    if(!layer?.visible) {
+      element.classList.add("neuroglancer-layer-list-panel-item-not-visible");
+    } else {
+      element.classList.remove("neuroglancer-layer-list-panel-item-not-visible");
+    }
     numberElement.classList.add("neuroglancer-layer-list-panel-item-number");
-    element.appendChild(
+    element.appendChild(labelElement);
+    labelElement.appendChild(
       this.registerDisposer(
         new TrackableBooleanCheckbox(
           {
@@ -165,9 +177,6 @@ class LayerListItem extends RefCounted {
     );
     element.appendChild(numberElement);
     element.appendChild(
-      this.registerDisposer(new LayerVisibilityWidget(layer)).element,
-    );
-    element.appendChild(
       this.registerDisposer(new LayerNameWidget(layer)).element,
     );
     element.appendChild(
@@ -182,6 +191,9 @@ class LayerListItem extends RefCounted {
     });
     deleteButton.classList.add("neuroglancer-layer-list-panel-item-delete");
     element.appendChild(deleteButton);
+    element.appendChild(
+      this.registerDisposer(new LayerVisibilityWidget(layer)).element,
+    );
     registerLayerDragHandlers(panel, element, layer, {
       isLayerListPanel: true,
       getLayoutSpec: () => undefined,
@@ -310,20 +322,23 @@ export class LayerListPanel extends SidePanel {
       yield self.layerDropZone;
     }
     updateChildren(this.itemContainer, getItems());
-    let title = "Layers";
+    const title = "Layers";
+    const titleParagraphElement = document.createElement("p");
+    titleParagraphElement.classList.add("metacell-neuroglancer-side-panel-title-paragraph");
+    let subTitle = " ";
     if (numVisible || numHidden || numArchived) {
-      title += " (";
       let sep = "";
       if (numVisible + numHidden) {
-        title += `${numVisible}/${numHidden + numVisible} visible`;
+        subTitle += `${numVisible}/${numHidden + numVisible} visible`;
         sep = ", ";
       }
       if (numArchived) {
-        title += `${sep}${numArchived} archived`;
+        subTitle += `${sep}${numArchived} archived`;
       }
-      title += ")";
     }
     this.titleElement.textContent = title;
+    titleParagraphElement.textContent = subTitle;
+    this.titleElement.appendChild(titleParagraphElement);
   }
 }
 

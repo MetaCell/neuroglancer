@@ -27,7 +27,7 @@ import type { Trackable } from "#src/util/trackable.js";
 
 export type Side = "left" | "right" | "top" | "bottom";
 
-export const DEFAULT_SIDE_PANEL_WIDTH = 300;
+export const DEFAULT_SIDE_PANEL_WIDTH = 350;
 export const DEFAULT_MIN_SIDE_PANEL_WIDTH = 100;
 
 export interface SidePanelLocation {

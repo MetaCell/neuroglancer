@@ -18,6 +18,7 @@ import "#src/ui/side_panel.css";
 
 import type { DisplayContext } from "#src/display_context.js";
 import { popDragStatus, pushDragStatus } from "#src/ui/drag_and_drop.js";
+import close from "#src/ui/images/close.svg?raw";
 import type { Side } from "#src/ui/side_panel_location.js";
 import { TrackableSidePanelLocation } from "#src/ui/side_panel_location.js";
 import { RefCounted } from "#src/util/disposable.js";
@@ -144,6 +145,7 @@ export class SidePanel extends RefCounted {
       onClick: () => {
         this.close();
       },
+      svg: close
     });
     closeButton.style.order = "100";
     titleBar.appendChild(closeButton);

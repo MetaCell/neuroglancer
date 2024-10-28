@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-.neuroglancer-icon {
+ .neuroglancer-icon {
   display: inline-flex;
   text-decoration: none;
   align-self: center;
@@ -25,8 +25,7 @@
   border-radius: 20%;
   align-items: center;
   justify-content: center;
-  color: white;
-  font: 12px sans-serif;
+  font-size: 12px;
   cursor: pointer;
   font-weight: 900;
   margin-left: 1px;
@@ -38,10 +37,6 @@
   width: 16px;
   height: 16px;
   fill: transparent;
-  stroke: white;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 
 .neuroglancer-icon:hover {

@@ -31,22 +31,33 @@ export class RangeWidget extends RefCounted {
   inputElement = document.createElement("input");
   numericInputElement = document.createElement("input");
 
+  private min: number;
+  private max: number;
+
   constructor(
     public value: WatchableValueInterface<number>,
     { min = 0, max = 1, step = 0.01 }: RangeWidgetOptions = {},
   ) {
     super();
+    this.min = min;
+    this.max = max;
+
     const { element, inputElement, numericInputElement } = this;
     element.className = "range-slider";
+
     const initInputElement = (el: HTMLInputElement) => {
       el.min = "" + min;
       el.max = "" + max;
       el.step = "" + step;
       el.valueAsNumber = this.value.value;
-      this.registerEventListener(el, "change", () =>
-        this.inputValueChanged(el),
-      );
-      this.registerEventListener(el, "input", () => this.inputValueChanged(el));
+
+      this.updateFilledArea(el);
+
+      this.registerEventListener(el, "change", () => this.inputValueChanged(el));
+      this.registerEventListener(el, "input", () => {
+        this.inputValueChanged(el);
+        this.updateFilledArea(el);
+      });
       this.registerEventListener(el, "wheel", (event: WheelEvent) => {
         this.adjustViaWheel(el, event);
       });
@@ -67,11 +78,21 @@ export class RangeWidget extends RefCounted {
     value.changed.add(() => {
       this.inputElement.valueAsNumber = this.value.value;
       this.numericInputElement.valueAsNumber = this.value.value;
+      this.updateFilledArea(this.inputElement); 
     });
+    this.updateFilledArea(this.inputElement);
+  }
+
+  private updateFilledArea(element: HTMLInputElement) {
+    const filledWidth = ((element.valueAsNumber - this.min) / (this.max - this.min)) * 100;
+    element.style.setProperty('--filled-width', `${filledWidth}%`);
+    element.style.setProperty('--value', `${filledWidth}%`); // Update value property for CSS
   }
 
   private inputValueChanged(element: HTMLInputElement) {
     this.value.value = element.valueAsNumber;
+    const percentage = (this.value.value - this.min) / (this.max - this.min) * 100;
+    this.inputElement.style.setProperty('--value', `${percentage}%`);
   }
 
   adjustViaWheel(element: HTMLInputElement, event: WheelEvent) {

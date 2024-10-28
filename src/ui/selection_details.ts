@@ -77,7 +77,7 @@ export class SelectionDetailsPanel extends SidePanel {
         new CheckboxIcon(state.pin, {
           // Note: \ufe0e forces text display, as otherwise the pin icon may as an emoji with
           // color.
-          text: "📌\ufe0e",
+          // text: "📌\ufe0e",
           enableTitle: "Pin selection",
           disableTitle: "Unpin selection",
         }),

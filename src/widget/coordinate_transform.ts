@@ -60,6 +60,7 @@ import {
 import { EventActionMap, MouseEventBinder } from "#src/util/mouse_bindings.js";
 import { formatScaleWithUnitAsString, parseScale } from "#src/util/si_units.js";
 import { makeIcon } from "#src/widget/icon.js";
+import { makeAddMoreButton } from "#src/widget/metacell_add_button.js";
 
 function updateInputFieldWidth(
   element: HTMLInputElement,
@@ -243,8 +244,8 @@ export class CoordinateSpaceTransformWidget extends RefCounted {
     lower: HTMLDivElement;
     upper: HTMLDivElement;
   }[] = [];
-  private addSourceDimensionIcon = makeIcon({ svg: svg_plus, text: "S" });
-  private addOutputDimensionIcon = makeIcon({ svg: svg_plus, text: "V" });
+  private addSourceDimensionIcon = makeIcon({ svg: svg_plus, text: "add source dimension" });
+  private addOutputDimensionIcon = makeAddMoreButton({ svg: svg_plus, text: "add dimension" });
   private addOutputDimensionCell = document.createElement("div");
   private addOutputDimensionInput = makeOutputNameElement();
   private inputScaleModified: boolean[] = [];
