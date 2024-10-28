@@ -108,7 +108,7 @@ const SHADER_JSON_KEY = "shader";
 const SHADER_CONTROLS_JSON_KEY = "shaderControls";
 const CROSS_SECTION_RENDER_SCALE_JSON_KEY = "crossSectionRenderScale";
 const CHANNEL_DIMENSIONS_JSON_KEY = "channelDimensions";
-const VOLUME_RENDERING_MODE_JSON_KEY = "volumeRenderingMode";
+const VOLUME_RENDERING_JSON_KEY = "volumeRendering";
 const VOLUME_RENDERING_GAIN_JSON_KEY = "volumeRenderingGain";
 const VOLUME_RENDERING_DEPTH_SAMPLES_JSON_KEY = "volumeRenderingDepthSamples";
 
