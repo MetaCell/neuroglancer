@@ -64,24 +64,31 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     text-align: center;
     background: transparent;
     .neuroglancer-transfer-function-widget {
-        display: flex;
-        align-items: center;
+        display: grid;
+        grid-template-columns: auto auto;
+        grid-template-rows: auto auto;
     }
     .neuroglancer-transfer-function-window-bounds,
     .neuroglancer-invlerp-widget-bounds {
+        grid-column: 1;
+        grid-row: 2; 
         display: flex;
         align-items: center;
+        margin-top: 0.5rem;
         input[type=text] {
             width: 2.375rem !important;
         }
     }
     .neuroglancer-transfer-function-panel {
-        height: 1.875rem;
-        width: 6.25rem;
+        grid-column: 1;
+        grid-row: 1;
+        height: 3.125rem;
+        width: 11.875rem;
         margin-right: 0.5rem;
+        margin-top: 0;
         canvas {
-            height: 1.875rem !important;
-            width: 6.25rem !important;
+            width: 100% !important;
+            height: 100% !important;
         }
     }
     li {
@@ -101,7 +108,8 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         }
     }
     .neuroglancer-transfer-function-color-picker {
-        margin-right: 1rem;
+        grid-column: 2;
+        grid-row: 1 / span 2;
     }
     .neuroglancer-tool-status {
         justify-content: space-between;
@@ -214,6 +222,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             font-size: 0.875rem;
             font-weight: 400;
             line-height: 1.25rem;
+            min-width: 3.5rem !important;
 
             &:focus {
                 outline: none;
@@ -314,7 +323,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
    .neuroglancer-transfer-function-widget-bound,
     .neuroglancer-invlerp-widget-window-bound,
     .neuroglancer-invlerp-widget-range-bound {
-        width: 2.375rem !important;
+        min-width: 3rem;
         background: $background60;
         border: 1px solid $stroke60;
         padding: 0.25rem;
