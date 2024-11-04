@@ -326,6 +326,16 @@ export abstract class IndirectRenderedPanel extends RenderedPanel {
     canvas.style.right = "0";
     canvas.style.top = "0";
     canvas.style.bottom = "0";
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (element.offsetWidth > 0 && element.offsetHeight > 0) {
+        this.boundsGeneration = -1;
+        this.context.scheduleRedraw();
+      }
+    });
+    resizeObserver.observe(element);
+
+    this.registerDisposer(() => resizeObserver.disconnect());
   }
 
   abstract drawIndirect(): void;
