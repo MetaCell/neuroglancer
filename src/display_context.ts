@@ -327,6 +327,10 @@ export abstract class IndirectRenderedPanel extends RenderedPanel {
     canvas.style.top = "0";
     canvas.style.bottom = "0";
 
+    // @metacell
+    // schedule a redraw when the canvas parent element size updates.
+    // fixes concurrency issue between accordion openning and canvas draw
+    // being skipped due to shouldDraw verifying that element has size 0.
     const resizeObserver = new ResizeObserver(() => {
       if (element.offsetWidth > 0 && element.offsetHeight > 0) {
         this.boundsGeneration = -1;
@@ -336,6 +340,7 @@ export abstract class IndirectRenderedPanel extends RenderedPanel {
     resizeObserver.observe(element);
 
     this.registerDisposer(() => resizeObserver.disconnect());
+    // end @metacell
   }
 
   abstract drawIndirect(): void;
