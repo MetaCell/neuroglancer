@@ -86,7 +86,8 @@
     "nifti-reader-js": "^0.6.8",
     "numcodecs": "^0.3.1",
     "pako": "^2.1.0",
-    "sass-loader": "^16.0.1"
+    "sass-loader": "^16.0.1",
+    "webpack-assets-manifest": "^5.2.1"
   },
   "overrides": {
     "@puppeteer/browsers": ">=2"

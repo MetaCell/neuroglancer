@@ -4,10 +4,14 @@ import HtmlWebpackPlugin from "html-webpack-plugin";
 import MiniCssExtractPlugin from "mini-css-extract-plugin";
 import webpack from "webpack";
 import StartupChunkDependenciesPlugin from "webpack/lib/runtime/StartupChunkDependenciesPlugin.js";
+import WebpackAssetsManifest from 'webpack-assets-manifest';
 import { normalizeConfigurationWithDefine } from "./build_tools/webpack/configuration_with_define.js";
 
 export default (env, args) => {
   const mode = args.mode === "production" ? "production" : "development";
+  
+  const prefix = env.NG_BUILD_PREFIX || "";
+  
   const config = {
     mode,
     context: import.meta.dirname,
@@ -46,13 +50,15 @@ export default (env, args) => {
         {
           test: /\.wasm$/,
           generator: {
-            filename: "[name].[contenthash][ext]",
+            filename: prefix + "[name].[contenthash][ext]",
           },
         },
         // Needed for .svg?raw imports used for embedding icons.
         {
           resourceQuery: /raw/,
           type: "asset/source",
+          
+          
         },
         // Needed for .html assets used for auth redirect pages for the
         // brainmaps and bossDB data sources.
@@ -108,18 +114,24 @@ export default (env, args) => {
       }),
       new webpack.ProgressPlugin(),
       ...(mode === "production"
-        ? [new MiniCssExtractPlugin({ filename: "[name].[chunkhash].css" })]
+        ? [new MiniCssExtractPlugin({ filename: prefix + "styles/[name].[chunkhash].css" })]
         : []),
       new HtmlWebpackPlugin({
         title: "Neuroglancer",
         scriptLoading: "module",
       }),
+      new WebpackAssetsManifest({
+        output: prefix + "assets.json",
+        writeToDisk: true,
+        entrypoints: true,
+      }),
     ],
     output: {
       path: path.resolve(import.meta.dirname, "dist", "client"),
-      filename: "[name].[chunkhash].js",
-      chunkFilename: "[name].[contenthash].js",
+      filename: prefix + "module.[name].[chunkhash].js",
+      chunkFilename: prefix + "chunk.[name].[contenthash].js",
       chunkLoading: "import",
+      assetModuleFilename: prefix + "[name].[contenthash][ext]",
       workerChunkLoading: "import",
       chunkFormat: "module",
       asyncChunks: true,
