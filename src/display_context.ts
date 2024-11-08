@@ -187,23 +187,24 @@ export abstract class RenderedPanel extends RefCounted {
         // Assume this is a `display: contents;` element.
         continue;
       }
-      clippedLeft = Math.max(
-        clippedLeft,
-        (rect.left - canvasLeft) * screenToCanvasPixelScaleX,
-      );
-      clippedTop = Math.max(
-        clippedTop,
-        (rect.top - canvasTop) * screenToCanvasPixelScaleY,
-      );
-      clippedRight = Math.min(
-        clippedRight,
-        (rect.right - canvasLeft) * screenToCanvasPixelScaleX,
-      );
-      clippedBottom = Math.min(
-        clippedBottom,
-        (rect.bottom - canvasTop) * screenToCanvasPixelScaleY,
-      );
+
+      // Apply clipping if parent has valid non-zero dimensions
+      const parentLeft =
+        (rect.left - canvasRect.left) * screenToCanvasPixelScaleX;
+      const parentTop = (rect.top - canvasRect.top) * screenToCanvasPixelScaleY;
+      const parentRight =
+        (rect.right - canvasRect.left) * screenToCanvasPixelScaleX;
+      const parentBottom =
+        (rect.bottom - canvasRect.top) * screenToCanvasPixelScaleY;
+
+      if (parentRight > parentLeft && parentBottom > parentTop) {
+        clippedLeft = Math.max(clippedLeft, parentLeft);
+        clippedTop = Math.max(clippedTop, parentTop);
+        clippedRight = Math.min(clippedRight, parentRight);
+        clippedBottom = Math.min(clippedBottom, parentBottom);
+      }
     }
+
     clippedTop = this.canvasRelativeClippedTop = Math.round(
       Math.max(clippedTop, 0),
     );
@@ -212,21 +213,22 @@ export abstract class RenderedPanel extends RefCounted {
     );
     clippedRight = Math.round(Math.min(clippedRight, canvasPixelWidth));
     clippedBottom = Math.round(Math.min(clippedBottom, canvasPixelHeight));
+
     const viewport = this.renderViewport;
-    const clippedWidth = (viewport.width = Math.max(
-      0,
-      clippedRight - clippedLeft,
-    ));
-    const clippedHeight = (viewport.height = Math.max(
-      0,
-      clippedBottom - clippedTop,
-    ));
     viewport.logicalWidth = logicalWidth;
     viewport.logicalHeight = logicalHeight;
+
+    const clippedWidth = clippedRight - clippedLeft;
+    const clippedHeight = clippedBottom - clippedTop;
+
+    // Apply clipping if it results in valid dimensions
+    viewport.width = clippedWidth > 0 ? clippedWidth : logicalWidth;
+    viewport.height = clippedHeight > 0 ? clippedHeight : logicalHeight;
+
     viewport.visibleLeftFraction = (clippedLeft - logicalLeft) / logicalWidth;
     viewport.visibleTopFraction = (clippedTop - logicalTop) / logicalHeight;
-    viewport.visibleWidthFraction = clippedWidth / logicalWidth;
-    viewport.visibleHeightFraction = clippedHeight / logicalHeight;
+    viewport.visibleWidthFraction = viewport.width / logicalWidth;
+    viewport.visibleHeightFraction = viewport.height / logicalHeight;
   }
 
   // Sets the viewport to the clipped viewport.  Any drawing must take
