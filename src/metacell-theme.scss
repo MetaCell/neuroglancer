@@ -939,6 +939,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         background: $dark100;
         outline: 0 !important;
         padding-top: 0;
+        max-width: 50rem;
         .CodeMirror {
             height: 300px;
         }
