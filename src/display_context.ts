@@ -285,19 +285,18 @@ export abstract class RenderedPanel extends RefCounted {
     return undefined;
   }
 
-  get shouldDraw() {
-    if (!this.visible) return false;
+  get isZeroSize(): boolean {
     const { element } = this;
-    if (
+    return (
       element.clientWidth === 0 ||
       element.clientHeight === 0 ||
       element.offsetWidth === 0 ||
       element.offsetHeight === 0
-    ) {
-      // Skip drawing if the panel has zero client area.
-      return false;
-    }
-    return true;
+    );
+  }
+
+  get shouldDraw() {
+    return this.visible && !this.isZeroSize;
   }
 
   // Returns a number that determine the order in which panels are drawn. This is used by CdfPanel
@@ -326,21 +325,6 @@ export abstract class IndirectRenderedPanel extends RenderedPanel {
     canvas.style.right = "0";
     canvas.style.top = "0";
     canvas.style.bottom = "0";
-
-    // @metacell
-    // schedule a redraw when the canvas parent element size updates.
-    // fixes concurrency issue between accordion openning and canvas draw
-    // being skipped due to shouldDraw verifying that element has size 0.
-    const resizeObserver = new ResizeObserver(() => {
-      if (element.offsetWidth > 0 && element.offsetHeight > 0) {
-        this.boundsGeneration = -1;
-        this.context.scheduleRedraw();
-      }
-    });
-    resizeObserver.observe(element);
-
-    this.registerDisposer(() => resizeObserver.disconnect());
-    // end @metacell
   }
 
   abstract drawIndirect(): void;
@@ -612,8 +596,9 @@ export class DisplayContext extends RefCounted implements FrameNumberCounter {
       orderedPanels.sort((a, b) => a.drawOrder - b.drawOrder);
     }
     for (const panel of orderedPanels) {
-      if (!panel.shouldDraw) continue;
+      if (!panel.visible) continue;
       panel.ensureBoundsUpdated();
+      if (panel.isZeroSize) continue;
       const { renderViewport } = panel;
       if (renderViewport.width === 0 || renderViewport.height === 0) continue;
       panel.draw();
