@@ -962,13 +962,9 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
 
             .overlay-heading {
                 + .neuroglancer-icon {
-                    background-image: url('../src/ui/images/expand_view.svg');
                     background-repeat: no-repeat;
                     background-position: center;
                     background-size: 0.875rem;
-                    svg {
-                        display: none;
-                    }
                 }
             }
         }
