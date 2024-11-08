@@ -7,10 +7,8 @@ export interface SessionUpdatePayload {
     state: any; // Adjust as needed for more specific typing
 }
 
-export function dispatchToParent(type: MessageType, payload: SessionUpdatePayload): void {
-    if (window !== window.parent) {
-        window.parent.postMessage({ type, payload }, "*");
-    }
+export function dispatchMessage(type: MessageType, payload: SessionUpdatePayload): void {
+    window.postMessage({ type, payload }, "*");
 }
 
 export function getDeepClonedState(viewer: { state: any }): any {

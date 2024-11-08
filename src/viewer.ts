@@ -18,10 +18,6 @@ import "#src/viewer.css";
 import "#src/ui/layer_data_sources_tab.js";
 import "#src/noselect.css";
 import svg_camera from "ikonate/icons/camera.svg?raw";
-import svg_controls_alt from "ikonate/icons/controls-alt.svg?raw";
-import svg_layers from "ikonate/icons/layers.svg?raw";
-import svg_list from "ikonate/icons/list.svg?raw";
-import svg_settings from "ikonate/icons/settings.svg?raw";
 import { debounce } from "lodash-es";
 import type { FrameNumberCounter } from "#src/chunk_manager/frontend.js";
 import {
@@ -73,7 +69,7 @@ import {
 import { overlaysOpen } from "#src/overlay.js";
 import { ScreenshotHandler } from "#src/python_integration/screenshots.js";
 import { allRenderLayerRoles, RenderLayerRole } from "#src/renderlayer.js";
-import { dispatchToParent, getDeepClonedState, type SessionUpdatePayload } from "#src/services/stateService.ts";
+import { dispatchMessage, getDeepClonedState, type SessionUpdatePayload } from "#src/services/stateService.ts";
 import { StatusMessage } from "#src/status.js";
 import {
   ElementVisibilityFromTrackableBoolean,
@@ -699,7 +695,7 @@ export class Viewer extends RefCounted implements ViewerState {
           state: getDeepClonedState(this)
         };
 
-        dispatchToParent("STATE_UPDATE", payload);
+        dispatchMessage("STATE_UPDATE", payload);
       })
     );
     // end @metacell
