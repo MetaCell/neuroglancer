@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 import close from "ikonate/icons/close.svg?raw";
-import svg_plus from "#src/ui/images/expandIcon.svg?raw";
 import { AutomaticallyFocusedElement } from "#src/util/automatic_focus.js";
 import { RefCounted } from "#src/util/disposable.js";
 import {
@@ -60,16 +59,9 @@ export class Overlay extends RefCounted {
 
     wrapper.appendChild(
       makeIcon({
-        svg: svg_plus,
-        onClick: () => {
-        },
-      }),
-    );
-
-    wrapper.appendChild(
-      makeIcon({
         svg: close,
         onClick: () => {
+          this.dispose();
         },
       }),
     );

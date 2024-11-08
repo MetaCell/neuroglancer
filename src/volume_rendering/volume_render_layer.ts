@@ -220,9 +220,11 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
   chunkResolutionHistogram: RenderScaleHistogram;
   mode: TrackableVolumeRenderingModeValue;
   backend: ChunkRenderLayerFrontend;
+  highestResolutionLoadedVoxelSize: Float32Array | undefined;
   private modeOverride: TrackableVolumeRenderingModeValue;
   private vertexIdHelper: VertexIdHelper;
   private dataHistogramSpecifications: HistogramSpecifications;
+  private dataResolutionIndex: number;
 
   private shaderGetter: ParameterizedContextDependentShaderGetter<
     { emitter: ShaderModule; chunkFormat: ChunkFormat; wireFrame: boolean },
@@ -246,6 +248,10 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
 
   get isVolumeRendering() {
     return true;
+  }
+
+  get selectedDataResolution() {
+    return this.dataResolutionIndex;
   }
 
   getDataHistogramCount() {
@@ -747,7 +753,6 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
     if (!renderContext.emitColor) return;
     const allSources = attachment.state!.sources.value;
     if (allSources.length === 0) return;
-    let curPhysicalSpacing = 0;
     let curOptimalSamples = 0;
     let curHistogramInformation: HistogramInformation = {
       spatialScales: new Map(),
@@ -759,6 +764,7 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
       ShaderControlsBuilderState,
       VolumeRenderingShaderParameters
     >;
+    let physicalSpacingForOptimalSamples = 0;
     // Size of chunk (in voxels) in the "display" subspace of the chunk coordinate space.
     const chunkDataDisplaySize = vec3.create();
 
@@ -827,7 +833,7 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
           },
         );
         renderScaleHistogram.add(
-          curPhysicalSpacing,
+          physicalSpacingForOptimalSamples,
           curOptimalSamples,
           presentCount,
           notPresentCount,
@@ -881,9 +887,12 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
       ) => {
         ignored1;
         ignored2;
-        curPhysicalSpacing = physicalSpacing;
+        this.highestResolutionLoadedVoxelSize =
+          transformedSource.effectiveVoxelSize;
+        physicalSpacingForOptimalSamples = physicalSpacing;
         curOptimalSamples = optimalSamples;
         curHistogramInformation = histogramInformation;
+        this.dataResolutionIndex = histogramInformation.activeIndex;
         const chunkLayout = getNormalizedChunkLayout(
           projectionParameters,
           transformedSource.chunkLayout,

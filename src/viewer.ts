@@ -17,6 +17,7 @@
 import "#src/viewer.css";
 import "#src/ui/layer_data_sources_tab.js";
 import "#src/noselect.css";
+import svg_camera from "ikonate/icons/camera.svg?raw";
 import { debounce } from "lodash-es";
 import type { FrameNumberCounter } from "#src/chunk_manager/frontend.js";
 import {
@@ -66,8 +67,9 @@ import {
   WatchableDisplayDimensionRenderInfo,
 } from "#src/navigation_state.js";
 import { overlaysOpen } from "#src/overlay.js";
+import { ScreenshotHandler } from "#src/python_integration/screenshots.js";
 import { allRenderLayerRoles, RenderLayerRole } from "#src/renderlayer.js";
-import { dispatchToParent, getDeepClonedState, type SessionUpdatePayload } from "#src/services/stateService.ts";
+import { dispatchMessage, getDeepClonedState, type SessionUpdatePayload } from "#src/services/stateService.ts";
 import { StatusMessage } from "#src/status.js";
 import {
   ElementVisibilityFromTrackableBoolean,
@@ -92,6 +94,7 @@ import {
 } from "#src/ui/layer_list_panel.js";
 import { LayerSidePanelManager } from "#src/ui/layer_side_panel.js";
 import { setupPositionDropHandlers } from "#src/ui/position_drag_and_drop.js";
+import { ScreenshotDialog } from "#src/ui/screenshot_menu.js";
 import { SelectionDetailsPanel } from "#src/ui/selection_details.js";
 import { SidePanelManager } from "#src/ui/side_panel.js";
 import { StateEditorDialog } from "#src/ui/state_editor.js";
@@ -120,6 +123,7 @@ import {
   EventActionMap,
   KeyboardEventBinder,
 } from "#src/util/keyboard_bindings.js";
+import { ScreenshotManager } from "#src/util/screenshot_manager.js";
 import { NullarySignal } from "#src/util/signal.js";
 import {
   CompoundTrackable,
@@ -490,6 +494,9 @@ export class Viewer extends RefCounted implements ViewerState {
 
   resetInitiated = new NullarySignal();
 
+  screenshotHandler = this.registerDisposer(new ScreenshotHandler(this));
+  screenshotManager = this.registerDisposer(new ScreenshotManager(this));
+
   get chunkManager() {
     return this.dataContext.chunkManager;
   }
@@ -688,7 +695,7 @@ export class Viewer extends RefCounted implements ViewerState {
           state: getDeepClonedState(this)
         };
 
-        dispatchToParent("STATE_UPDATE", payload);
+        dispatchMessage("STATE_UPDATE", payload);
       })
     );
     // end @metacell
@@ -870,6 +877,14 @@ export class Viewer extends RefCounted implements ViewerState {
           button,
         ),
       );
+      topRow.appendChild(button);
+    }
+
+    {
+      const button = makeIcon({ svg: svg_camera, title: "Screenshot" });
+      this.registerEventListener(button, "click", () => {
+        this.showScreenshotDialog();
+      });
       topRow.appendChild(button);
     }
 
@@ -1150,8 +1165,18 @@ export class Viewer extends RefCounted implements ViewerState {
     this.globalToolBinder.activate(uppercase);
   }
 
+  deactivateTools() {
+    this.globalToolBinder.deactivate();
+  }
+
   editJsonState() {
+    this.deactivateTools();
     new StateEditorDialog(this);
+  }
+
+  showScreenshotDialog() {
+    this.deactivateTools();
+    new ScreenshotDialog(this.screenshotManager);
   }
 
   showStatistics(value: boolean | undefined = undefined) {

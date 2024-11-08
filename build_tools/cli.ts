@@ -90,7 +90,7 @@ async function getWebpackConfig(
   );
   allConfigs.push(...extraConfigs);
   return (webpackEnv, webpackArgs) => {
-    webpackEnv = { ...webpackEnv, NEUROGLANCER_CLI: true };
+    webpackEnv = { ...webpackEnv, NEUROGLANCER_CLI: true, ...process.env };
     const conditions = argv.conditions;
     if (argv.python) conditions.push("neuroglancer/python");
     let outDir =
