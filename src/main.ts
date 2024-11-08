@@ -13,12 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 /**
  * @file Main entry point for default neuroglancer viewer.
  */
 import { setupDefaultViewer } from "#src/ui/default_viewer_setup.js";
 import "#src/util/google_tag_manager.js";
 import "#src/metacell-theme.scss";
+declare const window: any;
 
+window.neuroglancer = setupDefaultViewer;
 setupDefaultViewer();
