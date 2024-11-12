@@ -824,16 +824,14 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
           
         }
     }
-    .channels-container {
-        .shader {
-            .neuroglancer-tab-content {
-                .neuroglancer-layer-options-control-container {
-                    padding: 0.25rem 0 0.5rem;
-                    margin: 0;
-                    // .neuroglancer-layer-control-label {
-                    //     width: 6rem;
-                    // }
-                }
+    .channels-container.shader {
+        .neuroglancer-tab-content {
+            .neuroglancer-layer-options-control-container {
+                padding: 0.25rem 0 0.5rem;
+                margin: 0;
+                // .neuroglancer-layer-control-label {
+                //     width: 6rem;
+                // }
             }
         }
     }

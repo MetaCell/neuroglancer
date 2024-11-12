@@ -100,17 +100,19 @@ import {
   registerLayerShaderControlsTool,
   ShaderControls,
 } from "#src/widget/shader_controls.js";
+import { makeFooterBtnGroup } from "#src/widget/shader_overlay_footer.js";
 import { Tab } from "#src/widget/tab_view.js";
 
-const OPACITY_JSON_KEY = "opacity";
-const BLEND_JSON_KEY = "blend";
-const SHADER_JSON_KEY = "shader";
-const SHADER_CONTROLS_JSON_KEY = "shaderControls";
-const CROSS_SECTION_RENDER_SCALE_JSON_KEY = "crossSectionRenderScale";
-const CHANNEL_DIMENSIONS_JSON_KEY = "channelDimensions";
-const VOLUME_RENDERING_JSON_KEY = "volumeRendering";
-const VOLUME_RENDERING_GAIN_JSON_KEY = "volumeRenderingGain";
-const VOLUME_RENDERING_DEPTH_SAMPLES_JSON_KEY = "volumeRenderingDepthSamples";
+export const OPACITY_JSON_KEY = "opacity";
+export const BLEND_JSON_KEY = "blend";
+export const SHADER_JSON_KEY = "shader";
+export const SHADER_CONTROLS_JSON_KEY = "shaderControls";
+export const CROSS_SECTION_RENDER_SCALE_JSON_KEY = "crossSectionRenderScale";
+export const CHANNEL_DIMENSIONS_JSON_KEY = "channelDimensions";
+export const VOLUME_RENDERING_JSON_KEY = "volumeRendering";
+export const VOLUME_RENDERING_GAIN_JSON_KEY = "volumeRenderingGain";
+export const VOLUME_RENDERING_DEPTH_SAMPLES_JSON_KEY =
+  "volumeRenderingDepthSamples";
 
 export interface ImageLayerSelectionState extends UserLayerSelectionState {
   value: any;
@@ -528,53 +530,66 @@ class RenderingOptionsTab extends Tab {
     element.classList.add("neuroglancer-image-dropdown");
 
     for (const control of LAYER_CONTROLS) {
-      element.appendChild(
-        addLayerControlToOptionsTab(this, layer, this.visibility, control),
+      const cntlElem = addLayerControlToOptionsTab(
+        this,
+        layer,
+        this.visibility,
+        control,
       );
+      cntlElem.id = control.toolJson;
+      element.appendChild(cntlElem);
     }
 
     const spacer = document.createElement("div");
     spacer.style.flex = "1";
 
-    const topRow = document.createElement("div");
-    topRow.className = "neuroglancer-image-dropdown-top-row";
-    topRow.appendChild(document.createTextNode("Shader"));
-    topRow.appendChild(spacer);
-    topRow.appendChild(
-      makeMaximizeButton({
-        title: "Show larger editor view",
-        onClick: () => {
-          new ShaderCodeOverlay(this.layer);
-        },
-      }),
-    );
-    topRow.appendChild(
-      makeHelpButton({
-        title: "Documentation on image layer rendering",
-        href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
-      }),
-    );
+    const channelElem = document.createElement("div");
+    channelElem.id = SHADER_CONTROLS_JSON_KEY;
 
-    element.appendChild(topRow);
-    element.appendChild(
-      this.registerDisposer(
-        new ChannelDimensionsWidget(layer.channelCoordinateSpaceCombiner),
-      ).element,
-    );
-    element.appendChild(this.codeWidget.element);
-    element.appendChild(
-      this.registerDisposer(
-        new ShaderControls(
-          layer.shaderControlState,
-          this.layer.manager.root.display,
-          this.layer,
-          {
-            visibility: this.visibility,
-            legendShaderOptions: this.layer.getLegendShaderOptions(),
+    {
+      const element = channelElem;
+      const topRow = document.createElement("div");
+      topRow.className = "neuroglancer-image-dropdown-top-row";
+      topRow.appendChild(document.createTextNode("Shader"));
+      topRow.appendChild(spacer);
+      topRow.appendChild(
+        makeMaximizeButton({
+          title: "Show larger editor view",
+          onClick: () => {
+            new ShaderCodeOverlay(this.layer);
           },
-        ),
-      ).element,
-    );
+        }),
+      );
+      topRow.appendChild(
+        makeHelpButton({
+          title: "Documentation on image layer rendering",
+          href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
+        }),
+      );
+
+      element.appendChild(topRow);
+      element.appendChild(
+        this.registerDisposer(
+          new ChannelDimensionsWidget(layer.channelCoordinateSpaceCombiner),
+        ).element,
+      );
+      element.appendChild(this.codeWidget.element);
+      element.appendChild(
+        this.registerDisposer(
+          new ShaderControls(
+            layer.shaderControlState,
+            this.layer.manager.root.display,
+            this.layer,
+            {
+              visibility: this.visibility,
+              legendShaderOptions: this.layer.getLegendShaderOptions(),
+            },
+          ),
+        ).element,
+      );
+    }
+
+    element.appendChild(channelElem);
   }
 }
 
@@ -584,6 +599,7 @@ class ShaderCodeOverlay extends Overlay {
     super();
     this.content.classList.add("neuroglancer-image-layer-shader-overlay");
     this.content.appendChild(this.codeWidget.element);
+    this.content.appendChild(makeFooterBtnGroup());
     this.codeWidget.textEditor.refresh();
   }
 }
