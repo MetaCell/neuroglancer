@@ -113,6 +113,7 @@ const HISTOGRAM_SAMPLES_PER_INSTANCE = 256;
 
 // Number of points to sample in computing the histogram.  Increasing this increases the precision
 // of the histogram but also slows down rendering.
+// Here, we use 4096 samples per chunk to compute the histogram.
 const NUM_HISTOGRAM_SAMPLES = 2 ** 14;
 const DEBUG_HISTOGRAMS = false;
 
@@ -159,6 +160,7 @@ interface StoredChunkDataForMultipass {
   fixedPositionWithinChunk: Uint32Array;
   chunkDisplayDimensionIndices: number[];
   channelToChunkDimensionIndices: readonly number[];
+  chunkDataDisplaySize: vec3;
   chunkFormat: ChunkFormat | null | undefined;
 }
 
@@ -222,6 +224,7 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
   private modeOverride: TrackableVolumeRenderingModeValue;
   private vertexIdHelper: VertexIdHelper;
   private dataHistogramSpecifications: HistogramSpecifications;
+  private dataResolutionIndex: number;
 
   private shaderGetter: ParameterizedContextDependentShaderGetter<
     { emitter: ShaderModule; chunkFormat: ChunkFormat; wireFrame: boolean },
@@ -245,6 +248,10 @@ export class VolumeRenderingRenderLayer extends PerspectiveViewRenderLayer {
 
   get isVolumeRendering() {
     return true;
+  }
+
+  get selectedDataResolution() {
+    return this.dataResolutionIndex;
   }
 
   getDataHistogramCount() {
@@ -629,10 +636,15 @@ float getHistogramValue${i}() {
     simpleFloatHash(vec2(aInput1 + float(gl_VertexID) + 20.0, 15.0 + float(gl_InstanceID))));
   chunkSamplePosition = rand3val * (uChunkDataSize - 1.0);
 ${histogramFetchCode}
-  if (x < 0.0) x = 0.0;
-  else if (x > 1.0) x = 1.0;
-  else x = (1.0 + x * 253.0) / 255.0;
-  gl_Position = vec4(2.0 * (x * 255.0 + 0.5) / 256.0 - 1.0, 0.0, 0.0, 1.0);
+  if (x == 0.0) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+  }
+  else {
+    if (x < 0.0) x = 0.0;
+    else if (x > 1.0) x = 1.0;
+    else x = (1.0 + x * 253.0) / 255.0;
+    gl_Position = vec4(2.0 * (x * 255.0 + 0.5) / 256.0 - 1.0, 0.0, 0.0, 1.0);
+  }
   gl_PointSize = 1.0;`);
           builder.setFragmentMain(`
 outputValue = vec4(1.0, 1.0, 1.0, 1.0);
@@ -741,7 +753,6 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
     if (!renderContext.emitColor) return;
     const allSources = attachment.state!.sources.value;
     if (allSources.length === 0) return;
-    let curPhysicalSpacing = 0;
     let curOptimalSamples = 0;
     let curHistogramInformation: HistogramInformation = {
       spatialScales: new Map(),
@@ -753,6 +764,7 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
       ShaderControlsBuilderState,
       VolumeRenderingShaderParameters
     >;
+    let physicalSpacingForOptimalSamples = 0;
     // Size of chunk (in voxels) in the "display" subspace of the chunk coordinate space.
     const chunkDataDisplaySize = vec3.create();
 
@@ -821,7 +833,7 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
           },
         );
         renderScaleHistogram.add(
-          curPhysicalSpacing,
+          physicalSpacingForOptimalSamples,
           curOptimalSamples,
           presentCount,
           notPresentCount,
@@ -845,8 +857,7 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
       this.getDataHistogramCount() > 0 &&
       !renderContext.wireFrame &&
       !renderContext.sliceViewsPresent &&
-      (!renderContext.isContinuousCameraMotionInProgress ||
-        renderContext.force3DHistogramForAutoRange);
+      !renderContext.isContinuousCameraMotionInProgress;
     const needPickingPass =
       !isProjectionMode(this.mode.value) &&
       !renderContext.isContinuousCameraMotionInProgress &&
@@ -876,11 +887,12 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
       ) => {
         ignored1;
         ignored2;
-        curPhysicalSpacing = physicalSpacing;
-        curOptimalSamples = optimalSamples;
-        curHistogramInformation = histogramInformation;
         this.highestResolutionLoadedVoxelSize =
           transformedSource.effectiveVoxelSize;
+        physicalSpacingForOptimalSamples = physicalSpacing;
+        curOptimalSamples = optimalSamples;
+        curHistogramInformation = histogramInformation;
+        this.dataResolutionIndex = histogramInformation.activeIndex;
         const chunkLayout = getNormalizedChunkLayout(
           projectionParameters,
           transformedSource.chunkLayout,
@@ -1016,8 +1028,11 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
               fixedPositionWithinChunk,
               chunkDisplayDimensionIndices,
               channelToChunkDimensionIndices,
+              chunkDataDisplaySize,
               chunkFormat: prevChunkFormat,
             });
+          }
+          if (needPickingPass) {
             const copiedDisplaySize = vec3.create();
             const copiedPosition = vec3.create();
             vec3.copy(copiedDisplaySize, chunkDataDisplaySize);
@@ -1127,15 +1142,21 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
       };
       const determineNumHistogramInstances = (
         chunkDataSize: vec3,
-        totalChunkVolume: number,
+        numHistograms: number,
       ) => {
-        const chunkVolume = chunkDataSize.reduce((a, b) => a * b, 1);
-        const desiredChunkSamples =
-          NUM_HISTOGRAM_SAMPLES * (chunkVolume / totalChunkVolume);
-        const maxSamplesInChunk = chunkVolume / 2.0;
-        const clampedSamples = Math.min(maxSamplesInChunk, desiredChunkSamples);
+        const maxSamplesInChunk = Math.ceil(
+          chunkDataSize.reduce((a, b) => a * b, 1) / 2.0,
+        );
+        const totalDesiredSamplesInChunk =
+          NUM_HISTOGRAM_SAMPLES / numHistograms;
+        const desiredSamples = Math.min(
+          maxSamplesInChunk,
+          totalDesiredSamplesInChunk,
+        );
+
+        // round to nearest multiple of NUM_HISTOGRAM_SAMPLES_PER_INSTANCE
         return Math.max(
-          Math.round(clampedSamples / HISTOGRAM_SAMPLES_PER_INSTANCE),
+          Math.round(desiredSamples / HISTOGRAM_SAMPLES_PER_INSTANCE),
           1,
         );
       };
@@ -1154,22 +1175,9 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
       // Blending on to accumulate histograms.
       gl.enable(WebGL2RenderingContext.BLEND);
       gl.disable(WebGL2RenderingContext.DEPTH_TEST);
-
-      const totalChunkVolume = shaderUniformsForSecondPass.reduce(
-        (sum, uniforms) => {
-          const chunkVolume = uniforms.uChunkDataSize.reduce(
-            (a, b) => a * b,
-            1,
-          );
-          return sum + chunkVolume;
-        },
-        0,
-      );
-
       for (let j = 0; j < presentCount; ++j) {
         newSource = true;
         const chunkInfo = chunkInfoForMultipass[j];
-        const uniforms = shaderUniformsForSecondPass[j];
         const chunkFormat = chunkInfo.chunkFormat;
         if (chunkFormat !== prevChunkFormat) {
           prevChunkFormat = chunkFormat;
@@ -1191,7 +1199,7 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
         if (histogramShader === null) break;
         gl.uniform3fv(
           histogramShader.uniform("uChunkDataSize"),
-          uniforms.uChunkDataSize,
+          chunkInfo.chunkDataDisplaySize,
         );
         if (prevChunkFormat != null) {
           prevChunkFormat.bindChunk(
@@ -1213,8 +1221,8 @@ outputValue = vec4(1.0, 1.0, 1.0, 1.0);
 
         // Draw each histogram
         const numInstances = determineNumHistogramInstances(
-          uniforms.uChunkDataSize,
-          totalChunkVolume,
+          chunkInfo.chunkDataDisplaySize,
+          presentCount,
         );
         for (let i = 0; i < numHistograms; ++i) {
           histogramFramebuffers[i].bind(256, 1);

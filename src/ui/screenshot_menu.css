@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
- :root {
+:root {
   --blue: #1e90ff;
   --white: #ffffff;
   --gray300: #d0d5dd;
@@ -201,7 +201,6 @@
 .neuroglancer-screenshot-close-button {
   margin-left: auto;
   background-color: transparent;
-  border: 0;
 }
 
 .neuroglancer-screenshot-statistics-title {
@@ -331,9 +330,6 @@
   width: 1rem;
   height: 1rem;
   margin-left: auto;
-  position: relative;
-  width: 33.33% !important;
-  justify-content: flex-end;
 }
 .neuroglancer-screenshot-dialog .neuroglancer-icon svg {
   stroke: rgba(20, 20, 21, 0.4);

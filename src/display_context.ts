@@ -191,23 +191,24 @@ export abstract class RenderedPanel extends RefCounted {
         // Assume this is a `display: contents;` element.
         continue;
       }
-      clippedLeft = Math.max(
-        clippedLeft,
-        (rect.left - canvasLeft) * screenToCanvasPixelScaleX,
-      );
-      clippedTop = Math.max(
-        clippedTop,
-        (rect.top - canvasTop) * screenToCanvasPixelScaleY,
-      );
-      clippedRight = Math.min(
-        clippedRight,
-        (rect.right - canvasLeft) * screenToCanvasPixelScaleX,
-      );
-      clippedBottom = Math.min(
-        clippedBottom,
-        (rect.bottom - canvasTop) * screenToCanvasPixelScaleY,
-      );
+
+      // Apply clipping if parent has valid non-zero dimensions
+      const parentLeft =
+        (rect.left - canvasRect.left) * screenToCanvasPixelScaleX;
+      const parentTop = (rect.top - canvasRect.top) * screenToCanvasPixelScaleY;
+      const parentRight =
+        (rect.right - canvasRect.left) * screenToCanvasPixelScaleX;
+      const parentBottom =
+        (rect.bottom - canvasRect.top) * screenToCanvasPixelScaleY;
+
+      if (parentRight > parentLeft && parentBottom > parentTop) {
+        clippedLeft = Math.max(clippedLeft, parentLeft);
+        clippedTop = Math.max(clippedTop, parentTop);
+        clippedRight = Math.min(clippedRight, parentRight);
+        clippedBottom = Math.min(clippedBottom, parentBottom);
+      }
     }
+
     clippedTop = this.canvasRelativeClippedTop = Math.round(
       Math.max(clippedTop, 0),
     );
@@ -216,28 +217,27 @@ export abstract class RenderedPanel extends RefCounted {
     );
     clippedRight = Math.round(Math.min(clippedRight, canvasPixelWidth));
     clippedBottom = Math.round(Math.min(clippedBottom, canvasPixelHeight));
+
     const viewport = this.renderViewport;
-    const clippedWidth = (viewport.width = Math.max(
-      0,
-      clippedRight - clippedLeft,
-    ));
-    const clippedHeight = (viewport.height = Math.max(
-      0,
-      clippedBottom - clippedTop,
-    ));
+    const clippedWidth = clippedRight - clippedLeft;
+    const clippedHeight = clippedBottom - clippedTop;
+
     if (this.context.screenshotMode.value !== ScreenshotMode.OFF) {
       viewport.width = logicalWidth * screenToCanvasPixelScaleX;
       viewport.height = logicalHeight * screenToCanvasPixelScaleY;
       viewport.logicalWidth = logicalWidth * screenToCanvasPixelScaleX;
       viewport.logicalHeight = logicalHeight * screenToCanvasPixelScaleY;
     } else {
+      // Apply clipping if it results in valid dimensions
+      viewport.width = clippedWidth > 0 ? clippedWidth : logicalWidth;
+      viewport.height = clippedHeight > 0 ? clippedHeight : logicalHeight;
       viewport.logicalWidth = logicalWidth;
       viewport.logicalHeight = logicalHeight;
     }
     viewport.visibleLeftFraction = (clippedLeft - logicalLeft) / logicalWidth;
     viewport.visibleTopFraction = (clippedTop - logicalTop) / logicalHeight;
-    viewport.visibleWidthFraction = clippedWidth / logicalWidth;
-    viewport.visibleHeightFraction = clippedHeight / logicalHeight;
+    viewport.visibleWidthFraction = viewport.width / logicalWidth;
+    viewport.visibleHeightFraction = viewport.height / logicalHeight;
   }
 
   // Sets the viewport to the clipped viewport.  Any drawing must take
@@ -296,19 +296,18 @@ export abstract class RenderedPanel extends RefCounted {
     return undefined;
   }
 
-  get shouldDraw() {
-    if (!this.visible) return false;
+  get isZeroSize(): boolean {
     const { element } = this;
-    if (
+    return (
       element.clientWidth === 0 ||
       element.clientHeight === 0 ||
       element.offsetWidth === 0 ||
       element.offsetHeight === 0
-    ) {
-      // Skip drawing if the panel has zero client area.
-      return false;
-    }
-    return true;
+    );
+  }
+
+  get shouldDraw() {
+    return this.visible && !this.isZeroSize;
   }
 
   // Returns a number that determine the order in which panels are drawn. This is used by CdfPanel
@@ -417,7 +416,6 @@ export class DisplayContext extends RefCounted implements FrameNumberCounter {
   screenshotMode: TrackableScreenshotMode = new TrackableScreenshotMode(
     ScreenshotMode.OFF,
   );
-  force3DHistogramForAutoRange = false;
   private framerateMonitor = new FramerateMonitor();
 
   private continuousCameraMotionInProgress = false;
@@ -604,7 +602,7 @@ export class DisplayContext extends RefCounted implements FrameNumberCounter {
     this.updateStarted.dispatch();
     const gl = this.gl;
     const ext = this.framerateMonitor.getTimingExtension(gl);
-    this.framerateMonitor.startFrameTimeQuery(gl, ext, this.frameNumber);
+    const query = this.framerateMonitor.startFrameTimeQuery(gl, ext);
     this.ensureBoundsUpdated();
     this.gl.clearColor(0.0, 0.0, 0.0, 0.0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -614,8 +612,9 @@ export class DisplayContext extends RefCounted implements FrameNumberCounter {
       orderedPanels.sort((a, b) => a.drawOrder - b.drawOrder);
     }
     for (const panel of orderedPanels) {
-      if (!panel.shouldDraw) continue;
+      if (!panel.visible) continue;
       panel.ensureBoundsUpdated();
+      if (panel.isZeroSize) continue;
       const { renderViewport } = panel;
       if (renderViewport.width === 0 || renderViewport.height === 0) continue;
       panel.draw();
@@ -628,7 +627,7 @@ export class DisplayContext extends RefCounted implements FrameNumberCounter {
     gl.clear(gl.COLOR_BUFFER_BIT);
     this.gl.colorMask(true, true, true, true);
     this.updateFinished.dispatch();
-    this.framerateMonitor.endLastTimeQuery(gl, ext);
+    this.framerateMonitor.endFrameTimeQuery(gl, ext, query);
     this.framerateMonitor.grabAnyFinishedQueryResults(gl);
   }
 

@@ -220,10 +220,10 @@ export class ScreenshotManager extends RefCounted {
     const wasInFixedFOVMode = this.shouldKeepSliceViewFOVFixed;
     this._shouldKeepSliceViewFOVFixed = enableFixedFOV;
     if (!enableFixedFOV && wasInFixedFOVMode) {
-      this.handleScreenshotZoom(this.screenshotScale, true /* resetZoom */);
+      this.handleScreenshotZoom(1 / this.screenshotScale, true /* resetZoom */);
       this.zoomMaybeChanged.dispatch();
     } else if (enableFixedFOV && !wasInFixedFOVMode) {
-      this.handleScreenshotZoom(1 / this.screenshotScale, true /* resetZoom */);
+      this.handleScreenshotZoom(this.screenshotScale, true /* resetZoom */);
       this.zoomMaybeChanged.dispatch();
     }
   }

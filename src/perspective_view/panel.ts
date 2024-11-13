@@ -545,7 +545,7 @@ export class PerspectivePanel extends RenderedDataPanel {
       const showSliceViewsLabel = document.createElement("label");
       showSliceViewsLabel.className =
         "perspective-panel-show-slice-views neuroglancer-noselect";
-      showSliceViewsLabel.appendChild(document.createTextNode("Sections"));
+      showSliceViewsLabel.appendChild(document.createTextNode("Show sections"));
       showSliceViewsLabel.appendChild(showSliceViewsCheckbox.element);
       this.element.appendChild(showSliceViewsLabel);
     }
@@ -999,7 +999,6 @@ export class PerspectivePanel extends RenderedDataPanel {
       sliceViewsPresent: this.sliceViews.size > 0,
       isContinuousCameraMotionInProgress:
         this.isContinuousCameraMotionInProgress,
-      force3DHistogramForAutoRange: this.context.force3DHistogramForAutoRange,
     };
 
     mat4.copy(
