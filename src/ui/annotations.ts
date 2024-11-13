@@ -33,7 +33,6 @@ import type {
   Line,
 } from "#src/annotation/index.js";
 import {
-  addAnnotationClassToIcon,
   AnnotationPropertySerializer,
   AnnotationSource,
   annotationToJson,
@@ -48,6 +47,7 @@ import {
   SpatiallyIndexedPerspectiveViewAnnotationLayer,
   SpatiallyIndexedSliceViewAnnotationLayer,
 } from "#src/annotation/renderlayer.js";
+import { addAnnotationClassToIcon } from "#src/annotation/style.js"
 import type { CoordinateSpace } from "#src/coordinate_transform.js";
 import type { MouseSelectionState, UserLayer } from "#src/layer/index.js";
 import type { LoadedDataSubsource } from "#src/layer/layer_data_source.js";
