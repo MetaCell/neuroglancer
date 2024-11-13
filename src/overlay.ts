@@ -45,8 +45,9 @@ export class Overlay extends RefCounted {
     const content = (this.content = document.createElement("div"));
     this.registerDisposer(new AutomaticallyFocusedElement(content));
     content.className = "overlay-content";
-    content.classList.add("neuroglancer-state-editor")
     container.appendChild(content);
+
+    content.classList.add("neuroglancer-state-editor");
 
     const wrapper = document.createElement("div");
     wrapper.className = "overlay-header";
