@@ -41,7 +41,6 @@ export class Overlay extends RefCounted {
     ++overlaysOpen;
     const container = (this.container = document.createElement("div"));
     container.className = "overlay";
-    container.className = "metacell-theme";
     const content = (this.content = document.createElement("div"));
     this.registerDisposer(new AutomaticallyFocusedElement(content));
     content.className = "overlay-content";

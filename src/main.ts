@@ -23,3 +23,5 @@ declare const window: any;
 
 window.neuroglancer = setupDefaultViewer;
 setupDefaultViewer();
+
+document.body.classList.add("metacell-theme");
