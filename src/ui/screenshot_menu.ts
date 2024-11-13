@@ -30,12 +30,13 @@ import type {
 import { ScreenshotMode } from "#src/util/trackable_screenshot_mode.js";
 import type {
   DimensionResolutionStats,
-  PanelViewport} from "#src/util/viewer_resolution_stats.js";
+  PanelViewport,
+} from "#src/util/viewer_resolution_stats.js";
 import {
   getViewerResolutionMetadata,
-
   getViewerLayerResolutions,
-  getViewerPanelResolutions} from "#src/util/viewer_resolution_stats.js";
+  getViewerPanelResolutions,
+} from "#src/util/viewer_resolution_stats.js";
 import { makeCopyButton } from "#src/widget/copy_button.js";
 import { makeIcon } from "#src/widget/icon.js";
 
@@ -43,8 +44,9 @@ import { makeIcon } from "#src/widget/icon.js";
 // Usually the user is locked into the screenshot menu until the screenshot is taken or cancelled
 // Setting this to true, and setting the SCREENSHOT_MENU_CLOSE_TIMEOUT in screenshot_manager.ts
 // to a high value can be useful for debugging canvas handling of the resize
-
 const DEBUG_ALLOW_MENU_CLOSE = false;
+
+// For easy access to UI elements
 const LARGE_SCREENSHOT_SIZE = 4096 * 4096;
 const PANEL_TABLE_HEADER_STRINGS = {
   type: "Panel type",
@@ -53,8 +55,18 @@ const PANEL_TABLE_HEADER_STRINGS = {
 };
 const LAYER_TABLE_HEADER_STRINGS = {
   name: "Layer name",
-  type: "Type",
+  type: "Data type",
   resolution: "Physical voxel resolution",
+};
+const TOOLTIPS = {
+  generalSettingsTooltip:
+    "In the main viewer, see the settings (cog icon, top right) for options to turn off the axis line indicators, the scale bar, and the default annotation yellow bounding box.",
+  orthographicSettingsTooltip:
+    "In the main viewer, press 'o' to toggle between perspective and orthographic views.",
+  layerDataTooltip:
+    "The highest loaded resolution of 2D image slices, 3D volume renderings, and 2D segmentation slices are shown here. Other layers are not shown.",
+  scaleFactorHelpTooltip:
+    "Adjusting the scale will zoom out 2D cross-section panels by that factor unless the box is ticked to keep the slice FOV fixed with scale changes. 3D panels always have fixed FOV regardless of the scale factor.",
 };
 
 interface UIScreenshotStatistics {
@@ -87,7 +99,7 @@ function formatPhysicalResolution(resolution: DimensionResolutionStats[]) {
   }
 
   const firstResolution = resolution[0];
-  const type = firstResolution.parentType;
+  const type = firstResolution.panelType;
 
   if (firstResolution.dimensionName === "All_") {
     return {
@@ -99,7 +111,7 @@ function formatPhysicalResolution(resolution: DimensionResolutionStats[]) {
   const resolutionHtml = resolution
     .map(
       (res) =>
-        `<span class="neuroglancer-screenshot-dimension">${res.dimensionName}</span> ${res.resolutionWithUnit}`
+        `<span class="neuroglancer-screenshot-dimension">${res.dimensionName}</span> ${res.resolutionWithUnit}`,
     )
     .join(" ");
 
@@ -154,6 +166,12 @@ export class ScreenshotDialog extends Overlay {
   private progressText: HTMLParagraphElement;
   private scaleRadioButtonsContainer: HTMLDivElement;
   private keepSliceFOVFixedCheckbox: HTMLInputElement;
+  private helpTooltips: {
+    generalSettingsTooltip: HTMLElement;
+    orthographicSettingsTooltip: HTMLElement;
+    layerDataTooltip: HTMLElement;
+    scaleFactorHelpTooltip: HTMLElement;
+  };
   private statisticsKeyToCellMap: Map<string, HTMLTableCellElement> = new Map();
   private layerResolutionKeyToCellMap: Map<string, HTMLTableCellElement> =
     new Map();
@@ -179,6 +197,7 @@ export class ScreenshotDialog extends Overlay {
   dispose(): void {
     super.dispose();
     if (!DEBUG_ALLOW_MENU_CLOSE) {
+      this.screenshotManager.shouldKeepSliceViewFOVFixed = true;
       this.screenshotManager.screenshotScale = 1;
     }
   }
@@ -188,7 +207,7 @@ export class ScreenshotDialog extends Overlay {
     generalSettingsTooltip.classList.add("neuroglancer-screenshot-tooltip");
     generalSettingsTooltip.setAttribute(
       "data-tooltip",
-      "In the main viewer, see the settings (cog icon, top right) for options to turn off the axis line indicators, the scale bar, and the default annotation yellow bounding box.",
+      TOOLTIPS.generalSettingsTooltip,
     );
 
     const orthographicSettingsTooltip = makeIcon({ svg: svg_help });
@@ -197,24 +216,30 @@ export class ScreenshotDialog extends Overlay {
     );
     orthographicSettingsTooltip.setAttribute(
       "data-tooltip",
-      "In the main viewer, press 'o' to toggle between perspective and orthographic views.",
+      TOOLTIPS.orthographicSettingsTooltip,
     );
+
+    const layerDataTooltip = makeIcon({ svg: svg_help });
+    layerDataTooltip.classList.add("neuroglancer-screenshot-tooltip");
+    layerDataTooltip.setAttribute("data-tooltip", TOOLTIPS.layerDataTooltip);
 
     const scaleFactorHelpTooltip = makeIcon({ svg: svg_help });
     scaleFactorHelpTooltip.classList.add("neuroglancer-screenshot-tooltip");
     scaleFactorHelpTooltip.setAttribute(
       "data-tooltip",
-      "Adjusting the scale will zoom out 2D cross-section panels by that factor unless the box is ticked to keep the slice FOV fixed with scale changes. 3D panels always have fixed FOV regardless of the scale factor.",
+      TOOLTIPS.scaleFactorHelpTooltip,
     );
 
-    return {
+    return (this.helpTooltips = {
       generalSettingsTooltip,
       orthographicSettingsTooltip,
+      layerDataTooltip,
       scaleFactorHelpTooltip,
-    };
+    });
   }
 
   private initializeUI() {
+    const tooltips = this.setupHelpTooltips();
     this.content.classList.add("neuroglancer-screenshot-dialog");
     const parentElement = this.content.parentElement;
     if (parentElement) {
@@ -248,8 +273,7 @@ export class ScreenshotDialog extends Overlay {
     const menuText = document.createElement("h3");
     menuText.classList.add("neuroglancer-screenshot-title-subheading");
     menuText.textContent = "Settings";
-    const tooltip = this.setupHelpTooltips();
-    menuText.appendChild(tooltip.generalSettingsTooltip);
+    menuText.appendChild(tooltips.generalSettingsTooltip);
     this.filenameAndButtonsContainer.appendChild(menuText);
 
     const nameInputLabel = document.createElement("label");
@@ -406,8 +430,7 @@ export class ScreenshotDialog extends Overlay {
     scaleLabel.classList.add("neuroglancer-screenshot-scale-factor");
     scaleLabel.textContent = "Screenshot scale factor";
 
-    const tooltip = this.setupHelpTooltips();
-    scaleLabel.appendChild(tooltip.scaleFactorHelpTooltip);
+    scaleLabel.appendChild(this.helpTooltips.scaleFactorHelpTooltip);
 
     scaleMenu.appendChild(scaleLabel);
 
@@ -533,9 +556,7 @@ export class ScreenshotDialog extends Overlay {
     const headerRow = resolutionTable.createTHead().insertRow();
     const keyHeader = document.createElement("th");
     keyHeader.textContent = PANEL_TABLE_HEADER_STRINGS.type;
-
-    const tooltip = this.setupHelpTooltips();
-    keyHeader.appendChild(tooltip.orthographicSettingsTooltip);
+    keyHeader.appendChild(this.helpTooltips.orthographicSettingsTooltip);
 
     headerRow.appendChild(keyHeader);
     const pixelValueHeader = document.createElement("th");
@@ -584,6 +605,8 @@ export class ScreenshotDialog extends Overlay {
     const headerRow = resolutionTable.createTHead().insertRow();
     const keyHeader = document.createElement("th");
     keyHeader.textContent = LAYER_TABLE_HEADER_STRINGS.name;
+    keyHeader.appendChild(this.helpTooltips.layerDataTooltip);
+
     headerRow.appendChild(keyHeader);
     const typeHeader = document.createElement("th");
     typeHeader.textContent = LAYER_TABLE_HEADER_STRINGS.type;
@@ -732,7 +755,7 @@ export class ScreenshotDialog extends Overlay {
       layerResolutionText += `${resolution.name}\t${layerNamesForUI[resolution.type as keyof typeof layerNamesForUI]}\t${resolution.resolution}\n`;
     }
 
-    return `${screenshotSizeText}${panelResolutionText}${layerResolutionText}`;
+    return `${screenshotSizeText}\n${panelResolutionText}\n${layerResolutionText}`;
   }
 
   /**
