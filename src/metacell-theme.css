@@ -1,25 +1,28 @@
-// Variables
-$black: #000000;
-$white: #ffffff;
-$dark80: #2B2B2B;
-$dark100: #141414;
-$purple10: #9271EF;
-$warning60: #FFC652;
-$caramel60: #C1915D;
-$content100: #999CA0;
-$primary80: #5D89FF;
-$primary120: #002FAC;
-$error100: #D33030;
-$primary100: #1652F0;
-$background80: #1F1F1F;
-$background60: #292929;
-$stroke60: #383838;
-$content10:#4F5254;
-$codestring: #D3BE4E;
-$codetrue: #814ED3;
-$codenumber: #4EBBD3;
-$datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0, 0, 0, 0.72);
-$codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
+/* Variables */
+:root {
+    --black: #000000;
+    --white: #ffffff;
+    --dark80: #2B2B2B;
+    --dark100: #141414;
+    --purple10: #9271EF;
+    --warning60: #FFC652;
+    --caramel60: #C1915D;
+    --content100: #999CA0;
+    --primary80: #5D89FF;
+    --primary120: #002FAC;
+    --error100: #D33030;
+    --primary100: #1652F0;
+    --background80: #1F1F1F;
+    --background60: #292929;
+    --stroke60: #383838;
+    --content10: #4F5254;
+    --codestring: #D3BE4E;
+    --codetrue: #814ED3;
+    --codenumber: #4EBBD3;
+    --datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0, 0, 0, 0.72);
+    --codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
+}
+
 * {
     font-family: Graphik;
     box-sizing: border-box;
@@ -30,29 +33,29 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
 
 /* Track */
 ::-webkit-scrollbar-track {
-    background: $dark100;
+    background: var(--dark100);
     border-radius: 0.125rem;
     -webkit-box-shadow: inset 0 0 6px rgba(0,0,0,0.3); 
 }
 
 /* Handle */
 ::-webkit-scrollbar-thumb {
-    background: $background60;
+    background: var(--background60);
     border-radius: 0.125rem;
     -webkit-box-shadow: inset 0 0 6px rgba(0,0,0,0.5); 
 }
 
 /* Handle on hover */
 ::-webkit-scrollbar-thumb:hover {
-    background: $background60; 
+    background: var(--background60); 
 }
 
 ::-webkit-scrollbar:horizontal{
     height: 8px;
-    background-color: $dark100;
+    background-color: var(--dark100);
 }
 ::-webkit-scrollbar-thumb:horizontal{
-    background: $background60;
+    background: var(--background60);
     border-radius: 10px;
 }
 #statusContainer {
@@ -95,9 +98,9 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         width: auto !important;
         margin: 0 auto;
         border-radius: 0.125rem;
-        background: $background60;
-        border-color: $stroke60;
-        color: $content100;
+        background: var(--background60);
+        border-color: var(--stroke60);
+        color: var(--content100);
         display: inline-flex !important;
         font-size: 0.875rem;
         align-items: center;
@@ -114,11 +117,11 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     .neuroglancer-tool-status {
         justify-content: space-between;
         .neuroglancer-layer-control-control {
-            // max-width: 100%;
-            // margin: 0;
+            /* max-width: 100%; */
+            /* margin: 0; */
         }
         .neuroglancer-layer-control-label-container {
-            // display: flex;
+            /* display: flex; */
             .neuroglancer-position-widget {
                 .neuroglancer-position-dimension-coordinate {
                     width: 3rem !important;
@@ -142,7 +145,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         .neuroglancer-tool-status-bindings {
             background: transparent;
             font-size: 0.875rem;
-            color: $content100;
+            color: var(--content100);
             font-style: normal;
             text-align: right !important;
             margin-left: auto;
@@ -155,18 +158,18 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             background: transparent;
             padding: 0;
             font-size: 0.875rem;
-            color: $content100;
+            color: var(--content100);
         }
         input[type="number"] {
             height: 1.5rem;
-            background: $background80;
+            background: var(--background80);
             padding: 0.5rem 0 0.5rem 0.5rem;
-            color: $content100;
+            color: var(--content100);
             font-size: 0.875rem;
             outline: 0;
-            border: 0.0625rem solid $dark80;
+            border: 0.0625rem solid var(--dark80);
             &:focus {
-                border-color: $primary120;
+                border-color: var(--primary120);
             }
         }
         input[type="range"] {
@@ -175,7 +178,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             outline: 0;
             -webkit-appearance: none;
             height: 0.25rem;
-            background: $background80;
+            background: var(--background80);
             outline: none;
             opacity: 0.7;
             -webkit-transition: .2s;
@@ -185,7 +188,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                 appearance: none;
                 width: 0.625rem;
                 height: 0.75rem;
-                background: $primary100;
+                background: var(--primary100);
                 cursor: pointer;
               }
         }
@@ -195,13 +198,13 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         margin-right: 0.25rem;
         select {
             margin-left: 0;
-            border: 0.0625rem solid $dark80;
+            border: 0.0625rem solid var(--dark80);
             padding: 0.25rem 0.5rem;
             box-sizing: border-box;
-            color: $content100;
+            color: var(--content100);
             text-overflow: ellipsis;
             white-space: nowrap;
-            background-color: $background80 !important;
+            background-color: var(--background80) !important;
             overflow: hidden;
             font-size: 0.875rem;
             font-weight: 400;
@@ -211,13 +214,13 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         }
         input[type="text"] {
             margin-right: 0.5rem;
-            border: 0.0625rem solid $dark80;
+            border: 0.0625rem solid var(--dark80);
             padding: 0.25rem 0.5rem;
             box-sizing: border-box;
-            color: $content100;
+            color: var(--content100);
             text-overflow: ellipsis;
             white-space: nowrap;
-            background-color: $background80 !important;
+            background-color: var(--background80) !important;
             overflow: hidden;
             font-size: 0.875rem;
             font-weight: 400;
@@ -232,7 +235,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             display: none;
         }
         input[type="color"] {
-            border: $dark80 0.094rem solid;
+            border: var(--dark80) 0.094rem solid;
             -webkit-appearance: none;
             padding: 0;
             height: 1.5rem;
@@ -266,7 +269,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             .neuroglancer-icon {
                 svg {
                     stroke-width: 1;
-                    stroke: $content100;
+                    stroke: var(--content100);
                 }
             }
         }
@@ -324,20 +327,20 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     .neuroglancer-invlerp-widget-window-bound,
     .neuroglancer-invlerp-widget-range-bound {
         min-width: 3rem;
-        background: $background60;
-        border: 1px solid $stroke60;
+        background: var(--background60);
+        border: 1px solid var(--stroke60);
         padding: 0.25rem;
-        color: $content100;
+        color: var(--content100);
         outline: 0;
         font-size: 0.75rem;
         font-style: normal;
         font-weight: 400;
         &:focus {
-            border-color: $primary100;
+            border-color: var(--primary100);
         }
      }
     .CodeMirror-gutter {
-        background: $dark100;
+        background: var(--dark100);
     }
     .CodeMirror-lines {
         font-family: monospace;
@@ -346,19 +349,19 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         }
     }
     input[type=color] {
-        border: $dark80 0.094rem solid;
+        border: var(--dark80) 0.094rem solid;
     }
     .cm-s-default {
      
         .cm-string,.cm-comment {
             font-size: 0.75rem;
             font-weight: 400;
-            color: $codestring;
+            color: var(--codestring);
         }
         .cm-number {
             font-size: 0.75rem;
             font-weight: 400;
-            color: $codenumber;
+            color: var(--codenumber);
         }
         .cm-word {
             font-size: 0.75rem;
@@ -368,7 +371,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         .cm-atom, .cm-keyword {
             font-size: 0.75rem;
             font-weight: 400;
-            color: $codetrue;
+            color: var(--codetrue);
         }
     }
     .neuroglancer-star-icon {
@@ -381,7 +384,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         background: transparent;
         .neuroglancer-eye-icon {
             svg {
-                stroke: $content100;
+                stroke: var(--content100);
             }
         }
     }
@@ -391,7 +394,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     }
     .neuroglancer-segment-list-entry-id, .neuroglancer-selection-details-segment-id {
         text-align: center;
-        color: $white !important;
+        color: var(--white) !important;
         width: auto;
         padding: 0.063rem 0.125rem;
     }
@@ -408,7 +411,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             margin-right: 0.5rem;
         }
         .neuroglancer-icon {
-            color: $content100;
+            color: var(--content100);
         }
 
         .neuroglancer-icon.neuroglancer-checkbox-icon {
@@ -417,7 +420,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             div {
                 font-size: 0.75rem;
                 font-weight: 400;
-                // padding: 0 0.25rem;
+                /* padding: 0 0.25rem; */
                 &:empty {
                     display: none;
                 }
@@ -435,24 +438,24 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             justify-content: center;
             align-items: center;
             height: 1.125rem;
-            border: 1px solid $stroke60;
+            border: 1px solid var(--stroke60);
             border-radius: 0.125rem;
-            color: $primary100;
+            color: var(--primary100);
             &:focus, &:hover {
-                border-color: $primary100;
-                outline-color: $primary100;
+                border-color: var(--primary100);
+                outline-color: var(--primary100);
             }
             &::before,  &::after{
                 content: "";
             }
         }
         .neuroglancer-annotation-tool-status-widget-description {
-            color: $content100;
+            color: var(--content100);
             font-size: 0.875rem;
             font-weight: 400;
         }
         .neuroglancer-annotation-tool-status-widget-layer-number {
-            color: $content100;
+            color: var(--content100);
             font-size: 0.875rem;
             font-weight: 500;
             background: transparent !important;
@@ -499,7 +502,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     }
     .neuroglancer-invlerp-cdfpanel, 
     .neuroglancer-invlerp-legend-panel {
-        border-color: $dark80;
+        border-color: var(--dark80);
     }
     .neuroglancer-invlerp-widget-bounds {
         div {
@@ -547,7 +550,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                 }
             }
             .neuroglancer-annotation-shader-property-type {
-                color: $codestring;
+                color: var(--codestring);
             }
             .neuroglancer-annotation-shader-property-identifier {
                 color: rgba(255, 255, 255, 0.6);
@@ -556,10 +559,10 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         .neuroglancer-segmentation-dropdown-skeleton-shader-header {
             padding: 0.75rem;
             svg {
-                stroke: $content100;
+                stroke: var(--content100);
             }
             a {
-                color: $content100;
+                color: var(--content100);
                 font-size: 1rem;
                 width: auto;
                 height: auto;
@@ -571,39 +574,39 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         .neuroglancer-selection-details-position {
             .neuroglancer-icon {
                 svg {
-                    stroke: $content100;
+                    stroke: var(--content100);
                 }
             }
         }
         .neuroglancer-selection-details-layer {
-            color: $content100;
+            color: var(--content100);
         }
     }
     .neuroglancer-single-mesh-dropdown {
         padding-top: 0.75rem !important;
         svg {
-            stroke: $content100 !important;
+            stroke: var(--content100) !important;
         }
         a {
             font-size: 1rem;
-            color: $content100;
+            color: var(--content100);
             font-weight: normal;
         }
     }
     .neuroglancer-segment-display-tab {
         padding: 0.75rem !important;
         .neuroglancer-segment-list-query {
-            border: $dark80 1px solid;
-            background: $background80;
+            border: var(--dark80) 1px solid;
+            background: var(--background80);
             padding: 0.5rem;
         }
         .neuroglancer-segment-list-header-label {
-            color: $content100;
+            color: var(--content100);
             font-size: 0.75rem;
         }
         .neuroglancer-segment-list-entry.neuroglancer-segment-list-header {
-            background: $background80;
-            color: $content100;
+            background: var(--background80);
+            color: var(--content100);
             font-size: 0.75rem;
             align-items: center;
         }
@@ -611,12 +614,12 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             margin: 0.5rem 0;
             background: transparent;
             svg {
-                stroke: $content100;
+                stroke: var(--content100);
             }
         }
         .neuroglancer-tool-button {
             .neuroglancer-tool-button-label {
-                color: $content100;
+                color: var(--content100);
             }
             .neuroglancer-tool-key-binding {
                 display: flex;
@@ -624,13 +627,13 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                 width: 1.125rem;
                 justify-content: center;
                 align-items: center;
-                color: $primary100;
+                color: var(--primary100);
                 height: 1.125rem;
-                border: 1px solid $stroke60;
+                border: 1px solid var(--stroke60);
                 border-radius: 0.125rem;
                 &:focus, &:hover {
-                    border-color: $primary100;
-                    outline-color: $primary100;
+                    border-color: var(--primary100);
+                    outline-color: var(--primary100);
                 }
                 &::before, &::after{
                     content: "";
@@ -652,7 +655,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     }
     .neuroglancer-annotations-tab {
         label {
-            color: $content100;
+            color: var(--content100);
         }
         .annotations-toolbox-container {
             margin: 0 0 1rem;
@@ -669,7 +672,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                 margin-right: auto;
             }
             .neuroglancer-icon {
-                color: $content100;
+                color: var(--content100);
                 text-indent: -999px;
                 min-width: inherit;
                 min-height: inherit;
@@ -691,7 +694,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             height: auto !important;
             min-height: inherit !important;
             .list-scroll-container {
-                // height: 12.5rem !important;
+                /* height: 12.5rem !important; */
                 overflow: auto;
                 height: 100% !important;
             }
@@ -701,7 +704,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             padding: 0 0.3rem;
         }
         .neuroglancer-render-scale-widget-legend {
-            color: $content100;
+            color: var(--content100);
         }
         input[type="checkbox"] {
             background: url('../src/ui/images/unselected.svg') no-repeat;
@@ -718,7 +721,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         }
         .neuroglass-ignore-label {
             overflow: hidden;
-            color: $content100;
+            color: var(--content100);
             margin: 0.5rem 0 1rem;
             input[type="checkbox"] {
                 float: right;
@@ -730,7 +733,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                     align-items: center;
                     margin: 0.75rem 0 0;
                     select {
-                        color: $content100;
+                        color: var(--content100);
                     }
                     label {
                         display: block;
@@ -750,13 +753,13 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         select {
             margin-left: 0;
             height: 2.25rem;
-            border: 0.0625rem solid $dark80;
+            border: 0.0625rem solid var(--dark80);
             padding: 0.5rem;
             box-sizing: border-box;
-            color: $white;
+            color: var(--white);
             text-overflow: ellipsis;
             white-space: nowrap;
-            background-color: $background80 !important;
+            background-color: var(--background80) !important;
             overflow: hidden;
             font-size: 0.875rem;
             font-weight: 400;
@@ -777,7 +780,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                 outline: 0;
                 -webkit-appearance: none;
                 height: 0.25rem;
-                background: $background80;
+                background: var(--background80);
                 outline: none;
                 opacity: 0.7;
                 -webkit-transition: .2s;
@@ -787,7 +790,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                     appearance: none;
                     width: 0.625rem;
                     height: 0.75rem;
-                    background: $primary100;
+                    background: var(--primary100);
                     cursor: pointer;
                   }
             }
@@ -799,11 +802,11 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         }
         .neuroglancer-layer-side-panel-title {
             .neuroglancer-layer-side-panel-type {
-                color: $content100;
+                color: var(--content100);
                 width: 2.5rem !important;
             }
             .neuroglancer-layer-side-panel-name {
-                color: $white;
+                color: var(--white);
                 + .neuroglancer-checkbox-icon {
                     background: none;
                     svg {
@@ -829,9 +832,9 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             .neuroglancer-layer-options-control-container {
                 padding: 0.25rem 0 0.5rem;
                 margin: 0;
-                // .neuroglancer-layer-control-label {
-                //     width: 6rem;
-                // }
+                /* .neuroglancer-layer-control-label {
+                    width: 6rem;
+                } */
             }
         }
     }
@@ -839,13 +842,13 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         margin: 0;
         .range-slider input[type="number"] {
             height: 2.25rem;
-            background: $background80;
+            background: var(--background80);
             padding: 0.5rem 0 0.5rem 0.5rem;
-            color: $content100;
+            color: var(--content100);
             outline: 0;
-            border: 0.0625rem solid $dark80;
+            border: 0.0625rem solid var(--dark80);
             &:focus {
-                border-color: $primary120;
+                border-color: var(--primary120);
             }
         }
     }
@@ -861,12 +864,12 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         font-size: 0.75rem;
         font-family: Graphik;
         font-weight: 400;
-        color: $caramel60;
+        color: var(--caramel60);
     }
     .neuroglancer-annotation-description {
         font-size: 0.75rem;
         font-weight: 400;
-        color: $content100;
+        color: var(--content100);
         margin-top: 0.5rem;
     }
 
@@ -901,11 +904,11 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             }
         }
         &:hover {
-            background: $background80 !important;
+            background: var(--background80) !important;
         } 
         &.neuroglancer-annotation-selected {
-            border-color: $primary100;
-            background: $background80 !important;
+            border-color: var(--primary100);
+            background: var(--background80) !important;
         }
         .neuroglancer-annotation-icon {
             font-size: 1rem;
@@ -927,14 +930,14 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         &[title="Close panel"] {
             margin-left: 0.25rem;
             svg {
-                color: $white;
+                color: var(--white);
             }
         }
     }
 
     .overlay-content {
-        border: 0.0625rem solid $background80;
-        background: $dark100;
+        border: 0.0625rem solid var(--background80);
+        background: var(--dark100);
         outline: 0 !important;
         padding-top: 0;
         .CodeMirror {
@@ -943,19 +946,19 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         .overlay-header {
             display: flex;
             align-items: center;
-            border-bottom: 0.0625rem solid $background80;
+            border-bottom: 0.0625rem solid var(--background80);
             margin: 0 -0.75rem 0.75rem;
             padding: 0 0.75rem;
 
             p {
                 margin-right: auto;
-                color: $white;
+                color: var(--white);
                 font-size: 0.875rem;
                 font-style: normal;
                 font-weight: 500;
             }
             svg {
-                stroke: $content100;
+                stroke: var(--content100);
             }
 
             .overlay-heading {
@@ -971,7 +974,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             display: flex;
             align-items: center;
             justify-content: flex-end;
-            border-top: 0.0625rem solid $background80;
+            border-top: 0.0625rem solid var(--background80);
             margin: 0.75rem -0.75rem 0;
             padding: 0.75rem 0.75rem 0;
             button {
@@ -993,20 +996,20 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                 }
 
                 &.text-primary {
-                    color: $primary80;
+                    color: var(--primary80);
                     background-color: transparent;
                     border: none;
                 }
 
                 &.contained-primary {
-                    background-color: $primary100;
-                    color: $white;
+                    background-color: var(--primary100);
+                    color: var(--white);
                 }
 
                 &.outlined-primary {
-                    border: 0.0938rem solid $stroke60;
+                    border: 0.0938rem solid var(--stroke60);
                     background-color: transparent;
-                    color: $white;
+                    color: var(--white);
                 }
 
                 &:first-of-type {
@@ -1025,14 +1028,14 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
 
             .CodeMirror-gutter-elt {
                 .CodeMirror-guttermarker-subtle {
-                    color: $codeMirrorGuttermarkerSubtleColor;
+                    color: var(--codeMirrorGuttermarkerSubtleColor);
                 }
             }
         }
     }
 
     .neuroglancer-multiline-autocomplete-dropdown {
-        border-color: $background80;
+        border-color: var(--background80);
     }
 
     .neuroglancer-multiline-autocomplete-completion {
@@ -1042,7 +1045,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     }
 
     .neuroglancer-multiline-autocomplete-completion-description {
-        color: $content100;
+        color: var(--content100);
     }
 
     .neuroglancer-multiline-autocomplete-completion-with-description {
@@ -1051,98 +1054,98 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
 
     .neuroglancer-layer-item {
         margin: 0;
-        border-color: $background80;
+        border-color: var(--background80);
         padding: 0.125rem 0.25rem;
         gap: 0.25rem;
         min-height: 1.875rem;
 
         &[data-selected="true"] {
-            border-color: $primary120;
+            border-color: var(--primary120);
 
             &:hover {
-                border-color: $primary120;
+                border-color: var(--primary120);
                 background-color: transparent;
             }
 
             &[data-visible="false"] {
-                border-color: $primary120 !important;
+                border-color: var(--primary120) !important;
                 background-color: transparent !important;
                 .neuroglancer-layer-item-label {
-                    color: $white !important;
+                    color: var(--white) !important;
                 }
 
                 .neuroglancer-layer-item-number {
-                    color: $content100;
+                    color: var(--content100);
                 }
     
                 &:hover {
                     .neuroglancer-layer-item-label {
-                        color: $content100;
+                        color: var(--content100);
                     }
 
                     .neuroglancer-icon svg {
-                        color: $content100 !important;
+                        color: var(--content100) !important;
                     }
                 }
                 &[data-pick="true"] {
                     &:hover {
-                        background-color: $dark100 !important;
+                        background-color: var(--dark100) !important;
                     }
                 }
             }
 
             &[data-pick="true"] {
-                border-color: $primary120;
+                border-color: var(--primary120);
                 .neuroglancer-layer-item-label {
-                    background-color: $primary120;
+                    background-color: var(--primary120);
                 }
     
                 &:hover {
-                    border-color: $primary120;
-                    background-color: $dark100;
+                    border-color: var(--primary120);
+                    background-color: var(--dark100);
                     .neuroglancer-layer-item-label {
-                        color: $white;
-                        background-color: $primary120;
+                        color: var(--white);
+                        background-color: var(--primary120);
                     }
                 }
             }
         }
 
         &[data-visible="false"] {
-            border-color: $background80;
+            border-color: var(--background80);
             
             .neuroglancer-layer-item-label {
-                color: $white;
+                color: var(--white);
             }
 
             .neuroglancer-layer-item-number {
-                color: $content100;
+                color: var(--content100);
             }
 
             &:hover {
-                border-color: $background80;
-                background-color: $dark100;
+                border-color: var(--background80);
+                background-color: var(--dark100);
                 .neuroglancer-layer-item-label {
-                    color: $white;
+                    color: var(--white);
                 }
                 .neuroglancer-icon svg {
-                    color: $content100 !important;
+                    color: var(--content100) !important;
                 }
             }
         }
 
         &[data-pick="true"] {
-            border-color: $background80;
+            border-color: var(--background80);
             .neuroglancer-layer-item-label {
-                background-color: $primary120;
+                background-color: var(--primary120);
             }
 
             &:hover {
-                border-color: $background80;
-                background-color: $dark100;
+                border-color: var(--background80);
+                background-color: var(--dark100);
                 .neuroglancer-layer-item-label {
-                    color: $white;
-                    background-color: $primary120;
+                    color: var(--white);
+                    background-color: var(--primary120);
                 }
             }
         }
@@ -1151,7 +1154,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             font-size: 0.875rem;
             font-weight: 400;
             line-height: 1.25rem;
-            color: $white;
+            color: var(--white);
             background-color: transparent;
         }
 
@@ -1161,23 +1164,23 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             line-height: 1.125rem;
             letter-spacing: -0.01em;
             background-color: transparent;
-            color: $content100;
+            color: var(--content100);
         }
 
         .neuroglancer-icon svg {
-            color: $content100 !important;
+            color: var(--content100) !important;
         }
 
         &:hover {
-            border-color: $background80;
-            background-color: $dark100;
+            border-color: var(--background80);
+            background-color: var(--dark100);
 
             .neuroglancer-layer-item-label {
                 color: white;
             }
 
             .neuroglancer-icon svg {
-                color: $content100 !important;
+                color: var(--content100) !important;
             }
         }
     }
@@ -1266,11 +1269,11 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         gap: 0.25rem;
     }
 
-    // .neuroglancer-display-dimensions-widget-dimension-grid {
-    //     display: flex;
-    //     flex-direction: column;
-    //     gap: 0.25rem;
-    // }
+    /* .neuroglancer-display-dimensions-widget-dimension-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    } */
 
     .neuroglancer-depth-range-widget-grid {
         margin: 0;
@@ -1289,7 +1292,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         font-weight: 400;
         line-height: 1.125rem;
         text-align: left;
-        color: $white;
+        color: var(--white);
         display: flex;
         align-items: center;
         gap: 0.25rem;
@@ -1321,11 +1324,11 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
 
     &.neuroglancer-show-panel-borders .neuroglancer-panel {
         border-width: 0.063rem;
-        box-shadow: $datapanelshadow;
-        border-color: $background80;
+        box-shadow: var(--datapanelshadow);
+        border-color: var(--background80);
         border-radius: 0.125rem;
         &:focus-within {
-            border-color: $primary100;
+            border-color: var(--primary100);
         }
     }
 
@@ -1341,7 +1344,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         font-size: 0.875rem;
         font-weight: 400;
         line-height: 1.25rem;
-        color: $content100;
+        color: var(--content100);
         
 
     }
@@ -1395,13 +1398,13 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             font-size: 0.75rem;
             font-weight: 400;
             line-height: 0.975rem;
-            color: $content100;
+            color: var(--content100);
         }
         .neuroglancer-layer-control-label-text-container {
             font-size: 0.875rem;
             font-weight: 400;
             line-height: 1.25rem;
-            color: $content100;
+            color: var(--content100);
         }
 
   
@@ -1411,13 +1414,13 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         input[type="text"] {
             margin-left: 0;
             height: 2.25rem;
-            border: 0.0625rem solid $dark80;
+            border: 0.0625rem solid var(--dark80);
             padding: 0.5rem;
             box-sizing: border-box;
-            color: $white;
+            color: var(--white);
             text-overflow: ellipsis;
             white-space: nowrap;
-            background-color: $background80 !important;
+            background-color: var(--background80) !important;
             overflow: hidden;
             font-size: 0.875rem;
             font-weight: 400;
@@ -1434,7 +1437,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     .shader {
         margin: 0.5rem 0rem 0;
         padding: 0.75rem;
-        background-color: $background80;
+        background-color: var(--background80);
 
         .neuroglancer-image-dropdown-top-row {
             margin-bottom: 0.5rem;
@@ -1444,10 +1447,10 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         }
         .neuroglancer-icon {
             svg {
-                stroke: $content100 !important;
+                stroke: var(--content100) !important;
             }
             + .neuroglancer-icon {
-                color: $content100;
+                color: var(--content100);
                 font-size: 1rem;
                 font-weight: normal;
             }
@@ -1458,14 +1461,14 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     .CodeMirror {
         width: 100%;
         box-sizing: border-box;
-        border: 0.0625rem solid $dark80;
+        border: 0.0625rem solid var(--dark80);
         color: rgba(255, 255, 255, 0.60);
-        background-color: $background60;
+        background-color: var(--background60);
         margin-bottom: 0.5rem;
     }
     .CodeMirror-gutters {
-        background-color: $background80;
-        border-color: $dark80;
+        background-color: var(--background80);
+        border-color: var(--dark80);
     }
     
     .neuroglancer-tab-view {
@@ -1476,9 +1479,9 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         }
     }
     .accordion {
-        background-color: $dark100;
+        background-color: var(--dark100);
         .accordion-item {
-            border-bottom: 1px solid $dark80;
+            border-bottom: 1px solid var(--dark80);
             position: relative;
             .neuroglancer-label-dropdown-right-gap {
                 display: flex;
@@ -1494,7 +1497,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         
                         input[type="radio"] {
                             cursor: pointer;
-                            background: $background80 url('../src/ui/images/colorpicker100.svg') no-repeat;
+                            background: var(--background80) url('../src/ui/images/colorpicker100.svg') no-repeat;
                             width: 2rem;
                             height: 2rem;
                             border-radius: 0.125rem;
@@ -1506,9 +1509,9 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                             margin: 0 0.2rem 0 auto;
                             display: block;
                             &:checked {
-                                background: $background60 url('../src/ui/images/colorspicker.svg') no-repeat;
+                                background: var(--background60) url('../src/ui/images/colorspicker.svg') no-repeat;
                                 background-position: center center;
-                                border: 1px solid $primary100;
+                                border: 1px solid var(--primary100);
                             }
                         }
                         input[type="color"] {
@@ -1524,7 +1527,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                     &:nth-child(2) {
                         input[type="radio"] {
                             cursor: pointer;
-                            background: $background80 url('../src/ui/images/paintpicker.svg') no-repeat;
+                            background: var(--background80) url('../src/ui/images/paintpicker.svg') no-repeat;
                             width: 2rem;
                             height: 2rem;
                             position: absolute;
@@ -1536,13 +1539,13 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                             margin: 0 0 0 auto;
                             display: block;
                             &:checked {
-                                background: $background60 url('../src/ui/images/paintpicker100.svg') no-repeat;
+                                background: var(--background60) url('../src/ui/images/paintpicker100.svg') no-repeat;
                                 background-position: center center;
-                                border: 1px solid $primary100;
+                                border: 1px solid var(--primary100);
                             }
                         }
                         .neuroglancer-layer-control-label {
-                            border-left: 1px solid $background80;
+                            border-left: 1px solid var(--background80);
                             padding-left: .75rem;
                             margin-left: 0.625rem;
                         }
@@ -1579,7 +1582,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             display: flex;
             flex-direction: column;
             .neuroglancer-render-scale-widget-legend {
-                color: $content100;
+                color: var(--content100);
                 font-size: 0.75rem;
                 font-weight: 400;
                 line-height: 100%;
@@ -1600,7 +1603,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             .neuroglancer-label-linkedto {
                 width: 51%;
                 display: inline-flex;
-                color: $content100;
+                color: var(--content100);
                 font-size: 0.875rem;
                 ~ button {
                     background-color: transparent;
@@ -1617,7 +1620,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                     margin: 0.15rem 0 0 0.5rem;
                     position: relative;
                     &:after {
-                        background: $dark80;
+                        background: var(--dark80);
                         content: "Unlink";
                         display: block;
                         text-indent: 0;
@@ -1627,7 +1630,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                         top: 100%;
                         margin: 0.25rem 0 0;
                         padding: 0.35rem 0.35rem;
-                        color: $white;
+                        color: var(--white);
                         border-radius: 4px;
                         opacity: 0;
                     }
@@ -1635,7 +1638,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                         background-image: url('../src/ui/images/link_on.svg');
                         background-repeat: no-repeat;
                         background-position: center;
-                        background-color: $dark80;
+                        background-color: var(--dark80);
                         &:after {
                             opacity: 1;
                         }
@@ -1650,7 +1653,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             font-size: 0.875rem;
             font-weight: 500;
             &:hover {
-                background: $background80;
+                background: var(--background80);
             }
         }
         .neuroglancer-coordinate-space-transform-scale-container {
@@ -1666,8 +1669,8 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         }
         .neuroglancer-coordinate-space-transform-scale-suggestion {
             border-radius: 0;
-            background: $background80;
-            border-color: $dark80;
+            background: var(--background80);
+            border-color: var(--dark80);
             font-size: 0.75rem;
             padding: 0.125rem 0.5rem 0.125rem 0.25rem;
             display: flex;
@@ -1678,16 +1681,16 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                 height: 0.625rem;
             }
             &:hover {
-                border: 1px solid $dark80;
-                color: $content100;
+                border: 1px solid var(--dark80);
+                color: var(--content100);
             }
         }
         .neuroglancer-coordinate-space-transform-widget {
             input {
                 margin: 0.188rem;
-                background: $background80;
-                border: 1px solid $dark80 !important;
-                color: $content100;
+                background: var(--background80);
+                border: 1px solid var(--dark80) !important;
+                color: var(--content100);
                 padding: 0.5rem;
                 text-align: left;
                 outline: 0;
@@ -1703,7 +1706,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             flex-direction: row-reverse;
             position: relative;
             margin: 0;
-            color: $content100;
+            color: var(--content100);
             input {
                 background: url('../src/ui/images/unselected.svg') no-repeat;
                 width: 1rem;
@@ -1736,12 +1739,12 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                 align-items: center;
                 height: 1.125rem;
                 font-family: monospace;
-                color: $primary100;
-                border: 1px solid $stroke60;
+                color: var(--primary100);
+                border: 1px solid var(--stroke60);
                 border-radius: 0.125rem;
                 &:focus, &:hover {
-                    border-color: $primary100;
-                    outline-color: $primary100;
+                    border-color: var(--primary100);
+                    outline-color: var(--primary100);
                 }
                 &::before, &::after {
                     content: "";
@@ -1757,7 +1760,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             display: flex;
             align-items: center;
             font-size: 0.75rem;
-            color: $content100;
+            color: var(--content100);
             font-weight: 500;
             gap: 0.5rem;
             margin: 1.25rem 0 0 1rem;
@@ -1775,7 +1778,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                     svg {
                         width: 0.875rem !important;
                         height: 0.875rem !important;
-                        stroke: $content100;
+                        stroke: var(--content100);
                         stroke-width: 2 !important;
     
                     }
@@ -1793,7 +1796,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             display: flex;
             align-items: center;
             gap: 0.5rem !important;
-            color: $content100;
+            color: var(--content100);
             font-weight: 500 !important;
             svg {
                 width: 0.75rem !important;
@@ -1808,19 +1811,19 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
 
     .neuroglancer-coordinate-space-transform-input-bounds, 
     .neuroglancer-coordinate-space-transform-output-bounds {
-        color: $warning60;
+        color: var(--warning60);
         font-size: 0.75rem;
     }
 
     .neuroglancer-coordinate-space-transform-label {
-        color: $white;
+        color: var(--white);
         font-size: 0.75rem;
         font-style: normal;
     }
 
     .neuroglancer-coordinate-space-transform-input-name, 
     input.neuroglancer-coordinate-space-transform-output-name {
-        color: $caramel60 !important;
+        color: var(--caramel60) !important;
     }
 
     .neuroglancer-coordinate-space-transform-translation-label {
@@ -1833,19 +1836,19 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     .neuroglancer-layer-data-sources-source-id {
         order: 1;
         &:not(:empty) {
-            color: $primary100;
+            color: var(--primary100);
             font-weight: 400;
             text-transform: capitalize;
         }
     }
 
     .neuroglancer-selection-details-layer-title {
-        background-color: $background80;
+        background-color: var(--background80);
         padding: 0.125rem 0.25rem;
         font-size: 0.875rem;
         font-weight: 400;
         line-height: 1.25rem;
-        color: $content100;
+        color: var(--content100);
         font-family: Graphik;
     }
 
@@ -1878,7 +1881,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             font-family: inherit;
             padding: 0;
             font-size: 0.75rem;
-            color: $caramel60;
+            color: var(--caramel60);
             font-weight: 400;
             line-height: 0.8731rem;
         }
@@ -1888,16 +1891,16 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             font-weight: 400;
             line-height: 0.8731rem;
             padding: 0;
-            color: $white;
+            color: var(--white);
         }
 
         .neuroglancer-annotation-details-description {
             margin-top: 0.75rem;
             font-weight: 400;
             font-size: 0.875rem;
-            background: $background80;
-            border: 1px solid $dark80;
-            color: $content100;
+            background: var(--background80);
+            border: 1px solid var(--dark80);
+            color: var(--content100);
             padding: 0.5rem;
             height: 3.25rem;
             font-family: Graphik;
@@ -1917,7 +1920,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             row-gap: 0.5rem;
             margin-bottom: 0.5rem;
             .neuroglancer-icon {
-                color: $content100;
+                color: var(--content100);
             }
         }
 
@@ -1931,7 +1934,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     }
 
     .neuroglancer-selection-details-layer {
-        border-color: $background80;
+        border-color: var(--background80);
         margin-bottom: 0;
         input[type="checkbox"] {
             background: url('../src/ui/images/unselected.svg') no-repeat;
@@ -1957,7 +1960,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             text-overflow: ellipsis;
             overflow: hidden;
             white-space: nowrap;
-            color: $content100;
+            color: var(--content100);
             font-family: monospace;
             font-weight: 400;
             .neuroglancer-annotation-property-label {
@@ -1969,7 +1972,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                 overflow: hidden;
                 white-space: nowrap;
                 font-size: 0.75rem;
-                color: $content100;
+                color: var(--content100);
             }
         }
     }
@@ -1987,7 +1990,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         gap: 0.25rem;
         margin-top: 0.25rem;
         div[title="Extend to additional source dimension"] svg {
-            stroke: $content100;
+            stroke: var(--content100);
             stroke-width: 2 !important;
         }
         .neuroglancer-icon {
@@ -2015,7 +2018,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     }
     .neuroglancer-multiline-autocomplete-dropdown {
         box-shadow: 0px 12px 12px -6px rgba(0, 0, 0, 0.52), 0px 0px 1px 0px rgba(0, 0, 0, 0.40);
-        color: $content100;
+        color: var(--content100);
         font-style: normal !important;
         font-weight: 400;
         padding: 0 !important;
@@ -2026,16 +2029,16 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             outline: 0 !important;
             box-shadow: none !important;
             font-style: normal;
-            color: $content100;
+            color: var(--content100);
             font-family: monospace;
             font-size: 0.875rem;
             &:first-child {
                 font-family: monospace;
-                color: $content100;
+                color: var(--content100);
                 font-size: 0.875rem; 
              
                 &:last-child {
-                    color: $purple10;
+                    color: var(--purple10);
                     font-family: Graphik;
                     font-size: 0.75rem;
                 }
@@ -2048,7 +2051,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         flex-direction: column;
         li.neuroglancer-message-error {
             font-size: 0.75rem;
-            color: $error100;
+            color: var(--error100);
             padding: 0.75rem 0.75rem 0;
         }
     }
@@ -2058,12 +2061,12 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     }
     .neuroglancer-multiline-autocomplete {
         margin: 0;
-        border: 0.0625rem solid $dark80;
+        border: 0.0625rem solid var(--dark80);
         padding: 0.5rem;
         box-sizing: border-box;
         text-overflow: ellipsis;
         white-space: nowrap;
-        background-color: $background80 !important;
+        background-color: var(--background80) !important;
         overflow: hidden;
         font-size: 0.875rem;
         font-weight: 400;
@@ -2072,11 +2075,11 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
 
     .neuroglancer-tab-view-bar {
         height: 2.25rem;
-        background: $dark100;
+        background: var(--dark100);
         padding: 0 0.25rem;
         display: flex;
         align-items: center;
-        border-color: $dark80;
+        border-color: var(--dark80);
 
         .neuroglancer-tab-label {
             position: relative;
@@ -2090,7 +2093,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             line-height: 1.125rem;
             letter-spacing: -0.01em;
             padding: 0 0.75rem;
-            color: $content100;
+            color: var(--content100);
 
             &::before {
                 content: '';
@@ -2102,7 +2105,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             }
 
             &:hover {
-                color: $white;
+                color: var(--white);
             }
 
             &.neuroglancer-selected-tab-label {
@@ -2110,10 +2113,10 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                 border: none;
                 padding: 0 0.75rem;
                 margin-bottom: 0;
-                color: $primary100;
+                color: var(--primary100);
 
                 &::before {
-                    background-color: $primary100;
+                    background-color: var(--primary100);
                 }
             }
         }
@@ -2123,8 +2126,8 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         margin-bottom: 0;
         height: 2.25rem;
         padding: 0 0.5rem;
-        background-color: $dark100;
-        border-bottom: 0.0625rem solid $dark80;
+        background-color: var(--dark100);
+        border-bottom: 0.0625rem solid var(--dark80);
     }
 
     .neuroglancer-position-dimension {
@@ -2140,7 +2143,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         margin-left: 0.25rem;
         padding: 0;
         text-align: left;
-        color: $white;
+        color: var(--white);
     }
 
     .neuroglancer-position-widget {
@@ -2175,7 +2178,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             font-size: 0.75rem;
             font-weight: 400;
             line-height: 0.8731rem;
-            color: $content100;
+            color: var(--content100);
 
         }
 
@@ -2183,21 +2186,21 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             font-size: 0.75rem;
             font-weight: 400;
             line-height: 0.8731rem;
-            color: $content100;
+            color: var(--content100);
         }
 
         &::after {
             font-size: 0.75rem;
             font-weight: 400;
             line-height: 0.8731rem;
-            color: $content100;
+            color: var(--content100);
         }
     }
 
     .neuroglancer-position-dimension-name {
         padding: 0;
         font-size: 0.75rem;
-        color: $caramel60;
+        color: var(--caramel60);
         font-weight: 400;
         line-height: 0.8731rem;
     }
@@ -2214,24 +2217,24 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         }
 
         &.dark-background[data-checked="true"] {
-            background-color: $background60;
+            background-color: var(--background60);
 
             svg {
-                color: $white;
+                color: var(--white);
             }
         }
 
         &.light-background[data-checked="false"] {
             svg {
-                color: $white;
+                color: var(--white);
             }
         }
 
         &:hover {
-            background-color: $background60;
+            background-color: var(--background60);
 
             svg {
-                color: $white;
+                color: var(--white);
             }
         }
     }
@@ -2240,17 +2243,17 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         font-size: 0.75rem;
         font-weight: 400;
         line-height: 0.8731rem;
-        color: $warning60;
+        color: var(--warning60);
         margin-left: 0.75rem;
     }
 
     .neuroglancer-side-panel-column {
-        background-color: $dark100;
+        background-color: var(--dark100);
     }
 
     .neuroglancer-resize-gutter-horizontal {
         padding: 0;
-        background-color: $background80;
+        background-color: var(--background80);
         + .neuroglancer-side-panel-column {
             position: relative;
         }
@@ -2277,7 +2280,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             &[data-checked="true"] {
                 background-color: transparent;
                 &:hover {
-                    background-color: $background80;
+                    background-color: var(--background80);
                 }
             }
         }
@@ -2307,12 +2310,12 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         font-weight: 500;
         line-height: 100%;
         letter-spacing: -0.01em;
-        color: $white;
+        color: var(--white);
         display: flex;
         align-items: center;
         gap: 0.25rem;
         .metacell-neuroglancer-side-panel-title-paragraph {
-            color: $content100;
+            color: var(--content100);
             font-weight: 400;
             position: relative;
             top: -0.15rem;
@@ -2326,24 +2329,24 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         align-items: center;
 
         &[data-archived="true"] {
-            border-color: $background80;
+            border-color: var(--background80);
 
             .neuroglancer-layer-list-panel-item-number {
-                color: $content10;
+                color: var(--content10);
             }
             .neuroglancer-layer-side-panel-name {
-                color: $content100;
+                color: var(--content100);
             }
 
             &:hover {
-                background: $background80;
-                border-color: $dark80;
+                background: var(--background80);
+                border-color: var(--dark80);
                 .neuroglancer-layer-side-panel-name,
                 .neuroglancer-layer-list-panel-item-number {
-                    color: $content100;
+                    color: var(--content100);
                 }
                 .neuroglancer-icon svg {
-                    color: $content100;
+                    color: var(--content100);
                 }
                 .neuroglancer-icon {
                     &+.neuroglancer-icon {
@@ -2375,45 +2378,45 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             }
 
             &[data-selected="true"] {
-                background-color: $background80;
-                border-color: $primary100;
+                background-color: var(--background80);
+                border-color: var(--primary100);
                 .neuroglancer-layer-side-panel-name,
                 .neuroglancer-layer-list-panel-item-number {
-                    color: $content100;
+                    color: var(--content100);
                 }
                 .neuroglancer-icon svg {
-                    color: $content100;
+                    color: var(--content100);
                 }
                 .neuroglancer-layer-list-panel-item-controls {
                     visibility: visible;
                     display: flex;
                 }
                 .neuroglancer-layer-list-panel-item-controls svg {
-                    color: $white !important;
+                    color: var(--white) !important;
                 }
             }
         }
 
         &[data-archived="false"] {
-            border-color: $background80;
+            border-color: var(--background80);
             background: transparent;
 
             .neuroglancer-layer-list-panel-item-number {
-                color: $content100;
+                color: var(--content100);
             }
             .neuroglancer-layer-side-panel-name {
-                color: $white;
+                color: var(--white);
             }
 
             &:hover {
-                background: $background80;
-                border-color: $dark80;
+                background: var(--background80);
+                border-color: var(--dark80);
                 .neuroglancer-layer-side-panel-name,
                 .neuroglancer-layer-list-panel-item-number {
-                    color: $white;
+                    color: var(--white);
                 }
                 .neuroglancer-icon svg {
-                    color: $content100;
+                    color: var(--content100);
                 }
                 .neuroglancer-icon {
                     &+.neuroglancer-icon {
@@ -2462,18 +2465,18 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             }
 
             &[data-selected="true"] {
-                border-color: $primary100;
-                background-color: $background80;
+                border-color: var(--primary100);
+                background-color: var(--background80);
                 .neuroglancer-layer-side-panel-name,
                 .neuroglancer-layer-list-panel-item-number {
-                    color: $white;
+                    color: var(--white);
                 }
                 .neuroglancer-layer-list-panel-item-controls {
                     display: flex;
                     visibility: visible;
                 }
                 .neuroglancer-layer-list-panel-item-controls svg {
-                    color: $white !important;
+                    color: var(--white) !important;
                 }
             }
         }
@@ -2486,7 +2489,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             }
             &:hover {
                 svg {
-                    color: $white !important;
+                    color: var(--white) !important;
                 }
             }
         }
@@ -2506,7 +2509,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
     }
     .neuroglancer-layer-list-panel-item-not-visible {
         .neuroglancer-layer-list-panel-item-number {
-          color: $content100;
+          color: var(--content100);
         }
         .neuroglancer-layer-side-panel-name {
             text-decoration: line-through;
@@ -2521,14 +2524,14 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             visibility: hidden;
         }
         svg {
-            color: $content100 !important
+            color: var(--content100) !important
         }
         &:hover {
-            background: $background80;
-            border-color: $dark80;
+            background: var(--background80);
+            border-color: var(--dark80);
 
             .neuroglancer-layer-list-panel-item-number {
-                color: $content100 !important;
+                color: var(--content100) !important;
             }
             .neuroglancer-icon {
                 display: flex;
@@ -2542,21 +2545,21 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         }
         &[data-selected="true"] {
             .neuroglancer-layer-side-panel-name {
-                color: $white;
+                color: var(--white);
             }
             .neuroglancer-layer-list-panel-item-number {
-                color: $content100 !important;
+                color: var(--content100) !important;
             }
         }
         &[data-archived="false"] {
             &[data-selected="true"] {
                 .neuroglancer-layer-list-panel-item-number {
-                    color: $white !important;
+                    color: var(--white) !important;
                 }
             }
             &:hover {
                 .neuroglancer-layer-list-panel-item-number {
-                    color: $white !important;
+                    color: var(--white) !important;
                 }
             }
         }
@@ -2568,7 +2571,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         font-weight: 400;
         line-height: 1.125rem;
         text-align: left;
-        color: $content100;
+        color: var(--content100);
         padding: 0 0.25rem;
     }
 
@@ -2579,7 +2582,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         line-height: 1;
         margin: 0 0 0 0.25rem;
         letter-spacing: -0.01em;
-        color: $content100;
+        color: var(--content100);
 
         &+div {
             display: flex;
@@ -2590,15 +2593,15 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         }
     }
 
-    // .neuroglancer-settings-body {
-    //     display: flex;
-    //     flex-wrap: wrap;
-    //     flex-direction: row-reverse;
-    // }
+    /* .neuroglancer-settings-body {
+        display: flex;
+        flex-wrap: wrap;
+        flex-direction: row-reverse;
+    } */
     .neuroglancer-settings-body {
         input[type="text"] {
             &::placeholder {
-                color: $white;
+                color: var(--white);
             }
         }
     }
@@ -2609,7 +2612,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             margin-top: 1.2rem;
             font-size: 0.875rem;
             font-weight: 400;
-            color: $content100;
+            color: var(--content100);
             line-height: 1.25rem;
             gap: 1rem;
             &.neuroglancer-number-input {
@@ -2620,18 +2623,18 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
                 &[type='text'] {
                     height: 2.25rem;
                     font-family: Graphik;
-                    border: 0.0625rem solid $dark80;
+                    border: 0.0625rem solid var(--dark80);
                     padding: 0.5rem;
                     box-sizing: border-box;
                     text-overflow: ellipsis;
                     white-space: nowrap;
-                    background-color: $background80 !important;
+                    background-color: var(--background80) !important;
                     overflow: hidden;
                     font-size: 0.875rem;
                     font-weight: 400;
                     line-height: 1.25rem;
                     width: 15ch;
-                    color: $content100;
+                    color: var(--content100);
                     &:focus {
                         outline: none;
                     }
@@ -2678,7 +2681,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         font-family: monospace;
         padding: 0;
         font-size: 0.75rem;
-        color: $caramel60;
+        color: var(--caramel60);
         font-weight: 400;
         line-height: 0.8731rem;
     }
@@ -2689,7 +2692,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         line-height: 0.8731rem;
         margin: 0;
         padding: 0;
-        color: $white;
+        color: var(--white);
     }
 
     .neuroglancer-selection-details-position-dimension {
@@ -2707,7 +2710,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         gap: 0.5rem;
         margin-bottom: 0.5rem;
         div[title="Copy position"] {
-            color: $content100;
+            color: var(--content100);
             svg {
                 stroke: transparent !important;
             }
@@ -2722,7 +2725,7 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             &[title="Add related segment ID"] {
                 svg {
                     stroke-width: 2 !important;
-                    stroke: $content100
+                    stroke: var(--content100)
                 }
             }
         }
@@ -2757,15 +2760,15 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
            
             gap: 0.25rem;
             svg {
-                stroke: $content100;
+                stroke: var(--content100);
             }
             .neuroglancer-icon  {
-                color: $content100;
+                color: var(--content100);
             }
         }
         .neuroglancer-segment-list-entry-id, .neuroglancer-selection-details-segment-id {
             text-align: center;
-            color: $white !important;
+            color: var(--white) !important;
             width: auto;
             padding: 0.063rem 0.125rem;
         }
@@ -2783,11 +2786,11 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         font-family: Graphik;
         width: 100%;
         padding: 0.375rem 0.75rem;
-        background-color: $dark100 !important;
+        background-color: var(--dark100) !important;
         font-size: 0.875rem;
         font-weight: 500;
         line-height: 1.125rem;
-        color: $white !important;
+        color: var(--white) !important;
         letter-spacing: -0.01em;
         box-sizing: border-box;
         position: sticky;
@@ -2805,23 +2808,22 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
         padding: 0 0.75rem;
 
         .dt {
-            // width: 50%;
-            // margin: 0;
-            // padding-top: 0.375rem;
+            /* width: 50%; */
+            /* margin: 0; */
+            /* padding-top: 0.375rem; */
             font-size: 0.75rem;
-            color: $caramel60;
+            color: var(--caramel60);
             font-weight: 400;
             line-height: 0.8731rem;
-
         }
 
         .dd {
-            // width: 50%;
-            // margin: 0;
-            // padding-top: 0.375rem;
+            /* width: 50%; */
+            /* margin: 0; */
+            /* padding-top: 0.375rem; */
             margin: 0.5rem 0 1rem 4ex;
             font-size: 0.75rem;
-            color: $white;
+            color: var(--white);
             font-weight: 400;
             line-height: 0.8731rem;
 
@@ -2831,9 +2833,9 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
             width: 100%;
             padding: 0.375rem 0.75rem;
             margin: 0 -0.75rem 0.75rem;
-            background-color: $dark100;
+            background-color: var(--dark100);
             font-size: 0.875rem;
-            color: $white;
+            color: var(--white);
             font-weight: 500;
             line-height: 1.125rem;
             letter-spacing: -0.01em;
@@ -2842,13 +2844,13 @@ $codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
 
     .neuroglancer-resize-gutter-vertical {
         height: 0.5rem;
-        background-color: $black;
+        background-color: var(--black);
         padding: 0;
-        border-top: 0.0625rem solid $background80;
-        border-bottom: 0.0625rem solid $background80;
+        border-top: 0.0625rem solid var(--background80);
+        border-bottom: 0.0625rem solid var(--background80);
     }
 
     .neuroglancer-data-panel-layout-controls > button:hover {
-        color: $primary120;
+        color: var(--primary120);
     }
 }

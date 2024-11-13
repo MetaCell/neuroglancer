@@ -18,7 +18,7 @@
  */
 import { setupDefaultViewer } from "#src/ui/default_viewer_setup.js";
 import "#src/util/google_tag_manager.js";
-import "#src/metacell-theme.scss";
+import "#src/metacell-theme.css";
 declare const window: any;
 
 window.neuroglancer = setupDefaultViewer;
