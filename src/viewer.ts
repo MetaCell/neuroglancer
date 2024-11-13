@@ -69,7 +69,7 @@ import {
 import { overlaysOpen } from "#src/overlay.js";
 import { ScreenshotHandler } from "#src/python_integration/screenshots.js";
 import { allRenderLayerRoles, RenderLayerRole } from "#src/renderlayer.js";
-import { dispatchMessage, getDeepClonedState, type SessionUpdatePayload } from "#src/services/stateService.ts";
+import { dispatchMessage, getDeepClonedState, STATE_UPDATE, type SessionUpdatePayload } from "#src/services/stateService.ts";
 import { StatusMessage } from "#src/status.js";
 import {
   ElementVisibilityFromTrackableBoolean,
@@ -695,7 +695,7 @@ export class Viewer extends RefCounted implements ViewerState {
           state: getDeepClonedState(this)
         };
 
-        dispatchMessage("STATE_UPDATE", payload);
+        dispatchMessage(STATE_UPDATE, payload);
       })
     );
     // end @metacell
