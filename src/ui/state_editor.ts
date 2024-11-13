@@ -45,7 +45,31 @@ export class StateEditorDialog extends Overlay {
 
     this.content.classList.add("neuroglancer-state-editor");
 
-    
+    const wrapper = document.createElement("div");
+    wrapper.className = "button-group";
+
+    const downloadButton = (this.downloadButton =
+      document.createElement("button"));
+    downloadButton.textContent = "Download";
+    downloadButton.title = "Download state as a JSON file";
+    wrapper.appendChild(downloadButton);
+    downloadButton.addEventListener("click", () => this.downloadState());
+
+    const buttonApply = (this.applyButton = document.createElement("button"));
+    buttonApply.textContent = "Save";
+    buttonApply.classList.add("outlined-primary");
+    wrapper.appendChild(buttonApply);
+    buttonApply.addEventListener("click", () => this.applyChanges());
+    buttonApply.disabled = true;
+
+    const buttonClose = (this.closeButton = document.createElement("button"));
+    buttonClose.classList.add("contained-primary");
+    buttonClose.textContent = "Save & Close";
+    wrapper.appendChild(buttonClose);
+    buttonClose.addEventListener("click", () => {
+      this.applyChanges();
+      this.dispose();
+    });
 
     this.textEditor = CodeMirror((_element) => {}, <any>{
       value: "",
@@ -61,39 +85,7 @@ export class StateEditorDialog extends Overlay {
 
     this.content.appendChild(this.textEditor.getWrapperElement());
     this.textEditor.refresh();
-    
-
-    const wrapper = document.createElement("div");
-    wrapper.className = "button-group";
-
-    this.content.appendChild(wrapper)
-
-    const downloadButton = (this.downloadButton = document.createElement("button"));
-    downloadButton.classList.add("text-primary");
-    downloadButton.textContent = "Download";
-    downloadButton.title = "Download state as a JSON file";
-    wrapper.appendChild(downloadButton);
-    downloadButton.addEventListener("click", () => this.downloadState());
-
-    const buttonApply = (this.applyButton = document.createElement("button"));
-    buttonApply.textContent = "Save";
-    buttonApply.classList.add("outlined-primary");
-    wrapper.appendChild(buttonApply);
-    buttonApply.addEventListener("click", () => {
-      this.applyChanges();
-    });
-    buttonApply.disabled = true;
-
-    const buttonClose = (this.closeButton = document.createElement("button"));
-    buttonClose.classList.add("contained-primary");
-    buttonClose.textContent = "Save & Close";
-    wrapper.appendChild(buttonClose);
-    buttonClose.addEventListener("click", () => {
-      this.applyChanges();
-      this.dispose();
-    });
-
-    
+    this.content.appendChild(wrapper);
   }
 
   private downloadState() {
