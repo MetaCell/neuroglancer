@@ -14,28 +14,26 @@
  * limitations under the License.
  */
 
-import { decodeJpeg } from "#src/async_computation/decode_jpeg_request.js";
+import { decodeJxl } from "#src/async_computation/decode_jxl_request.js";
 import { requestAsyncComputation } from "#src/async_computation/request.js";
 import { postProcessRawData } from "#src/sliceview/backend_chunk_decoders/postprocess.js";
 import type { VolumeChunk } from "#src/sliceview/volume/backend.js";
 import type { CancellationToken } from "#src/util/cancellation.js";
 
-export async function decodeJpegChunk(
+export async function decodeJxlChunk(
   chunk: VolumeChunk,
   cancellationToken: CancellationToken,
   response: ArrayBuffer,
 ) {
   const chunkDataSize = chunk.chunkDataSize!;
   const { uint8Array: decoded } = await requestAsyncComputation(
-    decodeJpeg,
+    decodeJxl,
     cancellationToken,
     [response],
     new Uint8Array(response),
-    undefined,
-    undefined,
     chunkDataSize[0] * chunkDataSize[1] * chunkDataSize[2],
     chunkDataSize[3] || 1,
-    false,
+    1, // bytesPerPixel
   );
   await postProcessRawData(chunk, cancellationToken, decoded);
 }

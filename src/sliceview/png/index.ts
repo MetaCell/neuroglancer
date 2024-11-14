@@ -71,13 +71,13 @@ function readHeader(buffer: Uint8Array): {
   }
 
   if (buffer.length < 8 + 4) {
-    throw new Error("png: Invalid image size: {buffer.length}");
+    throw new Error(`png: Invalid image size: ${buffer.length}`);
   }
 
   // check for header for magic sequence
   const validMagic = arrayEqualTrucated(magicSpec, buffer);
   if (!validMagic) {
-    throw new Error(`png: didn't match magic numbers: {buffer.slice(0,8)}`);
+    throw new Error(`png: didn't match magic numbers: ${buffer.slice(0, 8)}`);
   }
 
   // offset into IHDR chunk so we can read more naturally
@@ -86,7 +86,7 @@ function readHeader(buffer: Uint8Array): {
   const chunkHeaderLength = 12; // len (4), code (4), CRC (4)
 
   if (buffer.length < magicSpec.length + chunkLength + chunkHeaderLength) {
-    throw new Error("png: Invalid image size: {buffer.length}");
+    throw new Error(`png: Invalid image size: ${buffer.length}`);
   }
 
   const chunkCode = [4, 5, 6, 7].map((i) =>
@@ -172,6 +172,7 @@ export async function decompressPng(
   buffer: Uint8Array,
   width: number | undefined,
   height: number | undefined,
+  area: number | undefined,
   numComponents: number | undefined,
   bytesPerPixel: number,
   convertToGrayscale: boolean,
@@ -187,15 +188,17 @@ export async function decompressPng(
   if (
     (width !== undefined && sx !== width) ||
     (height !== undefined && sy !== height) ||
+    (area !== undefined && sx * sy !== area) ||
     (numComponents !== undefined && numComponents !== numChannels) ||
     bytesPerPixel !== dataWidth
   ) {
     throw new Error(
-      `png: Image decode parameters did not match expected chunk parameters.
-         Expected: width: ${width} height: ${height} channels: ${numComponents} bytes per pixel: ${bytesPerPixel} 
-         Decoded:  width: ${sx} height: ${sy} channels: ${numChannels} bytes per pixel: ${dataWidth}
-         Convert to Grayscale? ${convertToGrayscale}
-        `,
+      `png: Image decode parameters did not match expected chunk parameters.  ` +
+        `Expected: width: ${width} height: ${height} area: ${area} ` +
+        `channels: ${numComponents} bytes per pixel: ${bytesPerPixel}.  ` +
+        `Decoded:  width: ${sx} height: ${sy} channels: ${numChannels} ` +
+        `bytes per pixel: ${dataWidth}.  ` +
+        `Convert to Grayscale? ${convertToGrayscale}`,
     );
   }
 

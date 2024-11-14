@@ -8,7 +8,7 @@
     "url": "git+https://github.com/google/neuroglancer.git"
   },
   "engines": {
-    "node": ">=20.10 <21 || >=21.2"
+    "node": ">=20.11 <21 || >=21.2"
   },
   "browserslist": [
     "last 2 Chrome versions",
@@ -84,7 +84,7 @@
     "ikonate": "github:mikolajdobrucki/ikonate#a86b4107c6ec717e7877f880a930d1ccf0b59d89",
     "lodash-es": "^4.17.21",
     "nifti-reader-js": "^0.6.8",
-    "numcodecs": "^0.3.1",
+    "numcodecs": "^0.3.2",
     "pako": "^2.1.0",
     "sass-loader": "^16.0.1",
     "webpack-assets-manifest": "^5.2.1"

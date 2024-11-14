@@ -70,8 +70,6 @@
   left: auto;
   top: auto;
   border-radius: 0.5rem;
-}
-.neuroglancer-screenshot-dialog {
   font-family: sans-serif;
 }
 .neuroglancer-screenshot-dialog .neuroglancer-screenshot-close-and-help {
@@ -149,9 +147,6 @@
   justify-content: space-between;
 }
 
-.neuroglancer-screenshot-dialog .neuroglancer-screenshot-close-button {
-  border: 0;
-}
 .neuroglancer-screenshot-scale-radio {
   display: inline-block;
   cursor: pointer;
@@ -328,7 +323,6 @@
   outline: 0;
   border: 0;
   cursor: pointer;
-  width: 1rem;
   height: 1rem;
   margin-left: auto;
   position: relative;
@@ -367,13 +361,6 @@
   background: #e6e6e6;
   padding: 0.25rem 0.375rem;
 }
-.neuroglancer-screenshot-resolution-table th .neuroglancer-screenshot-tooltip,
-.neuroglancer-screenshot-scale-factor .neuroglancer-screenshot-tooltip {
-  display: inline-block;
-  margin-left: 0.25rem;
-  position: relative;
-  vertical-align: top;
-}
 
 .neuroglancer-screenshot-resolution-table th .neuroglancer-screenshot-tooltip,
 .neuroglancer-screenshot-scale-factor .neuroglancer-screenshot-tooltip {
@@ -383,7 +370,10 @@
   height: 1rem;
   background-size: contain;
   position: relative;
-  cursor: pointer;
+  display: inline-block;
+  margin-left: 0.25rem;
+  position: relative;
+  vertical-align: top;
 }
 
 .neuroglancer-screenshot-resolution-table
@@ -536,13 +526,6 @@
 .neuroglancer-screenshot-footer-container
   .neuroglancer-screenshot-button:disabled {
   display: none;
-}
-
-.neuroglancer-screenshot-copy-icon {
-  position: relative;
-  cursor: pointer;
-  width: 33.33% !important;
-  justify-content: flex-end;
 }
 
 .neuroglancer-screenshot-copy-icon::after {
