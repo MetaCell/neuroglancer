@@ -44,7 +44,10 @@ import { getWatchableRenderLayerTransform } from "#src/render_coordinate_transfo
 import { RenderLayerRole } from "#src/renderlayer.js";
 import type { SegmentationDisplayState } from "#src/segmentation_display_state/frontend.js";
 import type { TrackableBoolean } from "#src/trackable_boolean.js";
-import { ElementVisibilityFromTrackableBoolean, TrackableBooleanCheckbox } from "#src/trackable_boolean.js";
+import {
+  ElementVisibilityFromTrackableBoolean,
+  TrackableBooleanCheckbox,
+} from "#src/trackable_boolean.js";
 import { makeCachedLazyDerivedWatchableValue } from "#src/trackable_value.js";
 import type {
   AnnotationLayerView,
@@ -791,7 +794,6 @@ class RenderingOptionsTab extends Tab {
         colorPicker.element,
       ),
     );
-    element.appendChild(colorPicker.element);
 
     const topRow = document.createElement("div");
     topRow.className =
@@ -816,7 +818,16 @@ class RenderingOptionsTab extends Tab {
     );
     element.appendChild(topRow);
 
+    // TODO temp for demo
     element.appendChild(this.codeWidget.element);
+    const colorPickerContainer = document.createElement("div");
+    const colorPickerLabel = document.createElement("label");
+    colorPickerLabel.textContent = "Annotation color";
+    colorPickerContainer.appendChild(colorPickerLabel);
+    colorPickerContainer.appendChild(colorPicker.element);
+    colorPickerContainer.style.justifyContent = "space-between";
+    colorPickerContainer.style.display = "flex";
+    element.appendChild(colorPickerContainer);
     element.appendChild(
       this.registerDisposer(
         new ShaderControls(
