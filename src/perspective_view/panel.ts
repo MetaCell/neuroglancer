@@ -545,7 +545,7 @@ export class PerspectivePanel extends RenderedDataPanel {
       const showSliceViewsLabel = document.createElement("label");
       showSliceViewsLabel.className =
         "perspective-panel-show-slice-views neuroglancer-noselect";
-      showSliceViewsLabel.appendChild(document.createTextNode("Show sections"));
+      showSliceViewsLabel.appendChild(document.createTextNode("Sections"));
       showSliceViewsLabel.appendChild(showSliceViewsCheckbox.element);
       this.element.appendChild(showSliceViewsLabel);
     }

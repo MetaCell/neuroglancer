@@ -23,6 +23,7 @@ import type {
   StatisticsActionState,
   ScreenshotChunkStatistics,
 } from "#src/python_integration/screenshots.js";
+import { dispatchMessage, NEW_FIGURE } from "#src/services/stateService.ts";
 import { SliceViewPanel } from "#src/sliceview/panel.js";
 import { StatusMessage } from "#src/status.js";
 import {
@@ -268,7 +269,7 @@ export class ScreenshotManager extends RefCounted {
     this.screenshotStartTime =
       this.lastUpdateTimestamp =
       this.gpuMemoryChangeTimestamp =
-        Date.now();
+      Date.now();
     this.screenshotLoadStats = null;
 
     if (shouldIncreaseCanvasSize) {
@@ -358,7 +359,7 @@ export class ScreenshotManager extends RefCounted {
     ) {
       if (
         newStats.timestamp - this.gpuMemoryChangeTimestamp >
-          SCREENSHOT_TIMEOUT &&
+        SCREENSHOT_TIMEOUT &&
         Date.now() - this.lastUpdateTimestamp > SCREENSHOT_TIMEOUT
       ) {
         this.statisticsUpdated.dispatch(fullStats);
@@ -393,6 +394,10 @@ export class ScreenshotManager extends RefCounted {
         renderingPanelArea.bottom - renderingPanelArea.top,
       );
       saveBlobToFile(croppedImage, this.filename);
+      // @metacell
+      // Dispatch message on screenshot creation
+      dispatchMessage(NEW_FIGURE, actionState);
+      // end @metacell
     } catch (error) {
       console.error("Failed to save screenshot:", error);
     } finally {
