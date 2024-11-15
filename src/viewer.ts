@@ -17,7 +17,6 @@
 import "#src/viewer.css";
 import "#src/ui/layer_data_sources_tab.js";
 import "#src/noselect.css";
-import svg_camera from "ikonate/icons/camera.svg?raw";
 import { debounce } from "lodash-es";
 import type { FrameNumberCounter } from "#src/chunk_manager/frontend.js";
 import {
@@ -84,6 +83,7 @@ import {
 import code from "#src/ui/images/code.svg?raw";
 import formatlistbulleted from "#src/ui/images/formatlistbulleted.svg?raw";
 import layers from "#src/ui/images/layers.svg?raw";
+import photocamera from "#src/ui/images/photo_camera.svg?raw";
 import questionmark from "#src/ui/images/questionmark.svg?raw";
 import settings from "#src/ui/images/settings.svg?raw";
 import tune from "#src/ui/images/tune.svg?raw";
@@ -881,7 +881,7 @@ export class Viewer extends RefCounted implements ViewerState {
     }
 
     {
-      const button = makeIcon({ svg: svg_camera, title: "Screenshot" });
+      const button = makeIcon({ svg: photocamera, title: "Screenshot" });
       this.registerEventListener(button, "click", () => {
         this.showScreenshotDialog();
       });

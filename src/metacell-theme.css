@@ -295,6 +295,13 @@
     
 }
 .metacell-theme {
+    .neuroglancer-icon svg {
+        stroke: unset;
+        stroke-width: unset;
+        stroke-linecap: unset;
+        stroke-linejoin: unset;
+        pointer-events: unset;
+    }
     .neuroglancer-invlerp-widget,.neuroglancer-transfer-function-widget {
         display: flex;
         flex-direction: column;
