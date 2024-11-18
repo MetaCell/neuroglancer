@@ -396,7 +396,7 @@ export class ScreenshotManager extends RefCounted {
       saveBlobToFile(croppedImage, this.filename);
       // @metacell
       // Dispatch message on screenshot creation
-      dispatchMessage(NEW_FIGURE, actionState);
+      dispatchMessage(NEW_FIGURE, actionState.screenshot);
       // end @metacell
     } catch (error) {
       console.error("Failed to save screenshot:", error);
