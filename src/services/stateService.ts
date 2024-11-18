@@ -1,4 +1,4 @@
-import type { ScreenshotMetadata } from "#src/python_integration/screenshots.js";
+import type { ScreenshotActionState } from "#src/python_integration/screenshots.js";
 import { getCachedJson } from "#src/util/trackable.js";
 
 export const STATE_UPDATE = "STATE_UPDATE" as const;
@@ -13,7 +13,7 @@ export type MessageType = typeof STATE_UPDATE | typeof NEW_FIGURE | typeof OTHER
     state: any;
 }
 
-export type DispatchablePayload = SessionUpdatePayload | ScreenshotMetadata;
+export type DispatchablePayload = SessionUpdatePayload | ScreenshotActionState;
 
 
 export function dispatchMessage(type: MessageType, payload: DispatchablePayload): void {
