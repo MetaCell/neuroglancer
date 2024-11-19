@@ -67,8 +67,6 @@ import {
   verifyStringArray,
 } from "#src/util/json.js";
 import { NullarySignal } from "#src/util/signal.js";
-import type { AccordionItem } from "#src/widget/accordion.js";
-import { Accordion } from "#src/widget/accordion.js";
 import { DependentViewWidget } from "#src/widget/dependent_view_widget.js";
 import { makeHelpButton } from "#src/widget/help_button.js";
 import { LayerReferenceWidget } from "#src/widget/layer_reference.js";
@@ -86,7 +84,7 @@ const ANNOTATIONS_JSON_KEY = "annotations";
 const ANNOTATION_PROPERTIES_JSON_KEY = "annotationProperties";
 const ANNOTATION_RELATIONSHIPS_JSON_KEY = "annotationRelationships";
 const CROSS_SECTION_RENDER_SCALE_JSON_KEY = "crossSectionAnnotationSpacing";
-const PROJECTION_RENDER_SCALE_JSON_KEY = "projectionAnnotationSpacing";
+export const PROJECTION_RENDER_SCALE_JSON_KEY = "projectionAnnotationSpacing";
 const SHADER_JSON_KEY = "shader";
 const SHADER_CONTROLS_JSON_KEY = "shaderControls";
 
@@ -625,25 +623,6 @@ export class AnnotationUserLayer extends Base {
   }
 
   initializeAnnotationLayerViewTab(tab: AnnotationLayerView) {
-    // Create accordion items
-    const projectionsAccordion = this.createProjectionsAccordion(tab);
-    const segmentFilteringAccordion = this.createSegmentFilteringAccordion(tab);
-  
-    // Create the accordion and add the items
-    const accordion = new Accordion([
-      projectionsAccordion,
-      segmentFilteringAccordion,
-    ]);
-  
-    // Append the accordion to the tab element
-    tab.element.insertBefore(accordion.getElement(), tab.element.firstChild);
-  }
-  
-  // Create Projections Accordion (for render scale widgets)
-  private createProjectionsAccordion(tab: AnnotationLayerView): AccordionItem {
-    const containerDiv = document.createElement("div");
-    containerDiv.className = "projections-container";
-  
     const hasChunkedSource = tab.registerDisposer(
       makeCachedLazyDerivedWatchableValue(
         (states) =>
@@ -651,78 +630,62 @@ export class AnnotationUserLayer extends Base {
         this.annotationStates,
       ),
     );
-  
     const renderScaleControls = tab.registerDisposer(
       new DependentViewWidget(
         hasChunkedSource,
         (hasChunkedSource, parent, refCounted) => {
           if (!hasChunkedSource) return;
-  
-          // Render scale for cross section
-          const crossSectionWidget = refCounted.registerDisposer(
-            new RenderScaleWidget(
-              this.annotationCrossSectionRenderScaleHistogram,
-              this.annotationCrossSectionRenderScaleTarget,
-            ),
-          );
-          crossSectionWidget.label.textContent = "Cross section";
-          parent.appendChild(crossSectionWidget.element);
-  
-          // Render scale for projection
-          const projectionWidget = refCounted.registerDisposer(
-            new RenderScaleWidget(
-              this.annotationProjectionRenderScaleHistogram,
-              this.annotationProjectionRenderScaleTarget,
-            ),
-          );
-          projectionWidget.label.textContent = "Projection";
-          parent.appendChild(projectionWidget.element);
+          {
+            const renderScaleWidget = refCounted.registerDisposer(
+              new RenderScaleWidget(
+                this.annotationCrossSectionRenderScaleHistogram,
+                this.annotationCrossSectionRenderScaleTarget,
+              ),
+            );
+            renderScaleWidget.label.textContent = "Cross section";
+            parent.appendChild(renderScaleWidget.element);
+          }
+          {
+            const renderScaleWidget = refCounted.registerDisposer(
+              new RenderScaleWidget(
+                this.annotationProjectionRenderScaleHistogram,
+                this.annotationProjectionRenderScaleTarget,
+              ),
+            );
+            renderScaleWidget.label.textContent = "Projection";
+            parent.appendChild(renderScaleWidget.element);
+          }
         },
       ),
     );
-  
-    // Add the render scale controls to the container
-    containerDiv.appendChild(renderScaleControls.element);
-  
-    return {
-      title: "Spacing",
-      content: containerDiv,
-    };
-  }
-  
-  // Create Segment Filtering Accordion (for checkbox and segmentation layers)
-  private createSegmentFilteringAccordion(tab: AnnotationLayerView): AccordionItem {
-    const containerDiv = document.createElement("div");
-    containerDiv.className = "segment-filtering-container";
-  
-    // Checkbox for ignoring null related segment filter
-    const checkbox = tab.registerDisposer(
-      new TrackableBooleanCheckbox(
-        this.annotationDisplayState.ignoreNullSegmentFilter,
-      ),
+    renderScaleControls.element.id = PROJECTION_RENDER_SCALE_JSON_KEY;
+    tab.element.insertBefore(
+      renderScaleControls.element,
+      tab.element.firstChild,
     );
-    const label = document.createElement("label");
-    label.appendChild(document.createTextNode("Ignore null related segment filter"));
-    label.title =
-      "Display all annotations if filtering by related segments is enabled but no segments are selected";
-    label.appendChild(checkbox.element);
-    label.classList.add("neuroglass-ignore-label");
-  
-    // Add the checkbox to the container
-    containerDiv.appendChild(label);
-  
-    // Linked segmentation layers widget
+    {
+      const checkbox = tab.registerDisposer(
+        new TrackableBooleanCheckbox(
+          this.annotationDisplayState.ignoreNullSegmentFilter,
+        ),
+      );
+      const label = document.createElement("label");
+      label.appendChild(
+        document.createTextNode("Ignore null related segment filter"),
+      );
+      label.title =
+        "Display all annotations if filtering by related segments is enabled but no segments are selected";
+      label.appendChild(checkbox.element);
+      label.classList.add("neuroglass-ignore-label");
+      label.id = "segmentFilterLabel";
+      tab.element.appendChild(label);
+    }
     const linkedSegmentationLayersWidget = tab.registerDisposer(
       new LinkedSegmentationLayersWidget(this.linkedSegmentationLayers),
     );
-    containerDiv.appendChild(linkedSegmentationLayersWidget.element);
-  
-    return {
-      title: "Segment Filtering",
-      content: containerDiv,
-    };
+    linkedSegmentationLayersWidget.element.id = "segmentationLayersWidget";
+    tab.element.appendChild(linkedSegmentationLayersWidget.element);
   }
-  
 
   toJSON() {
     const x = super.toJSON();

@@ -1,3 +1,4 @@
+import { PROJECTION_RENDER_SCALE_JSON_KEY } from "#src/layer/annotation/index.js";
 import {
   BLEND_JSON_KEY,
   CROSS_SECTION_RENDER_SCALE_JSON_KEY,
@@ -11,38 +12,25 @@ import {
 import { Accordion } from "#src/widget/accordion.js";
 import { type AccordionItem } from "#src/widget/accordion.js";
 
-const CONTROL_CATEGORIES = {
-  slice2D: {
-    title: "Slice 2D",
-    className: ["slice-2d-container"],
-    controls: [
-      CROSS_SECTION_RENDER_SCALE_JSON_KEY,
-      BLEND_JSON_KEY,
-      OPACITY_JSON_KEY,
-    ] as string[],
-  },
-  volume: {
-    title: "Volume Rendering",
-    className: ["volume-rendering-container"],
-    controls: [
-      VOLUME_RENDERING_JSON_KEY,
-      VOLUME_RENDERING_GAIN_JSON_KEY,
-      VOLUME_RENDERING_DEPTH_SAMPLES_JSON_KEY,
-    ] as string[],
-  },
-  shader: {
-    title: "Shader",
-    className: ["channels-container", "shader"],
-    controls: [SHADER_JSON_KEY, SHADER_CONTROLS_JSON_KEY] as string[],
-  },
-} as const;
+interface AccordionItemSelector {
+  title: string;
 
-type ControlCategory = keyof typeof CONTROL_CATEGORIES;
+  // Classnames to be add to the
+  // accordion item.
+  classNames: string[];
 
-function buildAccordion(root: Element) {
-  const categoryElements = new Map<ControlCategory, Element[]>();
-  Object.keys(CONTROL_CATEGORIES).forEach((category) => {
-    categoryElements.set(category as ControlCategory, []);
+  // Ids used to select elements to
+  // build an accordion item.
+  selectIds: string[];
+}
+
+function buildAccordion(
+  root: Element,
+  selectors: Record<any, AccordionItemSelector>,
+) {
+  const categoryElements = new Map<string, Element[]>();
+  Object.keys(selectors).forEach((category) => {
+    categoryElements.set(category, []);
   });
 
   // categorize children so we can understand how to group them
@@ -52,9 +40,9 @@ function buildAccordion(root: Element) {
       return;
     }
 
-    const categoryMatch = Object.entries(CONTROL_CATEGORIES).find(
-      ([_, categoryData]) => categoryData.controls.includes(controlId),
-    )?.[0] as ControlCategory | undefined;
+    const categoryMatch = Object.entries(selectors).find(([_, data]) =>
+      data.selectIds.includes(controlId),
+    )?.[0];
 
     if (categoryMatch) {
       categoryElements.get(categoryMatch)?.push(child);
@@ -69,7 +57,7 @@ function buildAccordion(root: Element) {
     }
 
     const containerDiv = document.createElement("div");
-    CONTROL_CATEGORIES[category].className.forEach((className) => {
+    selectors[category].classNames.forEach((className) => {
       containerDiv.classList.add(className);
     });
 
@@ -78,7 +66,7 @@ function buildAccordion(root: Element) {
     });
 
     accordionItems.push({
-      title: CONTROL_CATEGORIES[category].title,
+      title: selectors[category].title,
       content: containerDiv,
     });
   });
@@ -91,13 +79,77 @@ function buildAccordion(root: Element) {
   root.appendChild(accordion.getElement());
 }
 
-export function buildAccordions(root: HTMLElement) {
+const LAYER_RENDERING_ACCORDION_SELECTOR: Record<
+  string,
+  AccordionItemSelector
+> = {
+  slice2D: {
+    title: "Slice 2D",
+    classNames: ["slice-2d-container"],
+    selectIds: [
+      CROSS_SECTION_RENDER_SCALE_JSON_KEY,
+      BLEND_JSON_KEY,
+      OPACITY_JSON_KEY,
+    ],
+  },
+  volume: {
+    title: "Volume Rendering",
+    classNames: ["volume-rendering-container"],
+    selectIds: [
+      VOLUME_RENDERING_JSON_KEY,
+      VOLUME_RENDERING_GAIN_JSON_KEY,
+      VOLUME_RENDERING_DEPTH_SAMPLES_JSON_KEY,
+    ],
+  },
+  shader: {
+    title: "Shader",
+    classNames: ["channels-container", "shader"],
+    selectIds: [SHADER_JSON_KEY, SHADER_CONTROLS_JSON_KEY],
+  },
+} as const;
+
+// Builds the accordion for the layer side panel rendering tab.
+function buildLayerRenderingAccordion(root: HTMLElement) {
   const dropdowns = root.getElementsByClassName("neuroglancer-image-dropdown");
   if (dropdowns.length === 0) {
     return;
   }
 
   Array.from(dropdowns).forEach((dropdown) => {
-    buildAccordion(dropdown);
+    buildAccordion(dropdown, LAYER_RENDERING_ACCORDION_SELECTOR);
   });
+}
+
+const ANNOTATIONS_USER_LAYER_ACCORDION_SELECTOR: Record<
+  string,
+  AccordionItemSelector
+> = {
+  projections: {
+    title: "Spacing",
+    classNames: ["projections-container"],
+    selectIds: [PROJECTION_RENDER_SCALE_JSON_KEY],
+  },
+  segmentFiltering: {
+    title: "Segment Filtering",
+    classNames: ["segment-filtering-container"],
+    selectIds: ["segmentFilterLabel", "segmentationLayersWidget"],
+  },
+} as const;
+
+function buildAnnotationsUserLayerAccordion(root: HTMLElement) {
+  const accordions = root.getElementsByClassName(
+    "neuroglancer-annotation-layer-view",
+  );
+  if (accordions.length === 0) {
+    return;
+  }
+
+  Array.from(accordions).forEach((accordion) => {
+    buildAccordion(accordion, ANNOTATIONS_USER_LAYER_ACCORDION_SELECTOR);
+  });
+}
+
+export function buildAccordions(root: HTMLElement) {
+  buildLayerRenderingAccordion(root);
+  buildAnnotationsUserLayerAccordion(root);
 }
