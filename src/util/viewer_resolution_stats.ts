@@ -18,6 +18,7 @@
 
 import type { RenderedPanel } from "#src/display_context.js";
 import { PerspectivePanel } from "#src/perspective_view/panel.js";
+import type{ LayerResolutionData, PanelResolutionData, ResolutionMetadata } from "#src/python_integration/screenshots.js";
 import { RenderedDataPanel } from "#src/rendered_data_panel.js";
 import { RenderLayerRole } from "#src/renderlayer.js";
 import { SliceViewPanel } from "#src/sliceview/panel.js";
@@ -420,10 +421,10 @@ function formatPixelResolution(panelArea: PanelViewport, scale: number) {
 export function getViewerResolutionMetadata(
   viewer: Viewer,
   sliceViewScaleFactor: number = 1,
-) {
+) : ResolutionMetadata {
   // Process the panel resolution table
   const panelResolution = getViewerPanelResolutions(viewer.display.panels);
-  const panelResolutionData = [];
+  const panelResolutionData: PanelResolutionData[] = [];
   for (const resolution of panelResolution) {
     const physicalResolution = formatPhysicalResolution(
       resolution.physicalResolution,
@@ -445,7 +446,7 @@ export function getViewerResolutionMetadata(
 
   // Process the layer resolution table
   const layerResolution = getViewerLayerResolutions(viewer);
-  const layerResolutionData = [];
+  const layerResolutionData: LayerResolutionData[] = [];
   for (const [key, value] of layerResolution) {
     const { name, type } = key;
     if (type === "MultiscaleMeshLayer") {
