@@ -1,3 +1,4 @@
+import type { ScreenshotActionState } from "#src/python_integration/screenshots.js";
 import { getCachedJson } from "#src/util/trackable.js";
 
 export const STATE_UPDATE = "STATE_UPDATE" as const;
@@ -6,48 +7,13 @@ export const OTHER = "OTHER" as const;
 
 export type MessageType = typeof STATE_UPDATE | typeof NEW_FIGURE | typeof OTHER;
 
-export interface ViewerState {
-    dimensions: Record<string, [number, string]>;
-    position: [number, number, number];
-    crossSectionScale: number;
-    projectionScale: number;
-    layers: Layer[];
-    selectedLayer: SelectedLayer;
-    layout: string;
-  }
-  
-  export interface Layer {
-    type: string;
-    source: string;
-    tab: string;
-    name: string;
-  }
-  
-  export interface SelectedLayer {
-    visible: boolean;
-    layer: string;
-  }
-  
-  export interface Screenshot {
-    id: string;
-    image: string;  // base64 encoded image
-    imageType: string;
-    width: number;
-    height: number;
-  }
-  
-  export interface NewFigurePayload {
-    viewerState: ViewerState;
-    selectedValues: Record<string, any>;  
-    screenshot: Screenshot;
-  }
-    
+
   export interface SessionUpdatePayload {
     url: string;
-    state: any; // Adjust as needed for more specific typing
+    state: any;
 }
 
-export type DispatchablePayload = SessionUpdatePayload | NewFigurePayload;
+export type DispatchablePayload = SessionUpdatePayload | ScreenshotActionState;
 
 
 export function dispatchMessage(type: MessageType, payload: DispatchablePayload): void {
