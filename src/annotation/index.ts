@@ -77,9 +77,20 @@ export enum AnnotationType {
   LINE = 1,
   AXIS_ALIGNED_BOUNDING_BOX = 2,
   ELLIPSOID = 3,
+  POLYLINE = 4,
+  // POLYGON = 5,
 }
 
 export const annotationTypes = [
+  AnnotationType.POINT,
+  AnnotationType.LINE,
+  AnnotationType.AXIS_ALIGNED_BOUNDING_BOX,
+  AnnotationType.ELLIPSOID,
+  AnnotationType.POLYLINE,
+  // AnnotationType.POLYGON,
+];
+
+export const oldAnnotationTypes = [
   AnnotationType.POINT,
   AnnotationType.LINE,
   AnnotationType.AXIS_ALIGNED_BOUNDING_BOX,
@@ -652,6 +663,16 @@ export interface Line extends AnnotationBase {
   type: AnnotationType.LINE;
 }
 
+export interface Polyline extends AnnotationBase {
+  points: Float32Array[];
+  type: AnnotationType.POLYLINE;
+}
+
+// export interface Polygon extends AnnotationBase {
+//   points: Float32Array[];
+//   type: AnnotationType.POLYGON;
+// }
+
 export interface Point extends AnnotationBase {
   point: Float32Array;
   type: AnnotationType.POINT;
@@ -669,7 +690,13 @@ export interface Ellipsoid extends AnnotationBase {
   type: AnnotationType.ELLIPSOID;
 }
 
-export type Annotation = Line | Point | AxisAlignedBoundingBox | Ellipsoid;
+export type Annotation =
+  | Line
+  | Point
+  | AxisAlignedBoundingBox
+  | Ellipsoid
+  | Polyline;
+// | Polygon;
 
 export interface AnnotationTypeHandler<T extends Annotation = Annotation> {
   icon: string;
@@ -751,6 +778,24 @@ function deserializeTwoFloatVectors(
   return offset;
 }
 
+function deserializeManyFloatVectors(
+  buffer: DataView,
+  offset: number,
+  isLittleEndian: boolean,
+  rank: number,
+  points: Float32Array[],
+) {
+  // The buffer contains a sequence of vectors, each of length `rank`.
+  // Each vector is stored as a sequence of `rank` 32-bit floats.
+  while (offset < buffer.byteLength) {
+    const vec = new Float32Array(rank);
+    offset = deserializeFloatVector(buffer, offset, isLittleEndian, rank, vec);
+    points.push(vec);
+  }
+
+  return offset;
+}
+
 export const annotationTypeHandlers: Record<
   AnnotationType,
   AnnotationTypeHandler
@@ -815,6 +860,117 @@ export const annotationTypeHandlers: Record<
       callback(annotation.pointB, false);
     },
   },
+  [AnnotationType.POLYLINE]: {
+    icon: "⤤",
+    description: "Polyline",
+    toJSON(annotation: Polyline) {
+      return {
+        points: annotation.points.map((point) => Array.from(point)),
+      };
+    },
+    restoreState(annotation: Polyline, obj: any, rank: number) {
+      annotation.points = verifyObjectProperty(obj, "points", (points) =>
+        parseArray(points, (point) =>
+          parseFixedLengthArray(
+            new Float32Array(rank),
+            point,
+            verifyFiniteFloat,
+          ),
+        ),
+      );
+    },
+    // TODO need to pull the count into this
+    serializedBytes(rank: number) {
+      return 4 * 2 * rank;
+    },
+    serialize(
+      buffer: DataView,
+      offset: number,
+      isLittleEndian: boolean,
+      rank: number,
+      annotation: Polyline,
+    ) {
+      for (const point of annotation.points) {
+        offset = serializeFloatVector(
+          buffer,
+          offset,
+          isLittleEndian,
+          rank,
+          point,
+        );
+      }
+    },
+    deserialize(
+      buffer: DataView,
+      offset: number,
+      isLittleEndian: boolean,
+      rank: number,
+      id: string,
+    ): Polyline {
+      const points = new Array<Float32Array>();
+      deserializeManyFloatVectors(buffer, offset, isLittleEndian, rank, points);
+      return { type: AnnotationType.POLYLINE, points, id, properties: [] };
+    },
+    visitGeometry(annotation: Polyline, callback) {
+      for (const point of annotation.points) {
+        callback(point, false);
+      }
+    },
+  },
+  // [AnnotationType.POLYGON]: {
+  //   icon: "⬠",
+  //   description: "Polygon",
+  //   toJSON: (annotation: Polygon) => {
+  //     return {
+  //       points: annotation.points.map((point) => Array.from(point)),
+  //     };
+  //   },
+  //   restoreState: (annotation: Polygon, obj: any, rank: number) => {
+  //     annotation.points = verifyObjectProperty(obj, "points", (points) =>
+  //       parseArray(points, (point) =>
+  //         parseFixedLengthArray(
+  //           new Float32Array(rank),
+  //           point,
+  //           verifyFiniteFloat,
+  //         ),
+  //       ),
+  //     );
+  //   },
+  //   serializedBytes: (rank) => 4 * rank,
+  //   serialize: (
+  //     buffer: DataView,
+  //     offset: number,
+  //     isLittleEndian: boolean,
+  //     rank: number,
+  //     annotation: Polygon,
+  //   ) => {
+  //     for (const point of annotation.points) {
+  //       offset = serializeFloatVector(
+  //         buffer,
+  //         offset,
+  //         isLittleEndian,
+  //         rank,
+  //         point,
+  //       );
+  //     }
+  //   },
+  //   deserialize: (
+  //     buffer: DataView,
+  //     offset: number,
+  //     isLittleEndian: boolean,
+  //     rank: number,
+  //     id: string,
+  //   ): Polygon => {
+  //     const points = new Array<Float32Array>();
+  //     deserializeManyFloatVectors(buffer, offset, isLittleEndian, rank, points);
+  //     return { type: AnnotationType.POLYGON, points, id, properties: [] };
+  //   },
+  //   visitGeometry(annotation: Polygon, callback) {
+  //     for (const point of annotation.points) {
+  //       callback(point, false);
+  //     }
+  //   },
+  // },
   [AnnotationType.POINT]: {
     icon: "⚬",
     description: "Point",
@@ -1308,6 +1464,7 @@ export class LocalAnnotationSource extends AnnotationSource {
     };
 
     for (const annotation of this.annotationMap.values()) {
+      // TODO (SKM) properly handle polyline annotation
       switch (annotation.type) {
         case AnnotationType.POINT:
           annotation.point = mapVector(annotation.point);
@@ -1316,6 +1473,9 @@ export class LocalAnnotationSource extends AnnotationSource {
         case AnnotationType.AXIS_ALIGNED_BOUNDING_BOX:
           annotation.pointA = mapVector(annotation.pointA);
           annotation.pointB = mapVector(annotation.pointB);
+          break;
+        case AnnotationType.POLYLINE:
+          annotation.points = annotation.points.map(mapVector);
           break;
         case AnnotationType.ELLIPSOID:
           annotation.center = mapVector(annotation.center);
@@ -1424,12 +1584,14 @@ function serializeAnnotations(
 }
 
 export class AnnotationSerializer {
-  annotations: [Point[], Line[], AxisAlignedBoundingBox[], Ellipsoid[]] = [
-    [],
-    [],
-    [],
-    [],
-  ];
+  annotations: [
+    Point[],
+    Line[],
+    AxisAlignedBoundingBox[],
+    Ellipsoid[],
+    Polyline[],
+    // Polygon[],
+  ] = [[], [], [], [], []];
   constructor(public propertySerializers: AnnotationPropertySerializer[]) {}
   add(annotation: Annotation) {
     (<Annotation[]>this.annotations[annotation.type]).push(annotation);
