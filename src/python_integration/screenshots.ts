@@ -29,16 +29,11 @@ import { verifyOptionalString } from "#src/util/json.js";
 import { Signal } from "#src/util/signal.js";
 import { getCachedJson } from "#src/util/trackable.js";
 import { ScreenshotMode } from "#src/util/trackable_screenshot_mode.js";
+import type { ResolutionMetadata } from "#src/util/viewer_resolution_stats.js";
 import { getViewerResolutionMetadata } from "#src/util/viewer_resolution_stats.js";
 import type { Viewer } from "#src/viewer.js";
 
-export interface ScreenshotActionState {
-  viewerState: any;
-  selectedValues: any;
-  screenshot: ScreenshotMetadata;
-}
-
-export interface ScreenshotMetadata {
+export interface ScreenshotResult {
   id: string;
   image: string;
   imageType: string;
@@ -48,22 +43,10 @@ export interface ScreenshotMetadata {
   resolutionMetadata: ResolutionMetadata;
 }
 
-export interface ResolutionMetadata {
-  panelResolutionData: PanelResolutionData[];
-  layerResolutionData: LayerResolutionData[];
-}
-
-export interface PanelResolutionData {
-  type: string;
-  width: number;
-  height: number;
-  resolution: string;
-}
-
-export interface LayerResolutionData {
-  name: string;
-  type: string;
-  resolution: string;
+export interface ScreenshotActionState {
+  viewerState: any;
+  selectedValues: any;
+  screenshot: ScreenshotResult;
 }
 
 export interface ScreenshotChunkStatistics {
@@ -202,8 +185,7 @@ export class ScreenshotHandler extends RefCounted {
     this.throttledSendStatistics.cancel();
     viewer.display.draw();
     const screenshotData = viewer.display.canvas.toDataURL();
-    const scaleMultiplier = 1;
-    const resolutionMetadata = getViewerResolutionMetadata(this.viewer, scaleMultiplier);
+    const resolutionMetadata = getViewerResolutionMetadata(viewer);
     const { width, height } = viewer.display.canvas;
     const prefix = "data:image/png;base64,";
     let imageType: string;
@@ -233,7 +215,7 @@ export class ScreenshotHandler extends RefCounted {
         depthData,
         width,
         height,
-        resolutionMetadata
+        resolutionMetadata,
       },
     };
 

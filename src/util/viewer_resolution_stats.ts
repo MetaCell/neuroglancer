@@ -18,7 +18,6 @@
 
 import type { RenderedPanel } from "#src/display_context.js";
 import { PerspectivePanel } from "#src/perspective_view/panel.js";
-import type{ LayerResolutionData, PanelResolutionData, ResolutionMetadata } from "#src/python_integration/screenshots.js";
 import { RenderedDataPanel } from "#src/rendered_data_panel.js";
 import { RenderLayerRole } from "#src/renderlayer.js";
 import { SliceViewPanel } from "#src/sliceview/panel.js";
@@ -34,11 +33,6 @@ export interface DimensionResolutionStats {
   resolutionWithUnit: string;
 }
 
-interface LayerIdentifier {
-  name: string;
-  type: string;
-}
-
 export interface PanelViewport {
   left: number;
   right: number;
@@ -47,7 +41,30 @@ export interface PanelViewport {
   panelType: string;
 }
 
-export interface PanelResolutionStats {
+export interface ResolutionMetadata {
+  panelResolutionData: PanelResolutionData[];
+  layerResolutionData: LayerResolutionData[];
+}
+
+interface PanelResolutionData {
+  type: string;
+  width: number;
+  height: number;
+  resolution: string;
+}
+
+interface LayerResolutionData {
+  name: string;
+  type: string;
+  resolution: string;
+}
+
+interface LayerIdentifier {
+  name: string;
+  type: string;
+}
+
+interface PanelResolutionStats {
   pixelResolution: PanelViewport;
   physicalResolution: DimensionResolutionStats[];
 }
@@ -402,9 +419,9 @@ function formatPhysicalResolution(resolution: DimensionResolutionStats[]) {
   }
 }
 
-function formatPixelResolution(panelArea: PanelViewport, scale: number) {
-  const width = Math.round(panelArea.right - panelArea.left) * scale;
-  const height = Math.round(panelArea.bottom - panelArea.top) * scale;
+function formatPixelResolution(panelArea: PanelViewport) {
+  const width = Math.round(panelArea.right - panelArea.left);
+  const height = Math.round(panelArea.bottom - panelArea.top);
   const type = panelArea.panelType;
   return { width, height, type };
 }
@@ -420,8 +437,7 @@ function formatPixelResolution(panelArea: PanelViewport, scale: number) {
  */
 export function getViewerResolutionMetadata(
   viewer: Viewer,
-  sliceViewScaleFactor: number = 1,
-) : ResolutionMetadata {
+): ResolutionMetadata {
   // Process the panel resolution table
   const panelResolution = getViewerPanelResolutions(viewer.display.panels);
   const panelResolutionData: PanelResolutionData[] = [];
@@ -432,10 +448,7 @@ export function getViewerResolutionMetadata(
     if (physicalResolution === null) {
       continue;
     }
-    const pixelResolution = formatPixelResolution(
-      resolution.pixelResolution,
-      sliceViewScaleFactor,
-    );
+    const pixelResolution = formatPixelResolution(resolution.pixelResolution);
     panelResolutionData.push({
       type: physicalResolution.type,
       width: pixelResolution.width,
