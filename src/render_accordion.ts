@@ -21,7 +21,11 @@ interface AccordionItemSelector {
 
   // Ids used to select elements to
   // build an accordion item.
-  selectIds: string[];
+  selectIds?: string[];
+
+  // ClassNames used to select elements to
+  // build an accordion item.
+  selectClassNames?: string[];
 }
 
 function buildAccordion(
@@ -35,17 +39,19 @@ function buildAccordion(
 
   // categorize children so we can understand how to group them
   Array.from(root.children).forEach((child) => {
-    const controlId = child.id;
-    if (!controlId) {
-      return;
-    }
-
-    const categoryMatch = Object.entries(selectors).find(([_, data]) =>
-      data.selectIds.includes(controlId),
+    const matchIds = Object.entries(selectors).find(([_, data]) =>
+      data.selectIds?.includes(child.id),
     )?.[0];
 
-    if (categoryMatch) {
-      categoryElements.get(categoryMatch)?.push(child);
+    const matchClasses = Object.entries(selectors).find(([_, data]) =>
+      data.selectClassNames?.some((className) =>
+        child.classList.contains(className),
+      ),
+    )?.[0];
+
+    const category = matchIds || matchClasses;
+    if (category) {
+      categoryElements.get(category)?.push(child);
     }
   });
 
@@ -149,7 +155,52 @@ function buildAnnotationsUserLayerAccordion(root: HTMLElement) {
   });
 }
 
+const DATA_SOURCES_ACCORDION_SELECTOR: Record<string, AccordionItemSelector> = {
+  enabledComponents: {
+    title: "Enabled components",
+    classNames: ["data-source-container", "enabled-components-container"],
+    selectIds: ["enableDefaultSubsourcesLabel"],
+    selectClassNames: ["neuroglancer-layer-data-source-subsource"],
+  },
+  scaleAndTranslation: {
+    title: "Scale and translation",
+    classNames: ["data-source-container", "transform-container"],
+    selectIds: ["transformWidget"],
+  },
+};
+
+function buildDataSourcesAccordion(root: HTMLElement) {
+  const dataSourceAccordion = root.getElementsByClassName(
+    "neuroglancer-layer-data-source",
+  );
+  if (dataSourceAccordion.length === 0) {
+    return;
+  }
+
+  Array.from(dataSourceAccordion).forEach((accordion) => {
+    buildAccordion(accordion, {
+      dataSource: {
+        title: "Data source",
+        classNames: ["data-source-container"],
+        selectIds: ["dataSourceUrlInputElement"],
+      },
+    });
+  });
+
+  const accordions = root.getElementsByClassName(
+    "neuroglancer-layer-data-source-div",
+  );
+  if (accordions.length === 0) {
+    return;
+  }
+
+  Array.from(accordions).forEach((accordion) => {
+    buildAccordion(accordion, DATA_SOURCES_ACCORDION_SELECTOR);
+  });
+}
+
 export function buildAccordions(root: HTMLElement) {
   buildLayerRenderingAccordion(root);
   buildAnnotationsUserLayerAccordion(root);
+  buildDataSourcesAccordion(root);
 }
