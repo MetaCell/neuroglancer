@@ -546,48 +546,45 @@ class RenderingOptionsTab extends Tab {
     const channelElem = document.createElement("div");
     channelElem.id = SHADER_CONTROLS_JSON_KEY;
 
-    {
-      const element = channelElem;
-      const topRow = document.createElement("div");
-      topRow.className = "neuroglancer-image-dropdown-top-row";
-      topRow.appendChild(document.createTextNode("Shader"));
-      topRow.appendChild(spacer);
-      topRow.appendChild(
-        makeMaximizeButton({
-          title: "Show larger editor view",
-          onClick: () => {
-            new ShaderCodeOverlay(this.layer);
-          },
-        }),
-      );
-      topRow.appendChild(
-        makeHelpButton({
-          title: "Documentation on image layer rendering",
-          href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
-        }),
-      );
+    const topRow = document.createElement("div");
+    topRow.className = "neuroglancer-image-dropdown-top-row";
+    topRow.appendChild(document.createTextNode("Shader"));
+    topRow.appendChild(spacer);
+    topRow.appendChild(
+      makeMaximizeButton({
+        title: "Show larger editor view",
+        onClick: () => {
+          new ShaderCodeOverlay(this.layer);
+        },
+      }),
+    );
+    topRow.appendChild(
+      makeHelpButton({
+        title: "Documentation on image layer rendering",
+        href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
+      }),
+    );
 
-      element.appendChild(topRow);
-      element.appendChild(
-        this.registerDisposer(
-          new ChannelDimensionsWidget(layer.channelCoordinateSpaceCombiner),
-        ).element,
-      );
-      element.appendChild(this.codeWidget.element);
-      element.appendChild(
-        this.registerDisposer(
-          new ShaderControls(
-            layer.shaderControlState,
-            this.layer.manager.root.display,
-            this.layer,
-            {
-              visibility: this.visibility,
-              legendShaderOptions: this.layer.getLegendShaderOptions(),
-            },
-          ),
-        ).element,
-      );
-    }
+    channelElem.appendChild(topRow);
+    channelElem.appendChild(
+      this.registerDisposer(
+        new ChannelDimensionsWidget(layer.channelCoordinateSpaceCombiner),
+      ).element,
+    );
+    channelElem.appendChild(this.codeWidget.element);
+    channelElem.appendChild(
+      this.registerDisposer(
+        new ShaderControls(
+          layer.shaderControlState,
+          this.layer.manager.root.display,
+          this.layer,
+          {
+            visibility: this.visibility,
+            legendShaderOptions: this.layer.getLegendShaderOptions(),
+          },
+        ),
+      ).element,
+    );
 
     element.appendChild(channelElem);
   }
