@@ -11,67 +11,26 @@ import {
   fixedColorLayerControl,
 } from "#src/widget/segmentation_color_mode.js";
 
-export const VISIBILITY_LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
+export const LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
   {
-    label: "Hide segment ID 0",
-    toolJson: json_keys.HIDE_SEGMENT_ZERO_JSON_KEY,
-    title: "Disallow selection and display of segment id 0",
-    ...checkboxLayerControl((layer) => layer.displayState.hideSegmentZero),
+    label: "Color seed",
+    title: "Color segments based on a hash of their id",
+    toolJson: json_keys.COLOR_SEED_JSON_KEY,
+    ...colorSeedLayerControl(),
   },
-  
   {
-    label: "Show all by default",
-    title: "Show all segments if none are selected",
-    toolJson: json_keys.IGNORE_NULL_VISIBLE_SET_JSON_KEY,
-    ...checkboxLayerControl((layer) => layer.displayState.ignoreNullVisibleSet),
-  },
-];
-
-export const APPEARANCE_LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
-  {
-    label: "Colours",
+    label: "Fixed color",
     title:
       "Use a fixed color for all segments without an explicitly-specified color",
     toolJson: json_keys.SEGMENT_DEFAULT_COLOR_JSON_KEY,
     ...fixedColorLayerControl(),
   },
   {
-    label: "Seeded random colours",
-    title: "Color segments based on a hash of their id",
-    toolJson: json_keys.COLOR_SEED_JSON_KEY,
-    ...colorSeedLayerControl(),
-  },
-
-  {
     label: "Saturation",
     toolJson: json_keys.SATURATION_JSON_KEY,
     title: "Saturation of segment colors",
     ...rangeLayerControl((layer) => ({ value: layer.displayState.saturation })),
   },
-  {
-    label: "Resolution (slice)",
-    toolJson: json_keys.CROSS_SECTION_RENDER_SCALE_JSON_KEY,
-    isValid: (layer) => layer.has2dLayer,
-    ...renderScaleLayerControl((layer) => ({
-      histogram: layer.sliceViewRenderScaleHistogram,
-      target: layer.sliceViewRenderScaleTarget,
-    })),
-  },
-  {
-    label: "Base segment coloring",
-    toolJson: json_keys.BASE_SEGMENT_COLORING_JSON_KEY,
-    title: "Color base segments individually",
-    ...checkboxLayerControl((layer) => layer.displayState.baseSegmentColoring),
-  },
-  {
-    label: "Highlight on hover",
-    toolJson: json_keys.HOVER_HIGHLIGHT_JSON_KEY,
-    title: "Highlight the segment under the mouse pointer",
-    ...checkboxLayerControl((layer) => layer.displayState.hoverHighlight),
-  },
-];
-
-export const SLICE2D_LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
   {
     label: "Opacity (on)",
     toolJson: json_keys.SELECTED_ALPHA_JSON_KEY,
@@ -99,9 +58,6 @@ export const SLICE2D_LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLaye
       target: layer.sliceViewRenderScaleTarget,
     })),
   },
-];
-
-export const MESH_LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
   {
     label: "Resolution (mesh)",
     toolJson: json_keys.MESH_RENDER_SCALE_JSON_KEY,
@@ -131,13 +87,33 @@ export const MESH_LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[
       options: { min: 0, max: maxSilhouettePower, step: 0.1 },
     })),
   },
-];
-
-export const SKELETONS_LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
+  {
+    label: "Hide segment ID 0",
+    toolJson: json_keys.HIDE_SEGMENT_ZERO_JSON_KEY,
+    title: "Disallow selection and display of segment id 0",
+    ...checkboxLayerControl((layer) => layer.displayState.hideSegmentZero),
+  },
+  {
+    label: "Base segment coloring",
+    toolJson: json_keys.BASE_SEGMENT_COLORING_JSON_KEY,
+    title: "Color base segments individually",
+    ...checkboxLayerControl((layer) => layer.displayState.baseSegmentColoring),
+  },
+  {
+    label: "Show all by default",
+    title: "Show all segments if none are selected",
+    toolJson: json_keys.IGNORE_NULL_VISIBLE_SET_JSON_KEY,
+    ...checkboxLayerControl((layer) => layer.displayState.ignoreNullVisibleSet),
+  },
+  {
+    label: "Highlight on hover",
+    toolJson: json_keys.HOVER_HIGHLIGHT_JSON_KEY,
+    title: "Highlight the segment under the mouse pointer",
+    ...checkboxLayerControl((layer) => layer.displayState.hoverHighlight),
+  },
   ...getViewSpecificSkeletonRenderingControl("2d"),
   ...getViewSpecificSkeletonRenderingControl("3d"),
 ];
-
 
 const maxSilhouettePower = 10;
 
@@ -174,19 +150,7 @@ function getViewSpecificSkeletonRenderingControl(
 }
 
 export function registerLayerControls(layerType: typeof SegmentationUserLayer) {
-  for (const control of VISIBILITY_LAYER_CONTROLS) {
-    registerLayerControl(layerType, control);
-  }
-  for (const control of APPEARANCE_LAYER_CONTROLS) {
-    registerLayerControl(layerType, control);
-  }
-  for (const control of SLICE2D_LAYER_CONTROLS) {
-    registerLayerControl(layerType, control);
-  }
-  for (const control of MESH_LAYER_CONTROLS) {
-    registerLayerControl(layerType, control);
-  }
-  for (const control of SKELETONS_LAYER_CONTROLS) {
+  for (const control of LAYER_CONTROLS) {
     registerLayerControl(layerType, control);
   }
 }

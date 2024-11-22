@@ -9,6 +9,8 @@ import {
   VOLUME_RENDERING_GAIN_JSON_KEY,
   VOLUME_RENDERING_JSON_KEY,
 } from "#src/layer/image/index.js";
+import * as json_keys from "#src/layer/segmentation/json_keys.js";
+import { LAYER_CONTROLS } from "#src/layer/segmentation/layer_controls.js";
 import { Accordion } from "#src/widget/accordion.js";
 import { type AccordionItem } from "#src/widget/accordion.js";
 
@@ -17,7 +19,7 @@ interface AccordionItemSelector {
 
   // Classnames to be add to the
   // accordion item.
-  classNames: string[];
+  classNames?: string[];
 
   // Ids used to select elements to
   // build an accordion item.
@@ -63,7 +65,7 @@ function buildAccordion(
     }
 
     const containerDiv = document.createElement("div");
-    selectors[category].classNames.forEach((className) => {
+    selectors[category].classNames?.forEach((className) => {
       containerDiv.classList.add(className);
     });
 
@@ -220,7 +222,78 @@ function buildAnnotationAccordion(root: HTMLElement) {
   });
 }
 
+const LAYER_CONTROLS_ACCORDION_SELECTOR: Record<string, AccordionItemSelector> =
+  {
+    visibility: {
+      title: "Visibility",
+      classNames: ["visibility-container"],
+      selectIds: [
+        json_keys.HIDE_SEGMENT_ZERO_JSON_KEY,
+        json_keys.IGNORE_NULL_VISIBLE_SET_JSON_KEY,
+        "linkedSegmentationGroup",
+      ],
+    },
+    appearance: {
+      title: "Appearance",
+      classNames: ["appearance-container"],
+      selectIds: [
+        json_keys.SEGMENT_DEFAULT_COLOR_JSON_KEY,
+        json_keys.COLOR_SEED_JSON_KEY,
+        json_keys.SATURATION_JSON_KEY,
+        json_keys.CROSS_SECTION_RENDER_SCALE_JSON_KEY,
+        json_keys.BASE_SEGMENT_COLORING_JSON_KEY,
+        json_keys.HOVER_HIGHLIGHT_JSON_KEY,
+        "linkedSegmentationColorGroup",
+      ],
+    },
+    slice2D: {
+      title: "Slice 2D",
+      classNames: ["slice2d-container"],
+      selectIds: [
+        json_keys.SELECTED_ALPHA_JSON_KEY,
+        json_keys.NOT_SELECTED_ALPHA_JSON_KEY,
+        json_keys.CROSS_SECTION_RENDER_SCALE_JSON_KEY,
+      ],
+    },
+    mesh3D: {
+      title: "Mesh 3D",
+      classNames: ["mesh3d-container"],
+      selectIds: [
+        json_keys.MESH_RENDER_SCALE_JSON_KEY,
+        json_keys.OBJECT_ALPHA_JSON_KEY,
+        json_keys.MESH_SILHOUETTE_RENDERING_JSON_KEY,
+      ],
+    },
+    channels: {
+      title: "Channels",
+      classNames: ["shader-container"],
+      selectIds: [json_keys.SKELETON_RENDERING_SHADER_CONTROL_TOOL_ID],
+    },
+    skeleton: {
+      title: "Skeletons",
+      classNames: ["skeleton-container"],
+      selectIds: LAYER_CONTROLS.filter((c) =>
+        String(c.toolJson).startsWith(json_keys.SKELETON_RENDERING_JSON_KEY),
+      ).map((c) => c.toolJson) as string[],
+    },
+  };
+
+function buildSegmentationDisplayOptionsAccordion(root: HTMLElement) {
+  const accordions = root.getElementsByClassName(
+    "neuroglancer-segmentation-rendering-tab",
+  );
+
+  if (accordions.length === 0) {
+    return;
+  }
+
+  Array.from(accordions).forEach((accordion) => {
+    buildAccordion(accordion, LAYER_CONTROLS_ACCORDION_SELECTOR);
+  });
+}
+
 export function buildAccordions(root: HTMLElement) {
+  buildSegmentationDisplayOptionsAccordion(root);
   buildLayerRenderingAccordion(root);
   buildAnnotationAccordion(root);
   buildAnnotationsUserLayerAccordion(root);
