@@ -199,8 +199,30 @@ function buildDataSourcesAccordion(root: HTMLElement) {
   });
 }
 
+const ANNOTATIONS_ACCORDION_SELECTOR: Record<string, AccordionItemSelector> = {
+  annotations: {
+    title: "Annotations",
+    classNames: ["annotations-toolbox-container"],
+    selectClassNames: ["neuroglancer-annotation-layer-view"],
+  },
+};
+
+function buildAnnotationAccordion(root: HTMLElement) {
+  const accordions = root.getElementsByClassName(
+    "neuroglancer-annotations-tab",
+  );
+  if (accordions.length === 0) {
+    return;
+  }
+
+  Array.from(accordions).forEach((accordion) => {
+    buildAccordion(accordion, ANNOTATIONS_ACCORDION_SELECTOR);
+  });
+}
+
 export function buildAccordions(root: HTMLElement) {
   buildLayerRenderingAccordion(root);
+  buildAnnotationAccordion(root);
   buildAnnotationsUserLayerAccordion(root);
   buildDataSourcesAccordion(root);
 }

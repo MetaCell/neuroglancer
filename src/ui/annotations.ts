@@ -47,7 +47,7 @@ import {
   SpatiallyIndexedPerspectiveViewAnnotationLayer,
   SpatiallyIndexedSliceViewAnnotationLayer,
 } from "#src/annotation/renderlayer.js";
-import { addAnnotationClassToIcon } from "#src/annotation/style.js"
+import { addAnnotationClassToIcon } from "#src/annotation/style.js";
 import type { CoordinateSpace } from "#src/coordinate_transform.js";
 import type { MouseSelectionState, UserLayer } from "#src/layer/index.js";
 import type { LoadedDataSubsource } from "#src/layer/layer_data_source.js";
@@ -101,7 +101,6 @@ import { formatScaleWithUnitAsString } from "#src/util/si_units.js";
 import { NullarySignal, Signal } from "#src/util/signal.js";
 import { Uint64 } from "#src/util/uint64.js";
 import * as vector from "#src/util/vector.js";
-import { Accordion } from "#src/widget/accordion.js";
 import { makeAddButton } from "#src/widget/add_button.js";
 import { ColorWidget } from "#src/widget/color.js";
 import { makeCopyButton } from "#src/widget/copy_button.js";
@@ -384,10 +383,6 @@ export class AnnotationLayerView extends Tab {
   ) {
     super();
     this.element.classList.add("neuroglancer-annotation-layer-view");
-    // Annotatiion toolbox list accordion container
-    const containerDiv = document.createElement("div");
-    containerDiv.className = "annotations-toolbox-container";
-
     this.registerDisposer(this.visibility.changed.add(() => this.updateView()));
     this.registerDisposer(
       this.annotationStates.changed.add(() =>
@@ -413,24 +408,7 @@ export class AnnotationLayerView extends Tab {
         colorPicker.element,
       ),
     );
-    const colorLabel = document.createElement("label");
-    colorLabel.className = "annotations-colobox-label";
-    colorLabel.textContent = "Colour";
-    // Hide color label if color widget is not visible
-    this.registerDisposer(
-      new ElementVisibilityFromTrackableBoolean(
-        makeCachedLazyDerivedWatchableValue(
-          (shader) => shader.match(/\bdefaultColor\b/) !== null,
-          displayState.shaderControls.processedFragmentMain,
-        ),
-        colorLabel,
-      ),
-    );
-    
-    toolbox.appendChild(colorLabel);
-
     toolbox.appendChild(colorPicker.element);
-    
     const { mutableControls } = this;
     const pointButton = makeIcon({
       text: annotationTypeHandlers[AnnotationType.POINT].icon,
@@ -469,15 +447,12 @@ export class AnnotationLayerView extends Tab {
     });
     mutableControls.appendChild(ellipsoidButton);
     toolbox.appendChild(mutableControls);
+    this.element.appendChild(toolbox);
 
-    containerDiv.appendChild(toolbox);
-
-    containerDiv.appendChild(this.headerRow);
-
+    this.element.appendChild(this.headerRow);
     const { virtualList } = this;
     virtualList.element.classList.add("neuroglancer-annotation-list");
-
-    containerDiv.appendChild(virtualList.element);
+    this.element.appendChild(virtualList.element);
     this.virtualList.element.addEventListener("mouseleave", () => {
       this.displayState.hoverState.value = undefined;
     });
@@ -510,16 +485,6 @@ export class AnnotationLayerView extends Tab {
     this.updateCoordinateSpace();
     this.updateAttachedAnnotationLayerStates();
     this.updateSelectionView();
-
-    const accordion = new Accordion([
-      {
-        title: "Annotations",
-        content: containerDiv,
-      }
-    ]);
-
-    // Append the accordion to the element
-    this.element.appendChild(accordion.getElement());
   }
 
   private getRenderedAnnotationListElement(
@@ -879,7 +844,6 @@ export class AnnotationLayerView extends Tab {
     const icon = document.createElement("div");
     icon.className = "neuroglancer-annotation-icon";
     icon.textContent = annotationTypeHandlers[annotation.type].icon;
-    console.log(annotationTypeHandlers[annotation.type])
     addAnnotationClassToIcon(icon, annotation.type);
     element.appendChild(icon);
 
