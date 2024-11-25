@@ -44,8 +44,10 @@ import { Overlay } from "#src/overlay.js";
 import { getWatchableRenderLayerTransform } from "#src/render_coordinate_transform.js";
 import { RenderLayerRole } from "#src/renderlayer.js";
 import type { SegmentationDisplayState } from "#src/segmentation_display_state/frontend.js";
-import type { TrackableBoolean } from "#src/trackable_boolean.js";
-import { TrackableBooleanCheckbox } from "#src/trackable_boolean.js";
+import {
+  TrackableBoolean,
+  TrackableBooleanCheckbox,
+} from "#src/trackable_boolean.js";
 import { makeCachedLazyDerivedWatchableValue } from "#src/trackable_value.js";
 import type {
   AnnotationLayerView,
@@ -68,9 +70,9 @@ import {
   verifyStringArray,
 } from "#src/util/json.js";
 import { NullarySignal } from "#src/util/signal.js";
+import { CheckboxIcon } from "#src/widget/checkbox_icon.js";
 import { DependentViewWidget } from "#src/widget/dependent_view_widget.js";
 import { makeHelpButton } from "#src/widget/help_button.js";
-import { makeIcon } from "#src/widget/icon.js";
 import { LayerReferenceWidget } from "#src/widget/layer_reference.js";
 import { makeMaximizeButton } from "#src/widget/maximize_button.js";
 import { RenderScaleWidget } from "#src/widget/render_scale_widget.js";
@@ -738,6 +740,8 @@ class ShaderCodeOverlay extends Overlay {
 
 class RenderingOptionsTab extends Tab {
   codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
+  _codeVisible: TrackableBoolean;
+
   constructor(public layer: AnnotationUserLayer) {
     super();
     const { element } = this;
@@ -776,6 +780,19 @@ class RenderingOptionsTab extends Tab {
         },
       ),
     ).element;
+    this._codeVisible = new TrackableBoolean(
+      this.layer.managedLayer.codeVisible,
+      true,
+    );
+    this.registerDisposer(
+      this._codeVisible.changed.add(() => {
+        this.codeWidget.setVisible(this._codeVisible.value);
+        this.layer.managedLayer.setCodeVisible(this._codeVisible.value);
+        shaderProperties.style.display = this._codeVisible.value
+          ? "block"
+          : "none";
+      }),
+    );
 
     element.appendChild(shaderProperties);
     const topRow = document.createElement("div");
@@ -787,30 +804,19 @@ class RenderingOptionsTab extends Tab {
     topRow.appendChild(label);
 
     const managedLayer = this.layer.managedLayer;
-    shaderProperties.style.display = managedLayer.codeVisible ? "block" : "none";
+    shaderProperties.style.display = managedLayer.codeVisible
+      ? "block"
+      : "none";
     const codeVisible = managedLayer.codeVisible;
     this.codeWidget.setVisible(codeVisible);
 
-    const codeVisibilityControl = makeIcon({
-      title: codeVisible ? "Hide code": "Show code",
+    const codeVisibilityControl = new CheckboxIcon(this._codeVisible, {
+      enableTitle: "Hide code",
+      disableTitle: "Show code",
+      backgroundScheme: "dark",
       svg: svgCode,
-      onClick: () => {
-        const button = codeVisibilityControl as HTMLDivElement;
-        managedLayer.setCodeVisible(!managedLayer.codeVisible)
-        if (managedLayer.codeVisible) {
-          button.title = "Hide code";
-          button.style.backgroundColor = "rgba(255, 255, 255, 0.2)";
-          shaderProperties.style.display = "block";
-        } else {
-          button.title = "Show code";
-          button.style.backgroundColor = "";
-          shaderProperties.style.display = "none";
-        }
-        this.codeWidget.setVisible(managedLayer.codeVisible);
-    }});
-    codeVisibilityControl.style.backgroundColor = codeVisible ? "rgba(255, 255, 255, 0.2)" : "";
-    topRow.appendChild(codeVisibilityControl);
-
+    });
+    topRow.appendChild(codeVisibilityControl.element);
     topRow.appendChild(
       makeMaximizeButton({
         title: "Show larger editor view",
