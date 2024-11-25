@@ -8,7 +8,7 @@ export const OTHER = "OTHER" as const;
 export type MessageType = typeof STATE_UPDATE | typeof NEW_FIGURE | typeof OTHER;
 
 
-  export interface SessionUpdatePayload {
+export interface SessionUpdatePayload {
     url: string;
     state: any;
 }

@@ -68,7 +68,8 @@ import {
 import { overlaysOpen } from "#src/overlay.js";
 import { ScreenshotHandler } from "#src/python_integration/screenshots.js";
 import { allRenderLayerRoles, RenderLayerRole } from "#src/renderlayer.js";
-import { dispatchMessage, getDeepClonedState, STATE_UPDATE, type SessionUpdatePayload } from "#src/services/stateService.ts";
+import { IncomingEventsHandler } from "#src/services/events/incoming_events.ts";
+import { dispatchMessage, getDeepClonedState, STATE_UPDATE, type SessionUpdatePayload } from "#src/services/events/outgoing_events.js";
 import { StatusMessage } from "#src/status.js";
 import {
   ElementVisibilityFromTrackableBoolean,
@@ -496,6 +497,8 @@ export class Viewer extends RefCounted implements ViewerState {
 
   screenshotHandler = this.registerDisposer(new ScreenshotHandler(this));
   screenshotManager = this.registerDisposer(new ScreenshotManager(this));
+
+  incomingEventsHandler = this.registerDisposer(new IncomingEventsHandler(this))
 
   get chunkManager() {
     return this.dataContext.chunkManager;
