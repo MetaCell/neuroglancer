@@ -23,7 +23,7 @@ import type {
   StatisticsActionState,
   ScreenshotChunkStatistics,
 } from "#src/python_integration/screenshots.js";
-import { dispatchMessage, NEW_FIGURE } from "#src/services/stateService.ts";
+import { dispatchMessage, NEW_FIGURE } from "#src/services/events/outgoing_events.js";
 import { SliceViewPanel } from "#src/sliceview/panel.js";
 import { StatusMessage } from "#src/status.js";
 import {
