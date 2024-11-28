@@ -129,6 +129,10 @@ export class ViewerSettingsPanel extends SidePanel {
       "Enable adaptive downsampling",
       viewer.enableAdaptiveDownsampling,
     );
+    addCheckbox(
+      "Activate layer color sync by default",
+      viewer.enableLayerColorSync,
+    );
 
     const addColor = (label: string, value: WatchableValueInterface<vec3>) => {
       const labelElement = document.createElement("label");

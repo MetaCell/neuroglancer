@@ -298,6 +298,7 @@ class TrackableViewerState extends CompoundTrackable {
     this.add("enableAdaptiveDownsampling", viewer.enableAdaptiveDownsampling);
     this.add("showScaleBar", viewer.showScaleBar);
     this.add("showDefaultAnnotations", viewer.showDefaultAnnotations);
+    this.add("enableLayerColorSync", viewer.enableLayerColorSync);
 
     this.add("showSlices", viewer.showPerspectiveSliceViews);
     this.add(
@@ -487,6 +488,8 @@ export class Viewer extends RefCounted implements ViewerState {
 
   resetInitiated = new NullarySignal();
 
+  enableLayerColorSync = new TrackableBoolean(false, false);
+
   get chunkManager() {
     return this.dataContext.chunkManager;
   }
@@ -610,6 +613,13 @@ export class Viewer extends RefCounted implements ViewerState {
         this.visibleLayerRoles.add(RenderLayerRole.DEFAULT_ANNOTATION);
       } else {
         this.visibleLayerRoles.delete(RenderLayerRole.DEFAULT_ANNOTATION);
+      }
+    });
+
+    this.enableLayerColorSync.changed.add(() => {
+      for (const layer of this.layerManager.managedLayers) {
+        layer.layerBarColorSyncEnabled = this.enableLayerColorSync.value;
+        layer.layerChanged.dispatch();
       }
     });
 
@@ -1089,6 +1099,9 @@ export class Viewer extends RefCounted implements ViewerState {
     this.bindAction("toggle-scale-bar", () => this.showScaleBar.toggle());
     this.bindAction("toggle-default-annotations", () =>
       this.showDefaultAnnotations.toggle(),
+    );
+    this.bindAction("toggle-layer-color-sync", () =>
+      this.enableLayerColorSync.toggle(),
     );
     this.bindAction("toggle-show-slices", () =>
       this.showPerspectiveSliceViews.toggle(),

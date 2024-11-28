@@ -1827,6 +1827,9 @@ class ViewerState(JsonObjectWrapper):
     tool_bindings = toolBindings = wrapped_property(
         "toolBindings", typed_map(key_type=str, value_type=Tool)
     )
+    enable_layer_color_sync = enableLayerColorSync = wrapped_property(
+        "enableLayerColorSync", optional(bool, False)
+    )
 
     @staticmethod
     def interpolate(a, b, t):
