@@ -23,6 +23,7 @@ import {
   isLocalDimension,
   TrackableCoordinateSpace,
 } from "#src/coordinate_transform.js";
+import { makeFooterBtnGroup } from "#src/layer/image/shader_overlay_footer.js";
 import type {
   ManagedUserLayer,
   UserLayerSelectionState,
@@ -100,7 +101,6 @@ import {
   registerLayerShaderControlsTool,
   ShaderControls,
 } from "#src/widget/shader_controls.js";
-import { makeFooterBtnGroup } from "#src/widget/shader_overlay_footer.js";
 import { Tab } from "#src/widget/tab_view.js";
 
 export const OPACITY_JSON_KEY = "opacity";
@@ -596,7 +596,7 @@ class ShaderCodeOverlay extends Overlay {
     super();
     this.content.classList.add("neuroglancer-image-layer-shader-overlay");
     this.content.appendChild(this.codeWidget.element);
-    this.content.appendChild(makeFooterBtnGroup());
+    this.content.appendChild(makeFooterBtnGroup(() => this.close()));
     this.codeWidget.textEditor.refresh();
   }
 }
