@@ -36,6 +36,7 @@ import {
 } from "#src/layer/index.js";
 import type { LoadedDataSubsource } from "#src/layer/layer_data_source.js";
 import { Overlay } from "#src/overlay.js";
+import { makeOverlayHeader } from "#src/overlay_header.js";
 import { getChannelSpace } from "#src/render_coordinate_transform.js";
 import {
   RenderScaleHistogram,
@@ -595,6 +596,11 @@ class ShaderCodeOverlay extends Overlay {
   constructor(public layer: ImageUserLayer) {
     super();
     this.content.classList.add("neuroglancer-image-layer-shader-overlay");
+    makeOverlayHeader({
+      parentElem: this.content,
+      title: "Shader editor",
+      onClose: () => this.dispose(),
+    });
     this.content.appendChild(this.codeWidget.element);
     this.content.appendChild(makeFooterBtnGroup(() => this.close()));
     this.codeWidget.textEditor.refresh();
