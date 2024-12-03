@@ -355,6 +355,9 @@ ul#statusContainer {
             font-family: monospace;
         }
     }
+    .CodeMirror-cursor {
+        border-color: var(--white);
+    }
     input[type=color] {
         border: var(--dark80) 0.094rem solid;
     }
