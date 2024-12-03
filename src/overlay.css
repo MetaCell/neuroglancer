@@ -14,23 +14,136 @@
  * limitations under the License.
  */
 
-.overlay {
+:root {
+  --overlayBg: rgba(0, 0, 0, 0.8);
+  --dialogBg: #1F1F1F;
+  --dialogBorderColor: #2B2B2B;
+  --white: #FFFFFF;
+  --iconColor: #999CA0;
+  --textButtonColor: #5D89FF;
+  --dangerButtonBg: #D33030;
+  --primaryButtonBg: #1652F0;
+}
+
+.neuroglancer-overlay {
   height: 100%;
   width: 100%;
   position: fixed;
   z-index: 99;
   top: 0;
+  overflow: auto;
   left: 0;
-  background-color: rgba(0, 0, 0, 0.8);
+  background-color: var(--overlayBg);
+  justify-content: center;
+  align-items: center;
+  display: flex;
+  padding: 3rem 0;
+
+  & .neuroglancer-dialog {
+    width: 100%;
+    max-width: 56.25rem;
+    margin: auto;
+    background-color: var(--dialogBg);
+    z-index: 100;
+
+    &:focus-visible {
+      outline: none;
+    }
+
+    & .neuroglancer-dialog-header {
+      border-bottom: 0.0625rem solid var(--dialogBorderColor);
+      padding: 1.25rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    
+      & p {
+        margin: 0;
+        color: var(--white);
+        font-size: 1.25rem;
+        font-style: normal;
+        font-weight: 500;
+        line-height: 1.5rem; /* 120% */
+        letter-spacing: -0.025rem;
+      }
+    
+      &  button {
+        border: none;
+        background-color: transparent;
+        stroke: var(--iconColor);
+        display: block;
+        padding: 0;
+        border-radius: 0;
+      }
+    
+      & .neuroglancer-icon {
+        width: 1.5rem;
+        display: block;
+          height: 1.5rem;
+        & svg {
+          width: 1.5rem;
+          height: 1.5rem;
+        }
+      }
+    }
+
+    & .neuroglancer-dialog-body {
+      padding: 1.5rem;
+    }
+
+    & .neuroglancer-dialog-footer {
+      border-top: 0.0625rem solid var(--dialogBorderColor);
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+
+      button {
+        display: flex;
+        padding: 0.75rem 1rem;
+        cursor: pointer;
+        justify-content: center;
+        align-items: center;
+        color: var(--white);
+        font-size: 0.875rem;
+        font-style: normal;
+        font-weight: 500;
+        line-height: 1.125rem; /* 128.571% */
+        letter-spacing: -0.0088rem;
+
+        &:disabled {
+          opacity: 0.3;
+          pointer-events: none;
+        }
+      }
+
+      & .button-wrapper {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+    }
+  }
 }
 
-.overlay-content {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background-color: white;
-  z-index: 100;
-  color: black;
-  padding: 1em;
+.text-button {
+  color: var(--textButtonColor) !important;
+  border: none;
+  background: transparent;
+  padding: 0 !important;
+}
+
+.danger-button {
+  border: none;
+  background: var(--dangerButtonBg);
+}
+
+.primary-button {
+  border: none;
+  background: var(--primaryButtonBg)
+}
+
+.cancel-button {
+  border: 0.0938rem solid var(--dialogBorderColor);
+  background: transparent;
 }

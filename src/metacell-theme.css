@@ -20,7 +20,8 @@
     --codetrue: #814ED3;
     --codenumber: #4EBBD3;
     --datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0, 0, 0, 0.72);
-    --codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
+    --codeMirrorGuttermarkerSubtleColor: #999CA0;
+    --codeMirrorBg: #242424;
 }
 
 * {
@@ -354,9 +355,6 @@ ul#statusContainer {
         * {
             font-family: monospace;
         }
-    }
-    .CodeMirror-cursor {
-        border-color: var(--white);
     }
     input[type=color] {
         border: var(--dark80) 0.094rem solid;
@@ -1472,9 +1470,10 @@ ul#statusContainer {
     .CodeMirror {
         width: 100%;
         box-sizing: border-box;
+        border-radius: 0.25rem;
         border: 0.0625rem solid var(--dark80);
         color: rgba(255, 255, 255, 0.60);
-        background-color: var(--background60);
+        background-color: var(--codeMirrorBg);
         margin-bottom: 0.5rem;
     }
     .CodeMirror-gutters {
