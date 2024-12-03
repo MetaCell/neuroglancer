@@ -17,6 +17,8 @@ import { type AccordionItem } from "#src/widget/accordion.js";
 interface AccordionItemSelector {
   title: string;
 
+  open?: boolean;
+
   // Classnames to be add to the
   // accordion item.
   classNames?: string[];
@@ -76,6 +78,7 @@ function buildAccordion(
     accordionItems.push({
       title: selectors[category].title,
       content: containerDiv,
+      open: selectors[category].open,
     });
   });
 
@@ -84,6 +87,7 @@ function buildAccordion(
   }
 
   const accordion = new Accordion(accordionItems);
+
   root.appendChild(accordion.getElement());
 }
 
@@ -111,6 +115,7 @@ const LAYER_RENDERING_ACCORDION_SELECTOR: Record<
   },
   shader: {
     title: "Shader",
+    open: true,
     classNames: ["channels-container", "shader"],
     selectIds: [SHADER_JSON_KEY, SHADER_CONTROLS_JSON_KEY],
   },
@@ -183,6 +188,7 @@ function buildDataSourcesAccordion(root: HTMLElement) {
     buildAccordion(accordion, {
       dataSource: {
         title: "Data source",
+        open: true,
         classNames: ["data-source-container"],
         selectIds: ["dataSourceUrlInputElement"],
       },
@@ -204,6 +210,7 @@ function buildDataSourcesAccordion(root: HTMLElement) {
 const ANNOTATIONS_ACCORDION_SELECTOR: Record<string, AccordionItemSelector> = {
   annotations: {
     title: "Annotations",
+    open: true,
     classNames: ["annotations-toolbox-container"],
     selectClassNames: ["neuroglancer-annotation-layer-view"],
   },
