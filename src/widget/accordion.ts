@@ -3,7 +3,8 @@ import "#src/widget/accordion.css";
 export type AccordionItem = {
   title: string;
   content: HTMLDivElement; // Expecting actual HTML elements for content
-}
+  open?: boolean;
+};
 
 export class Accordion {
   private items: AccordionItem[];
@@ -33,6 +34,10 @@ export class Accordion {
       // Append the actual content (DOM element) instead of using textContent
       contentElement.appendChild(item.content);
 
+      if (item.open) {
+        this.toggleContent(itemElement, contentElement, true);
+      }
+
       // Event listener to toggle the content display
       titleElement.addEventListener("click", () => {
         const isVisible = contentElement.style.display === "block";
@@ -45,7 +50,11 @@ export class Accordion {
     }
   }
 
-  private toggleContent(itemElement: HTMLElement, contentElement: HTMLElement, shouldShow: boolean) {
+  private toggleContent(
+    itemElement: HTMLElement,
+    contentElement: HTMLElement,
+    shouldShow: boolean,
+  ) {
     if (shouldShow) {
       contentElement.style.display = "block";
       contentElement.classList.add("show");
@@ -61,7 +70,9 @@ export class Accordion {
       itemElement.classList.remove("accordion-expanded");
 
       // Check if any other items are expanded before removing from the main accordion element
-      const anyExpanded = this.element.querySelector(".accordion-item.accordion-expanded");
+      const anyExpanded = this.element.querySelector(
+        ".accordion-item.accordion-expanded",
+      );
       if (!anyExpanded) {
         this.element.classList.remove("accordion-expanded");
       }
