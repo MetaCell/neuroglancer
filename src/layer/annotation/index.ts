@@ -732,9 +732,14 @@ class ShaderCodeOverlay extends Overlay {
   codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
   constructor(public layer: AnnotationUserLayer) {
     super();
-    this.content.appendChild(this.codeWidget.element);
-    this.codeWidget.textEditor.refresh();
+    const mainBody = document.createElement("div");
+    mainBody.classList.add("neuroglancer-dialog-body");
+    mainBody.appendChild(this.codeWidget.element);
+    this.content.appendChild(mainBody);
+    this.codeWidget.textEditor.refresh();    
   }
+
+  
 }
 
 class RenderingOptionsTab extends Tab {
