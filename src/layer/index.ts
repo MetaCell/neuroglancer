@@ -705,11 +705,11 @@ export class ManagedUserLayer extends RefCounted {
   set name(value: string) {
     if (value !== this.name_) {
       this.name_ = value;
-      this.layerChanged.dispatch();
     }
   }
 
   visible = true;
+  codeVisible = new TrackableBoolean(true, true);
   archived = false;
 
   get supportsPickOption() {
@@ -755,6 +755,7 @@ export class ManagedUserLayer extends RefCounted {
         this.localVelocity,
       ),
     );
+    this.codeVisible.changed.add(this.layerChanged.dispatch);
   }
 
   toJSON() {
@@ -764,6 +765,7 @@ export class ManagedUserLayer extends RefCounted {
     }
     const layerSpec = userLayer.toJSON();
     layerSpec.name = this.name;
+    layerSpec.codeVisible = this.codeVisible.toJSON();
     if (!this.visible) {
       if (this.archived) {
         layerSpec.archived = true;
@@ -772,6 +774,11 @@ export class ManagedUserLayer extends RefCounted {
       }
     }
     return layerSpec;
+  }
+
+  setCodeVisible(value: boolean) {
+    this.codeVisible.value = value;
+    this.layerChanged.dispatch();
   }
 
   setVisible(value: boolean) {
@@ -2019,6 +2026,9 @@ function initializeLayerFromSpecNoRestoreState(
   } else {
     managedLayer.visible = false;
   }
+  managedLayer.codeVisible.restoreState(
+    verifyOptionalObjectProperty(spec, "codeVisible", verifyBoolean, true),
+  );
   const layerConstructor = layerTypes.get(layerType) || NewUserLayer;
   managedLayer.layer = new layerConstructor(managedLayer);
   return spec;
