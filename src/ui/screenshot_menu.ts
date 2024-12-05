@@ -302,7 +302,7 @@ export class ScreenshotDialog extends Overlay {
 
     const closeAndHelpContainer = document.createElement("div");
     closeAndHelpContainer.classList.add(
-      "neuroglancer-overlay-content-header",
+      "overlay-content-header",
     );
 
     closeAndHelpContainer.appendChild(titleText);
@@ -312,7 +312,7 @@ export class ScreenshotDialog extends Overlay {
     this.content.appendChild(closeAndHelpContainer);
 
     const mainBody = document.createElement("div");
-    mainBody.classList.add("neuroglancer-overlay-content-body");
+    mainBody.classList.add("overlay-content-body");
     this.content.appendChild(mainBody);
 
     mainBody.appendChild(this.filenameAndButtonsContainer);
@@ -369,7 +369,7 @@ export class ScreenshotDialog extends Overlay {
 
     this.footerScreenshotActionBtnsContainer = document.createElement("div");
     this.footerScreenshotActionBtnsContainer.classList.add(
-      "neuroglancer-overlay-content-footer",
+      "overlay-content-footer",
     );
     this.footerScreenshotActionBtnsWrapper = document.createElement("div");
     this.footerScreenshotActionBtnsWrapper.classList.add(

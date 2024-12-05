@@ -82,7 +82,7 @@ export class StateEditorDialog extends Overlay {
 
     const closeAndHelpContainer = document.createElement("div");
     closeAndHelpContainer.classList.add(
-      "neuroglancer-overlay-content-header",
+      "overlay-content-header",
     );
 
     closeAndHelpContainer.appendChild(titleText);
@@ -93,12 +93,12 @@ export class StateEditorDialog extends Overlay {
 
 
     const mainBody = document.createElement("div");
-    mainBody.classList.add("neuroglancer-overlay-content-body");
+    mainBody.classList.add("overlay-content-body");
     this.content.appendChild(mainBody);
 
     this.footerActionsBtnContainer = document.createElement("div");
     this.footerActionsBtnContainer.classList.add(
-      "neuroglancer-overlay-content-footer",
+      "overlay-content-footer",
     );
     this.footerBtnsWrapper = document.createElement("div");
     this.footerBtnsWrapper.classList.add(

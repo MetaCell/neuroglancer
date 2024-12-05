@@ -733,7 +733,7 @@ class ShaderCodeOverlay extends Overlay {
   constructor(public layer: AnnotationUserLayer) {
     super();
     const mainBody = document.createElement("div");
-    mainBody.classList.add("neuroglancer-overlay-content-body");
+    mainBody.classList.add("overlay-content-body");
     mainBody.appendChild(this.codeWidget.element);
     this.content.appendChild(mainBody);
     this.codeWidget.textEditor.refresh();    

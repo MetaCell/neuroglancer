@@ -2865,14 +2865,14 @@ ul#statusContainer {
     }
 }
 
-.neuroglancer-overlay {
+.overlay {
     background-color: var(--overlayBg);
     justify-content: center;
     align-items: center;
     display: flex;
     padding: 1.875rem 0;
 
-    & .neuroglancer-overlay-content {
+    & .overlay-content {
         width: 100%;
         padding: 0;
         position: static;
@@ -2890,7 +2890,7 @@ ul#statusContainer {
           outline: none;
         }
     
-        & .neuroglancer-overlay-content-header {
+        & .overlay-content-header {
           border-bottom: 0.0625rem solid var(--dark80);
           padding: 0 1.5rem;
           height: 4rem;
@@ -2928,13 +2928,13 @@ ul#statusContainer {
           }
         }
     
-        & .neuroglancer-overlay-content-body {
+        & .overlay-content-body {
           padding: 1.5rem;
           overflow: auto;
           max-height: calc(100vh - (4rem + 4.5rem + 3.75rem));
         }
     
-        & .neuroglancer-overlay-content-footer {
+        & .overlay-content-footer {
           border-top: 0.0625rem solid var(--dark80);
           padding: 0 1.5rem;
           height: 4.5rem;
