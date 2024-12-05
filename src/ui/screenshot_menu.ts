@@ -257,14 +257,7 @@ export class ScreenshotDialog extends Overlay {
 
   private initializeUI() {
     const tooltips = this.setupHelpTooltips();
-    // this.content.classList.add("neuroglancer-dialog");
-    // const parentElement = this.content.parentElement;
-    // if (parentElement) {
-    //   parentElement.classList.add("neuroglancer-overlay");
-    // }
-
     const titleText = document.createElement("p");
-    // titleText.classList.add("neuroglancer-screenshot-title-heading");
     titleText.textContent = "Screenshot";
 
     this.closeMenuButton = this.createButton(
@@ -451,7 +444,6 @@ export class ScreenshotDialog extends Overlay {
     } else if (text) {
       button.textContent = text;
     }
-    // button.classList.add("neuroglancer-screenshot-button");
     if (cssClass) button.classList.add(cssClass);
     button.addEventListener("click", onClick);
     return button;
