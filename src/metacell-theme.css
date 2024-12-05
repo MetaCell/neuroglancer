@@ -1474,7 +1474,7 @@ ul#statusContainer {
         border: 0.0625rem solid var(--dark80);
         color: rgba(255, 255, 255, 0.60);
         background-color: var(--codeMirrorBg);
-        margin-bottom: 0.5rem;
+        /* margin-bottom: 0.5rem; */
     }
     .CodeMirror-gutters {
         background-color: var(--background80);

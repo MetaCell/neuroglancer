@@ -15,7 +15,7 @@
  */
 
 :root {
-  --overlayBg: rgba(0, 0, 0, 0.8);
+  --overlayBg: #14141580;
   --dialogBg: #1F1F1F;
   --dialogBorderColor: #2B2B2B;
   --white: #FFFFFF;
@@ -31,20 +31,24 @@
   position: fixed;
   z-index: 99;
   top: 0;
-  overflow: auto;
+  /* overflow: auto; */
   left: 0;
   background-color: var(--overlayBg);
   justify-content: center;
   align-items: center;
   display: flex;
-  padding: 3rem 0;
+  padding: 1.875rem 0;
 
   & .neuroglancer-dialog {
     width: 100%;
-    max-width: 56.25rem;
+    max-width: 47rem;
     margin: auto;
     background-color: var(--dialogBg);
     z-index: 100;
+
+    &.modal-lg {
+      max-width: 56.25rem;
+    }
 
     &:focus-visible {
       outline: none;
@@ -52,7 +56,8 @@
 
     & .neuroglancer-dialog-header {
       border-bottom: 0.0625rem solid var(--dialogBorderColor);
-      padding: 1.25rem 1.5rem;
+      padding: 0 1.5rem;
+      height: 4rem;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -89,14 +94,21 @@
 
     & .neuroglancer-dialog-body {
       padding: 1.5rem;
+      overflow: auto;
+      max-height: calc(100vh - (4rem + 4.5rem + 3.75rem));
     }
 
     & .neuroglancer-dialog-footer {
       border-top: 0.0625rem solid var(--dialogBorderColor);
-      padding: 1rem 1.5rem;
+      padding: 0 1.5rem;
+      height: 4.5rem;
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: end;
+
+      & > button:not(:only-child) {
+        margin-right: auto;
+      }
 
       button {
         display: flex;
@@ -130,7 +142,6 @@
   color: var(--textButtonColor) !important;
   border: none;
   background: transparent;
-  padding: 0 !important;
 }
 
 .danger-button {

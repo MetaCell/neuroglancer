@@ -17,11 +17,11 @@
  */
 
 import "#src/ui/screenshot_menu.css";
-import svg_close from "ikonate/icons/close.svg?raw";
-import svg_help from "ikonate/icons/help.svg?raw";
 import { throttle } from "lodash-es";
 import { Overlay } from "#src/overlay.js";
 import { StatusMessage } from "#src/status.js";
+import svg_close from "#src/ui/images/close-new.svg?raw";
+import svg_help from "#src/ui/images/help.svg?raw";
 import { setClipboard } from "#src/util/clipboard.js";
 import type {
   ScreenshotLoadStatistics,

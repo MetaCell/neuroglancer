@@ -109,7 +109,7 @@
   & .neuroglancer-icon {
     display: flex;
     align-items: center;
-    stroke: var(--iconColor)
+    stroke: none
   }
 }
 
@@ -215,7 +215,7 @@
     letter-spacing: -0.02rem;
 
     & .neuroglancer-icon {
-      stroke: var(--iconColor)
+      stroke: none
     }
 }
 
@@ -565,7 +565,7 @@
   flex: none;
   cursor: pointer;
   width: 1rem;
-  stroke: var(--iconColor);
+  stroke: none;
   height: 1rem;
   background-size: contain;
   position: relative;
@@ -710,6 +710,8 @@
 .neuroglancer-screenshot-progress-text {
   color: var(--iconColor);
   font-size: 0.875rem;
+  margin: 0;
+  flex: 1;
   font-style: normal;
   font-weight: 400;
   line-height: 1.25rem; /* 142.857% */

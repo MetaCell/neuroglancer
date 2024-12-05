@@ -26,9 +26,9 @@ import "codemirror/addon/fold/brace-fold.js";
 import "codemirror/addon/fold/foldgutter.css";
 import "codemirror/addon/lint/lint.css";
 import CodeMirror from "codemirror";
-import svg_close from "ikonate/icons/close.svg?raw";
 import { debounce } from "lodash-es";
 import { Overlay } from "#src/overlay.js";
+import svg_close from "#src/ui/images/close-new.svg?raw";
 import "#src/ui/state_editor.css";
 
 import { getCachedJson } from "#src/util/trackable.js";
@@ -66,7 +66,7 @@ export class StateEditorDialog extends Overlay {
   constructor(public viewer: Viewer) {
     super();
 
-    // this.content.classList.add("neuroglancer-state-editor");
+    this.content.classList.add("modal-lg");
 
     const titleText = document.createElement("p");
     // titleText.classList.add("neuroglancer-screenshot-title-heading");
