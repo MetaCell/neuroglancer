@@ -42,7 +42,7 @@ export class Overlay extends RefCounted {
     container.className = "neuroglancer-overlay";
     const content = (this.content = document.createElement("div"));
     this.registerDisposer(new AutomaticallyFocusedElement(content));
-    content.className = "neuroglancer-dialog";
+    content.className = "neuroglancer-overlay-content";
     container.appendChild(content);
     document.body.appendChild(container);
     this.registerDisposer(new KeyboardEventBinder(this.container, this.keyMap));

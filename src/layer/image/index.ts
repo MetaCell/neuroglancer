@@ -599,13 +599,13 @@ class ShaderCodeOverlay extends Overlay {
     this.content.classList.add("neuroglancer-image-layer-shader-overlay");
 
     const mainBody = document.createElement("div");
-    mainBody.classList.add("neuroglancer-dialog-body");
+    mainBody.classList.add("neuroglancer-overlay-content-body");
     mainBody.appendChild(this.codeWidget.element);
     this.content.appendChild(mainBody);
 
     this.footerActionsBtnContainer = document.createElement("div");
     this.footerActionsBtnContainer.classList.add(
-      "neuroglancer-dialog-footer",
+      "neuroglancer-overlay-content-footer",
     );
     this.footerActionsBtnContainer.appendChild(makeFooterBtnGroup(() => this.close()));
     this.content.appendChild(this.footerActionsBtnContainer);

@@ -20,8 +20,8 @@ import "#src/ui/screenshot_menu.css";
 import { throttle } from "lodash-es";
 import { Overlay } from "#src/overlay.js";
 import { StatusMessage } from "#src/status.js";
-import svg_close from "#src/ui/images/close-new.svg?raw";
-import svg_help from "#src/ui/images/help.svg?raw";
+import svg_close from "#src/ui/images/metacell/close.svg?raw";
+import svg_help from "#src/ui/images/metacell/help.svg?raw";
 import { setClipboard } from "#src/util/clipboard.js";
 import type {
   ScreenshotLoadStatistics,
@@ -302,7 +302,7 @@ export class ScreenshotDialog extends Overlay {
 
     const closeAndHelpContainer = document.createElement("div");
     closeAndHelpContainer.classList.add(
-      "neuroglancer-dialog-header",
+      "neuroglancer-overlay-content-header",
     );
 
     closeAndHelpContainer.appendChild(titleText);
@@ -312,7 +312,7 @@ export class ScreenshotDialog extends Overlay {
     this.content.appendChild(closeAndHelpContainer);
 
     const mainBody = document.createElement("div");
-    mainBody.classList.add("neuroglancer-dialog-body");
+    mainBody.classList.add("neuroglancer-overlay-content-body");
     this.content.appendChild(mainBody);
 
     mainBody.appendChild(this.filenameAndButtonsContainer);
@@ -369,7 +369,7 @@ export class ScreenshotDialog extends Overlay {
 
     this.footerScreenshotActionBtnsContainer = document.createElement("div");
     this.footerScreenshotActionBtnsContainer.classList.add(
-      "neuroglancer-dialog-footer",
+      "neuroglancer-overlay-content-footer",
     );
     this.footerScreenshotActionBtnsWrapper = document.createElement("div");
     this.footerScreenshotActionBtnsWrapper.classList.add(

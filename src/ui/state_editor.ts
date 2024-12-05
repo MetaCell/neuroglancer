@@ -28,9 +28,8 @@ import "codemirror/addon/lint/lint.css";
 import CodeMirror from "codemirror";
 import { debounce } from "lodash-es";
 import { Overlay } from "#src/overlay.js";
-import svg_close from "#src/ui/images/close-new.svg?raw";
 import "#src/ui/state_editor.css";
-
+import svg_close from "#src/ui/images/metacell/close.svg?raw";
 import { getCachedJson } from "#src/util/trackable.js";
 import type { Viewer } from "#src/viewer.js";
 import { makeIcon } from "#src/widget/icon.js";
@@ -83,7 +82,7 @@ export class StateEditorDialog extends Overlay {
 
     const closeAndHelpContainer = document.createElement("div");
     closeAndHelpContainer.classList.add(
-      "neuroglancer-dialog-header",
+      "neuroglancer-overlay-content-header",
     );
 
     closeAndHelpContainer.appendChild(titleText);
@@ -94,12 +93,12 @@ export class StateEditorDialog extends Overlay {
 
 
     const mainBody = document.createElement("div");
-    mainBody.classList.add("neuroglancer-dialog-body");
+    mainBody.classList.add("neuroglancer-overlay-content-body");
     this.content.appendChild(mainBody);
 
     this.footerActionsBtnContainer = document.createElement("div");
     this.footerActionsBtnContainer.classList.add(
-      "neuroglancer-dialog-footer",
+      "neuroglancer-overlay-content-footer",
     );
     this.footerBtnsWrapper = document.createElement("div");
     this.footerBtnsWrapper.classList.add(

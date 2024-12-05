@@ -247,7 +247,7 @@ class ShaderCodeOverlay extends Overlay {
     super();
     this.content.classList.add("neuroglancer-single-mesh-layer-shader-overlay");
     const mainBody = document.createElement("div");
-    mainBody.classList.add("neuroglancer-dialog-body");
+    mainBody.classList.add("neuroglancer-overlay-content-body");
     mainBody.appendChild(this.attributeWidget.element);
     mainBody.appendChild(this.codeWidget.element);
     this.content.appendChild(mainBody);
