@@ -23,7 +23,6 @@ export class IncomingEventsHandler extends RefCounted {
     const { data } = event;
 
     if (!data || typeof data.type !== 'string') {
-      console.warn('Invalid message received', event);
       return;
     }
 
