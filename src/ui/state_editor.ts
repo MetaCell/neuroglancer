@@ -57,7 +57,6 @@ export class StateEditorDialog extends Overlay {
     } else if (text) {
       button.textContent = text;
     }
-    // button.classList.add("neuroglancer-screenshot-button");
     if (cssClass) button.classList.add(cssClass);
     button.addEventListener("click", onClick);
     return button;
@@ -68,7 +67,6 @@ export class StateEditorDialog extends Overlay {
     this.content.classList.add("modal-lg");
 
     const titleText = document.createElement("p");
-    // titleText.classList.add("neuroglancer-screenshot-title-heading");
     titleText.textContent = "Code editor";
 
     this.closeMenuButton = this.createButton(
@@ -78,8 +76,6 @@ export class StateEditorDialog extends Overlay {
       svg_close,
     );
 
-  
-
     const closeAndHelpContainer = document.createElement("div");
     closeAndHelpContainer.classList.add(
       "overlay-content-header",
@@ -88,9 +84,7 @@ export class StateEditorDialog extends Overlay {
     closeAndHelpContainer.appendChild(titleText);
     closeAndHelpContainer.appendChild(this.closeMenuButton);
 
-    // This is the header
     this.content.appendChild(closeAndHelpContainer);
-
 
     const mainBody = document.createElement("div");
     mainBody.classList.add("overlay-content-body");
@@ -144,8 +138,6 @@ export class StateEditorDialog extends Overlay {
     this.textEditor.on("change", () => {
       this.debouncedValueUpdater();
     });
-
-   
 
     mainBody.appendChild(this.textEditor.getWrapperElement());
     this.textEditor.refresh();
