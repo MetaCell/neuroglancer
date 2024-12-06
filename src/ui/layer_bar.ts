@@ -21,7 +21,10 @@ import type { ManagedUserLayer } from "#src/layer/index.js";
 import { addNewLayer, deleteLayer, makeLayer } from "#src/layer/index.js";
 import type { LayerGroupViewer } from "#src/layer_group_viewer.js";
 import { NavigationLinkType } from "#src/navigation_state.js";
-import type { WatchableValueInterface } from "#src/trackable_value.js";
+import {
+  observeWatchable,
+  type WatchableValueInterface,
+} from "#src/trackable_value.js";
 import type { DropLayers } from "#src/ui/layer_drag_and_drop.js";
 import {
   registerLayerBarDragLeaveHandler,
@@ -45,6 +48,7 @@ class LayerWidget extends RefCounted {
   prefetchProgress = document.createElement("div");
   labelElementText = document.createTextNode("");
   valueElement = document.createElement("div");
+  layerColorElement = document.createElement("div");
   maxLength = 0;
   prevValueText = "";
 
@@ -61,6 +65,7 @@ class LayerWidget extends RefCounted {
       visibleProgress,
       prefetchProgress,
       labelElementText,
+      layerColorElement,
     } = this;
     element.className = "neuroglancer-layer-item neuroglancer-noselect";
     element.appendChild(visibleProgress);
@@ -103,7 +108,52 @@ class LayerWidget extends RefCounted {
       deleteLayer(this.layer);
       event.stopPropagation();
     });
+
+    const layerColorElementWrapper = document.createElement("div");
+    layerColorElementWrapper.className =
+      "neuroglancer-layer-color-value-wrapper";
+    layerColorElement.className = "neuroglancer-layer-color-value";
+    layerColorElementWrapper.appendChild(layerColorElement);
+
+    if (this.layer.supportsLayerBarColorSyncOption) {
+      const updateLayerColorWidget = () => {
+        const color = this.layer.layerBarColor;
+        if (color) {
+          layerColorElement.style.backgroundColor = color;
+          layerColorElement.classList.remove("rainbow");
+        } else {
+          layerColorElement.classList.add("rainbow");
+        }
+      };
+      this.registerDisposer(
+        layer.observeLayerColor(() => {
+          updateLayerColorWidget();
+        }),
+      );
+      this.registerDisposer(
+        observeWatchable((layerColorEnabled) => {
+          layerColorElementWrapper.style.display = layerColorEnabled
+            ? "block"
+            : "none";
+        }, this.panel.layerGroupViewer.viewerState.enableLayerColorWidget),
+      );
+      this.registerDisposer(
+        layer.layerChanged.add(() => {
+          if (!this.layer.visible) {
+            layerColorElementWrapper.classList.add("cross");
+          } else {
+            layerColorElementWrapper.classList.remove("cross");
+          }
+        }),
+      );
+    } else {
+      // If the layer do not support color sync (no color to deal with)
+      layerColorElement.classList.add("unsupported");
+    }
+
+    // Compose the layer's title bar
     element.appendChild(layerNumberElement);
+    element.appendChild(layerColorElementWrapper);
     valueContainer.appendChild(valueElement);
     valueContainer.appendChild(buttonContainer);
     buttonContainer.appendChild(closeElement);

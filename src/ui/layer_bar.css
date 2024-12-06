@@ -134,6 +134,67 @@
   align-items: center;
 }
 
+.neuroglancer-layer-color-value-wrapper {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  padding: 5px;
+  margin: 0 4px;
+}
+
+.neuroglancer-layer-color-value {
+  border-radius: 50%;
+  height: 10px;
+  width: 10px;
+}
+
+.neuroglancer-layer-color-value.rainbow {
+  position: relative;
+  border-radius: 50%;
+  height: 10px;
+  width: 10px;
+  overflow: hidden;
+}
+
+.neuroglancer-layer-color-value.rainbow::before {
+  content: "";
+  position: absolute;
+  top: -17.5%;
+  left: -17.5%;
+  width: 135%;
+  height: 135%;
+  background: conic-gradient(
+    from 0deg,
+    hsl(0, 100%, 50%),
+    hsl(60, 100%, 50%),
+    hsl(120, 100%, 50%),
+    hsl(180, 100%, 50%),
+    hsl(240, 100%, 50%),
+    hsl(300, 100%, 50%),
+    hsl(360, 100%, 50%)
+  );
+  filter: blur(1px);
+  transform: scale(1.35);
+}
+
+.neuroglancer-layer-color-value-wrapper.cross .neuroglancer-layer-color-value,
+.neuroglancer-layer-color-value-wrapper.cross
+  .neuroglancer-layer-color-value.rainbow::before {
+  opacity: 0.4;
+}
+
+.neuroglancer-layer-color-value-wrapper.cross::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 18px;
+  height: 1px;
+  background-color: rgb(255, 255, 255);
+  transform: translate(-50%, -50%) rotate(135deg);
+  z-index: 1;
+}
+
 .neuroglancer-layer-item-value {
   grid-row: 1;
   grid-column: 1;

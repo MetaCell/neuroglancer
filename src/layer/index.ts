@@ -70,7 +70,11 @@ import type {
   WatchableSet,
   WatchableValueInterface,
 } from "#src/trackable_value.js";
-import { registerNested, WatchableValue } from "#src/trackable_value.js";
+import {
+  observeWatchable,
+  registerNested,
+  WatchableValue,
+} from "#src/trackable_value.js";
 import {
   SELECTED_LAYER_SIDE_PANEL_DEFAULT_LOCATION,
   UserLayerSidePanelsState,
@@ -82,6 +86,7 @@ import {
 import type { GlobalToolBinder } from "#src/ui/tool.js";
 import { LocalToolBinder, SelectedLegacyTool } from "#src/ui/tool.js";
 import { gatherUpdate } from "#src/util/array.js";
+import { TrackableOptionalRGB } from "#src/util/color.js";
 import type { Borrowed, Owned } from "#src/util/disposable.js";
 import { invokeDisposers, RefCounted } from "#src/util/disposable.js";
 import {
@@ -185,12 +190,30 @@ export class UserLayer extends RefCounted {
   }
 
   static supportsPickOption = false;
+  static supportsLayerBarColorSyncOption = false;
 
   pick = new TrackableBoolean(true, true);
 
   selectionState: UserLayerSelectionState;
 
   messages = new MessageList();
+
+  layerBarUserDefinedColor = new TrackableOptionalRGB();
+
+  observeLayerColor(callback: () => void): () => void {
+    return observeWatchable(callback, this.layerBarUserDefinedColor);
+  }
+
+  get automaticLayerBarColor(): string | undefined {
+    return "";
+  }
+
+  get layerBarColor(): string | undefined {
+    if (this.layerBarUserDefinedColor.value) {
+      return this.layerBarUserDefinedColor.toJSON();
+    }
+    return this.automaticLayerBarColor;
+  }
 
   initializeSelectionState(state: this["selectionState"]) {
     state.generation = -1;
@@ -737,6 +760,28 @@ export class ManagedUserLayer extends RefCounted {
     ) {
       userLayer.pick.value = value;
     }
+  }
+
+  get layerBarColor(): string | undefined {
+    const userLayer = this.layer;
+    return userLayer?.layerBarColor;
+  }
+
+  observeLayerColor(callback: () => void): () => void {
+    const userLayer = this.layer;
+    if (userLayer !== null) {
+      return userLayer.observeLayerColor(callback);
+    }
+    return () => {};
+  }
+
+  get supportsLayerBarColorSyncOption() {
+    const userLayer = this.layer;
+    return (
+      userLayer !== null &&
+      (userLayer.constructor as typeof UserLayer)
+        .supportsLayerBarColorSyncOption
+    );
   }
 
   /**
