@@ -592,11 +592,24 @@ class RenderingOptionsTab extends Tab {
 
 class ShaderCodeOverlay extends Overlay {
   codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
+  footerActionsBtnContainer: HTMLDivElement;
+  footerBtnsWrapper: HTMLDivElement;
   constructor(public layer: ImageUserLayer) {
     super();
     this.content.classList.add("neuroglancer-image-layer-shader-overlay");
-    this.content.appendChild(this.codeWidget.element);
-    this.content.appendChild(makeFooterBtnGroup(() => this.close()));
+
+    const mainBody = document.createElement("div");
+    mainBody.classList.add("overlay-content-body");
+    mainBody.appendChild(this.codeWidget.element);
+    this.content.appendChild(mainBody);
+
+    this.footerActionsBtnContainer = document.createElement("div");
+    this.footerActionsBtnContainer.classList.add(
+      "overlay-content-footer",
+    );
+    this.footerActionsBtnContainer.appendChild(makeFooterBtnGroup(() => this.close()));
+    this.content.appendChild(this.footerActionsBtnContainer);
+
     this.codeWidget.textEditor.refresh();
   }
 }

@@ -29,9 +29,10 @@ import CodeMirror from "codemirror";
 import { debounce } from "lodash-es";
 import { Overlay } from "#src/overlay.js";
 import "#src/ui/state_editor.css";
-
+import svg_close from "#src/ui/images/metacell/close.svg?raw";
 import { getCachedJson } from "#src/util/trackable.js";
 import type { Viewer } from "#src/viewer.js";
+import { makeIcon } from "#src/widget/icon.js";
 
 const valueUpdateDelay = 100;
 
@@ -40,36 +41,91 @@ export class StateEditorDialog extends Overlay {
   applyButton: HTMLButtonElement;
   downloadButton: HTMLButtonElement;
   closeButton: HTMLButtonElement;
+  closeMenuButton: HTMLButtonElement;
+  footerActionsBtnContainer: HTMLDivElement;
+  footerBtnsWrapper: HTMLDivElement;
+  private createButton(
+    text: string | null,
+    onClick: () => void,
+    cssClass: string = "",
+    svgUrl: string | null = null,
+  ): HTMLButtonElement {
+    const button = document.createElement("button");
+    if (svgUrl) {
+      const icon = makeIcon({ svg: svgUrl });
+      button.appendChild(icon);
+    } else if (text) {
+      button.textContent = text;
+    }
+    if (cssClass) button.classList.add(cssClass);
+    button.addEventListener("click", onClick);
+    return button;
+  }
   constructor(public viewer: Viewer) {
     super();
 
-    this.content.classList.add("neuroglancer-state-editor");
+    this.content.classList.add("modal-lg");
 
-    const wrapper = document.createElement("div");
-    wrapper.className = "button-group";
+    const titleText = document.createElement("p");
+    titleText.textContent = "Code editor";
 
-    const downloadButton = (this.downloadButton =
-      document.createElement("button"));
-    downloadButton.textContent = "Download";
-    downloadButton.title = "Download state as a JSON file";
-    wrapper.appendChild(downloadButton);
-    downloadButton.addEventListener("click", () => this.downloadState());
+    this.closeMenuButton = this.createButton(
+      null,
+      () => this.close(),
+      "",
+      svg_close,
+    );
+
+    const closeAndHelpContainer = document.createElement("div");
+    closeAndHelpContainer.classList.add(
+      "overlay-content-header",
+    );
+
+    closeAndHelpContainer.appendChild(titleText);
+    closeAndHelpContainer.appendChild(this.closeMenuButton);
+
+    this.content.appendChild(closeAndHelpContainer);
+
+    const mainBody = document.createElement("div");
+    mainBody.classList.add("overlay-content-body");
+    this.content.appendChild(mainBody);
+
+    this.footerActionsBtnContainer = document.createElement("div");
+    this.footerActionsBtnContainer.classList.add(
+      "overlay-content-footer",
+    );
+    this.footerBtnsWrapper = document.createElement("div");
+    this.footerBtnsWrapper.classList.add(
+      "button-wrapper",
+    );
+    this.content.appendChild(this.footerActionsBtnContainer);
 
     const buttonApply = (this.applyButton = document.createElement("button"));
     buttonApply.textContent = "Save";
-    buttonApply.classList.add("outlined-primary");
-    wrapper.appendChild(buttonApply);
+    buttonApply.classList.add("cancel-button");
+    this.footerBtnsWrapper.appendChild(buttonApply);
     buttonApply.addEventListener("click", () => this.applyChanges());
     buttonApply.disabled = true;
 
     const buttonClose = (this.closeButton = document.createElement("button"));
-    buttonClose.classList.add("contained-primary");
+    buttonClose.classList.add("primary-button");
     buttonClose.textContent = "Save & Close";
-    wrapper.appendChild(buttonClose);
+    this.footerBtnsWrapper.appendChild(buttonClose);
     buttonClose.addEventListener("click", () => {
       this.applyChanges();
       this.dispose();
     });
+
+    const downloadButton = (this.downloadButton = document.createElement("button"));
+    downloadButton.textContent = "Download";
+    downloadButton.title = "Download state as a JSON file";
+    downloadButton.classList.add("text-button");
+    downloadButton.addEventListener("click", () => this.downloadState());
+
+    this.footerActionsBtnContainer.appendChild(downloadButton);
+    this.footerActionsBtnContainer.appendChild(
+      this.footerBtnsWrapper,
+    );
 
     this.textEditor = CodeMirror((_element) => {}, <any>{
       value: "",
@@ -83,9 +139,8 @@ export class StateEditorDialog extends Overlay {
       this.debouncedValueUpdater();
     });
 
-    this.content.appendChild(this.textEditor.getWrapperElement());
+    mainBody.appendChild(this.textEditor.getWrapperElement());
     this.textEditor.refresh();
-    this.content.appendChild(wrapper);
   }
 
   private downloadState() {
