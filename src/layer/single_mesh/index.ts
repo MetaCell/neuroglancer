@@ -246,9 +246,12 @@ class ShaderCodeOverlay extends Overlay {
   constructor(public layer: SingleMeshUserLayer) {
     super();
     this.content.classList.add("neuroglancer-single-mesh-layer-shader-overlay");
-    this.content.appendChild(this.attributeWidget.element);
-    this.content.appendChild(this.codeWidget.element);
-    this.codeWidget.textEditor.refresh();
+    const mainBody = document.createElement("div");
+    mainBody.classList.add("overlay-content-body");
+    mainBody.appendChild(this.attributeWidget.element);
+    mainBody.appendChild(this.codeWidget.element);
+    this.content.appendChild(mainBody);
+    this.codeWidget.textEditor.refresh(); 
   }
 }
 

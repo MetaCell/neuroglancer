@@ -17,11 +17,11 @@
  */
 
 import "#src/ui/screenshot_menu.css";
-import svg_close from "ikonate/icons/close.svg?raw";
-import svg_help from "ikonate/icons/help.svg?raw";
 import { throttle } from "lodash-es";
 import { Overlay } from "#src/overlay.js";
 import { StatusMessage } from "#src/status.js";
+import svg_close from "#src/ui/images/metacell/close.svg?raw";
+import svg_help from "#src/ui/images/metacell/help.svg?raw";
 import { setClipboard } from "#src/util/clipboard.js";
 import type {
   ScreenshotLoadStatistics,
@@ -164,6 +164,7 @@ export class ScreenshotDialog extends Overlay {
   private screenshotSizeText: HTMLDivElement;
   private warningElement: HTMLDivElement;
   private footerScreenshotActionBtnsContainer: HTMLDivElement;
+  private footerScreenshotActionBtnsWrapper: HTMLDivElement;
   private progressText: HTMLParagraphElement;
   private scaleRadioButtonsContainer: HTMLDivElement;
   private keepSliceFOVFixedCheckbox: HTMLInputElement;
@@ -256,20 +257,13 @@ export class ScreenshotDialog extends Overlay {
 
   private initializeUI() {
     const tooltips = this.setupHelpTooltips();
-    this.content.classList.add("neuroglancer-screenshot-dialog");
-    const parentElement = this.content.parentElement;
-    if (parentElement) {
-      parentElement.classList.add("neuroglancer-screenshot-overlay");
-    }
-
-    const titleText = document.createElement("h2");
-    titleText.classList.add("neuroglancer-screenshot-title-heading");
+    const titleText = document.createElement("p");
     titleText.textContent = "Screenshot";
 
     this.closeMenuButton = this.createButton(
       null,
       () => this.close(),
-      "neuroglancer-screenshot-close-button",
+      "",
       svg_close,
     );
 
@@ -281,6 +275,15 @@ export class ScreenshotDialog extends Overlay {
     );
     this.forceScreenshotButton = this.createButton("Force screenshot", () =>
       this.forceScreenshot(),
+    );
+    this.forceScreenshotButton.classList.add(
+      "danger-button",
+    );
+    this.takeScreenshotButton.classList.add(
+      "primary-button",
+    );
+    this.cancelScreenshotButton.classList.add(
+      "cancel-button",
     );
     this.filenameAndButtonsContainer = document.createElement("div");
     this.filenameAndButtonsContainer.classList.add(
@@ -299,7 +302,7 @@ export class ScreenshotDialog extends Overlay {
 
     const closeAndHelpContainer = document.createElement("div");
     closeAndHelpContainer.classList.add(
-      "neuroglancer-screenshot-close-and-help",
+      "overlay-content-header",
     );
 
     closeAndHelpContainer.appendChild(titleText);
@@ -309,7 +312,7 @@ export class ScreenshotDialog extends Overlay {
     this.content.appendChild(closeAndHelpContainer);
 
     const mainBody = document.createElement("div");
-    mainBody.classList.add("neuroglancer-screenshot-main-body-container");
+    mainBody.classList.add("overlay-content-body");
     this.content.appendChild(mainBody);
 
     mainBody.appendChild(this.filenameAndButtonsContainer);
@@ -366,18 +369,27 @@ export class ScreenshotDialog extends Overlay {
 
     this.footerScreenshotActionBtnsContainer = document.createElement("div");
     this.footerScreenshotActionBtnsContainer.classList.add(
-      "neuroglancer-screenshot-footer-container",
+      "overlay-content-footer",
+    );
+    this.footerScreenshotActionBtnsWrapper = document.createElement("div");
+    this.footerScreenshotActionBtnsWrapper.classList.add(
+      "button-wrapper",
     );
     this.progressText = document.createElement("p");
     this.progressText.classList.add("neuroglancer-screenshot-progress-text");
     this.footerScreenshotActionBtnsContainer.appendChild(this.progressText);
+
     this.footerScreenshotActionBtnsContainer.appendChild(
+      this.footerScreenshotActionBtnsWrapper,
+    );
+
+    this.footerScreenshotActionBtnsWrapper.appendChild(
       this.cancelScreenshotButton,
     );
-    this.footerScreenshotActionBtnsContainer.appendChild(
+    this.footerScreenshotActionBtnsWrapper.appendChild(
       this.takeScreenshotButton,
     );
-    this.footerScreenshotActionBtnsContainer.appendChild(
+    this.footerScreenshotActionBtnsWrapper.appendChild(
       this.forceScreenshotButton,
     );
     this.content.appendChild(this.footerScreenshotActionBtnsContainer);
@@ -432,7 +444,6 @@ export class ScreenshotDialog extends Overlay {
     } else if (text) {
       button.textContent = text;
     }
-    button.classList.add("neuroglancer-screenshot-button");
     if (cssClass) button.classList.add(cssClass);
     button.addEventListener("click", onClick);
     return button;

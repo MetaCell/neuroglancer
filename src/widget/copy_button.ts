@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import contentcopy from "#src/ui/images/contentcopy.svg?raw";
+import contentcopy from "#src/ui/images/metacell/contentcopy.svg?raw";
 import type { MakeIconOptions } from "#src/widget/icon.js";
 import { makeIcon } from "#src/widget/icon.js";
 
