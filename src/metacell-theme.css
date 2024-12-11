@@ -12,15 +12,17 @@
     --primary120: #002FAC;
     --error100: #D33030;
     --primary100: #1652F0;
+    --background70: #242424;
     --background80: #1F1F1F;
+    --background120: #0B0B0B;
     --background60: #292929;
     --stroke60: #383838;
     --content10: #4F5254;
     --codestring: #D3BE4E;
     --codetrue: #814ED3;
     --codenumber: #4EBBD3;
+    --overlayBg: #14141580;
     --datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0, 0, 0, 0.72);
-    --codeMirrorGuttermarkerSubtleColor: #FFFFFF99;
 }
 
 * {
@@ -354,9 +356,6 @@ ul#statusContainer {
         * {
             font-family: monospace;
         }
-    }
-    .CodeMirror-cursor {
-        border-color: var(--white);
     }
     input[type=color] {
         border: var(--dark80) 0.094rem solid;
@@ -1039,7 +1038,7 @@ ul#statusContainer {
 
             .CodeMirror-gutter-elt {
                 .CodeMirror-guttermarker-subtle {
-                    color: var(--codeMirrorGuttermarkerSubtleColor);
+                    color: var(--content100);
                 }
             }
         }
@@ -1472,10 +1471,11 @@ ul#statusContainer {
     .CodeMirror {
         width: 100%;
         box-sizing: border-box;
+        border-radius: 0.25rem;
         border: 0.0625rem solid var(--dark80);
         color: rgba(255, 255, 255, 0.60);
-        background-color: var(--background60);
-        margin-bottom: 0.5rem;
+        background-color: var(--background70);
+        /* margin-bottom: 0.5rem; */
     }
     .CodeMirror-gutters {
         background-color: var(--background80);
@@ -2864,4 +2864,136 @@ ul#statusContainer {
     .neuroglancer-data-panel-layout-controls > button:hover {
         color: var(--primary120);
     }
+}
+
+.overlay {
+    background-color: var(--overlayBg);
+    justify-content: center;
+    align-items: center;
+    display: flex;
+    padding: 1.875rem 0;
+
+    & .overlay-content {
+        width: 100%;
+        padding: 0;
+        position: static;
+        transform: none;
+        max-width: 47rem;
+        margin: auto;
+        background-color: var(--background80);
+        z-index: 100;
+    
+        &.modal-lg {
+          max-width: 56.25rem;
+        }
+    
+        &:focus-visible {
+          outline: none;
+        }
+    
+        & .overlay-content-header {
+          border-bottom: 0.0625rem solid var(--dark80);
+          padding: 0 1.5rem;
+          height: 4rem;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        
+          & p {
+            margin: 0;
+            color: var(--white);
+            font-size: 1.25rem;
+            font-style: normal;
+            font-weight: 500;
+            line-height: 1.5rem; /* 120% */
+            letter-spacing: -0.025rem;
+          }
+        
+          &  button {
+            border: none;
+            background-color: transparent;
+            stroke: var(--content100);
+            display: block;
+            padding: 0;
+            border-radius: 0;
+          }
+        
+          & .neuroglancer-icon {
+            width: 1.5rem;
+            display: block;
+              height: 1.5rem;
+            & svg {
+              width: 1.5rem;
+              height: 1.5rem;
+            }
+          }
+        }
+    
+        & .overlay-content-body {
+          padding: 1.5rem;
+          overflow: auto;
+          max-height: calc(100vh - (4rem + 4.5rem + 3.75rem));
+        }
+    
+        & .overlay-content-footer {
+          border-top: 0.0625rem solid var(--dark80);
+          padding: 0 1.5rem;
+          height: 4.5rem;
+          display: flex;
+          align-items: center;
+          justify-content: end;
+    
+          & > button:not(:only-child) {
+            margin-right: auto;
+          }
+    
+          button {
+            display: flex;
+            padding: 0.75rem 1rem;
+            cursor: pointer;
+            justify-content: center;
+            align-items: center;
+            font-size: 0.875rem;
+            font-style: normal;
+            font-weight: 500;
+            line-height: 1.125rem; /* 128.571% */
+            letter-spacing: -0.0088rem;
+    
+            &:disabled {
+              opacity: 0.3;
+              pointer-events: none;
+            }
+          }
+    
+          & .button-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+          }
+        }
+    }
+}
+
+.text-button {
+    color: var(--primary80);
+    border: none;
+    background: transparent;
+}
+
+.danger-button {
+    border: none;
+    color: var(--white);
+    background: var(--error100);
+}
+
+.primary-button {
+    border: none;
+    color: var(--white);
+    background: var(--primary100)
+}
+
+.cancel-button {
+    color: var(--white);
+    border: 0.0938rem solid var(--dark80);
+    background: transparent;
 }

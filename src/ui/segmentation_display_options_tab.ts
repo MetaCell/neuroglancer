@@ -139,7 +139,11 @@ class ShaderCodeOverlay extends Overlay {
     this.content.classList.add(
       "neuroglancer-segmentation-layer-skeleton-shader-overlay",
     );
-    this.content.appendChild(this.codeWidget.element);
-    this.codeWidget.textEditor.refresh();
+    const mainBody = document.createElement("div");
+    mainBody.classList.add("overlay-content-body");
+    mainBody.appendChild(this.codeWidget.element);
+    this.content.appendChild(mainBody);
+    this.codeWidget.textEditor.refresh(); 
+
   }
 }
