@@ -84,7 +84,7 @@ import {
 import code from "#src/ui/images/code.svg?raw";
 import formatlistbulleted from "#src/ui/images/formatlistbulleted.svg?raw";
 import layers from "#src/ui/images/layers.svg?raw";
-import photocamera from "#src/ui/images/photo_camera.svg?raw";
+import photocamera from "#src/ui/images/metacell/photo_camera.svg?raw";
 import questionmark from "#src/ui/images/questionmark.svg?raw";
 import settings from "#src/ui/images/settings.svg?raw";
 import tune from "#src/ui/images/tune.svg?raw";

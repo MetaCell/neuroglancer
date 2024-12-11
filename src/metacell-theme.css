@@ -18,9 +18,9 @@
     --background60: #292929;
     --stroke60: #383838;
     --content10: #4F5254;
-    --codestring: #D3BE4E;
-    --codetrue: #814ED3;
-    --codenumber: #4EBBD3;
+    --error60: #DB4E4E;
+    --codetrue: #9271EF;
+    --codenumber: #00875A;
     --overlayBg: #14141580;
     --datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0, 0, 0, 0.72);
 }
@@ -354,6 +354,7 @@ ul#statusContainer {
     .CodeMirror-lines {
         font-family: monospace;
         * {
+            color: var(--white);
             font-family: monospace;
         }
     }
@@ -365,7 +366,7 @@ ul#statusContainer {
         .cm-string,.cm-comment {
             font-size: 0.75rem;
             font-weight: 400;
-            color: var(--codestring);
+            color: var(--error60);
         }
         .cm-number {
             font-size: 0.75rem;
@@ -559,7 +560,7 @@ ul#statusContainer {
                 }
             }
             .neuroglancer-annotation-shader-property-type {
-                color: var(--codestring);
+                color: var(--error60);
             }
             .neuroglancer-annotation-shader-property-identifier {
                 color: rgba(255, 255, 255, 0.6);
@@ -950,6 +951,9 @@ ul#statusContainer {
         outline: 0 !important;
         padding-top: 0;
         max-width: 50rem;
+        .CodeMirror-cursor {
+            border-color: var(--white);
+        }
         .CodeMirror {
             height: 300px;
         }
@@ -1474,7 +1478,7 @@ ul#statusContainer {
         border-radius: 0.25rem;
         border: 0.0625rem solid var(--dark80);
         color: rgba(255, 255, 255, 0.60);
-        background-color: var(--background70);
+        background-color: var(--background80);
         /* margin-bottom: 0.5rem; */
     }
     .CodeMirror-gutters {
@@ -2284,7 +2288,7 @@ ul#statusContainer {
             background-image: url('../src/ui/images/push_pin.svg');
             background-repeat: no-repeat;
             background-position: center center;
-            text-indent: -999px;
+            text-indent: -62.4375rem;
             position: relative;
             top: 0.1rem;
             margin: 0;
@@ -2329,7 +2333,6 @@ ul#statusContainer {
             color: var(--content100);
             font-weight: 400;
             position: relative;
-            top: -0.15rem;
         }
     }
 
@@ -2950,6 +2953,7 @@ ul#statusContainer {
           button {
             display: flex;
             padding: 0.75rem 1rem;
+            transition: all ease-in-out .3s;
             cursor: pointer;
             justify-content: center;
             align-items: center;
@@ -2978,22 +2982,38 @@ ul#statusContainer {
     color: var(--primary80);
     border: none;
     background: transparent;
+
+    &:hover {
+        color: var(--primary100);
+    }
 }
 
 .danger-button {
     border: none;
     color: var(--white);
     background: var(--error100);
+
+    &:hover {
+        background: var(--error60)
+    }
 }
 
 .primary-button {
     border: none;
     color: var(--white);
-    background: var(--primary100)
+    background: var(--primary100);
+
+    &:hover {
+        background: var(--primary120)
+    }
 }
 
 .cancel-button {
     color: var(--white);
     border: 0.0938rem solid var(--dark80);
     background: transparent;
+
+    &:hover {
+        border-color: var(--stroke60);
+    }
 }
