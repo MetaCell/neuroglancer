@@ -29,7 +29,6 @@ import CodeMirror from "codemirror";
 import { debounce } from "lodash-es";
 import { Overlay } from "#src/overlay.js";
 import "#src/ui/state_editor.css";
-import { makeOverlayHeader } from "#src/overlay_header.js";
 
 import { getCachedJson } from "#src/util/trackable.js";
 import type { Viewer } from "#src/viewer.js";
@@ -45,12 +44,6 @@ export class StateEditorDialog extends Overlay {
     super();
 
     this.content.classList.add("neuroglancer-state-editor");
-
-    makeOverlayHeader({
-      parentElem: this.content,
-      title: "State editor",
-      onClose: () => this.dispose(),
-    });
 
     const wrapper = document.createElement("div");
     wrapper.className = "button-group";
