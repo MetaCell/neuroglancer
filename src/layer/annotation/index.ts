@@ -383,7 +383,7 @@ const Base = UserLayerWithAnnotationsMixin(UserLayer);
 export class AnnotationUserLayer extends Base {
   localAnnotations: LocalAnnotationSource | undefined;
   private localAnnotationProperties: AnnotationPropertySpec[] | undefined;
-  private localAnnotationRelationships: string[];
+  private localAnnotationRelationships: string[] = ["segments"];
   private localAnnotationsJson: any = undefined;
   private pointAnnotationsJson: any = undefined;
   linkedSegmentationLayers = this.registerDisposer(
