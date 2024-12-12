@@ -10,6 +10,7 @@
     --content100: #999CA0;
     --primary80: #5D89FF;
     --primary120: #002FAC;
+    --primaryactive :#0474FF;
     --error100: #D33030;
     --primary100: #1652F0;
     --background70: #242424;
@@ -518,6 +519,25 @@ ul#statusContainer {
         div {
             &:empty {
                 display: none;
+            }
+        }
+    }
+    .neuroglancer-invlerp-range-finder-button-container {
+        .neuroglancer-invlerp-range-finder-button {
+            min-width: 3rem;
+            background: var(--dark100);
+            border: 1px solid var(--background80);
+            padding: 0.25rem;
+            color: var(--white);
+            outline: 0;
+            font-size: 0.75rem;
+            font-style: normal;
+            font-weight: 400;
+            &:hover {
+                background: var(--background80);
+            }
+            &:active {
+                color: var(--primaryactive);
             }
         }
     }
@@ -1596,6 +1616,11 @@ ul#statusContainer {
             height: 100%;
             display: flex;
             flex-direction: column;
+            .skeleton-container {
+                .neuroglancer-layer-control-container {
+                    margin-bottom: 0.5rem;
+                }
+            }
             .neuroglancer-render-scale-widget-legend {
                 color: var(--content100);
                 font-size: 0.75rem;
@@ -2329,6 +2354,7 @@ ul#statusContainer {
             color: var(--content100);
             font-weight: 400;
             position: relative;
+            top: 0.025rem;
         }
     }
 
