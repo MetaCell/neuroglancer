@@ -160,8 +160,8 @@
 
 .neuroglancer-screenshot-scale-menu label span {
   display: flex;
-  width: 1rem;
-  height: 1rem;
+  width: 1.5rem;
+  height: 1.5rem;
   background: url('./images/metacell/radio_unchecked.svg') no-repeat center center;
   background-size: contain;
   transition: background 0.3s ease;
@@ -405,6 +405,15 @@
   margin-bottom: 1.5rem;
   justify-content: space-between;
 
+  .neuroglancer-screenshot-copy-icon::before {
+    left: auto;
+    right: 90%;
+  }
+
+  .neuroglancer-screenshot-copy-icon::after {
+    right: 150%;
+  }
+
   & .neuroglancer-icon {
     color: var(--content100);
   }
@@ -548,7 +557,8 @@
   .neuroglancer-screenshot-tooltip:hover::after,
 .neuroglancer-screenshot-scale-factor
   .neuroglancer-screenshot-tooltip:hover::before,
-  .neuroglancer-screenshot-tooltip::before {
+  .neuroglancer-screenshot-tooltip::before,
+  .neuroglancer-screenshot-filename-and-buttons > label > .neuroglancer-screenshot-tooltip:hover::before {
   opacity: 1;
   visibility: visible;
 }
@@ -557,7 +567,7 @@
   th
   .neuroglancer-screenshot-tooltip::after,
 .neuroglancer-screenshot-scale-factor .neuroglancer-screenshot-tooltip::after,
-.neuroglancer-screenshot-tooltip::after {
+.neuroglancer-screenshot-filename-and-buttons > label > .neuroglancer-screenshot-tooltip::after {
   content: attr(data-tooltip);
   position: absolute;
   border-width: 0.0625rem;
@@ -566,7 +576,7 @@
   visibility: hidden;
   transition: opacity 0.3s ease;
   pointer-events: none;
-  border-color: transparent transparent transparent var(--dark100);
+  border-color: transparent transparent transparent var(--background60);
   left: 160%;
 }
 
@@ -574,14 +584,15 @@
   th
   .neuroglancer-screenshot-tooltip::before,
 .neuroglancer-screenshot-scale-factor .neuroglancer-screenshot-tooltip::before,
-.neuroglancer-screenshot-tooltip::before {
+.neuroglancer-screenshot-tooltip::before,
+.neuroglancer-screenshot-filename-and-buttons > label > .neuroglancer-screenshot-tooltip::before {
   content: "";
   position: absolute;
   top: 0; /* Adjust this to move the arrow closer to the tooltip */
   left: 100%;
   border-width: 0.375rem;
   border-style: solid;
-  border-color: transparent var(--gray600) transparent transparent; /* Arrow pointing leftwards */
+  border-color: transparent var(--background60) transparent transparent; /* Arrow pointing leftwards */
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.3s ease;
@@ -631,7 +642,7 @@
   font-size: 0.875rem;
   font-weight: 400;
   border-radius: 0.375rem;
-  background: var(--dark100);
+  background: var(--background60);
   /* text-align: center; */
   opacity: 0;
   visibility: hidden;
@@ -640,7 +651,6 @@
   pointer-events: none;
   right: 150%;
   top: -100%;
-  box-shadow: 0rem 0.75rem 0.75rem -0.375rem rgba(0, 0, 0, 0.52), 0rem 0rem 0.0625rem 0rem rgba(0, 0, 0, 0.40);
 }
 .neuroglancer-screenshot-tooltip::before {
   content: "";
@@ -651,13 +661,14 @@
   visibility: hidden;
   transition: opacity 0.3s ease;
   pointer-events: none;
-  border-color: transparent transparent transparent var(--dark100);
+  border-color: transparent transparent transparent var(--background60);
   top: 0;
   left: -50%;
 }
 
 .neuroglancer-screenshot-tooltip:hover::after,
-.neuroglancer-screenshot-tooltip:hover::before {
+.neuroglancer-screenshot-tooltip:hover::before,
+.neuroglancer-screenshot-filename-and-buttons > label > .neuroglancer-screenshot-tooltip:hover::after {
   opacity: 1;
   visibility: visible;
 }
@@ -703,15 +714,15 @@
   position: absolute;
   text-indent: 0;
   color: white;
-  padding: 0.5rem 0.75rem;
+  padding: 0.75rem;
   border-radius: 5px;
   height: auto;
-  width: 8.125rem;
+  /* width: 8.125rem; */
   line-height: 1rem;
-  font-size: 0.75rem;
-  font-weight: 590;
-  border-radius: 8px;
-  background: var(--gray600);
+  font-size: 0.875rem;
+  font-weight: 400;
+  border-radius: 6px;
+  background: var(--background60);
   text-align: center;
   opacity: 0;
   visibility: hidden;
@@ -730,7 +741,7 @@
   visibility: hidden;
   transition: opacity 0.3s ease;
   pointer-events: none;
-  border-color: transparent transparent transparent black;
+  border-color: transparent transparent transparent var(--background60);
   top: 0;
   left: 90%;
 }
