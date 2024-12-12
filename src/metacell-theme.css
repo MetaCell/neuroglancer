@@ -10,7 +10,6 @@
     --content100: #999CA0;
     --primary80: #5D89FF;
     --primary120: #002FAC;
-    --primaryactive :#0474FF;
     --error100: #D33030;
     --primary100: #1652F0;
     --background70: #242424;
@@ -537,7 +536,7 @@ ul#statusContainer {
                 background: var(--background80);
             }
             &:active {
-                color: var(--primaryactive);
+                color: var(--primary80);
             }
         }
     }
