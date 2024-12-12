@@ -693,6 +693,10 @@ export class Viewer extends RefCounted implements ViewerState {
     // Register a disposer to listen for state changes propagated them the main frame.
     this.registerDisposer(
       this.state.changed.add(() => {
+        if (!this.isReady()) {
+          return;
+        }
+
         const payload: SessionUpdatePayload = {
           url: window.location.href,
           state: getDeepClonedState(this)
