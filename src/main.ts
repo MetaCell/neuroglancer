@@ -21,3 +21,20 @@ import { setupDefaultViewer } from "#src/ui/default_viewer_setup.js";
 import "#src/util/google_tag_manager.js";
 
 setupDefaultViewer();
+
+const originalReplaceState = history.replaceState;
+history.replaceState = function(...args) {
+    originalReplaceState.apply(history, args);
+    window.parent.postMessage({
+        type: 'synchash',
+        hash: window.location.hash,
+        // state: args[0],
+      }, '*');
+};
+
+window.addEventListener('message', (event) => {
+    const {type, hash} = event.data
+    if (type === 'hashchange' && window.location.hash !== hash) {
+        window.location.hash = hash;
+    }
+});
