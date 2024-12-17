@@ -38,6 +38,7 @@ import type {
   PreprocessedSegmentPropertyMap,
 } from "#src/segmentation_display_state/property_map.js";
 import { SharedWatchableValue } from "#src/shared_watchable_value.js";
+import { StatusMessage } from "#src/status.js";
 import type { TrackableAlphaValue } from "#src/trackable_alpha.js";
 import type {
   TrackableValue,
@@ -457,7 +458,12 @@ function makeRegisterSegmentWidgetEventHandlers(
 
   const copyHandler = (event: Event) => {
     const entryElement = getEntryElement(event);
-    setClipboard(entryElement.dataset.id!);
+    const result = setClipboard(entryElement.dataset.id!);
+    StatusMessage.showTemporaryMessage(
+      result
+        ? "Segment ID copied to clipboard"
+        : "Failed to copy segment ID to clipboard",
+    );
     event.stopPropagation();
   };
 
