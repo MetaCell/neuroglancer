@@ -68,6 +68,8 @@ const TOOLTIPS = {
     "The highest loaded resolution of 2D image slices, 3D volume renderings, and 2D segmentation slices are shown here. Other layers are not shown.",
   scaleFactorHelpTooltip:
     "Adjusting the scale will zoom out 2D cross-section panels by that factor unless the box is ticked to keep the slice FOV fixed with scale changes. 3D panels always have fixed FOV regardless of the scale factor.",
+  screenshotNameHelpTooltip:
+    "Figure Name Help Tooltip.",
 };
 
 interface UIScreenshotStatistics {
@@ -173,6 +175,7 @@ export class ScreenshotDialog extends Overlay {
     orthographicSettingsTooltip: HTMLElement;
     layerDataTooltip: HTMLElement;
     scaleFactorHelpTooltip: HTMLElement;
+    screenshotNameHelpTooltip: HTMLElement;
   };
   private statisticsKeyToCellMap: Map<string, HTMLTableCellElement> = new Map();
   private layerResolutionKeyToCellMap: Map<string, HTMLTableCellElement> =
@@ -247,18 +250,26 @@ export class ScreenshotDialog extends Overlay {
       TOOLTIPS.scaleFactorHelpTooltip,
     );
 
+    const screenshotNameHelpTooltip = makeIcon({ svg: svg_help });
+    screenshotNameHelpTooltip.classList.add("neuroglancer-screenshot-tooltip");
+    screenshotNameHelpTooltip.setAttribute(
+      "data-tooltip",
+      TOOLTIPS.screenshotNameHelpTooltip,
+    );
+
     return (this.helpTooltips = {
       generalSettingsTooltip,
       orthographicSettingsTooltip,
       layerDataTooltip,
       scaleFactorHelpTooltip,
+      screenshotNameHelpTooltip,
     });
   }
 
   private initializeUI() {
     const tooltips = this.setupHelpTooltips();
     const titleText = document.createElement("p");
-    titleText.textContent = "Screenshot";
+    titleText.textContent = "Create figure";
 
     this.closeMenuButton = this.createButton(
       null,
@@ -267,13 +278,13 @@ export class ScreenshotDialog extends Overlay {
       svg_close,
     );
 
-    this.cancelScreenshotButton = this.createButton("Cancel screenshot", () =>
+    this.cancelScreenshotButton = this.createButton("Cancel", () =>
       this.cancelScreenshot(),
     );
-    this.takeScreenshotButton = this.createButton("Take screenshot", () =>
+    this.takeScreenshotButton = this.createButton("Create figure", () =>
       this.screenshot(),
     );
-    this.forceScreenshotButton = this.createButton("Force screenshot", () =>
+    this.forceScreenshotButton = this.createButton("Force create figure", () =>
       this.forceScreenshot(),
     );
     this.forceScreenshotButton.classList.add(
@@ -296,7 +307,8 @@ export class ScreenshotDialog extends Overlay {
     this.filenameAndButtonsContainer.appendChild(menuText);
 
     const nameInputLabel = document.createElement("label");
-    nameInputLabel.textContent = "Screenshot name";
+    nameInputLabel.textContent = "Figure name";
+    nameInputLabel.appendChild(tooltips.screenshotNameHelpTooltip);
     this.filenameAndButtonsContainer.appendChild(nameInputLabel);
     this.filenameAndButtonsContainer.appendChild(this.createNameInput());
 
@@ -314,7 +326,7 @@ export class ScreenshotDialog extends Overlay {
     const mainBody = document.createElement("div");
     mainBody.classList.add("overlay-content-body");
     this.content.appendChild(mainBody);
-
+    mainBody.appendChild(this.createDescriptionSection());
     mainBody.appendChild(this.filenameAndButtonsContainer);
     mainBody.appendChild(this.createScaleRadioButtons());
 
@@ -334,7 +346,7 @@ export class ScreenshotDialog extends Overlay {
     this.screenshotSizeText = document.createElement("div");
     this.screenshotSizeText.classList.add("neuroglancer-screenshot-size-text");
     const screenshotLabel = document.createElement("h3");
-    screenshotLabel.textContent = "Screenshot size";
+    screenshotLabel.textContent = "Image size";
     this.screenshotPixelSize = document.createElement("span");
 
     const screenshotCopyButton = makeCopyButton({
@@ -426,7 +438,7 @@ export class ScreenshotDialog extends Overlay {
   private createNameInput(): HTMLInputElement {
     const nameInput = document.createElement("input");
     nameInput.type = "text";
-    nameInput.placeholder = "Enter optional screenshot name";
+    nameInput.placeholder = "Figure name";
     nameInput.classList.add("neuroglancer-screenshot-name-input");
     return (this.nameInput = nameInput);
   }
@@ -449,13 +461,33 @@ export class ScreenshotDialog extends Overlay {
     return button;
   }
 
+  private createDescriptionSection() {
+    const descriptionSection = document.createElement("div");
+    descriptionSection.classList.add("neuroglancer-screenshot-description-section");
+  
+    const descriptionText = document.createElement("p");
+    descriptionText.innerHTML = `
+      A snapshot of your current state will be taken and this will create a figure. 
+      View your figures on the sidebar panel and the dashboard. 
+      <a href="#">Learn more</a>`;
+    descriptionSection.appendChild(descriptionText);
+  
+    const separator = document.createElement("div");
+    separator.classList.add("separator");
+    descriptionSection.appendChild(separator);
+  
+    return descriptionSection;
+  }
+  
+  
+
   private createScaleRadioButtons() {
     const scaleMenu = document.createElement("div");
     scaleMenu.classList.add("neuroglancer-screenshot-scale-menu");
 
     const scaleLabel = document.createElement("label");
     scaleLabel.classList.add("neuroglancer-screenshot-scale-factor");
-    scaleLabel.textContent = "Screenshot scale factor";
+    scaleLabel.textContent = "Image scale factor";
 
     scaleLabel.appendChild(this.helpTooltips.scaleFactorHelpTooltip);
 
@@ -475,17 +507,20 @@ export class ScreenshotDialog extends Overlay {
     scales.forEach((scale) => {
       const label = document.createElement("label");
       const input = document.createElement("input");
-
+      const image = document.createElement("span");
       input.type = "radio";
       input.name = "screenshot-scale";
       input.value = scale.toString();
       input.checked = scale === this.screenshotManager.screenshotScale;
       input.classList.add("neuroglancer-screenshot-scale-radio");
+      label.classList.add("neuroglancer-screenshot-scale-label");
+      image.classList.add("radio-icon");
 
       label.appendChild(input);
+      label.appendChild(image);
       label.appendChild(document.createTextNode(`${scale}x`));
       this.scaleRadioButtonsContainer.appendChild(label);
-
+    
       input.addEventListener("change", () => {
         this.screenshotManager.screenshotScale = scale;
         this.handleScreenshotResize();
@@ -497,25 +532,37 @@ export class ScreenshotDialog extends Overlay {
     keepSliceFOVFixedDiv.classList.add(
       "neuroglancer-screenshot-keep-slice-label",
     );
-    keepSliceFOVFixedDiv.textContent = "Keep slice FOV fixed with scale change";
+keepSliceFOVFixedDiv.textContent = "Keep slice FOV fixed with scale change";
 
-    const keepSliceFOVFixedCheckbox = document.createElement("input");
+const image = document.createElement("span");
+image.classList.add("checkbox-icon"); // Adding class for the image icon
+
+const keepSliceFOVFixedCheckbox = document.createElement("input");
     keepSliceFOVFixedCheckbox.classList.add(
       "neuroglancer-screenshot-keep-slice-fov-checkbox",
     );
-    keepSliceFOVFixedCheckbox.type = "checkbox";
-    keepSliceFOVFixedCheckbox.checked =
-      this.screenshotManager.shouldKeepSliceViewFOVFixed;
-    keepSliceFOVFixedCheckbox.addEventListener("change", () => {
-      this.screenshotManager.shouldKeepSliceViewFOVFixed =
-        keepSliceFOVFixedCheckbox.checked;
-    });
-    this.keepSliceFOVFixedCheckbox = keepSliceFOVFixedCheckbox;
-    keepSliceFOVFixedDiv.appendChild(keepSliceFOVFixedCheckbox);
-    scaleMenu.appendChild(keepSliceFOVFixedDiv);
+keepSliceFOVFixedCheckbox.type = "checkbox";
+keepSliceFOVFixedCheckbox.checked = this.screenshotManager.shouldKeepSliceViewFOVFixed;
 
-    this.handleScreenshotResize();
-    return scaleMenu;
+// Update the checkbox icon initially based on the checked state
+const updateCheckboxIcon = () => {
+  image.classList.toggle('checked', keepSliceFOVFixedCheckbox.checked);
+};
+
+updateCheckboxIcon(); // Update the icon when the checkbox is created
+
+keepSliceFOVFixedCheckbox.addEventListener("change", () => {
+  this.screenshotManager.shouldKeepSliceViewFOVFixed = keepSliceFOVFixedCheckbox.checked;
+  updateCheckboxIcon(); // Update icon on state change
+});
+
+this.keepSliceFOVFixedCheckbox = keepSliceFOVFixedCheckbox;
+keepSliceFOVFixedDiv.appendChild(keepSliceFOVFixedCheckbox);
+keepSliceFOVFixedDiv.appendChild(image); // Append image element after checkbox
+scaleMenu.appendChild(keepSliceFOVFixedDiv);
+
+this.handleScreenshotResize();
+return scaleMenu;
   }
 
   private createStatisticsTable() {
@@ -541,8 +588,7 @@ export class ScreenshotDialog extends Overlay {
     const descriptionkeyHeader = document.createElement("th");
     descriptionkeyHeader.colSpan = 2;
 
-    descriptionkeyHeader.textContent =
-      "The screenshot will take when all the chunks are loaded. If GPU memory is full, the screenshot will only capture the successfully loaded chunks. A screenshot scale larger than 1 may cause new chunks to be downloaded once the screenshot is in progress.";
+    descriptionkeyHeader.innerHTML = `Screenshot will be taken once all chunks are loaded. If GPU memory is full, the screenshot will only capture the successfully loaded chunks. <a href="#">Learn more</a>`;
 
     // It can be used to point to a docs page when complete
     // const descriptionLearnMoreLink = document.createElement("a");
@@ -727,7 +773,7 @@ export class ScreenshotDialog extends Overlay {
       currentStatistics.visibleChunksTotal === 0
         ? 0
         : (100 * currentStatistics.visibleChunksGpuMemory) /
-          currentStatistics.visibleChunksTotal;
+        currentStatistics.visibleChunksTotal;
     const percentGpuUsage =
       (100 * currentStatistics.visibleGpuMemory) /
       currentStatistics.gpuMemoryCapacity;
@@ -784,9 +830,9 @@ export class ScreenshotDialog extends Overlay {
         }
       }
       this.keepSliceFOVFixedCheckbox.disabled = false;
-      this.forceScreenshotButton.disabled = true;
-      this.cancelScreenshotButton.disabled = true;
-      this.takeScreenshotButton.disabled = false;
+      this.forceScreenshotButton.style.display = 'none';
+      this.cancelScreenshotButton.style.display = 'none';
+      this.takeScreenshotButton.style.display = '';
       this.progressText.textContent = "";
       this.forceScreenshotButton.title = "";
     } else {
@@ -797,10 +843,10 @@ export class ScreenshotDialog extends Overlay {
         }
       }
       this.keepSliceFOVFixedCheckbox.disabled = true;
-      this.forceScreenshotButton.disabled = false;
-      this.cancelScreenshotButton.disabled = false;
-      this.takeScreenshotButton.disabled = true;
-      this.progressText.textContent = "Screenshot in progress...";
+      this.forceScreenshotButton.style.display = '';
+      this.cancelScreenshotButton.style.display = '';
+      this.takeScreenshotButton.style.display = 'none';
+      this.progressText.textContent = "Processing...";
       this.forceScreenshotButton.title =
         "Force a screenshot of the current view without waiting for all data to be loaded and rendered";
     }
