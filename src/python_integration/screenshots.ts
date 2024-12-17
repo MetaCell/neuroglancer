@@ -47,6 +47,7 @@ export interface ScreenshotActionState {
   viewerState: any;
   selectedValues: any;
   screenshot: ScreenshotResult;
+  name?: string
 }
 
 export interface ScreenshotChunkStatistics {
