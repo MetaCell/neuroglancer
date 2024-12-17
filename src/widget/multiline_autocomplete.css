@@ -19,6 +19,7 @@
   padding: 2px;
   position: relative;
   background-color: #222;
+  z-index: 1; /* to create a new stacking context */
 }
 
 .neuroglancer-multiline-autocomplete-hint,
