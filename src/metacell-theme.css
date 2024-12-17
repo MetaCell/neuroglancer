@@ -2864,6 +2864,16 @@ ul#statusContainer {
     .neuroglancer-data-panel-layout-controls > button:hover {
         color: var(--primary120);
     }
+
+    .neuroglancer-segmentation-color-seed-control.neuroglancer-layer-control-control {
+        .neuroglancer-icon {
+            margin-left: 0.375rem;
+            svg {
+                stroke-width: 1;
+                stroke: var(--content100);
+            }
+        }
+    }
 }
 
 .overlay {
