@@ -25,6 +25,7 @@ import type {
 } from "#src/layer/index.js";
 import { deleteLayer } from "#src/layer/index.js";
 import { TrackableBooleanCheckbox } from "#src/trackable_boolean.js";
+import { observeWatchable } from "#src/trackable_value.js";
 import type { DropLayers } from "#src/ui/layer_drag_and_drop.js";
 import {
   registerLayerBarDragLeaveHandler,
@@ -103,6 +104,66 @@ export class LayerVisibilityWidget extends RefCounted {
   }
 }
 
+class LayerColorWidget extends RefCounted {
+  element = document.createElement("div");
+  elementWrapper = document.createElement("div");
+
+  constructor(
+    public panel: LayerListPanel,
+    public layer: ManagedUserLayer,
+  ) {
+    super();
+    const { element, elementWrapper } = this;
+    element.className = "neuroglancer-layer-list-panel-color-value";
+    elementWrapper.className =
+      "neuroglancer-layer-list-panel-color-value-wrapper";
+    elementWrapper.appendChild(element);
+
+    this.registerDisposer(
+      observeWatchable((layerColorEnabled) => {
+        elementWrapper.style.display = layerColorEnabled ? "block" : "none";
+        if (this.layer.supportsLayerBarColorSyncOption) {
+          elementWrapper.classList.remove("unsupported");
+          element.classList.remove("unsupported");
+        } else {
+          elementWrapper.classList.add("unsupported");
+          element.classList.add("unsupported");
+        }
+      }, panel.sidePanelManager.viewerState.enableLayerColorWidget),
+    );
+    if (!this.layer.supportsLayerBarColorSyncOption) {
+      elementWrapper.classList.add("unsupported");
+      element.classList.add("unsupported");
+    }
+    const updateLayerColorWidget = () => {
+      const color = this.layer.layerBarColor;
+      if (color) {
+        element.style.backgroundColor = color;
+        element.classList.remove("rainbow");
+      } else {
+        const style = this.layer.supportsLayerBarColorSyncOption
+          ? "rainbow"
+          : "unsupported";
+        element.classList.add(style);
+      }
+    };
+    this.registerDisposer(
+      layer.observeLayerColor(() => {
+        updateLayerColorWidget();
+      }),
+    );
+    this.registerDisposer(
+      layer.layerChanged.add(() => {
+        if (!this.layer.visible) {
+          elementWrapper.classList.add("cross");
+        } else {
+          elementWrapper.classList.remove("cross");
+        }
+      }),
+    );
+  }
+}
+
 function makeSelectedLayerSidePanelCheckboxIcon(layer: ManagedUserLayer) {
   const { selectedLayer } = layer.manager.root;
   const icon = new CheckboxIcon(
@@ -166,6 +227,9 @@ class LayerListItem extends RefCounted {
     element.appendChild(numberElement);
     element.appendChild(
       this.registerDisposer(new LayerVisibilityWidget(layer)).element,
+    );
+    element.appendChild(
+      this.registerDisposer(new LayerColorWidget(panel, layer)).elementWrapper,
     );
     element.appendChild(
       this.registerDisposer(new LayerNameWidget(layer)).element,
