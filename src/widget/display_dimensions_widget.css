@@ -22,11 +22,11 @@
   background-color: rgba(0, 0, 0, 0.3);
 }
 
-.neuroglancer-display-dimensions-widget-dimension-grid {
+/* .neuroglancer-display-dimensions-widget-dimension-grid {
   display: grid;
   grid-template-rows: 0fr 0fr 0fr 0fr;
   grid-template-columns: 0fr 0fr 0fr;
-}
+} */
 
 .neuroglancer-display-dimensions-widget input {
   outline: 0px;
