@@ -318,6 +318,26 @@ export class PositionPlot extends RefCounted {
       position.value = voxelCoordinates;
     };
 
+    canvas.addEventListener("wheel", (event: WheelEvent) => {
+      console.log("wheel");
+      event.preventDefault();
+      event.stopPropagation();
+      this.position
+
+      const coordinateSpace = this.position.coordinateSpace.value;
+      const dimensionIndex = coordinateSpace.ids.indexOf(this.dimensionId);
+      if (dimensionIndex === -1) return;
+      const { bounds } = coordinateSpace;
+      const { lowerBounds, upperBounds } = bounds;
+      const lowerBound = lowerBounds[dimensionIndex];
+      const upperBound = upperBounds[dimensionIndex];
+      const delta = event.deltaY > 0 ? -1 : 1;
+      const step = Math.max(1, Math.abs(upperBound - lowerBound) / 100);
+      const position = this.position.value;
+      position[dimensionIndex] += delta * step;
+      this.position.value = position;
+    });
+
     canvas.addEventListener("pointermove", (event: MouseEvent) => {
       const x = getPositionFromMouseEvent(event);
       hoverPosition = x;
