@@ -199,7 +199,7 @@ export class ImageUserLayer extends Base {
     };
   }
 
-  selectionState: ImageLayerSelectionState;
+  declare selectionState: ImageLayerSelectionState;
 
   constructor(managedLayer: Borrowed<ManagedUserLayer>) {
     super(managedLayer);
@@ -524,10 +524,11 @@ for (const control of LAYER_CONTROLS) {
 }
 
 class RenderingOptionsTab extends Tab {
-  codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
+  codeWidget: ShaderCodeWidget;
   constructor(public layer: ImageUserLayer) {
     super();
     const { element } = this;
+    this.codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
     element.classList.add("neuroglancer-image-dropdown");
 
     for (const control of LAYER_CONTROLS) {
@@ -599,9 +600,10 @@ class RenderingOptionsTab extends Tab {
 }
 
 class ShaderCodeOverlay extends Overlay {
-  codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
+  codeWidget: ShaderCodeWidget;
   constructor(public layer: ImageUserLayer) {
     super();
+    this.codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
     this.content.classList.add("neuroglancer-image-layer-shader-overlay");
     this.content.appendChild(this.codeWidget.element);
     this.codeWidget.textEditor.refresh();
