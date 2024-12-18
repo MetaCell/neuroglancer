@@ -13,7 +13,7 @@ import {
 
 export const LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
   {
-    label: "Color seed",
+    label: "Seeded random colours",
     title: "Color segments based on a hash of their id",
     toolJson: json_keys.COLOR_SEED_JSON_KEY,
     ...colorSeedLayerControl(),

@@ -48,6 +48,7 @@ import {
   getTrackableFragmentMain,
   ImageRenderLayer,
 } from "#src/sliceview/volume/image_renderlayer.js";
+import { StatusMessage } from "#src/status.js";
 import { trackableAlphaValue } from "#src/trackable_alpha.js";
 import { trackableBlendModeValue } from "#src/trackable_blend.js";
 import { trackableFiniteFloat } from "#src/trackable_finite_float.js";
@@ -59,6 +60,7 @@ import {
   WatchableValue,
 } from "#src/trackable_value.js";
 import { UserLayerWithAnnotationsMixin } from "#src/ui/annotations.js";
+import svg_close from "#src/ui/images/metacell/close.svg?raw";
 import { setClipboard } from "#src/util/clipboard.js";
 import type { Borrowed } from "#src/util/disposable.js";
 import { makeValueOrError } from "#src/util/error.js";
@@ -83,6 +85,7 @@ import { ChannelDimensionsWidget } from "#src/widget/channel_dimensions_widget.j
 import { makeCopyButton } from "#src/widget/copy_button.js";
 import type { DependentViewContext } from "#src/widget/dependent_view_widget.js";
 import { makeHelpButton } from "#src/widget/help_button.js";
+import { makeIcon } from "#src/widget/icon.js";
 import type { LayerControlDefinition } from "#src/widget/layer_control.js";
 import {
   addLayerControlToOptionsTab,
@@ -380,7 +383,12 @@ export class ImageUserLayer extends Base {
       const copyButton = makeCopyButton({
         title: "Copy value",
         onClick: () => {
-          setClipboard(valueString);
+          const result = setClipboard(valueString);
+          StatusMessage.showTemporaryMessage(
+            result
+              ? "Value copied to clipboard"
+              : "Failed to copy value to clipboard",
+          );
         },
       });
       grid.appendChild(copyButton);
@@ -591,6 +599,7 @@ class RenderingOptionsTab extends Tab {
 }
 
 class ShaderCodeOverlay extends Overlay {
+  closeMenuButton: HTMLButtonElement;
   codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
   footerActionsBtnContainer: HTMLDivElement;
   footerBtnsWrapper: HTMLDivElement;
@@ -598,19 +607,57 @@ class ShaderCodeOverlay extends Overlay {
     super();
     this.content.classList.add("neuroglancer-image-layer-shader-overlay");
 
+    this.content.classList.add("modal-lg");
+
+    const titleText = document.createElement("p");
+    titleText.textContent = "Shader editor";
+
+    this.closeMenuButton = this.createButton(
+      null,
+      () => this.close(),
+      "",
+      svg_close,
+    );
+
+    const closeAndHelpContainer = document.createElement("div");
+    closeAndHelpContainer.classList.add("overlay-content-header");
+
+    closeAndHelpContainer.appendChild(titleText);
+    closeAndHelpContainer.appendChild(this.closeMenuButton);
+
+    this.content.appendChild(closeAndHelpContainer);
+
     const mainBody = document.createElement("div");
     mainBody.classList.add("overlay-content-body");
     mainBody.appendChild(this.codeWidget.element);
     this.content.appendChild(mainBody);
 
     this.footerActionsBtnContainer = document.createElement("div");
-    this.footerActionsBtnContainer.classList.add(
-      "overlay-content-footer",
+    this.footerActionsBtnContainer.classList.add("overlay-content-footer");
+    this.footerActionsBtnContainer.appendChild(
+      makeFooterBtnGroup(() => this.close()),
     );
-    this.footerActionsBtnContainer.appendChild(makeFooterBtnGroup(() => this.close()));
     this.content.appendChild(this.footerActionsBtnContainer);
 
     this.codeWidget.textEditor.refresh();
+  }
+
+  private createButton(
+    text: string | null,
+    onClick: () => void,
+    cssClass: string = "",
+    svgUrl: string | null = null,
+  ): HTMLButtonElement {
+    const button = document.createElement("button");
+    if (svgUrl) {
+      const icon = makeIcon({ svg: svgUrl });
+      button.appendChild(icon);
+    } else if (text) {
+      button.textContent = text;
+    }
+    if (cssClass) button.classList.add(cssClass);
+    button.addEventListener("click", onClick);
+    return button;
   }
 }
 

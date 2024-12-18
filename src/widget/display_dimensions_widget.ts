@@ -44,7 +44,7 @@ import { EventActionMap, MouseEventBinder } from "#src/util/mouse_bindings.js";
 import { numberToStringFixed } from "#src/util/number_to_string.js";
 import { formatScaleWithUnitAsString, parseScale } from "#src/util/si_units.js";
 
-const dimensionColors = ["#f00", "#0f0", "#99f"];
+const dimensionColors = ["#D33030", "#FFB319", "#9271EF"];
 
 interface DimensionWidget {
   container: HTMLDivElement;
@@ -91,7 +91,7 @@ export class DisplayDimensionsWidget extends RefCounted {
   dimensionElements = Array.from(Array(3), (_, i): DimensionWidget => {
     const container = document.createElement("div");
     container.classList.add("neuroglancer-display-dimensions-widget-dimension");
-    container.style.display = "contents";
+    container.style.display = "flex";
     registerActionListener<WheelEvent>(
       container,
       "adjust-via-wheel",

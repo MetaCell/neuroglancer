@@ -87,7 +87,7 @@
 .neuroglancer-segment-list-entry-sticky {
   white-space: nowrap;
   flex-direction: row;
-  align-items: start;
+  align-items: center;
   background-color: inherit;
   display: flex;
 }

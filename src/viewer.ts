@@ -84,7 +84,7 @@ import {
 import code from "#src/ui/images/code.svg?raw";
 import formatlistbulleted from "#src/ui/images/formatlistbulleted.svg?raw";
 import layers from "#src/ui/images/layers.svg?raw";
-import photocamera from "#src/ui/images/photo_camera.svg?raw";
+import photocamera from "#src/ui/images/metacell/photo_camera.svg?raw";
 import questionmark from "#src/ui/images/questionmark.svg?raw";
 import settings from "#src/ui/images/settings.svg?raw";
 import tune from "#src/ui/images/tune.svg?raw";
@@ -692,18 +692,76 @@ export class Viewer extends RefCounted implements ViewerState {
     // @metacell
     // Register a disposer to listen for state changes propagated them the main frame.
     this.registerDisposer(
-      this.state.changed.add(() => {
-        if (!this.isReady()) {
-          return;
-        }
+      this.state.changed.add(
+        (() => {
+          function hasLoadedDebouncer(viewer: Viewer, timeout?: number) {
+            return {
+              timer: null as ReturnType<typeof setTimeout> | null,
+              _startTime: 0,
+              MAX_WAIT_TIME: timeout,
+              schedule(cb: (timedOut: boolean) => void) {
+                if (!viewer.isReady()) {
+                  this.clear();
+                  this._startTime = Date.now();
 
-        const payload: SessionUpdatePayload = {
-          url: window.location.href,
-          state: getDeepClonedState(this)
-        };
+                  this.timer = setTimeout(() => this.checkReady(cb), 1000);
+                  return;
+                }
+              },
+              checkReady(cb: (timedOut: boolean) => void) {
+                if (
+                  this.MAX_WAIT_TIME !== undefined &&
+                  Date.now() - this._startTime > this.MAX_WAIT_TIME
+                ) {
+                  this.clear();
+                  cb(true);
+                  return;
+                }
 
-        dispatchMessage(STATE_UPDATE, payload);
-      })
+                if (viewer.isReady()) {
+                  cb(false);
+                  this.clear();
+                } else {
+                  this.timer = setTimeout(() => this.checkReady(cb), 500);
+                }
+              },
+              clear() {
+                if (this.timer) {
+                  clearTimeout(this.timer);
+                  this.timer = null;
+                }
+              },
+            };
+          }
+
+          const debouncer = hasLoadedDebouncer(this, 10_000);
+
+          return () => {
+            debouncer.schedule((timedOut) => {
+              dispatchMessage(STATE_UPDATE, {
+                url: window.location.href,
+                state: {
+                  loading: {
+                    state: false,
+                    timeout: timedOut,
+                  },
+                },
+              });
+            });
+
+            if (!this.isReady()) {
+              return;
+            }
+
+            const payload: SessionUpdatePayload = {
+              url: window.location.href,
+              state: getDeepClonedState(this),
+            };
+
+            dispatchMessage(STATE_UPDATE, payload);
+          };
+        })(),
+      ),
     );
     // end @metacell
   }
