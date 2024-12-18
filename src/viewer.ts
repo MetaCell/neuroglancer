@@ -734,14 +734,17 @@ export class Viewer extends RefCounted implements ViewerState {
             };
           }
 
-          const debouncer = hasLoadedDebouncer(this, 120_000); // 1 min
+          const debouncer = hasLoadedDebouncer(this, 10_000);
 
           return () => {
             debouncer.schedule((timedOut) => {
               dispatchMessage(STATE_UPDATE, {
                 url: window.location.href,
                 state: {
-                  hasLoaded: !timedOut,
+                  loading: {
+                    state: false,
+                    timeout: timedOut,
+                  },
                 },
               });
             });
