@@ -81,6 +81,7 @@ import {
   observeWatchable,
   TrackableValue,
 } from "#src/trackable_value.js";
+
 import code from "#src/ui/images/code.svg?raw";
 import formatlistbulleted from "#src/ui/images/formatlistbulleted.svg?raw";
 import layers from "#src/ui/images/layers.svg?raw";
@@ -101,6 +102,7 @@ import { SidePanelManager } from "#src/ui/side_panel.js";
 import { StateEditorDialog } from "#src/ui/state_editor.js";
 import { StatisticsDisplayState, StatisticsPanel } from "#src/ui/statistics.js";
 import { GlobalToolBinder, LocalToolBinder } from "#src/ui/tool.js";
+import { encodeFragment } from "#src/ui/url_hash_binding.js";
 import {
   ViewerSettingsPanel,
   ViewerSettingsPanelState,
@@ -148,6 +150,7 @@ import {
 } from "#src/widget/position_widget.js";
 import { TrackableScaleBarOptions } from "#src/widget/scale_bar.js";
 import { RPC } from "#src/worker_rpc.js";
+
 
 declare let NEUROGLANCER_OVERRIDE_DEFAULT_VIEWER_OPTIONS: any;
 
@@ -753,12 +756,18 @@ export class Viewer extends RefCounted implements ViewerState {
               return;
             }
 
-            const payload: SessionUpdatePayload = {
-              url: window.location.href,
-              state: getDeepClonedState(this),
-            };
+            const state = getDeepClonedState(this);
 
-            dispatchMessage(STATE_UPDATE, payload);
+            const url = encodeFragment(JSON.stringify(state));
+
+            if (url !== window.location.hash.slice(2)) {
+              const payload: SessionUpdatePayload = {
+                url,
+                state,
+              };
+
+              dispatchMessage(STATE_UPDATE, payload);
+            }
           };
         })(),
       ),

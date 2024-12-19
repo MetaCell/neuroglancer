@@ -2164,6 +2164,7 @@ export class TopLevelLayerListSpecification extends LayerListSpecification {
       } catch (e) {
         managedLayer.dispose();
         const msg = new StatusMessage();
+        throw e;
         msg.setErrorMessage(
           `Error creating layer ${JSON.stringify(name)}: ` +
             (e instanceof Error)
@@ -2201,7 +2202,7 @@ export class TopLevelLayerListSpecification extends LayerListSpecification {
       const layerJson = managedLayer.toJSON();
       // A `null` layer specification is used to indicate a transient drag target, and should not be
       // serialized.
-      if (layerJson != null) {
+      if (layerJson !== null && layerJson !== undefined) {
         result.push(layerJson);
         ++numResults;
       }
