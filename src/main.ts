@@ -16,8 +16,14 @@
 /**
  * @file Main entry point for default neuroglancer viewer.
  */
+import {
+  dispatchMessage,
+  STATE_UPDATE,
+} from "#src/services/events/outgoing_events.js";
+import { type SessionUpdatePayload } from "#src/services/events/outgoing_events.js";
 import { setupDefaultViewer } from "#src/ui/default_viewer_setup.js";
 import "#src/util/google_tag_manager.js";
+import { encodeFragment } from "#src/ui/url_hash_binding.js";
 import "#src/metacell-theme.css";
 declare const window: any;
 
@@ -25,3 +31,34 @@ window.neuroglancer = setupDefaultViewer;
 setupDefaultViewer();
 
 document.body.classList.add("metacell-theme");
+
+// @metacell
+
+// patch replaceState to trigger an event message with state update
+history.replaceState = (() => {
+  const originalReplaceState = history.replaceState;
+  return (...args: any) => {
+    originalReplaceState.apply(history, args);
+
+    const hashURLState = args[2];
+    if (hashURLState?.startsWith("#!")) {
+      const s = decodeURIComponent(hashURLState.slice(2));
+      let state = {};
+      try {
+        state = JSON.parse(s);
+      } catch (error) {
+        console.error("error parsing url encoded state:", error);
+        return;
+      }
+
+      const payload: SessionUpdatePayload = {
+        url: encodeFragment(JSON.stringify(state)),
+        state: state,
+      };
+
+      dispatchMessage(STATE_UPDATE, payload);
+    }
+  };
+})();
+
+// end @metacell
