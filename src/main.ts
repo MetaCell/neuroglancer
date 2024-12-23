@@ -19,8 +19,12 @@
 import {
   dispatchMessage,
   STATE_UPDATE,
+  LOADING,
 } from "#src/services/events/outgoing_events.js";
-import { type SessionUpdatePayload } from "#src/services/events/outgoing_events.js";
+import {
+  type SessionUpdatePayload,
+  type LoadingState,
+} from "#src/services/events/outgoing_events.js";
 import { setupDefaultViewer } from "#src/ui/default_viewer_setup.js";
 import "#src/util/google_tag_manager.js";
 import { encodeFragment } from "#src/ui/url_hash_binding.js";
@@ -28,11 +32,35 @@ import "#src/metacell-theme.css";
 declare const window: any;
 
 window.neuroglancer = setupDefaultViewer;
-setupDefaultViewer();
+const viewer = setupDefaultViewer();
 
 document.body.classList.add("metacell-theme");
 
 // @metacell
+
+// check viewer is ready and send message
+function watchViewerLoadState() {
+  const sendEvent = (loaded: boolean) => {
+    const state: LoadingState = {
+      loaded: loaded,
+    };
+    dispatchMessage(LOADING, state);
+  };
+
+  const hasLoaded = viewer.isReady();
+  sendEvent(hasLoaded);
+
+  if (hasLoaded) {
+    return;
+  }
+
+  const pollInterval = setInterval(() => {
+    if (viewer.isReady()) {
+      sendEvent(true);
+      clearInterval(pollInterval);
+    }
+  }, 250);
+}
 
 // patch replaceState to trigger an event message with state update
 history.replaceState = (() => {
@@ -57,6 +85,8 @@ history.replaceState = (() => {
       };
 
       dispatchMessage(STATE_UPDATE, payload);
+
+      watchViewerLoadState();
     }
   };
 })();

@@ -2,25 +2,38 @@ import type { ScreenshotActionState } from "#src/python_integration/screenshots.
 import { getCachedJson } from "#src/util/trackable.js";
 
 export const STATE_UPDATE = "STATE_UPDATE" as const;
+export const LOADING = "LOADING" as const;
 export const NEW_FIGURE = "NEW_FIGURE" as const;
 export const OTHER = "OTHER" as const;
 
-export type MessageType = typeof STATE_UPDATE | typeof NEW_FIGURE | typeof OTHER;
-
+export type MessageType =
+  | typeof STATE_UPDATE
+  | typeof LOADING
+  | typeof NEW_FIGURE
+  | typeof OTHER;
 
 export interface SessionUpdatePayload {
-    url: string;
-    state: any;
+  url: string;
+  state: any;
 }
 
-export type DispatchablePayload = SessionUpdatePayload | ScreenshotActionState;
+export interface LoadingState {
+  loaded: boolean;
+}
 
+export type DispatchablePayload =
+  | SessionUpdatePayload
+  | ScreenshotActionState
+  | LoadingState;
 
-export function dispatchMessage(type: MessageType, payload: DispatchablePayload): void {
-    window.postMessage({ type, payload }, "*");
+export function dispatchMessage(
+  type: MessageType,
+  payload: DispatchablePayload,
+): void {
+  window.postMessage({ type, payload }, "*");
 }
 
 export function getDeepClonedState(viewer: { state: any }): any {
-    const cachedState = getCachedJson(viewer.state);
-    return JSON.parse(JSON.stringify(cachedState?.value || {}));
+  const cachedState = getCachedJson(viewer.state);
+  return JSON.parse(JSON.stringify(cachedState?.value || {}));
 }
