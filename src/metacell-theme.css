@@ -349,7 +349,7 @@ ul#statusContainer {
         }
      }
     .CodeMirror-gutter {
-        background: var(--dark100);
+        background: var(--background80);
     }
     .CodeMirror-lines {
         font-family: monospace;
@@ -889,6 +889,9 @@ ul#statusContainer {
                     width: 6rem;
                 } */
             }
+        }
+        .CodeMirror-cursor {
+            border-color: var(--white);
         }
     }
     .neuroglancer-layer-control-container {
@@ -1546,7 +1549,7 @@ ul#statusContainer {
         border-radius: 0.25rem;
         border: 0.0625rem solid var(--dark80);
         color: rgba(255, 255, 255, 0.60);
-        background-color: var(--background80);
+        background-color: var(--background70);
         /* margin-bottom: 0.5rem; */
     }
     .CodeMirror-gutters {
