@@ -797,6 +797,7 @@ export class Viewer extends RefCounted implements ViewerState {
           backgroundScheme: "dark",
           enableTitle: "Show layer list panel",
           disableTitle: "Hide layer list panel",
+          position: "bottom"
         }),
       );
       button.element.insertAdjacentElement(
@@ -821,6 +822,7 @@ export class Viewer extends RefCounted implements ViewerState {
           backgroundScheme: "dark",
           enableTitle: "Show selection details panel",
           disableTitle: "Hide selection details panel",
+          position: "bottom"
         }),
       );
       this.registerDisposer(
@@ -850,6 +852,7 @@ export class Viewer extends RefCounted implements ViewerState {
             backgroundScheme: "dark",
             enableTitle: "Show layer side panel",
             disableTitle: "Hide layer side panel",
+            position: "bottom"
           },
         ),
       );
@@ -863,7 +866,7 @@ export class Viewer extends RefCounted implements ViewerState {
     }
 
     {
-      const button = makeIcon({ text: "{}", title: "Edit JSON state" });
+      const button = makeIcon({ text: "{}", title: "Edit JSON state", position: "bottom" });
       this.registerEventListener(button, "click", () => {
         this.editJsonState();
       });

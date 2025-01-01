@@ -423,6 +423,7 @@ export class AnnotationLayerView extends Tab {
       onClick: () => {
         this.layer.tool.value = new PlacePointTool(this.layer, {});
       },
+      position: "left"
     });
     mutableControls.appendChild(pointButton);
 
@@ -433,6 +434,7 @@ export class AnnotationLayerView extends Tab {
       onClick: () => {
         this.layer.tool.value = new PlaceBoundingBoxTool(this.layer, {});
       },
+      position: "left"
     });
     mutableControls.appendChild(boundingBoxButton);
 
@@ -442,6 +444,7 @@ export class AnnotationLayerView extends Tab {
       onClick: () => {
         this.layer.tool.value = new PlaceLineTool(this.layer, {});
       },
+      position: "left"
     });
     mutableControls.appendChild(lineButton);
 
@@ -451,12 +454,13 @@ export class AnnotationLayerView extends Tab {
       onClick: () => {
         this.layer.tool.value = new PlaceEllipsoidTool(this.layer, {});
       },
+      position: "left"
     });
     mutableControls.appendChild(ellipsoidButton);
     const helpIcon = document.createElement("div");
-    helpIcon.title =
-      "The left icons allow you to select the type of the anotation. Color and other display settings are available in the 'Redering' tab";
+    helpIcon.setAttribute("data-tooltip", "The left icons allow you to select the type of the anotation. Color and other display settings are available in the 'Redering' tab");
     helpIcon.classList.add("neuroglancer-tooltip");
+    helpIcon.classList.add("tooltip-left");
     helpIcon.classList.add("neuroglancer-icon");
     helpIcon.innerHTML = svg_help;
     mutableControls.appendChild(helpIcon);

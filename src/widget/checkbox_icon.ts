@@ -26,6 +26,7 @@ export interface MakeCheckboxIconOptions
   enableTitle?: string;
   disableTitle?: string;
   backgroundScheme?: "light" | "dark";
+  position?: "left" | "right" | "bottom" | "top";
 }
 
 export class CheckboxIcon extends RefCounted {
@@ -50,11 +51,16 @@ export class CheckboxIcon extends RefCounted {
     const updateView = () => {
       const value = model.value;
       this.element.dataset.checked = value ? "true" : "false";
-      this.element.title =
-        (value ? options.disableTitle : options.enableTitle) || "";
+      this.element.setAttribute("data-tooltip", (value ? options.disableTitle : options.enableTitle) || "");
     };
     if(this.element.title !== undefined) {
       this.element.classList.add("neuroglancer-checkbox-tooltip")
+    }
+    if (options.position !== undefined) {
+      const validPositions = ["left", "right", "top", "bottom"] as const;
+      if (validPositions.includes(options.position)) {
+        this.element.classList.add(`tooltip-${options.position}`);
+      }
     }
     this.registerDisposer(model.changed.add(updateView));
     updateView();

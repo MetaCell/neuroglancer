@@ -60,3 +60,97 @@
 .neuroglancer-icon-hover:hover svg:first-child {
   display: none;
 }
+
+.neuroglancer-tooltip {
+  flex: none;
+  cursor: pointer;
+  width: 1rem;
+  height: 1rem;
+  background-size: contain;
+  position: relative;
+  cursor: pointer;
+}
+.neuroglancer-tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  text-indent: 0;
+  color: white;
+  white-space: normal;
+  padding: 0.5rem 0.75rem;
+  min-width: 9rem;
+  border-radius: 5px;
+  line-height: 1rem;
+  font-size: 0.75rem;
+  font-weight: 590;
+  border-radius: 8px;
+  background: #141415;
+  text-align: center;
+  opacity: 0;
+  visibility: hidden;
+  z-index: 99999;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  right: 100%;
+}
+.neuroglancer-tooltip::before {
+  content: "";
+  position: absolute;
+  border-width: 0.375rem;
+  border-style: solid;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  border-color: transparent transparent transparent #141415;
+  left: 0;
+}
+
+.neuroglancer-tooltip:hover::after,
+.neuroglancer-tooltip:hover::before {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Tooltip on the Left */
+.tooltip-left::after {
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  right: auto;
+}
+
+.tooltip-left::before {
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  border-color: transparent #141415 transparent transparent;
+}
+
+/* Tooltip on the Top */
+.tooltip-top::after {
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.tooltip-top::before {
+  bottom: -0.375rem;
+  left: 50%;
+  transform: translateX(-50%);
+  border-color: #141415 transparent transparent transparent;
+}
+
+/* Tooltip on the Bottom */
+.tooltip-bottom::after {
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  right: auto;
+}
+
+.tooltip-bottom::before {
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  border-color: transparent transparent #141415 transparent;
+}

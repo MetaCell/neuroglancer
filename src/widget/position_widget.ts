@@ -1079,6 +1079,7 @@ export class PositionWidget extends RefCounted {
               : "Failed to copy position to clipboard",
           );
         },
+        position: "bottom"
       });
       copyButton.addEventListener("dragstart", (event) => {
         event.dataTransfer!.setData(

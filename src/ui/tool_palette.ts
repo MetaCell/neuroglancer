@@ -1256,6 +1256,7 @@ export class MultiToolPaletteDropdownButton extends RefCounted {
         enableTitle: "Show tool palette list (control+click to create new)",
         disableTitle: "Hide tool palette list",
         backgroundScheme: "dark",
+        position: "bottom"
       }),
     ).element;
     element.appendChild(checkbox);

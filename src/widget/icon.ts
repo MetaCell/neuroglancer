@@ -22,6 +22,7 @@ export interface MakeIconOptions {
   title?: string;
   onClick?: (this: HTMLElement, event: MouseEvent) => void;
   href?: string;
+  position?: "left" | "right" | "bottom" | "top";
 }
 
 export interface MakeHoverIconOptions extends MakeIconOptions {
@@ -38,7 +39,7 @@ export function makeHoverIcon(options: MakeHoverIconOptions): HTMLElement {
 }
 
 export function makeIcon(options: MakeIconOptions): HTMLElement {
-  const { title, onClick, href } = options;
+  const { title, onClick, href, position } = options;
   let element: HTMLDivElement | HTMLAnchorElement;
   if (href !== undefined) {
     element = document.createElement("a");
@@ -49,9 +50,17 @@ export function makeIcon(options: MakeIconOptions): HTMLElement {
   }
 
   if (title !== undefined) {
-    element.title = title;
+    element.setAttribute("data-tooltip", title);
     element.classList.add("neuroglancer-tooltip");
   }
+
+  if (position !== undefined) {
+    const validPositions = ["left", "right", "top", "bottom"] as const;
+    if (validPositions.includes(position)) {
+      element.classList.add(`tooltip-${position}`);
+    }
+  }
+
   if (onClick !== undefined) {
     element.addEventListener("click", onClick);
   }
