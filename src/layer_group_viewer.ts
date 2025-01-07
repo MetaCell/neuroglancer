@@ -522,6 +522,8 @@ export class LayerGroupViewer extends RefCounted {
   private updateUI() {
     const { options } = this;
     const showLayerPanel = options.showLayerPanel.value;
+    const layoutButtonContainer = document.createElement("div");
+    layoutButtonContainer.className = "layout-button-container";
     if (this.layerPanel !== undefined && !showLayerPanel) {
       this.layerPanel.dispose();
       this.layerPanel = undefined;
@@ -541,6 +543,9 @@ export class LayerGroupViewer extends RefCounted {
         layerPanel.element.title = "Drag to move/copy layer group.";
       }
 
+      //TODO: should be deleted in future, just a mock value
+      let NEUROGLANCER_SHOW_LAYER_BAR_EXTRA_BUTTONS = true;
+
       if (
         typeof NEUROGLANCER_SHOW_LAYER_BAR_EXTRA_BUTTONS !== "undefined" &&
         NEUROGLANCER_SHOW_LAYER_BAR_EXTRA_BUTTONS === true
@@ -552,7 +557,7 @@ export class LayerGroupViewer extends RefCounted {
           button.addEventListener("click", (event: MouseEvent) => {
             dispatchEventAction(event, event, { action: "clear-segments" });
           });
-          layerPanel.element.appendChild(button);
+          layoutButtonContainer.appendChild(button);
         }
         for (const layout of ["3d", "xy", "xz", "yz"]) {
           const button = document.createElement("button");
@@ -571,8 +576,9 @@ export class LayerGroupViewer extends RefCounted {
             }
             this.layout.name = newLayout;
           });
-          layerPanel.element.appendChild(button);
+          layoutButtonContainer.appendChild(button);
         }
+        layerPanel.element.appendChild(layoutButtonContainer);
       }
       layerPanel.element.draggable = true;
       const layerPanelElement = layerPanel.element;

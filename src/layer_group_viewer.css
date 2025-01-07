@@ -51,3 +51,23 @@
 .neuroglancer-layer-group-viewer-context-menu select {
   margin-left: 5px;
 }
+
+.layout-button-container {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.layout-button-container button {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.25rem;
+  border: 1px solid #222;
+  font-size: 13px;
+  font-weight: 500;
+  color: white;
+  background-color: #222;
+}
+
+.layout-button-container button:hover {
+  background-color: #333;
+}
