@@ -69,7 +69,6 @@ import { overlaysOpen } from "#src/overlay.js";
 import { ScreenshotHandler } from "#src/python_integration/screenshots.js";
 import { allRenderLayerRoles, RenderLayerRole } from "#src/renderlayer.js";
 import { IncomingEventsHandler } from "#src/services/events/incoming_events.ts";
-import { dispatchMessage, getDeepClonedState, STATE_UPDATE, type SessionUpdatePayload } from "#src/services/events/outgoing_events.js";
 import { StatusMessage } from "#src/status.js";
 import {
   ElementVisibilityFromTrackableBoolean,
@@ -102,7 +101,6 @@ import { SidePanelManager } from "#src/ui/side_panel.js";
 import { StateEditorDialog } from "#src/ui/state_editor.js";
 import { StatisticsDisplayState, StatisticsPanel } from "#src/ui/statistics.js";
 import { GlobalToolBinder, LocalToolBinder } from "#src/ui/tool.js";
-import { encodeFragment } from "#src/ui/url_hash_binding.js";
 import {
   ViewerSettingsPanel,
   ViewerSettingsPanelState,
@@ -691,88 +689,6 @@ export class Viewer extends RefCounted implements ViewerState {
     this.registerDisposer(
       new PlaybackManager(this.display, this.position, this.velocity),
     );
-
-    // @metacell
-    // Register a disposer to listen for state changes propagated them the main frame.
-    this.registerDisposer(
-      this.state.changed.add(
-        (() => {
-          function hasLoadedDebouncer(viewer: Viewer, timeout?: number) {
-            return {
-              timer: null as ReturnType<typeof setTimeout> | null,
-              _startTime: 0,
-              MAX_WAIT_TIME: timeout,
-              schedule(cb: (timedOut: boolean) => void) {
-                if (!viewer.isReady()) {
-                  this.clear();
-                  this._startTime = Date.now();
-
-                  this.timer = setTimeout(() => this.checkReady(cb), 1000);
-                  return;
-                }
-              },
-              checkReady(cb: (timedOut: boolean) => void) {
-                if (
-                  this.MAX_WAIT_TIME !== undefined &&
-                  Date.now() - this._startTime > this.MAX_WAIT_TIME
-                ) {
-                  this.clear();
-                  cb(true);
-                  return;
-                }
-
-                if (viewer.isReady()) {
-                  cb(false);
-                  this.clear();
-                } else {
-                  this.timer = setTimeout(() => this.checkReady(cb), 500);
-                }
-              },
-              clear() {
-                if (this.timer) {
-                  clearTimeout(this.timer);
-                  this.timer = null;
-                }
-              },
-            };
-          }
-
-          const debouncer = hasLoadedDebouncer(this, 10_000);
-
-          return () => {
-            debouncer.schedule((timedOut) => {
-              dispatchMessage(STATE_UPDATE, {
-                url: window.location.href,
-                state: {
-                  loading: {
-                    state: false,
-                    timeout: timedOut,
-                  },
-                },
-              });
-            });
-
-            if (!this.isReady()) {
-              return;
-            }
-
-            const state = getDeepClonedState(this);
-
-            const url = encodeFragment(JSON.stringify(state));
-
-            if (url !== window.location.hash.slice(2)) {
-              const payload: SessionUpdatePayload = {
-                url,
-                state,
-              };
-
-              dispatchMessage(STATE_UPDATE, payload);
-            }
-          };
-        })(),
-      ),
-    );
-    // end @metacell
   }
 
   private updateShowBorders() {
