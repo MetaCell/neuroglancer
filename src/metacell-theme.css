@@ -425,8 +425,6 @@ ul#statusContainer {
         }
 
         .neuroglancer-icon.neuroglancer-checkbox-icon {
-            width: auto;
-            height: auto;
             div {
                 font-size: 0.75rem;
                 font-weight: 400;
