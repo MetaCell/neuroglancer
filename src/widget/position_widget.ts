@@ -16,9 +16,6 @@
 
 import "#src/widget/position_widget.css";
 
-import svg_pause from "ikonate/icons/pause.svg?raw";
-import svg_play from "ikonate/icons/play.svg?raw";
-import svg_video from "ikonate/icons/video.svg?raw";
 import type {
   CoordinateArray,
   CoordinateSpace,
@@ -44,6 +41,9 @@ import {
   makeCachedDerivedWatchableValue,
   WatchableValue,
 } from "#src/trackable_value.js";
+import svg_pause from "#src/ui/images/pause.svg?raw";
+import svg_play from "#src/ui/images/play.svg?raw";
+import svg_video from "#src/ui/images/playback.svg?raw";
 import type { LocalToolBinder, ToolActivation } from "#src/ui/tool.js";
 import {
   makeToolActivationStatusMessage,
@@ -341,8 +341,7 @@ export class PositionWidget extends RefCounted {
           new CheckboxIcon(this.velocity!.playbackEnabled(widget.id), {
             svg: svg_video,
             enableTitle: "Enable playback/velocity",
-            disableTitle: "Disable playback/velocity",
-            backgroundScheme: "dark",
+            disableTitle: "Disable playback/velocity"
           }),
         ).element,
       );
