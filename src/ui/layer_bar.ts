@@ -131,7 +131,8 @@ class LayerWidget extends RefCounted {
     valueContainer.appendChild(buttonContainer);
     buttonContainer.appendChild(closeElement);
     buttonContainer.appendChild(deleteElement);
-    element.appendChild(this.createLayerTypeElement());
+    // element.appendChild(this.createLayerTypeElement());
+    this.createLayerTypeElement();
     element.appendChild(labelElement);
     element.appendChild(valueContainer);
     const positionWidget = this.registerDisposer(

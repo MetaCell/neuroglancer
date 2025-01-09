@@ -62,7 +62,7 @@ enum LayerType {
   segmentation = "seg",
   image = "img",
   annotation = "ann",
-  mesh = "mesh"
+  mesh = "msh"
 }
 
 export function getLayerType(type: LayerType): string {
