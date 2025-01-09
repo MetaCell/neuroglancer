@@ -421,6 +421,7 @@ function getCommonViewerState(viewer: Viewer) {
     crossSectionBackgroundColor: viewer.crossSectionBackgroundColor,
     perspectiveViewBackgroundColor: viewer.perspectiveViewBackgroundColor,
     enableLayerColorWidget: viewer.enableLayerColorWidget,
+    hideCrossSectionBackgroundIn3D: viewer.hideCrossSectionBackgroundIn3D,
   };
 }
 
