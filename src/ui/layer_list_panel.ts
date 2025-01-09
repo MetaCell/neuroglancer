@@ -32,7 +32,7 @@ import {
   registerLayerBarDropHandlers,
   registerLayerDragHandlers,
 } from "#src/ui/layer_drag_and_drop.js";
-import { LayerNameWidget } from "#src/ui/layer_side_panel.js";
+import { LayerNameWidget, getLayerType } from "#src/ui/layer_side_panel.js";
 import type { SidePanelManager } from "#src/ui/side_panel.js";
 import { SidePanel } from "#src/ui/side_panel.js";
 import type { SidePanelLocation } from "#src/ui/side_panel_location.js";
@@ -222,6 +222,7 @@ class LayerListItem extends RefCounted {
     element.appendChild(
       this.registerDisposer(new LayerVisibilityWidget(layer)).element,
     );
+    element.appendChild(this.createLayerTypeElement());
     element.appendChild(
       this.registerDisposer(new LayerColorWidget(panel, layer)).elementWrapper,
     );
@@ -266,6 +267,15 @@ class LayerListItem extends RefCounted {
       event.stopPropagation();
       event.preventDefault();
     });
+    
+  }
+
+  private createLayerTypeElement() {
+    const layerTypeElement = document.createElement("div");
+    layerTypeElement.classList.add("layer-type");
+    layerTypeElement.textContent = getLayerType(this.layer.toJSON().type);
+
+    return layerTypeElement;
   }
 }
 

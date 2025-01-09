@@ -20,6 +20,7 @@ import svg_plus from "ikonate/icons/plus.svg?raw";
 import type { ManagedUserLayer } from "#src/layer/index.js";
 import { addNewLayer, deleteLayer, makeLayer } from "#src/layer/index.js";
 import type { LayerGroupViewer } from "#src/layer_group_viewer.js";
+import { getLayerType } from "#src/ui/layer_side_panel.js";
 import { NavigationLinkType } from "#src/navigation_state.js";
 import {
   observeWatchable,
@@ -130,6 +131,7 @@ class LayerWidget extends RefCounted {
     valueContainer.appendChild(buttonContainer);
     buttonContainer.appendChild(closeElement);
     buttonContainer.appendChild(deleteElement);
+    element.appendChild(this.createLayerTypeElement());
     element.appendChild(labelElement);
     element.appendChild(valueContainer);
     const positionWidget = this.registerDisposer(
@@ -213,6 +215,13 @@ class LayerWidget extends RefCounted {
   disposed() {
     this.element.remove();
     super.disposed();
+  }
+
+  private createLayerTypeElement() {
+    const layerTypeElement = document.createElement("div");
+    layerTypeElement.classList.add("layer-type");
+    layerTypeElement.textContent = getLayerType(this.layer.toJSON().type);
+    return layerTypeElement;
   }
 }
 
