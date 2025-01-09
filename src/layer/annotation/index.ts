@@ -15,6 +15,7 @@
  */
 
 import "#src/layer/annotation/style.css";
+import svgCode from "ikonate/icons/code-alt.svg?raw";
 
 import type { AnnotationDisplayState } from "#src/annotation/annotation_layer_state.js";
 import { AnnotationLayerState } from "#src/annotation/annotation_layer_state.js";
@@ -70,6 +71,7 @@ import {
   verifyStringArray,
 } from "#src/util/json.js";
 import { NullarySignal } from "#src/util/signal.js";
+import { CheckboxIcon } from "#src/widget/checkbox_icon.js";
 import { DependentViewWidget } from "#src/widget/dependent_view_widget.js";
 import { makeHelpButton } from "#src/widget/help_button.js";
 import {
@@ -796,43 +798,42 @@ class RenderingOptionsTab extends Tab {
     this.codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
     element.classList.add("neuroglancer-annotation-rendering-tab");
 
-    element.appendChild(
-      this.registerDisposer(
-        new DependentViewWidget(
-          layer.annotationDisplayState.annotationProperties,
-          (properties, parent) => {
-            if (properties === undefined || properties.length === 0) return;
-            const propertyList = document.createElement("div");
-            parent.appendChild(propertyList);
-            propertyList.classList.add(
-              "neuroglancer-annotation-shader-property-list",
+    const shaderProperties = this.registerDisposer(
+      new DependentViewWidget(
+        layer.annotationDisplayState.annotationProperties,
+        (properties, parent) => {
+          if (properties === undefined || properties.length === 0) return;
+          const propertyList = document.createElement("div");
+          parent.appendChild(propertyList);
+          propertyList.classList.add(
+            "neuroglancer-annotation-shader-property-list",
+          );
+          for (const property of properties) {
+            const div = document.createElement("div");
+            div.classList.add("neuroglancer-annotation-shader-property");
+            const typeElement = document.createElement("span");
+            typeElement.classList.add(
+              "neuroglancer-annotation-shader-property-type",
             );
-            for (const property of properties) {
-              const div = document.createElement("div");
-              div.classList.add("neuroglancer-annotation-shader-property");
-              const typeElement = document.createElement("span");
-              typeElement.classList.add(
-                "neuroglancer-annotation-shader-property-type",
-              );
-              typeElement.textContent = property.type;
-              const nameElement = document.createElement("span");
-              nameElement.classList.add(
-                "neuroglancer-annotation-shader-property-identifier",
-              );
-              nameElement.textContent = `prop_${property.identifier}`;
-              div.appendChild(typeElement);
-              div.appendChild(nameElement);
-              const { description } = property;
-              if (description !== undefined) {
-                div.title = description;
-              }
-              propertyList.appendChild(div);
+            typeElement.textContent = property.type;
+            const nameElement = document.createElement("span");
+            nameElement.classList.add(
+              "neuroglancer-annotation-shader-property-identifier",
+            );
+            nameElement.textContent = `prop_${property.identifier}`;
+            div.appendChild(typeElement);
+            div.appendChild(nameElement);
+            const { description } = property;
+            if (description !== undefined) {
+              div.title = description;
             }
-          },
-        ),
-      ).element,
-    );
+            propertyList.appendChild(div);
+          }
+        },
+      ),
+    ).element;
 
+    element.appendChild(shaderProperties);
     const topRow = document.createElement("div");
     topRow.className =
       "neuroglancer-segmentation-dropdown-skeleton-shader-header";
@@ -840,6 +841,22 @@ class RenderingOptionsTab extends Tab {
     label.style.flex = "1";
     label.textContent = "Annotation shader:";
     topRow.appendChild(label);
+
+    const managedLayer = this.layer.managedLayer;
+    this.registerDisposer(
+      observeWatchable((visible) => {
+        shaderProperties.style.display = visible ? "block" : "none";
+        this.codeWidget.setVisible(visible);
+      }, managedLayer.codeVisible),
+    );
+    const codeVisibilityControl = new CheckboxIcon(managedLayer.codeVisible, {
+      enableTitle: "Show code",
+      disableTitle: "Hide code",
+      backgroundScheme: "dark",
+      svg: svgCode,
+    });
+    topRow.appendChild(codeVisibilityControl.element);
+
     topRow.appendChild(
       makeMaximizeButton({
         title: "Show larger editor view",
