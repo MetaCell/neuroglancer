@@ -126,13 +126,13 @@ class LayerWidget extends RefCounted {
 
     // Compose the layer's title bar
     element.appendChild(layerNumberElement);
+    element.appendChild(this.createLayerTypeElement());
     element.appendChild(layerColorElementWrapper);
     valueContainer.appendChild(valueElement);
     valueContainer.appendChild(buttonContainer);
     buttonContainer.appendChild(closeElement);
     buttonContainer.appendChild(deleteElement);
-    // element.appendChild(this.createLayerTypeElement());
-    this.createLayerTypeElement();
+    // this.createLayerTypeElement();
     element.appendChild(labelElement);
     element.appendChild(valueContainer);
     const positionWidget = this.registerDisposer(
@@ -220,7 +220,7 @@ class LayerWidget extends RefCounted {
 
   private createLayerTypeElement() {
     const layerTypeElement = document.createElement("div");
-    layerTypeElement.classList.add("layer-type");
+    layerTypeElement.classList.add("ng-layer-type");
     layerTypeElement.textContent = getLayerType(this.layer.toJSON().type);
     return layerTypeElement;
   }

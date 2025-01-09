@@ -253,3 +253,17 @@
 .neuroglancer-layer-panel:hover .neuroglancer-layer-item-button-container {
   visibility: visible;
 }
+
+.ng-layer-type {
+  display: flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px;
+  background-color: rgba(255, 255, 255, 0.20);
+  border-radius: 4px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  justify-content: center;
+  width: 25px;
+}
