@@ -17,11 +17,14 @@
 import "#src/ui/tool_palette.css";
 
 import svg_search from "ikonate/icons/search.svg?raw";
+import swap_horizontal from "ikonate/icons/swap-horizontal.svg?raw";
+import swap_vertical from "ikonate/icons/swap-vertical.svg?raw";
 import svg_tool from "ikonate/icons/tool.svg?raw";
 import { debounce } from "lodash-es";
 import type { UserLayer } from "#src/layer/index.js";
 import {
   ElementVisibilityFromTrackableBoolean,
+  TrackableBoolean,
   TrackableBooleanCheckbox,
 } from "#src/trackable_boolean.js";
 import {
@@ -273,6 +276,8 @@ export class ToolPaletteState extends RefCounted implements Trackable {
     return this.trackable.changed;
   }
 
+  verticalStacking = new TrackableBoolean(true, true);
+
   constructor(public viewer: Viewer) {
     super();
     this.tools = this.registerDisposer(new TrackableToolList(viewer));
@@ -280,6 +285,7 @@ export class ToolPaletteState extends RefCounted implements Trackable {
     this.name.changed.add(this.changed.dispatch);
     this.trackable.add("tools", this.tools);
     this.trackable.add("query", this.query);
+    this.trackable.add("verticalStacking", this.verticalStacking);
     this.queryDefined = this.registerDisposer(
       makeCachedDerivedWatchableValue(
         (value) => value.length === 0,
@@ -512,6 +518,7 @@ class RenderedTool extends RefCounted {
 
 export class ToolPalettePanel extends SidePanel {
   private itemContainer = document.createElement("div");
+  private layerGroupItemsContainer = document.createElement("div");
   private dropZone = document.createElement("div");
   private renderedTools = new Map<Tool, RenderedTool>();
   private dragState:
@@ -687,6 +694,15 @@ export class ToolPalettePanel extends SidePanel {
       makeCachedDerivedWatchableValue((value) => value !== "", [state.query]),
     );
     const self = this;
+    const changeStackingButton = this.registerDisposer(
+      new CheckboxIcon(this.state.verticalStacking, {
+        svg: swap_horizontal,
+        disableSvg: swap_vertical,
+        enableTitle: "Swap to vertical stacking",
+        disableTitle: "Swap to horizontal stacking",
+      }),
+    );
+    titleBar.appendChild(changeStackingButton.element);
     const searchButton = this.registerDisposer(
       new CheckboxIcon(
         {
@@ -718,8 +734,11 @@ export class ToolPalettePanel extends SidePanel {
 
     const body = document.createElement("div");
     body.classList.add("neuroglancer-tool-palette-body");
-    const { itemContainer } = this;
+    const { itemContainer, layerGroupItemsContainer } = this;
     itemContainer.classList.add("neuroglancer-tool-palette-items");
+    layerGroupItemsContainer.classList.add(
+      "neuroglancer-tool-palette-layer-group-items",
+    );
     body.appendChild(
       this.registerDisposer(
         new DependentViewWidget(
@@ -733,19 +752,42 @@ export class ToolPalettePanel extends SidePanel {
         ),
       ).element,
     );
+    itemContainer.appendChild(layerGroupItemsContainer);
     body.appendChild(itemContainer);
     this.addBody(body);
 
     const { dropZone } = this;
     dropZone.classList.add("neuroglancer-tool-palette-drop-zone");
+    itemContainer.appendChild(dropZone);
     this.registerDropHandlers(dropZone, () => undefined);
     const debouncedRender = this.registerCancellable(
       animationFrameDebounce(() => this.render()),
     );
     this.registerDisposer(this.state.tools.changed.add(debouncedRender));
     this.registerDisposer(this.queryResults.changed.add(debouncedRender));
+    this.registerDisposer(
+      this.state.verticalStacking.changed.add(() => {
+        this.handleStackingChange();
+        debouncedRender();
+      }),
+    );
     this.visibility.changed.add(debouncedRender);
+    this.handleStackingChange();
     this.render();
+  }
+
+  private handleStackingChange() {
+    const { layerGroupItemsContainer } = this;
+
+    if (this.state.verticalStacking.value) {
+      layerGroupItemsContainer.classList.remove(
+        "neuroglancer-tool-palette-layer-group-items-horizontal",
+      );
+    } else {
+      layerGroupItemsContainer.classList.add(
+        "neuroglancer-tool-palette-layer-group-items-horizontal",
+      );
+    }
   }
 
   private getRenderedTool(tool: Tool) {
@@ -837,10 +879,8 @@ export class ToolPalettePanel extends SidePanel {
           renderedTools.delete(tool);
         }
       }
-
-      yield self.dropZone;
     }
-    updateChildren(this.itemContainer, getItems());
+    updateChildren(this.layerGroupItemsContainer, getItems());
   }
 
   disposed() {}
