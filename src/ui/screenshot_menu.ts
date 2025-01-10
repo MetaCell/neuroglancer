@@ -68,8 +68,6 @@ const TOOLTIPS = {
     "The highest loaded resolution of 2D image slices, 3D volume renderings, and 2D segmentation slices are shown here. Other layers are not shown.",
   scaleFactorHelpTooltip:
     "Adjusting the scale will zoom out 2D cross-section panels by that factor unless the box is ticked to keep the slice FOV fixed with scale changes. 3D panels always have fixed FOV regardless of the scale factor.",
-  screenshotNameHelpTooltip:
-    "Figure Name Help Tooltip.",
 };
 
 interface UIScreenshotStatistics {
@@ -175,7 +173,6 @@ export class ScreenshotDialog extends Overlay {
     orthographicSettingsTooltip: HTMLElement;
     layerDataTooltip: HTMLElement;
     scaleFactorHelpTooltip: HTMLElement;
-    screenshotNameHelpTooltip: HTMLElement;
   };
   private statisticsKeyToCellMap: Map<string, HTMLTableCellElement> = new Map();
   private layerResolutionKeyToCellMap: Map<string, HTMLTableCellElement> =
@@ -250,19 +247,11 @@ export class ScreenshotDialog extends Overlay {
       TOOLTIPS.scaleFactorHelpTooltip,
     );
 
-    const screenshotNameHelpTooltip = makeIcon({ svg: svg_help });
-    screenshotNameHelpTooltip.classList.add("neuroglancer-screenshot-tooltip");
-    screenshotNameHelpTooltip.setAttribute(
-      "data-tooltip",
-      TOOLTIPS.screenshotNameHelpTooltip,
-    );
-
     return (this.helpTooltips = {
       generalSettingsTooltip,
       orthographicSettingsTooltip,
       layerDataTooltip,
       scaleFactorHelpTooltip,
-      screenshotNameHelpTooltip,
     });
   }
 
@@ -308,7 +297,6 @@ export class ScreenshotDialog extends Overlay {
 
     const nameInputLabel = document.createElement("label");
     nameInputLabel.textContent = "Figure name";
-    nameInputLabel.appendChild(tooltips.screenshotNameHelpTooltip);
     this.filenameAndButtonsContainer.appendChild(nameInputLabel);
     this.filenameAndButtonsContainer.appendChild(this.createNameInput());
 
@@ -468,8 +456,7 @@ export class ScreenshotDialog extends Overlay {
     const descriptionText = document.createElement("p");
     descriptionText.innerHTML = `
       A snapshot of your current state will be taken and this will create a figure. 
-      View your figures on the sidebar panel and the dashboard. 
-      <a href="#">Learn more</a>`;
+      View your figures on the sidebar panel and the dashboard.`;
     descriptionSection.appendChild(descriptionText);
   
     const separator = document.createElement("div");
