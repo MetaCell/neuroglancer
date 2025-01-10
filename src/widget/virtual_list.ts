@@ -345,7 +345,6 @@ export class VirtualList extends RefCounted {
     body.appendChild(bottomItems);
     topItems.style.width = "min-content";
     topItems.style.position = "relative";
-    topItems.style.height = "0";
     topItems.style.minWidth = "100%";
     bottomItems.style.height = "0";
     bottomItems.style.position = "relative";
