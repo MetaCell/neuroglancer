@@ -1884,15 +1884,15 @@ ul#statusContainer {
             margin: 0;
         }
         .neuroglancer-icon {
-            font-size: 0.75rem !important;
+            font-size: 0.75rem;
             display: flex;
             align-items: center;
             gap: 0.5rem !important;
             color: var(--content100);
             font-weight: 500 !important;
             svg {
-                width: 0.75rem !important;
-                height: 0.75rem !important;
+                width: 0.75rem;
+                height: 0.75rem;
                 stroke-width: 1 !important;
 
             }
@@ -2144,7 +2144,6 @@ ul#statusContainer {
         li.neuroglancer-message-error {
             font-size: 0.75rem;
             color: var(--error100);
-            padding: 0.75rem 0.75rem 0;
         }
     }
     .neuroglancer-multiline-autocomplete-input {

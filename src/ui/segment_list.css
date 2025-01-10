@@ -31,16 +31,28 @@
 }
 
 .neuroglancer-segment-query-errors {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  margin-top: 4px;
+  gap: 4px;
   margin: 0px;
   list-style-type: none;
-  padding: 0px;
-  padding-left: 3px;
-  background-color: #333;
+  background-color: transparent;
+}
+
+.neuroglancer-segment-query-errors .neuroglancer-icon {
+  color: #D33030;
+}
+
+.neuroglancer-segment-list-query-error-state {
+  border: 2px solid #D33030 !important;
 }
 
 .neuroglancer-segment-query-errors > li {
   display: block;
-  color: red;
+  color: #D33030;
+  font-size: 12px;
 }
 
 .neuroglancer-segment-list-entry:not(

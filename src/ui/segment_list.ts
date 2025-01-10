@@ -51,6 +51,7 @@ import { StatusMessage } from "#src/status.js";
 import type { WatchableValueInterface } from "#src/trackable_value.js";
 import { observeWatchable, WatchableValue } from "#src/trackable_value.js";
 import { getDefaultSelectBindings } from "#src/ui/default_input_event_bindings.js";
+import svg_error from "#src/ui/images/error-info.svg?raw";
 import { SELECT_SEGMENTS_TOOLS_ID } from "#src/ui/segment_select_tools.js";
 import {
   ANNOTATE_MERGE_SEGMENTS_TOOL_ID,
@@ -85,6 +86,7 @@ import { CheckboxIcon } from "#src/widget/checkbox_icon.js";
 import { makeCopyButton } from "#src/widget/copy_button.js";
 import { DependentViewWidget } from "#src/widget/dependent_view_widget.js";
 import { makeEyeButton } from "#src/widget/eye_button.js";
+import { makeIcon } from "#src/widget/icon.js";
 import type { RangeAndWindowIntervals } from "#src/widget/invlerp.js";
 import {
   CdfController,
@@ -1360,6 +1362,7 @@ class SegmentListGroupQuery extends SegmentListGroupBase {
     );
     const queryErrors = document.createElement("ul");
     queryErrors.classList.add("neuroglancer-segment-query-errors");
+    const errorIcon = makeIcon({ svg: svg_error });
     // push them in front of the base list elements
     this.element.prepend(
       queryErrors,
@@ -1418,10 +1421,13 @@ class SegmentListGroupQuery extends SegmentListGroupBase {
     const updateQueryErrors = (queryResult: QueryResult | undefined) => {
       const errors = queryResult?.errors;
       removeChildren(queryErrors);
+      queryElement.classList.remove("neuroglancer-segment-list-query-error-state");
       if (errors === undefined) return;
       for (const error of errors) {
+        queryElement.classList.add("neuroglancer-segment-list-query-error-state");
         const errorElement = document.createElement("li");
         errorElement.textContent = error.message;
+        queryErrors.appendChild(errorIcon);
         queryErrors.appendChild(errorElement);
       }
     };

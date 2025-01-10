@@ -38,6 +38,7 @@ import { MultiscaleVolumeChunkSource } from "#src/sliceview/volume/frontend.js";
 import { TrackableBooleanCheckbox } from "#src/trackable_boolean.js";
 import type { WatchableValueInterface } from "#src/trackable_value.js";
 import { WatchableValue } from "#src/trackable_value.js";
+import svg_error from "#src/ui/images/error-info.svg?raw";
 import type { DebouncedFunction } from "#src/util/animation_frame_debounce.js";
 import { animationFrameDebounce } from "#src/util/animation_frame_debounce.js";
 import type { CancellationToken } from "#src/util/cancellation.js";
@@ -53,6 +54,7 @@ import type { MessageList } from "#src/util/message_list.js";
 import { MessageSeverity } from "#src/util/message_list.js";
 import { makeAddButton } from "#src/widget/add_button.js";
 import { CoordinateSpaceTransformWidget } from "#src/widget/coordinate_transform.js";
+import { makeIcon } from "#src/widget/icon.js";
 import {
   AutocompleteTextInput,
   makeCompletionElementWithDescription,
@@ -131,6 +133,8 @@ export class MessagesView extends RefCounted {
       const key = `${message.severity} ${message.message}`;
       if (seen.has(key)) continue;
       seen.add(key);
+      const errorIcon = makeIcon({ svg: svg_error });
+      element.appendChild(errorIcon);
       const li = document.createElement("li");
       element.appendChild(li);
       li.classList.add("neuroglancer-message");
@@ -350,9 +354,18 @@ export class DataSourceView extends RefCounted {
     element.classList.add("neuroglancer-layer-data-source");
     urlInput.element.id = "dataSourceUrlInputElement";
     element.appendChild(urlInput.element);
-    element.appendChild(
-      this.registerDisposer(new MessagesView(source.messages)).element,
-    );
+    setTimeout(() => {
+      const autocompleteContainer = element.querySelector('.accordion-content');
+      if (autocompleteContainer) {
+        autocompleteContainer.appendChild(
+          this.registerDisposer(new MessagesView(source.messages)).element,
+        );
+      } else {
+        element.appendChild(
+          this.registerDisposer(new MessagesView(source.messages)).element,
+        );
+      }
+    }, 100);
     this.updateView();
   }
 
@@ -374,6 +387,11 @@ export class DataSourceView extends RefCounted {
     if (loadState instanceof LoadedLayerDataSource) {
       loadedView = this.loadedView = new LoadedDataSourceView(loadState);
       this.element.appendChild(loadedView.element);
+    }
+    if(this.source.messages.isEmpty()) {
+      this.urlInput.element.classList.remove("neuroglancer-state-error")
+    } else {
+      this.urlInput.element.classList.add("neuroglancer-state-error")
     }
   }
 
