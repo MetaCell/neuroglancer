@@ -40,6 +40,12 @@ export class EnumSelectWidget<T extends number> extends RefCounted {
       event.stopPropagation();
       this.adjustViaWheel(event);
     });
+    element.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+    element.addEventListener("mousedown", (event) => {
+      event.stopPropagation();
+    });
     this.updateView();
   }
 
