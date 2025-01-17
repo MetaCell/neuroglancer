@@ -29,10 +29,16 @@ import { animationFrameDebounce } from "#src/util/animation_frame_debounce.js";
 import { removeChildren } from "#src/util/dom.js";
 import type { EventActionMap } from "#src/util/event_action_map.js";
 import { emptyToUndefined } from "#src/util/json.js";
+import { Viewer } from "#src/viewer.js";
 
 declare let NEUROGLANCER_BUILD_INFO:
   | { tag: string; url?: string; timestamp?: string }
   | undefined;
+
+export interface HelpLink {
+  text: string;
+  url: string;
+};
 
 export function formatKeyName(name: string) {
   if (name.startsWith("key")) {
@@ -74,6 +80,36 @@ export class HelpPanelState {
   }
 }
 
+export class UserDefinedHelp {
+  private helpLinks: HelpLink[];
+
+  constructor() {
+    this.helpLinks = [{url: "google.com", text: "Google"}, {url: "email.com", text: "Email"}];
+  }
+
+  setHelpLinks(links: HelpLink[]): void {
+    this.helpLinks = links;
+  }
+
+  getHelpLinks(): HelpLink[] {
+    return this.helpLinks;
+  }
+
+  location = new TrackableSidePanelLocation(DEFAULT_HELP_PANEL_LOCATION);
+  get changed() {
+    return this.location.changed;
+  }
+  toJSON() {
+    return emptyToUndefined(this.location.toJSON());
+  }
+  reset() {
+    this.location.reset();
+  }
+  restoreState(obj: unknown) {
+    this.location.restoreState(obj);
+  }
+}
+
 export class InputEventBindingHelpDialog extends SidePanel {
   scroll = document.createElement("div");
 
@@ -83,12 +119,33 @@ export class InputEventBindingHelpDialog extends SidePanel {
     private bindings: Iterable<[string, EventActionMap]>,
     layerManager: LayerManager,
     private toolBinder: GlobalToolBinder,
+    viewer: Viewer
   ) {
     super(sidePanelManager, state.location);
 
     this.addTitleBar({ title: "Help" });
     const body = document.createElement("div");
     body.classList.add("neuroglancer-help-body");
+
+    const customLinksContainer = document.createElement("div");
+    customLinksContainer.classList.add("neuroglancer-help-custom-links-container");
+
+    viewer.customHelpLinks.getHelpLinks().forEach(link => {
+      const button = document.createElement('div');
+      const title = document.createElement("span");
+      title.textContent = link.text;
+      title.classList.add("custom-links-title");
+      const supportingText = document.createElement("span");
+      supportingText.textContent = "Supporting text";
+      supportingText.classList.add("custom-links-supporting-text");
+      button.className = 'neuroglancer-help-custom-links-button';
+      button.appendChild(title);
+      button.appendChild(supportingText);
+      button.onclick = () => window.open(link.url, '_blank');
+      customLinksContainer.appendChild(button);
+    });
+
+    body.appendChild(customLinksContainer);
 
     const { scroll } = this;
     scroll.classList.add("neuroglancer-help-scroll-container");

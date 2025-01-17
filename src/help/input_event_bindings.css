@@ -69,3 +69,37 @@
 .neuroglancer-build-info a:hover {
   background-color: #db4437;
 }
+
+.neuroglancer-help-custom-links-container,
+.neuroglancer-help-custom-links-button {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem;
+}
+
+.neuroglancer-help-custom-links-container {
+  gap: 0.5rem;
+}
+
+.neuroglancer-help-custom-links-button {
+  border: 1px solid #FFF;
+  gap: 0.25rem;
+}
+
+.neuroglancer-help-custom-links-button .custom-links-title, 
+.neuroglancer-help-custom-links-button .custom-links-supporting-text {
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.neuroglancer-help-custom-links-button .custom-links-title {
+  color: #FFF;
+}
+
+.neuroglancer-help-custom-links-button .custom-links-supporting-text {
+  color: rgba(255, 255, 255, 0.60);
+}

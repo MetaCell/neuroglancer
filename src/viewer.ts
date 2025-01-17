@@ -42,6 +42,7 @@ import { TrackableWindowedViewport } from "#src/display_context.js";
 import {
   HelpPanelState,
   InputEventBindingHelpDialog,
+  UserDefinedHelp,
 } from "#src/help/input_event_bindings.js";
 import {
   addNewLayer,
@@ -295,6 +296,7 @@ class TrackableViewerState extends CompoundTrackable {
     this.add("crossSectionOrientation", viewer.crossSectionOrientation);
     this.add("crossSectionScale", viewer.crossSectionScale);
     this.add("crossSectionDepth", viewer.crossSectionDepthRange);
+    this.add("customHelpLinks", viewer.customHelpLinks);
     this.add("projectionOrientation", viewer.projectionOrientation);
     this.add("projectionScale", viewer.projectionScale);
     this.add("projectionDepth", viewer.projectionDepthRange);
@@ -407,6 +409,7 @@ class TrackableViewerState extends CompoundTrackable {
 export class Viewer extends RefCounted implements ViewerState {
   title = new TrackableValue<string | undefined>(undefined, verifyString);
   coordinateSpace = new TrackableCoordinateSpace();
+  customHelpLinks = new UserDefinedHelp();
   position = this.registerDisposer(new Position(this.coordinateSpace));
   velocity = this.registerDisposer(
     new CoordinateSpacePlaybackVelocity(this.coordinateSpace),
@@ -992,6 +995,7 @@ export class Viewer extends RefCounted implements ViewerState {
             ],
             this.layerManager,
             this.globalToolBinder,
+            this,
           );
         },
       }),
