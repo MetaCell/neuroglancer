@@ -747,7 +747,6 @@ ul#statusContainer {
             .list-scroll-container {
                 /* height: 12.5rem !important; */
                 overflow: auto;
-                height: 100% !important;
             }
         }
         .neuroglancer-annotation-list-header {
@@ -1665,12 +1664,6 @@ ul#statusContainer {
                         }
                     }
                   
-                }
-            }
-            .neuroglancer-layer-control-label-text-container {
-                input[type="radio"] {
-                    position: absolute;
-                    right: 0;
                 }
             }
         }
