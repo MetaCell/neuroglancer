@@ -461,11 +461,15 @@ ul#statusContainer {
             color: var(--content100);
             font-size: 0.875rem;
             font-weight: 400;
+            font-family: Graphik;
+            line-height: 20px;
         }
         .neuroglancer-annotation-tool-status-widget-layer-number {
             color: var(--content100);
             font-size: 0.875rem;
             font-weight: 500;
+            line-height: 18px;
+            font-family: Graphik;
             background: transparent !important;
         }
     }
@@ -2333,7 +2337,7 @@ ul#statusContainer {
         font-size: 0.75rem;
         font-weight: 400;
         line-height: 0.8731rem;
-        color: var(--caramel60);
+        color: #FFC652;
         margin-left: 0.75rem;
     }
 
@@ -2365,7 +2369,6 @@ ul#statusContainer {
             background-position: center center;
             text-indent: -62.4375rem;
             position: relative;
-            top: 0.1rem;
             margin: 0;
             &[data-checked="true"] {
                 background-color: transparent;

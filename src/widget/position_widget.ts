@@ -1279,7 +1279,7 @@ export class MousePositionWidget extends RefCounted {
     this.registerDisposer(coordinateSpace.changed.add(updateViewFunction));
   }
   updateView() {
-    let text = "";
+    let html = "";
     const {
       mouseState,
       coordinateSpace: { value: coordinateSpace },
@@ -1288,11 +1288,11 @@ export class MousePositionWidget extends RefCounted {
       const p = mouseState.position;
       const { rank, names } = coordinateSpace;
       for (let i = 0; i < rank; ++i) {
-        if (i !== 0) text += "  ";
-        text += `${names[i]} ${Math.floor(p[i])}`;
+        if (i !== 0) html += "  ";
+        html += `<span style="color: #C1915D;">${names[i]}</span> ${Math.floor(p[i])}`;
       }
     }
-    this.element.textContent = text;
+    this.element.innerHTML = html;
   }
   disposed() {
     removeFromParent(this.element);
