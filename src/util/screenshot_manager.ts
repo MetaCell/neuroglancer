@@ -31,6 +31,7 @@ import {
   getChunkSourceIdentifier,
   getFormattedNames,
 } from "#src/ui/statistics.js";
+import { toBase64 } from "#src/util/base64.ts";
 import { RefCounted } from "#src/util/disposable.js";
 import { NullarySignal, Signal } from "#src/util/signal.js";
 import { ScreenshotMode } from "#src/util/trackable_screenshot_mode.js";
@@ -429,8 +430,22 @@ export class ScreenshotManager extends RefCounted {
       );
       saveBlobToFile(croppedImage, this.filename);
       // @metacell
+
+      // Convert croppedImage Blob to Base64
+      const croppedImageArrayBuffer = await croppedImage.arrayBuffer();
+      const croppedImageBase64 = await toBase64(new Uint8Array(croppedImageArrayBuffer));
+
       // Dispatch message on screenshot creation
-      dispatchMessage(NEW_FIGURE, { ...actionState, name: this.filename.replace(/\.[^/.]+$/, "")});
+      dispatchMessage(NEW_FIGURE, {
+        ...actionState,
+        screenshot: {
+          ...screenshot,
+          image: croppedImageBase64,
+          height: renderingPanelArea.bottom - renderingPanelArea.top,
+          width: renderingPanelArea.right - renderingPanelArea.left,
+        },
+        name: this.filename.replace(/\.[^/.]+$/, "")
+      });
       // end @metacell
     } catch (error) {
       console.error("Failed to save screenshot:", error);
