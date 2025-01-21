@@ -64,6 +64,7 @@
 .neuroglancer-segment-list-entry-id-container {
   order: 1;
   align-self: center;
+  margin-left: 0.25rem;
 }
 
 .neuroglancer-segment-list-entry-id,
@@ -90,6 +91,7 @@
   align-items: center;
   background-color: inherit;
   display: flex;
+  gap: 0.25rem;
 }
 
 .neuroglancer-segment-list-entry.neuroglancer-segment-list-header

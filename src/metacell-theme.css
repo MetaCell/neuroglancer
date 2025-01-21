@@ -644,9 +644,6 @@ ul#statusContainer {
         .neuroglancer-segment-list-status {
             margin: 0.5rem 0;
             background: transparent;
-            svg {
-                stroke: var(--content100);
-            }
         }
         .neuroglancer-tool-button {
             .neuroglancer-tool-button-label {
