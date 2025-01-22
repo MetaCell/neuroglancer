@@ -7,6 +7,7 @@
 .accordion-expanded {
   display: flex;
   flex-direction: column;
+  height: 100%;
 }
 
 .accordion-item {
@@ -26,4 +27,6 @@
 .accordion-content {
   padding: 10px;
   display: none; /* Hide by default */
+  overflow-x: hidden;
+  overflow-y: auto;
 }
