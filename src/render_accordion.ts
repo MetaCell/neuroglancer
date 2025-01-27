@@ -247,7 +247,6 @@ const LAYER_CONTROLS_ACCORDION_SELECTOR: Record<string, AccordionItemSelector> =
         json_keys.SEGMENT_DEFAULT_COLOR_JSON_KEY,
         json_keys.COLOR_SEED_JSON_KEY,
         json_keys.SATURATION_JSON_KEY,
-        json_keys.CROSS_SECTION_RENDER_SCALE_JSON_KEY,
         json_keys.BASE_SEGMENT_COLORING_JSON_KEY,
         json_keys.HOVER_HIGHLIGHT_JSON_KEY,
         "linkedSegmentationColorGroup",
