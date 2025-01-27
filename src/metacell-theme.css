@@ -261,6 +261,13 @@ ul#statusContainer {
                 width: 1rem;
                 height: 1rem;
             }
+            &:focus {
+                outline: none;
+            }
+            &:focus:checked {
+                background-color: rgba(22, 82, 240, 0.15);
+                box-shadow: 0 0 0 4px rgba(22, 82, 240, 0.15);
+            }
         }
     }
     .neuroglancer-invlerp-widget  {
@@ -547,17 +554,7 @@ ul#statusContainer {
             .neuroglancer-layer-control-container {
                 margin: 1rem 0;
                 input[type="checkbox"] {
-                    background: url('../src/ui/images/unselected.svg') no-repeat;
-                    width: 1rem;
-                    height: 1rem;
-                    margin: 0;
-                    -webkit-appearance: none;
                     margin-right: 0.5rem;
-                    &:checked {
-                        background: url('../src/ui/images/selected.svg') no-repeat;
-                        width: 1rem;
-                        height: 1rem;
-                    }
                 }
             
             }
@@ -681,6 +678,26 @@ ul#statusContainer {
     input[type="color"]::-webkit-color-swatch {
         border: none;
     }
+    input[type="checkbox"] {
+        background: url('../src/ui/images/unselected.svg') no-repeat;
+        width: 1rem;
+        height: 1rem;
+        -webkit-appearance: none;
+        margin: 0;
+        display: block;
+        &:checked {
+            background: url('../src/ui/images/selected.svg') no-repeat;
+            width: 1rem;
+            height: 1rem;
+        }
+        &:focus {
+            outline: none;
+        }
+        &:focus:checked {
+            background-color: rgba(22, 82, 240, 0.15);
+            box-shadow: 0 0 0 4px rgba(22, 82, 240, 0.15);
+        }
+    }
     .neuroglancer-annotations-tab {
         label {
             color: var(--content100);
@@ -757,17 +774,7 @@ ul#statusContainer {
             color: var(--content100);
         }
         input[type="checkbox"] {
-            background: url('../src/ui/images/unselected.svg') no-repeat;
-            width: 1rem;
-            height: 1rem;
-            margin: 0;
-            -webkit-appearance: none;
             margin-right: 0.5rem;
-            &:checked {
-                background: url('../src/ui/images/selected.svg') no-repeat;
-                width: 1rem;
-                height: 1rem;
-            }
         }
         .neuroglass-ignore-label {
             overflow: hidden;
@@ -1446,16 +1453,9 @@ ul#statusContainer {
         }
 
         input[type="checkbox"].neuroglancer-layer-control-control {
-            background: url('../src/ui/images/unselected.svg') no-repeat;
-            width: 1rem;
-            height: 1rem;
-            -webkit-appearance: none;
             margin: 0 0 0 auto;
             display: block;
             &:checked {
-                background: url('../src/ui/images/selected.svg') no-repeat;
-                width: 1rem;
-                height: 1rem;
                 margin: 0 0 0 auto;
             }
         }
@@ -1808,6 +1808,13 @@ ul#statusContainer {
                     height: 1rem;
                     margin: 0 0 0 auto;
                 }
+                &:focus {
+                    outline: none;
+                }
+                &:focus:checked {
+                    background-color: rgba(22, 82, 240, 0.15);
+                    box-shadow: 0 0 0 4px rgba(22, 82, 240, 0.15);
+                }
             }
            
         }
@@ -2025,17 +2032,7 @@ ul#statusContainer {
         border-color: var(--background80);
         margin-bottom: 0;
         input[type="checkbox"] {
-            background: url('../src/ui/images/unselected.svg') no-repeat;
-            width: 1rem;
-            height: 1rem;
-            margin: 0;
-            -webkit-appearance: none;
             margin-right: 0.5rem;
-            &:checked {
-                background: url('../src/ui/images/selected.svg') no-repeat;
-                width: 1rem;
-                height: 1rem;
-            }
         }
         &:first-of-type {
             margin-top: 0;
@@ -2813,17 +2810,7 @@ ul#statusContainer {
             }
         }
         input[type="checkbox"] {
-            background: url('../src/ui/images/unselected.svg') no-repeat;
-            width: 1rem;
-            height: 1rem;
-            margin: 0;
-            -webkit-appearance: none;
             margin-right: 0.5rem;
-            &:checked {
-                background: url('../src/ui/images/selected.svg') no-repeat;
-                width: 1rem;
-                height: 1rem;
-            }
         }
         .neuroglancer-selection-details-value-grid-value {
             font-size: 0.75rem;
