@@ -24,6 +24,7 @@ import type {
   WatchableValueChangeInterface,
   WatchableValueInterface,
 } from "#src/trackable_value.js";
+import { accordify } from "#src/ui/accordions/index.js";
 import { animationFrameDebounce } from "#src/util/animation_frame_debounce.js";
 import type { Owned } from "#src/util/disposable.js";
 import { RefCounted } from "#src/util/disposable.js";
@@ -230,6 +231,12 @@ export class StackView<TabId, TabType extends Tab = Tab> extends RefCounted {
     let tab = tabs.get(id);
     if (tab === undefined) {
       tab = this.getter(id);
+      if (typeof id === "string") {
+        if (tab) accordify(id, tab.element)
+        setTimeout(() => {
+          if (tab) accordify(id, tab.element);
+        }, 250);
+      }
       this.element.appendChild(tab.element);
       tabs.set(id, tab);
     }
@@ -431,3 +438,4 @@ export class TabView extends RefCounted {
     super.disposed();
   }
 }
+
