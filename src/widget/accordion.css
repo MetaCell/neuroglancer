@@ -27,6 +27,6 @@
 .accordion-content {
   padding: 10px;
   display: none; /* Hide by default */
-  overflow-x: hidden;
+  overflow-x: auto;
   overflow-y: auto;
 }

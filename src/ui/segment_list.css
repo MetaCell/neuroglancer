@@ -104,6 +104,10 @@
   background-color: #333;
 }
 
+.neuroglancer-segment-list-status .neuroglancer-eye-icon {
+  stroke: #999CA0;
+}
+
 .neuroglancer-segment-list-entry-copy {
   order: -2;
   visibility: hidden;

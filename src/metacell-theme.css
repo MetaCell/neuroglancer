@@ -261,6 +261,13 @@ ul#statusContainer {
                 width: 1rem;
                 height: 1rem;
             }
+            &:focus {
+                outline: none;
+            }
+            &:focus:checked {
+                background-color: rgba(22, 82, 240, 0.15);
+                box-shadow: 0 0 0 4px rgba(22, 82, 240, 0.15);
+            }
         }
     }
     .neuroglancer-invlerp-widget  {
@@ -461,11 +468,15 @@ ul#statusContainer {
             color: var(--content100);
             font-size: 0.875rem;
             font-weight: 400;
+            font-family: Graphik;
+            line-height: 20px;
         }
         .neuroglancer-annotation-tool-status-widget-layer-number {
             color: var(--content100);
             font-size: 0.875rem;
             font-weight: 500;
+            line-height: 18px;
+            font-family: Graphik;
             background: transparent !important;
         }
     }
@@ -543,17 +554,7 @@ ul#statusContainer {
             .neuroglancer-layer-control-container {
                 margin: 1rem 0;
                 input[type="checkbox"] {
-                    background: url('../src/ui/images/unselected.svg') no-repeat;
-                    width: 1rem;
-                    height: 1rem;
-                    margin: 0;
-                    -webkit-appearance: none;
                     margin-right: 0.5rem;
-                    &:checked {
-                        background: url('../src/ui/images/selected.svg') no-repeat;
-                        width: 1rem;
-                        height: 1rem;
-                    }
                 }
             
             }
@@ -640,9 +641,6 @@ ul#statusContainer {
         .neuroglancer-segment-list-status {
             margin: 0.5rem 0;
             background: transparent;
-            svg {
-                stroke: var(--content100);
-            }
         }
         .neuroglancer-tool-button {
             .neuroglancer-tool-button-label {
@@ -679,6 +677,26 @@ ul#statusContainer {
     }
     input[type="color"]::-webkit-color-swatch {
         border: none;
+    }
+    input[type="checkbox"] {
+        background: url('../src/ui/images/unselected.svg') no-repeat;
+        width: 1rem;
+        height: 1rem;
+        -webkit-appearance: none;
+        margin: 0;
+        display: block;
+        &:checked {
+            background: url('../src/ui/images/selected.svg') no-repeat;
+            width: 1rem;
+            height: 1rem;
+        }
+        &:focus {
+            outline: none;
+        }
+        &:focus:checked {
+            background-color: rgba(22, 82, 240, 0.15);
+            box-shadow: 0 0 0 4px rgba(22, 82, 240, 0.15);
+        }
     }
     .neuroglancer-annotations-tab {
         label {
@@ -756,17 +774,7 @@ ul#statusContainer {
             color: var(--content100);
         }
         input[type="checkbox"] {
-            background: url('../src/ui/images/unselected.svg') no-repeat;
-            width: 1rem;
-            height: 1rem;
-            margin: 0;
-            -webkit-appearance: none;
             margin-right: 0.5rem;
-            &:checked {
-                background: url('../src/ui/images/selected.svg') no-repeat;
-                width: 1rem;
-                height: 1rem;
-            }
         }
         .neuroglass-ignore-label {
             overflow: hidden;
@@ -1445,16 +1453,9 @@ ul#statusContainer {
         }
 
         input[type="checkbox"].neuroglancer-layer-control-control {
-            background: url('../src/ui/images/unselected.svg') no-repeat;
-            width: 1rem;
-            height: 1rem;
-            -webkit-appearance: none;
             margin: 0 0 0 auto;
             display: block;
             &:checked {
-                background: url('../src/ui/images/selected.svg') no-repeat;
-                width: 1rem;
-                height: 1rem;
                 margin: 0 0 0 auto;
             }
         }
@@ -1807,6 +1808,13 @@ ul#statusContainer {
                     height: 1rem;
                     margin: 0 0 0 auto;
                 }
+                &:focus {
+                    outline: none;
+                }
+                &:focus:checked {
+                    background-color: rgba(22, 82, 240, 0.15);
+                    box-shadow: 0 0 0 4px rgba(22, 82, 240, 0.15);
+                }
             }
            
         }
@@ -2024,17 +2032,7 @@ ul#statusContainer {
         border-color: var(--background80);
         margin-bottom: 0;
         input[type="checkbox"] {
-            background: url('../src/ui/images/unselected.svg') no-repeat;
-            width: 1rem;
-            height: 1rem;
-            margin: 0;
-            -webkit-appearance: none;
             margin-right: 0.5rem;
-            &:checked {
-                background: url('../src/ui/images/selected.svg') no-repeat;
-                width: 1rem;
-                height: 1rem;
-            }
         }
         &:first-of-type {
             margin-top: 0;
@@ -2325,7 +2323,7 @@ ul#statusContainer {
         font-size: 0.75rem;
         font-weight: 400;
         line-height: 0.8731rem;
-        color: var(--caramel60);
+        color: #FFC652;
         margin-left: 0.75rem;
     }
 
@@ -2357,7 +2355,6 @@ ul#statusContainer {
             background-position: center center;
             text-indent: -62.4375rem;
             position: relative;
-            top: 0.1rem;
             margin: 0;
             &[data-checked="true"] {
                 background-color: transparent;
@@ -2813,17 +2810,7 @@ ul#statusContainer {
             }
         }
         input[type="checkbox"] {
-            background: url('../src/ui/images/unselected.svg') no-repeat;
-            width: 1rem;
-            height: 1rem;
-            margin: 0;
-            -webkit-appearance: none;
             margin-right: 0.5rem;
-            &:checked {
-                background: url('../src/ui/images/selected.svg') no-repeat;
-                width: 1rem;
-                height: 1rem;
-            }
         }
         .neuroglancer-selection-details-value-grid-value {
             font-size: 0.75rem;
