@@ -54,6 +54,12 @@ export function buildAccordion(root: Element | null, opts: AccordionOptions[]) {
       containerDiv.appendChild(element);
     });
 
+    // if all the elements are empty, the accordion
+    // item should not be rendered
+    if (!hasContent(containerDiv)) {
+      return;
+    }
+
     accordionItems.push({
       title: opts[index].title,
       content: containerDiv,
@@ -65,4 +71,11 @@ export function buildAccordion(root: Element | null, opts: AccordionOptions[]) {
 
   const accordion = new Accordion(accordionItems);
   root.appendChild(accordion.getElement());
+}
+
+function hasContent(element: Element): boolean {
+  if (!element.hasChildNodes()) {
+    return false;
+  }
+  return Array.from(element.children).some((child) => child.hasChildNodes());
 }
