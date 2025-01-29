@@ -232,7 +232,7 @@ export class StackView<TabId, TabType extends Tab = Tab> extends RefCounted {
     if (tab === undefined) {
       tab = this.getter(id);
       if (typeof id === "string") {
-        if (tab) accordify(id, tab.element)
+        if (tab) accordify(id, tab.element);
         setTimeout(() => {
           if (tab) accordify(id, tab.element);
         }, 250);
