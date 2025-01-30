@@ -98,16 +98,19 @@ const renderingLayerSegTabSelectors: AccordionOptions[] = [
     title: "Channels",
     itemsClassNames: ["shader-container"],
     selectors: {
-      ids: [json_keys.SKELETON_RENDERING_SHADER_CONTROL_TOOL_ID],
+      ids: [], // TODO: what should be here?
     },
   },
   {
     title: "Skeletons",
     itemsClassNames: ["skeleton-container"],
     selectors: {
-      ids: LAYER_CONTROLS.filter((c) =>
-        String(c.toolJson).startsWith(json_keys.SKELETON_RENDERING_JSON_KEY),
-      ).map((c) => c.toolJson) as string[],
+      ids: [
+        ...(LAYER_CONTROLS.filter((c) =>
+          String(c.toolJson).startsWith(json_keys.SKELETON_RENDERING_JSON_KEY),
+        ).map((c) => c.toolJson) as string[]),
+        json_keys.SKELETON_RENDERING_SHADER_CONTROL_TOOL_ID,
+      ],
     },
   },
 ];
