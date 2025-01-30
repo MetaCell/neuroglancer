@@ -1,6 +1,6 @@
-import { buildAnnotationsTab } from "#src/ui/accordions/annotations.js";
-import { buildRenderingTab } from "#src/ui/accordions/rendering.js";
-import { builSourceTab } from "#src/ui/accordions/source.js";
+import { buildAnnotationsTab } from "#src/accordions/annotations.js";
+import { buildRenderingTab } from "#src/accordions/rendering.js";
+import { builSourceTab } from "#src/accordions/source.js";
 
 type TabId = "source" | "rendering" | "annotations" | "segments" | "graph";
 

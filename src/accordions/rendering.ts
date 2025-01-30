@@ -1,7 +1,7 @@
+import { buildAccordion } from "#src/accordions/accordion.js";
+import { type AccordionOptions } from "#src/accordions/accordion.js";
 import * as json_keys from "#src/layer/segmentation/json_keys.js";
 import { LAYER_CONTROLS } from "#src/layer/segmentation/layer_controls.js";
-import { buildAccordion } from "#src/ui/accordions/accordion.js";
-import { type AccordionOptions } from "#src/ui/accordions/accordion.js";
 
 // see: src/layer/image/index.rs
 const renderingLayerImageTabSelectors: AccordionOptions[] = [

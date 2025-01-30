@@ -20,11 +20,11 @@
 
 import "#src/widget/tab_view.css";
 
+import { accordify } from "#src/accordions/index.js";
 import type {
   WatchableValueChangeInterface,
   WatchableValueInterface,
 } from "#src/trackable_value.js";
-import { accordify } from "#src/ui/accordions/index.js";
 import { animationFrameDebounce } from "#src/util/animation_frame_debounce.js";
 import type { Owned } from "#src/util/disposable.js";
 import { RefCounted } from "#src/util/disposable.js";

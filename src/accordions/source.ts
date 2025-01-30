@@ -1,4 +1,4 @@
-import { buildAccordion } from "#src/ui/accordions/accordion.js";
+import { buildAccordion } from "#src/accordions/accordion.js";
 
 export function builSourceTab(root: HTMLDivElement) {
   const dataSourcesControlsContainer = root?.querySelector(
