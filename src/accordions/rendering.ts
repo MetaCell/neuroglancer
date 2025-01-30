@@ -1,5 +1,5 @@
-import { buildAccordion } from "#src/accordions/accordion.js";
-import { type AccordionOptions } from "#src/accordions/accordion.js";
+import { buildAccordion } from "#src/accordions/build_accordion.js";
+import { type AccordionOptions } from "#src/accordions/build_accordion.js";
 import * as json_keys from "#src/layer/segmentation/json_keys.js";
 import { LAYER_CONTROLS } from "#src/layer/segmentation/layer_controls.js";
 

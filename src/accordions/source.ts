@@ -1,4 +1,4 @@
-import { buildAccordion } from "#src/accordions/accordion.js";
+import { buildAccordion } from "#src/accordions/build_accordion.js";
 
 export function builSourceTab(root: HTMLDivElement) {
   // there can be multiple data sources container
