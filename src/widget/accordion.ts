@@ -1,16 +1,21 @@
+import type { WatchableValueInterface } from "#src/trackable_value.js";
+import { RefCounted } from "#src/util/disposable.js";
+import { removeFromParent } from "#src/util/dom.js";
 import "#src/widget/accordion.css";
 
 export type AccordionItem = {
   title: string;
   content: HTMLDivElement; // Expecting actual HTML elements for content
+  state?: WatchableValueInterface<boolean>;
   open?: boolean;
 };
 
-export class Accordion {
+export class Accordion extends RefCounted {
   private items: AccordionItem[];
   private element: HTMLElement;
 
   constructor(items: AccordionItem[]) {
+    super();
     this.items = items;
     this.element = document.createElement("div");
     this.element.classList.add("accordion");
@@ -34,15 +39,33 @@ export class Accordion {
       // Append the actual content (DOM element) instead of using textContent
       contentElement.appendChild(item.content);
 
-      if (item.open) {
-        this.toggleContent(itemElement, contentElement, true);
-      }
+      if (item.state) {
+        if (item.state.value === false && item.open) {
+          item.state.value = true;
+        }
 
-      // Event listener to toggle the content display
-      titleElement.addEventListener("click", () => {
-        const isVisible = contentElement.style.display === "block";
-        this.toggleContent(itemElement, contentElement, !isVisible); // Pass the itemElement to toggle the expanded class
-      });
+        this.toggleContent(itemElement, contentElement, item.state.value);
+
+        this.registerDisposer(
+          item.state.changed.add(() => {
+            this.toggleContent(itemElement, contentElement, item.state!.value);
+          })
+        );
+
+        this.registerEventListener(titleElement, "click", () => {
+          item.state!.value = !item.state!.value;
+        });
+      } else {
+        if (item.open) {
+          this.toggleContent(itemElement, contentElement, true);
+        }
+
+        // Event listener to toggle the content display
+        this.registerEventListener(titleElement, "click", () => {
+          const isVisible = contentElement.style.display === "block";
+          this.toggleContent(itemElement, contentElement, !isVisible); // Pass the itemElement to toggle the expanded class
+        });
+      }
 
       itemElement.appendChild(titleElement);
       itemElement.appendChild(contentElement);
@@ -81,5 +104,10 @@ export class Accordion {
 
   public getElement(): HTMLElement {
     return this.element;
+  }
+
+  disposed() {
+    removeFromParent(this.element);
+    super.disposed();
   }
 }

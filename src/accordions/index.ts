@@ -8,7 +8,7 @@ export function isTabId(id: string): id is TabId {
   return Object.keys(tabBuilder).includes(id);
 }
 
-type TabAccordionBuilder = (root: HTMLDivElement) => void;
+type TabAccordionBuilder = (tabId: TabId, root: Element | null) => void;
 
 export const tabBuilder: Record<TabId, TabAccordionBuilder> = {
   source: builSourceTab,
@@ -27,5 +27,5 @@ export function accordify(id: string, root: HTMLDivElement) {
     console.error("accordion builde: unsupported tabId:", id);
     return;
   }
-  tabBuilder[id](root);
+  tabBuilder[id](id, root);
 }

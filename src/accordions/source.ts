@@ -1,6 +1,7 @@
+import type { TabId } from "#src/accordion_state.js";
 import { buildAccordion } from "#src/accordions/build_accordion.js";
 
-export function builSourceTab(root: HTMLDivElement) {
+export function builSourceTab(tabId: TabId, root: HTMLDivElement) {
   // there can be multiple data sources container
   const dataSourcesContainers = root.getElementsByClassName(
     "neuroglancer-layer-data-source",
@@ -14,8 +15,9 @@ export function builSourceTab(root: HTMLDivElement) {
       ".neuroglancer-layer-data-source-div",
     );
 
-    buildAccordion(dataSourcesControlsContainer, [
+    buildAccordion(tabId, dataSourcesControlsContainer, [
       {
+        id: "source-tab-enabled-components",
         title: "Enabled components",
         itemsClassNames: [
           "data-source-container",
@@ -27,6 +29,7 @@ export function builSourceTab(root: HTMLDivElement) {
         },
       },
       {
+        id: "source-tab-scale-and-translation",
         title: "Scale and translation",
         itemsClassNames: ["data-source-container", "transform-container"],
         selectors: {
@@ -35,8 +38,9 @@ export function builSourceTab(root: HTMLDivElement) {
       },
     ]);
 
-    buildAccordion(container, [
+    buildAccordion(tabId, container, [
       {
+        id: "source-tab-data-source",
         title: "Data source",
         open: true,
         selectors: {
