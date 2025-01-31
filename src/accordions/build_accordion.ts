@@ -84,6 +84,7 @@ export function buildAccordion(
       item.state = window.viewer.tabAccordionState.getState(
         tabId,
         opts[index].id,
+        opts[index].open,
       );
     } else {
       item.open = opts[index].open;

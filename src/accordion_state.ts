@@ -14,13 +14,13 @@ export class TrackableTabAccordionState extends RefCounted implements Trackable 
   changed = new NullarySignal();
   private states: TabAccordionState = {};
 
-  getState(tabId: TabId, accordionId: string): TrackableBoolean {
+  getState(tabId: TabId, accordionId: string, initialValue?: boolean): TrackableBoolean {
     if (!this.states[tabId]) {
       this.states[tabId] = {};
     }
 
     if (!this.states[tabId][accordionId]) {
-      const state = new TrackableBoolean(false);
+      const state = new TrackableBoolean(initialValue ?? false);
       this.states[tabId][accordionId] = state;
       this.registerDisposer(state.changed.add(() => this.changed.dispatch()));
     }

@@ -40,10 +40,6 @@ export class Accordion extends RefCounted {
       contentElement.appendChild(item.content);
 
       if (item.state) {
-        if (item.state.value === false && item.open) {
-          item.state.value = true;
-        }
-
         this.toggleContent(itemElement, contentElement, item.state.value);
 
         this.registerDisposer(
@@ -56,14 +52,14 @@ export class Accordion extends RefCounted {
           item.state!.value = !item.state!.value;
         });
       } else {
-        if (item.open) {
-          this.toggleContent(itemElement, contentElement, true);
-        }
+        // if there is no state tracking, we use item.open to
+        // provide the accordion state, should't be needed tho
 
-        // Event listener to toggle the content display
+        this.toggleContent(itemElement, contentElement, item.open ?? false);
+
         this.registerEventListener(titleElement, "click", () => {
-          const isVisible = contentElement.style.display === "block";
-          this.toggleContent(itemElement, contentElement, !isVisible); // Pass the itemElement to toggle the expanded class
+          item.open = !item.open;
+          this.toggleContent(itemElement, contentElement, item.open ?? false);
         });
       }
 
