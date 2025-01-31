@@ -1,5 +1,5 @@
-import type { TabId } from "#src/accordion_state.js";
 import { buildAccordion } from "#src/accordions/build_accordion.js";
+import type { TabId } from "#src/accordions/index.js";
 
 export function buildAnnotationsTab(tabId: TabId, root: HTMLDivElement) {
   buildAccordion(tabId, root, [

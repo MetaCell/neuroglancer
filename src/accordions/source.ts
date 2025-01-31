@@ -1,5 +1,5 @@
-import type { TabId } from "#src/accordion_state.js";
 import { buildAccordion } from "#src/accordions/build_accordion.js";
+import type { TabId } from "#src/accordions/index.js";
 
 export function builSourceTab(tabId: TabId, root: HTMLDivElement) {
   // there can be multiple data sources container

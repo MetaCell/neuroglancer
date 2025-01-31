@@ -2,7 +2,12 @@ import { buildAnnotationsTab } from "#src/accordions/annotations.js";
 import { buildRenderingTab } from "#src/accordions/rendering.js";
 import { builSourceTab } from "#src/accordions/source.js";
 
-type TabId = "source" | "rendering" | "annotations" | "segments" | "graph";
+export type TabId =
+  | "source"
+  | "rendering"
+  | "annotations"
+  | "segments"
+  | "graph";
 
 export function isTabId(id: string): id is TabId {
   return Object.keys(tabBuilder).includes(id);

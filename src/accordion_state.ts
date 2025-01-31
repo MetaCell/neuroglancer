@@ -1,9 +1,8 @@
+import type { TabId } from "#src/accordions/index.js";
 import { TrackableBoolean } from "#src/trackable_boolean.js";
 import { RefCounted } from "#src/util/disposable.js";
 import { NullarySignal } from "#src/util/signal.js";
 import { type Trackable } from "#src/util/trackable.js";
-
-export type TabId = 'source' | 'rendering' | 'annotations' | 'segments' | 'graph';
 
 export interface TabAccordionState {
   [tabId: string]: {

@@ -1,7 +1,5 @@
-import type {
-  TabId,
-  TrackableTabAccordionState,
-} from "#src/accordion_state.js";
+import type { TrackableTabAccordionState } from "#src/accordion_state.js";
+import type { TabId } from "#src/accordions/index.js";
 import { Accordion } from "#src/widget/accordion.js";
 import { type AccordionItem } from "#src/widget/accordion.js";
 

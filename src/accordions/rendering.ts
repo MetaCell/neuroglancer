@@ -1,6 +1,6 @@
-import type { TabId } from "#src/accordion_state.js";
 import { buildAccordion } from "#src/accordions/build_accordion.js";
 import { type AccordionOptions } from "#src/accordions/build_accordion.js";
+import type { TabId } from "#src/accordions/index.js";
 import * as json_keys from "#src/layer/segmentation/json_keys.js";
 import { LAYER_CONTROLS } from "#src/layer/segmentation/layer_controls.js";
 
