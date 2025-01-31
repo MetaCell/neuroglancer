@@ -231,12 +231,14 @@ export class StackView<TabId, TabType extends Tab = Tab> extends RefCounted {
     let tab = tabs.get(id);
     if (tab === undefined) {
       tab = this.getter(id);
+      // @metacell
       if (typeof id === "string") {
         if (tab) accordify(id, tab.element);
         setTimeout(() => {
           if (tab) accordify(id, tab.element);
         }, 250);
       }
+      // end @metacell
       this.element.appendChild(tab.element);
       tabs.set(id, tab);
     }
