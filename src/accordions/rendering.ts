@@ -1,11 +1,13 @@
 import { buildAccordion } from "#src/accordions/build_accordion.js";
 import { type AccordionOptions } from "#src/accordions/build_accordion.js";
+import type { TabId } from "#src/accordions/index.js";
 import * as json_keys from "#src/layer/segmentation/json_keys.js";
 import { LAYER_CONTROLS } from "#src/layer/segmentation/layer_controls.js";
 
 // see: src/layer/image/index.rs
 const renderingLayerImageTabSelectors: AccordionOptions[] = [
   {
+    id: "rendering-tab-image-layer-slice-2d",
     title: "Slice 2D",
     itemsClassNames: ["slice-2d-container"],
     selectors: {
@@ -17,6 +19,7 @@ const renderingLayerImageTabSelectors: AccordionOptions[] = [
     },
   },
   {
+    id: "rendering-tab-image-layer-volume-rendering",
     title: "Volume Rendering",
     itemsClassNames: ["volume-rendering-container"],
     selectors: {
@@ -28,6 +31,7 @@ const renderingLayerImageTabSelectors: AccordionOptions[] = [
     },
   },
   {
+    id: "rendering-tab-image-layer-shader",
     title: "Shader",
     open: true,
     itemsClassNames: ["channels-container", "shader"],
@@ -42,12 +46,13 @@ const renderingLayerImageTabSelectors: AccordionOptions[] = [
 
 // builds the accordions for the render tab when the layer
 // is an image layer.
-export function buildRenderingLayerImageTab(root: Element) {
-  buildAccordion(root, renderingLayerImageTabSelectors);
+export function buildRenderingLayerImageTab(tabId: TabId, root: Element) {
+  buildAccordion(tabId, root, renderingLayerImageTabSelectors);
 }
 
 const renderingLayerSegTabSelectors: AccordionOptions[] = [
   {
+    id: "rendering-tab-seg-layer-visibility",
     title: "Visibility",
     itemsClassNames: ["visibility-container"],
     selectors: {
@@ -59,6 +64,7 @@ const renderingLayerSegTabSelectors: AccordionOptions[] = [
     },
   },
   {
+    id: "rendering-tab-seg-layer-appearance",
     title: "Appearance",
     itemsClassNames: ["appearance-container"],
     selectors: {
@@ -73,6 +79,7 @@ const renderingLayerSegTabSelectors: AccordionOptions[] = [
     },
   },
   {
+    id: "rendering-tab-seg-layer-slice-2d",
     title: "Slice 2D",
     itemsClassNames: ["slice2d-container"],
     selectors: {
@@ -84,6 +91,7 @@ const renderingLayerSegTabSelectors: AccordionOptions[] = [
     },
   },
   {
+    id: "rendering-tab-seg-layer-mesh-3d",
     title: "Mesh 3D",
     itemsClassNames: ["mesh3d-container"],
     selectors: {
@@ -95,6 +103,7 @@ const renderingLayerSegTabSelectors: AccordionOptions[] = [
     },
   },
   {
+    id: "rendering-tab-seg-layer-channels",
     title: "Channels",
     itemsClassNames: ["shader-container"],
     selectors: {
@@ -102,6 +111,7 @@ const renderingLayerSegTabSelectors: AccordionOptions[] = [
     },
   },
   {
+    id: "rendering-tab-seg-layer-skeletons",
     title: "Skeletons",
     itemsClassNames: ["skeleton-container"],
     selectors: {
@@ -117,14 +127,14 @@ const renderingLayerSegTabSelectors: AccordionOptions[] = [
 
 // builds the accordions for the render tab when the layer
 // is a segmentation layer.
-export function buildRenderingLayerSegTab(root: Element) {
-  buildAccordion(root, renderingLayerSegTabSelectors);
+export function buildRenderingLayerSegTab(tabId: TabId, root: Element) {
+  buildAccordion(tabId, root, renderingLayerSegTabSelectors);
 }
 
-export function buildRenderingTab(root: HTMLDivElement) {
+export function buildRenderingTab(tabId: TabId, root: Element) {
   // infer layer type based on root classname
   if (root.classList.contains("neuroglancer-segmentation-rendering-tab")) {
-    buildRenderingLayerSegTab(root);
+    buildRenderingLayerSegTab(tabId, root);
     return;
   }
   if (root.classList.contains("neuroglancer-annotation-rendering-tab")) {
@@ -134,5 +144,5 @@ export function buildRenderingTab(root: HTMLDivElement) {
     return;
   }
 
-  buildRenderingLayerImageTab(root);
+  buildRenderingLayerImageTab(tabId, root);
 }

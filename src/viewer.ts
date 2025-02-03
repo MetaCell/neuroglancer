@@ -18,6 +18,7 @@ import "#src/viewer.css";
 import "#src/ui/layer_data_sources_tab.js";
 import "#src/noselect.css";
 import { debounce } from "lodash-es";
+import { TrackableTabAccordionState } from "#src/accordion_state.js";
 import type { FrameNumberCounter } from "#src/chunk_manager/frontend.js";
 import {
   CapacitySpecification,
@@ -337,6 +338,10 @@ class TrackableViewerState extends CompoundTrackable {
     this.add("partialViewport", viewer.partialViewport);
     this.add("selectedStateServer", viewer.selectedStateServer);
     this.add("toolBindings", viewer.toolBinder);
+
+    // @metacell
+    this.add("tabAccordionState", viewer.tabAccordionState);
+    // end @metacell
   }
 
   restoreState(obj: any) {
@@ -462,6 +467,9 @@ export class Viewer extends RefCounted implements ViewerState {
     ),
   );
   mouseState = new MouseSelectionState();
+  // @metacell
+  tabAccordionState = this.registerDisposer(new TrackableTabAccordionState());
+  // end @metacell
   layerManager = this.registerDisposer(new LayerManager());
   selectedLayer = this.registerDisposer(
     new SelectedLayerState(this.layerManager.addRef()),

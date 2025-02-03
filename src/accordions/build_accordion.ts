@@ -1,7 +1,10 @@
+import type { TrackableTabAccordionState } from "#src/accordion_state.js";
+import type { TabId } from "#src/accordions/index.js";
 import { Accordion } from "#src/widget/accordion.js";
 import { type AccordionItem } from "#src/widget/accordion.js";
 
 export interface AccordionOptions {
+  id: string;
   title: string;
   open?: boolean;
 
@@ -15,7 +18,19 @@ export interface AccordionOptions {
   };
 }
 
-export function buildAccordion(root: Element | null, opts: AccordionOptions[]) {
+// NOTE: don't love doing this here but there is not fair
+// way to pass viewer to buildAccordion
+declare global {
+  interface Window {
+    viewer?: { tabAccordionState?: TrackableTabAccordionState };
+  }
+}
+
+export function buildAccordion(
+  tabId: TabId,
+  root: Element | null,
+  opts: AccordionOptions[],
+) {
   if (!root) {
     return;
   }
@@ -60,11 +75,22 @@ export function buildAccordion(root: Element | null, opts: AccordionOptions[]) {
       return;
     }
 
-    accordionItems.push({
+    const item: AccordionItem = {
       title: opts[index].title,
       content: containerDiv,
-      open: opts[index].open,
-    });
+    };
+
+    if (window.viewer?.tabAccordionState && opts[index].id) {
+      item.state = window.viewer.tabAccordionState.getState(
+        tabId,
+        opts[index].id,
+        opts[index].open,
+      );
+    } else {
+      item.open = opts[index].open;
+    }
+
+    accordionItems.push(item);
   });
 
   if (accordionItems.length === 0) return;
