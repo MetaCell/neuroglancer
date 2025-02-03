@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import { buildAccordions } from "#src/render_accordion.js";
 import { StatusMessage } from "#src/status.js";
 import {
   bindDefaultCopyHandler,
@@ -63,8 +62,6 @@ export function setupDefaultViewer(options?: Partial<MinimalViewerOptions>) {
 
   bindDefaultCopyHandler(viewer);
   bindDefaultPasteHandler(viewer);
-
-  viewer.display.changed.add(() => buildAccordions(viewer.element));
 
   return viewer;
 }
