@@ -997,13 +997,12 @@ ul#statusContainer {
         background: var(--dark100);
         outline: 0 !important;
         padding-top: 0;
-        max-width: 50rem;
+        max-width: 80vw;
+        height: 80vh;
         .CodeMirror-cursor {
             border-color: var(--white);
         }
-        .CodeMirror {
-            height: 300px;
-        }
+        
         .overlay-header {
             display: flex;
             align-items: center;
@@ -2940,18 +2939,15 @@ ul#statusContainer {
     padding: 1.875rem 0;
 
     & .overlay-content {
-        width: 100%;
+        width: auto;
+        max-width: 100%;
         padding: 0;
         position: static;
         transform: none;
-        max-width: 47rem;
         margin: auto;
         background-color: var(--background80);
         z-index: 100;
-    
-        &.modal-lg {
-          max-width: 56.25rem;
-        }
+
     
         &:focus-visible {
           outline: none;
@@ -2998,8 +2994,15 @@ ul#statusContainer {
         & .overlay-content-body {
           padding: 1.5rem;
           overflow: auto;
-          max-height: calc(100vh - (4rem + 4.5rem + 3.75rem));
+          height: calc(80vh - (4rem + 4.5rem));
+          .CodeMirror {
+            height: calc(100%);
+            margin: 0;
+            width: 80vw;
+          }
         }
+
+        
     
         & .overlay-content-footer {
           border-top: 0.0625rem solid var(--dark80);
