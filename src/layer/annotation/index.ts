@@ -30,6 +30,7 @@ import type { CoordinateTransformSpecification } from "#src/coordinate_transform
 import { makeCoordinateSpace } from "#src/coordinate_transform.js";
 import type { DataSourceSpecification } from "#src/datasource/index.js";
 import { localAnnotationsUrl, LocalDataSource } from "#src/datasource/index.js";
+import { makeFooterBtnGroup } from "#src/layer/image/shader_overlay_footer.js";
 import type { LayerManager, ManagedUserLayer } from "#src/layer/index.js";
 import {
   LayerReference,
@@ -51,6 +52,7 @@ import type {
   MergedAnnotationStates,
 } from "#src/ui/annotations.js";
 import { UserLayerWithAnnotationsMixin } from "#src/ui/annotations.js";
+import svg_close from "#src/ui/images/metacell/close.svg?raw";
 import { animationFrameDebounce } from "#src/util/animation_frame_debounce.js";
 import type { Borrowed, Owned } from "#src/util/disposable.js";
 import { RefCounted } from "#src/util/disposable.js";
@@ -69,6 +71,7 @@ import {
 import { NullarySignal } from "#src/util/signal.js";
 import { DependentViewWidget } from "#src/widget/dependent_view_widget.js";
 import { makeHelpButton } from "#src/widget/help_button.js";
+import { makeIcon } from "#src/widget/icon.js";
 import { LayerReferenceWidget } from "#src/widget/layer_reference.js";
 import { makeMaximizeButton } from "#src/widget/maximize_button.js";
 import { RenderScaleWidget } from "#src/widget/render_scale_widget.js";
@@ -729,17 +732,66 @@ function makeShaderCodeWidget(layer: AnnotationUserLayer) {
 }
 
 class ShaderCodeOverlay extends Overlay {
+  closeMenuButton: HTMLButtonElement;
   codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
+  footerActionsBtnContainer: HTMLDivElement;
+  footerBtnsWrapper: HTMLDivElement;
   constructor(public layer: AnnotationUserLayer) {
     super();
+    this.content.classList.add("neuroglancer-annotation-layer-shader-overlay");
+
+    this.content.classList.add("modal-lg");
+
+    const titleText = document.createElement("p");
+    titleText.textContent = "Shader editor";
+
+    this.closeMenuButton = this.createButton(
+      null,
+      () => this.close(),
+      "",
+      svg_close,
+    );
+
+    const closeAndHelpContainer = document.createElement("div");
+    closeAndHelpContainer.classList.add("overlay-content-header");
+
+    closeAndHelpContainer.appendChild(titleText);
+    closeAndHelpContainer.appendChild(this.closeMenuButton);
+
+    this.content.appendChild(closeAndHelpContainer);
+
     const mainBody = document.createElement("div");
     mainBody.classList.add("overlay-content-body");
     mainBody.appendChild(this.codeWidget.element);
     this.content.appendChild(mainBody);
-    this.codeWidget.textEditor.refresh();    
+    this.codeWidget.textEditor.refresh();
+    
+    this.footerActionsBtnContainer = document.createElement("div");
+    this.footerActionsBtnContainer.classList.add("overlay-content-footer");
+    this.footerActionsBtnContainer.appendChild(
+      makeFooterBtnGroup(() => this.close()),
+    );
+    this.content.appendChild(this.footerActionsBtnContainer);
+    this.codeWidget.textEditor.refresh();
   }
 
-  
+  private createButton(
+    text: string | null,
+    onClick: () => void,
+    cssClass: string = "",
+    svgUrl: string | null = null,
+  ): HTMLButtonElement {
+    const button = document.createElement("button");
+    if (svgUrl) {
+      const icon = makeIcon({ svg: svgUrl });
+      button.appendChild(icon);
+    } else if (text) {
+      button.textContent = text;
+    }
+    if (cssClass) button.classList.add(cssClass);
+    button.addEventListener("click", onClick);
+    return button;
+  }
 }
 
 class RenderingOptionsTab extends Tab {
