@@ -23,7 +23,6 @@ import {
   UserLayer,
 } from "#src/layer/index.js";
 import type { LoadedDataSubsource } from "#src/layer/layer_data_source.js";
-import { Overlay } from "#src/overlay.js";
 import type { VertexAttributeInfo } from "#src/single_mesh/base.js";
 import {
   getShaderAttributeType,
@@ -38,6 +37,7 @@ import { RefCounted } from "#src/util/disposable.js";
 import { removeChildren, removeFromParent } from "#src/util/dom.js";
 import { makeHelpButton } from "#src/widget/help_button.js";
 import { makeMaximizeButton } from "#src/widget/maximize_button.js";
+import { ShaderCodeOverlay } from "#src/widget/shader_code_overlay.js";
 import { ShaderCodeWidget } from "#src/widget/shader_code_widget.js";
 import {
   registerLayerShaderControlsTool,
@@ -131,7 +131,7 @@ function makeShaderCodeWidget(layer: SingleMeshUserLayer) {
   });
 }
 
-class VertexAttributeWidget extends RefCounted {
+export class VertexAttributeWidget extends RefCounted {
   element = document.createElement("div");
   constructor(
     public attributes: WatchableValueInterface<
@@ -211,7 +211,12 @@ class DisplayOptionsTab extends Tab {
       makeMaximizeButton({
         title: "Show larger editor view",
         onClick: () => {
-          new ShaderCodeOverlay(this.layer);
+          new ShaderCodeOverlay(
+            this.layer, 
+            makeShaderCodeWidget,
+            { additionalClass: 'neuroglancer-single-mesh-layer-shader-overlay' },
+            makeVertexAttributeWidget
+          );
         },
       }),
     );
@@ -235,23 +240,6 @@ class DisplayOptionsTab extends Tab {
         ),
       ).element,
     );
-  }
-}
-
-class ShaderCodeOverlay extends Overlay {
-  attributeWidget = this.registerDisposer(
-    makeVertexAttributeWidget(this.layer),
-  );
-  codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
-  constructor(public layer: SingleMeshUserLayer) {
-    super();
-    this.content.classList.add("neuroglancer-single-mesh-layer-shader-overlay");
-    const mainBody = document.createElement("div");
-    mainBody.classList.add("overlay-content-body");
-    mainBody.appendChild(this.attributeWidget.element);
-    mainBody.appendChild(this.codeWidget.element);
-    this.content.appendChild(mainBody);
-    this.codeWidget.textEditor.refresh(); 
   }
 }
 

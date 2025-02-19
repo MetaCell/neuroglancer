@@ -15,11 +15,15 @@
  */
 
 import type { AnnotationUserLayer } from "#src/layer/annotation/index.ts";
+import type { ImageUserLayer } from "#src/layer/image/index.js";
 import { makeFooterBtnGroup } from "#src/layer/image/shader_overlay_footer.js";
+import type { SingleMeshUserLayer, VertexAttributeWidget } from "#src/layer/single_mesh/index.js";
 import { Overlay } from "#src/overlay.js";
 import svg_close from "#src/ui/images/metacell/close.svg?raw";
 import { makeIcon } from "#src/widget/icon.js";
 import type { ShaderCodeWidget } from "#src/widget/shader_code_widget.js";
+
+type UserLayer = AnnotationUserLayer | ImageUserLayer | SingleMeshUserLayer;
 
 interface ShaderCodeOverlayOptions {
   additionalClass?: string;
@@ -29,9 +33,10 @@ interface ShaderCodeOverlayOptions {
 export class ShaderCodeOverlay extends Overlay {
   closeMenuButton: HTMLButtonElement;
   codeWidget: ShaderCodeWidget;
+  attributeWidget?: VertexAttributeWidget;
   footerActionsBtnContainer: HTMLDivElement;
   footerBtnsWrapper: HTMLDivElement;
-  constructor(public layer: AnnotationUserLayer, makeShaderCodeWidget: (layer: AnnotationUserLayer) => ShaderCodeWidget, options: ShaderCodeOverlayOptions = {}) {
+  constructor(public layer: UserLayer, makeShaderCodeWidget: (layer: UserLayer) => ShaderCodeWidget, options: ShaderCodeOverlayOptions = {}, makeVertexAttributeWidget?: (layer: UserLayer) => VertexAttributeWidget) {
     super();
     const { additionalClass = "", title = "Shader editor" } = options;
 
@@ -44,6 +49,10 @@ export class ShaderCodeOverlay extends Overlay {
 
     this.codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
 
+    if (makeVertexAttributeWidget) {
+      this.attributeWidget = this.registerDisposer(makeVertexAttributeWidget(this.layer));
+    }
+    
     const closeAndHelpContainer = document.createElement("div");
     closeAndHelpContainer.classList.add("overlay-content-header");
 
@@ -54,6 +63,7 @@ export class ShaderCodeOverlay extends Overlay {
 
     const mainBody = document.createElement("div");
     mainBody.classList.add("overlay-content-body");
+    mainBody.appendChild(this.attributeWidget?.element ?? document.createDocumentFragment());
     mainBody.appendChild(this.codeWidget.element);
     this.content.appendChild(mainBody);
     this.codeWidget.textEditor.refresh();
