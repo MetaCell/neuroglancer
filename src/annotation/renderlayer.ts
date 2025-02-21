@@ -18,6 +18,7 @@ import "#src/annotation/bounding_box.js";
 import "#src/annotation/line.js";
 import "#src/annotation/point.js";
 import "#src/annotation/ellipsoid.js";
+import "#src/annotation/polyline.js";
 
 import type {
   AnnotationLayerState,
@@ -230,6 +231,12 @@ export class AnnotationLayer extends RefCounted {
    */
   buffer: GLBuffer | undefined;
 
+  /**
+   * Stores a buffer that points into the buffer containing the serialized annotations.
+   * This buffer is used to index into the serialized annotations.
+   */
+  indexBuffer: GLBuffer | undefined;
+
   numPickIds = 0;
 
   /**
@@ -364,9 +371,15 @@ export class AnnotationLayer extends RefCounted {
     if (source instanceof AnnotationSource) {
       const generation = source.changed.count;
       if (this.generation !== generation) {
-        let { buffer } = this;
+        console.log("updating buffer");
+        let { buffer, indexBuffer } = this;
         if (buffer === undefined) {
           buffer = this.buffer = this.registerDisposer(
+            new GLBuffer(this.chunkManager.gl),
+          );
+        }
+        if (indexBuffer === undefined) {
+          indexBuffer = this.indexBuffer = this.registerDisposer(
             new GLBuffer(this.chunkManager.gl),
           );
         }
@@ -376,7 +389,11 @@ export class AnnotationLayer extends RefCounted {
             source,
             segmentationFilter(this.segmentationStates.value),
           ));
+        console.log("serializedAnnotations", this.serializedAnnotations);
         buffer.setData(this.serializedAnnotations.data);
+        if (this.serializedAnnotations.index !== undefined) {
+        indexBuffer.setData(this.serializedAnnotations.index);
+        }
         this.numPickIds = computeNumPickIds(serializedAnnotations);
       }
     }
