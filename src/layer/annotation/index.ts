@@ -39,7 +39,6 @@ import {
 } from "#src/layer/index.js";
 import type { LoadedDataSubsource } from "#src/layer/layer_data_source.js";
 import { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
-import { Overlay } from "#src/overlay.js";
 import { getWatchableRenderLayerTransform } from "#src/render_coordinate_transform.js";
 import { RenderLayerRole } from "#src/renderlayer.js";
 import type { SegmentationDisplayState } from "#src/segmentation_display_state/frontend.js";
@@ -72,6 +71,7 @@ import { makeHelpButton } from "#src/widget/help_button.js";
 import { LayerReferenceWidget } from "#src/widget/layer_reference.js";
 import { makeMaximizeButton } from "#src/widget/maximize_button.js";
 import { RenderScaleWidget } from "#src/widget/render_scale_widget.js";
+import { ShaderCodeOverlay } from "#src/widget/shader_code_overlay.js";
 import { ShaderCodeWidget } from "#src/widget/shader_code_widget.js";
 import {
   registerLayerShaderControlsTool,
@@ -720,26 +720,12 @@ export class AnnotationUserLayer extends Base {
   static typeAbbreviation = "ann";
 }
 
-function makeShaderCodeWidget(layer: AnnotationUserLayer) {
+export function makeShaderCodeWidget(layer: AnnotationUserLayer) {
   return new ShaderCodeWidget({
     shaderError: layer.annotationDisplayState.shaderError,
     fragmentMain: layer.annotationDisplayState.shader,
     shaderControlState: layer.annotationDisplayState.shaderControls,
   });
-}
-
-class ShaderCodeOverlay extends Overlay {
-  codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
-  constructor(public layer: AnnotationUserLayer) {
-    super();
-    const mainBody = document.createElement("div");
-    mainBody.classList.add("overlay-content-body");
-    mainBody.appendChild(this.codeWidget.element);
-    this.content.appendChild(mainBody);
-    this.codeWidget.textEditor.refresh();    
-  }
-
-  
 }
 
 class RenderingOptionsTab extends Tab {
@@ -795,7 +781,11 @@ class RenderingOptionsTab extends Tab {
       makeMaximizeButton({
         title: "Show larger editor view",
         onClick: () => {
-          new ShaderCodeOverlay(this.layer);
+          new ShaderCodeOverlay(
+            this.layer, 
+            makeShaderCodeWidget,
+            { additionalClass: 'neuroglancer-annotation-layer-shader-overlay' }
+          );
         },
       }),
     );
