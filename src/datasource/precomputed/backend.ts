@@ -28,7 +28,7 @@ import type { Annotation } from "#src/annotation/index.js";
 import {
   AnnotationPropertySerializer,
   annotationTypeHandlers,
-  annotationTypes,
+  oldAnnotationTypes,
 } from "#src/annotation/index.js";
 import { WithParameters } from "#src/chunk_manager/backend.js";
 import {
@@ -85,6 +85,8 @@ import {
   zorder3LessThan,
 } from "#src/util/zorder.js";
 import { registerSharedObject } from "#src/worker_rpc.js";
+
+const annotationTypes = oldAnnotationTypes;
 
 // Set to true to validate the multiscale index.
 const DEBUG_MULTISCALE_INDEX = false;
