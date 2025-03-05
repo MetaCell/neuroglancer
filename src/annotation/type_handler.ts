@@ -443,12 +443,18 @@ void ng_discard() {
   ng_discardValue = true;
 }
 void setLineColor(vec4 startColor, vec4 endColor);
+void setPolyLineColor(vec4 startColor, vec4 endColor);
 void setLineWidth(float width);
 
 void setEndpointMarkerColor(vec4 startColor, vec4 endColor);
 void setEndpointMarkerBorderColor(vec4 startColor, vec4 endColor);
 void setEndpointMarkerSize(float startSize, float endSize);
 void setEndpointMarkerBorderWidth(float startSize, float endSize);
+
+void setPolyEndpointMarkerColor(vec4 startColor, vec4 endColor);
+void setPolyEndpointMarkerBorderColor(vec4 startColor, vec4 endColor);
+void setPolyEndpointMarkerSize(float startSize, float endSize);
+void setPolyEndpointMarkerBorderWidth(float startSize, float endSize);
 
 void setPointMarkerColor(vec4 color);
 void setPointMarkerColor(vec3 color) { setPointMarkerColor(vec4(color, 1.0)); }
@@ -462,6 +468,7 @@ void setEllipsoidFillColor(vec4 color);
 void setBoundingBoxBorderColor(vec4 color);
 void setBoundingBoxBorderWidth(float size);
 void setBoundingBoxFillColor(vec4 color);
+uint getPolyLineNumVertices();
 
 void setEndpointMarkerColor(vec3 startColor, vec3 endColor) {
   setEndpointMarkerColor(vec4(startColor, 1.0), vec4(endColor, 1.0));
@@ -478,10 +485,29 @@ void setEndpointMarkerBorderWidth(float size) { setEndpointMarkerBorderWidth(siz
 void setLineColor(vec4 color) { setLineColor(color, color); }
 void setLineColor(vec3 color) { setLineColor(vec4(color, 1.0)); }
 void setLineColor(vec3 startColor, vec3 endColor) { setLineColor(vec4(startColor, 1.0), vec4(endColor, 1.0)); }
+
+void setPolyEndpointMarkerColor(vec3 startColor, vec3 endColor) {
+  setEndpointMarkerColor(vec4(startColor, 1.0), vec4(endColor, 1.0));
+}
+void setPolyEndpointMarkerBorderColor(vec3 startColor, vec3 endColor) {
+  setEndpointMarkerBorderColor(vec4(startColor, 1.0), vec4(endColor, 1.0));
+}
+void setPolyEndpointMarkerColor(vec3 color) { setPolyEndpointMarkerColor(color, color); }
+void setPolyEndpointMarkerColor(vec4 color) { setPolyEndpointMarkerColor(color, color); }
+void setPolyEndpointMarkerBorderColor(vec3 color) { setPolyEndpointMarkerBorderColor(color, color); }
+void setPolyEndpointMarkerBorderColor(vec4 color) { setPolyEndpointMarkerBorderColor(color, color); }
+void setPolyEndpointMarkerSize(float size) { setPolyEndpointMarkerSize(size, size); }
+void setPolyEndpointMarkerBorderWidth(float size) { setPolyEndpointMarkerBorderWidth(size, size); }
+void setPolyLineColor(vec4 color) { setPolyLineColor(color, color); }
+void setPolyLineColor(vec3 color) { setPolyLineColor(vec4(color, 1.0)); }
+void setPolyLineColor(vec3 startColor, vec3 endColor) { setPolyLineColor(vec4(startColor, 1.0), vec4(endColor, 1.0)); }
+
 void setColor(vec4 color) {
   setPointMarkerColor(color);
   setLineColor(color);
+  setPolyLineColor(color);
   setEndpointMarkerColor(color);
+  setPolyEndpointMarkerColor(color);
   setBoundingBoxBorderColor(color);
   setEllipsoidFillColor(vec4(color.rgb, color.a * (PROJECTION_VIEW ? 1.0 : 0.5)));
 }
@@ -529,8 +555,9 @@ ${partIndexExpressions
     s += `
   vPickID = pickID + pickOffset0;
   highp uint selectedIndex = uSelectedIndex;
-if (selectedIndex == pickBaseOffset${partIndexExpressions
-      .map((_, i) => ` || selectedIndex == pickOffset${i}`)
+  highp uint subtractAmount = getPolyLineNumVertices() * uint(${this.pickIdsPerInstance});
+if (selectedIndex + subtractAmount == pickBaseOffset${partIndexExpressions
+      .map((_, i) => ` || selectedIndex + subtractAmount == pickOffset${i}`)
       .join("")}) {
     vColor = vec4(mix(vColor.rgb, vec3(1.0, 1.0, 1.0), 0.75), vColor.a);
   }

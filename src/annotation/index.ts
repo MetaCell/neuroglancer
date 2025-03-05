@@ -18,6 +18,7 @@
  * @file Basic annotation data structures.
  */
 
+import { vec3 } from "gl-matrix";
 import type {
   BoundingBox,
   CoordinateSpaceTransform,
@@ -77,9 +78,18 @@ export enum AnnotationType {
   LINE = 1,
   AXIS_ALIGNED_BOUNDING_BOX = 2,
   ELLIPSOID = 3,
+  POLYLINE = 4,
 }
 
 export const annotationTypes = [
+  AnnotationType.POINT,
+  AnnotationType.LINE,
+  AnnotationType.AXIS_ALIGNED_BOUNDING_BOX,
+  AnnotationType.ELLIPSOID,
+  AnnotationType.POLYLINE,
+];
+
+export const oldAnnotationTypes = [
   AnnotationType.POINT,
   AnnotationType.LINE,
   AnnotationType.AXIS_ALIGNED_BOUNDING_BOX,
@@ -669,20 +679,32 @@ export interface Ellipsoid extends AnnotationBase {
   type: AnnotationType.ELLIPSOID;
 }
 
-export type Annotation = Line | Point | AxisAlignedBoundingBox | Ellipsoid;
+export interface PolyLine extends AnnotationBase {
+  points: Float32Array[];
+  type: AnnotationType.POLYLINE;
+}
+
+export type Annotation =
+  | Line
+  | Point
+  | AxisAlignedBoundingBox
+  | Ellipsoid
+  | PolyLine;
 
 export interface AnnotationTypeHandler<T extends Annotation = Annotation> {
   icon: string;
   description: string;
   toJSON: (annotation: T, rank: number) => any;
   restoreState: (annotation: T, obj: any, rank: number) => void;
-  serializedBytes: (rank: number) => number;
+  serializedBytes: (rank: number, annotation?: T) => number;
   serialize: (
     buffer: DataView,
     offset: number,
     isLittleEndian: boolean,
     rank: number,
     annotation: T,
+    geometryDataStride?: number,
+    instanceIndex?: number,
   ) => void;
   deserialize: (
     buffer: DataView,
@@ -690,11 +712,19 @@ export interface AnnotationTypeHandler<T extends Annotation = Annotation> {
     isLittleEndian: boolean,
     rank: number,
     id: string,
+    indexBuffer?: DataView,
   ) => T;
   visitGeometry: (
     annotation: T,
     callback: (vec: Float32Array, isVector: boolean) => void,
   ) => void;
+  defaultProperties: (
+    annotation: T,
+    scales: vec3,
+  ) => {
+    properties: AnnotationNumericPropertySpec[];
+    values: number[];
+  };
 }
 
 function serializeFloatVector(
@@ -748,6 +778,31 @@ function deserializeTwoFloatVectors(
 ) {
   offset = deserializeFloatVector(buffer, offset, isLittleEndian, rank, vecA);
   offset = deserializeFloatVector(buffer, offset, isLittleEndian, rank, vecB);
+  return offset;
+}
+
+function deserializeManyFloatVectors(
+  buffer: DataView,
+  indexBuffer: DataView,
+  offset: number,
+  isLittleEndian: boolean,
+  rank: number,
+  points: Float32Array[],
+) {
+  // The buffer contains a sequence of vectors, each of length `rank`.
+  // Each vector is stored as a sequence of `rank` 32-bit floats.
+  let dataOffset = indexBuffer.getUint32(offset, isLittleEndian);
+  const numPoints = indexBuffer.getUint32(offset + 4, isLittleEndian);
+  for (let i = 0; i < numPoints; ++i) {
+    points[i] = new Float32Array(rank);
+    dataOffset = deserializeFloatVector(
+      buffer,
+      dataOffset,
+      isLittleEndian,
+      rank,
+      points[i],
+    );
+  }
   return offset;
 }
 
@@ -814,6 +869,113 @@ export const annotationTypeHandlers: Record<
       callback(annotation.pointA, false);
       callback(annotation.pointB, false);
     },
+    defaultProperties(annotation: Line, scales: vec3) {
+      annotation;
+      scales;
+      return { properties: [], values: [] };
+    },
+  },
+  [AnnotationType.POLYLINE]: {
+    icon: "⤤",
+    description: "Polyline",
+    toJSON(annotation: PolyLine) {
+      return {
+        points: annotation.points.map((point) => Array.from(point)),
+      };
+    },
+    restoreState(annotation: PolyLine, obj: any, rank: number) {
+      annotation.points = verifyObjectProperty(obj, "points", (points) =>
+        parseArray(points, (point) =>
+          parseFixedLengthArray(
+            new Float32Array(rank),
+            point,
+            verifyFiniteFloat,
+          ),
+        ),
+      );
+    },
+    serializedBytes(rank: number, annotation?: PolyLine) {
+      // If no annotation, can assume broken down
+      // One float per rank, per point, + one uint32
+      const singlePointPairSize = 4 * rank * 2 + 4;
+      if (annotation === undefined) return singlePointPairSize;
+      return (annotation.points.length - 1) * singlePointPairSize;
+    },
+    serialize(
+      buffer: DataView,
+      offset: number,
+      isLittleEndian: boolean,
+      rank: number,
+      annotation: PolyLine,
+      geometryDataStride: number,
+      instanceIndex: number,
+    ) {
+      // Build buffer like
+      // P1 P2 PROPERTIES P3 P4 PROPERTIES ...
+      // TODO SKM don't actually need intance index
+      let startingOffset = offset + instanceIndex * geometryDataStride;
+      for (let i = 0; i < annotation.points.length - 1; i++) {
+        const tempOffset = startingOffset + i * geometryDataStride;
+        buffer.setUint32(tempOffset, i, isLittleEndian);
+        const firstPoint = annotation.points[i];
+        const secondPoint = annotation.points[i + 1];
+        serializeTwoFloatVectors(
+          buffer,
+          tempOffset + 4,
+          isLittleEndian,
+          rank,
+          firstPoint,
+          secondPoint,
+        );
+      }
+    },
+    // TODO (SKM) how to make the calls to this give the index offset?
+    deserialize(
+      buffer: DataView,
+      offset: number,
+      isLittleEndian: boolean,
+      rank: number,
+      id: string,
+      indexBuffer?: DataView,
+    ): PolyLine {
+      if (indexBuffer === undefined) {
+        return {
+          type: AnnotationType.POLYLINE,
+          points: [],
+          id,
+          properties: [],
+        };
+      }
+      const points = new Array<Float32Array>();
+      deserializeManyFloatVectors(
+        buffer,
+        indexBuffer,
+        offset,
+        isLittleEndian,
+        rank,
+        points,
+      );
+      return { type: AnnotationType.POLYLINE, points, id, properties: [] };
+    },
+    visitGeometry(annotation: PolyLine, callback) {
+      for (const point of annotation.points) {
+        callback(point, false);
+      }
+    },
+    defaultProperties(annotation: PolyLine, scales: vec3) {
+      scales;
+      return {
+        properties: [
+          {
+            type: "uint32",
+            identifier: "Point count",
+            default: 0,
+            description: "Number of points in the polyline",
+          },
+        ],
+        values: [annotation.points.length],
+      };
+    },
   },
   [AnnotationType.POINT]: {
     icon: "⚬",
@@ -857,6 +1019,11 @@ export const annotationTypeHandlers: Record<
     },
     visitGeometry(annotation: Point, callback) {
       callback(annotation.point, false);
+    },
+    defaultProperties(annotation: Point, scales: vec3) {
+      annotation;
+      scales;
+      return { properties: [], values: [] };
     },
   },
   [AnnotationType.AXIS_ALIGNED_BOUNDING_BOX]: {
@@ -926,6 +1093,11 @@ export const annotationTypeHandlers: Record<
       callback(annotation.pointA, false);
       callback(annotation.pointB, false);
     },
+    defaultProperties(annotation: AxisAlignedBoundingBox, scales: vec3) {
+      annotation;
+      scales;
+      return { properties: [], values: [] };
+    },
   },
   [AnnotationType.ELLIPSOID]: {
     icon: "◎",
@@ -993,6 +1165,11 @@ export const annotationTypeHandlers: Record<
     visitGeometry(annotation: Ellipsoid, callback) {
       callback(annotation.center, false);
       callback(annotation.radii, true);
+    },
+    defaultProperties(annotation: Ellipsoid, scales: vec3) {
+      annotation;
+      scales;
+      return { properties: [], values: [] };
     },
   },
 };
@@ -1317,6 +1494,7 @@ export class LocalAnnotationSource extends AnnotationSource {
     };
 
     for (const annotation of this.annotationMap.values()) {
+      // TODO (SKM) properly handle polyline annotation
       switch (annotation.type) {
         case AnnotationType.POINT:
           annotation.point = mapVector(annotation.point);
@@ -1325,6 +1503,9 @@ export class LocalAnnotationSource extends AnnotationSource {
         case AnnotationType.AXIS_ALIGNED_BOUNDING_BOX:
           annotation.pointA = mapVector(annotation.pointA);
           annotation.pointB = mapVector(annotation.pointB);
+          break;
+        case AnnotationType.POLYLINE:
+          annotation.points = annotation.points.map(mapVector);
           break;
         case AnnotationType.ELLIPSOID:
           annotation.center = mapVector(annotation.center);
@@ -1373,9 +1554,11 @@ export function makeDataBoundsBoundingBoxAnnotationSet(
 
 export interface SerializedAnnotations {
   data: Uint8Array<ArrayBuffer>;
+  idToSizeMaps: Map<string, number>[];
   typeToIds: string[][];
   typeToOffset: number[];
   typeToIdMaps: Map<string, number>[];
+  typeToSize: number[];
 }
 
 function serializeAnnotations(
@@ -1383,21 +1566,34 @@ function serializeAnnotations(
   propertySerializers: AnnotationPropertySerializer[],
 ): SerializedAnnotations {
   let totalBytes = 0;
+  let polyLinePairCount = 0;
   const typeToOffset: number[] = [];
+  const typeToSize: number[] = [];
   for (const annotationType of annotationTypes) {
     const propertySerializer = propertySerializers[annotationType];
-    const serializedPropertiesBytes = propertySerializer.serializedBytes;
+    let serializedPropertiesBytes = propertySerializer.serializedBytes;
     typeToOffset[annotationType] = totalBytes;
     const annotations: Annotation[] = allAnnotations[annotationType];
     const count = annotations.length;
-    totalBytes += serializedPropertiesBytes * count;
+    if (annotationType === AnnotationType.POLYLINE) {
+      for (const annotation of annotations) {
+        const polyLinePairs = (annotation as PolyLine).points.length - 1;
+        totalBytes += serializedPropertiesBytes * polyLinePairs;
+        polyLinePairCount += polyLinePairs;
+      }
+    } else {
+      totalBytes += serializedPropertiesBytes * count;
+    }
   }
   const typeToIds: string[][] = [];
   const typeToIdMaps: Map<string, number>[] = [];
+  const idToSizeMaps: Map<string, number>[] = [];
   const data = new ArrayBuffer(totalBytes);
   const dataView = new DataView(data);
   const isLittleEndian = ENDIANNESS === Endianness.LITTLE;
   for (const annotationType of annotationTypes) {
+    const idToSizeMap = new Map<string, number>();
+    idToSizeMaps[annotationType] = idToSizeMap;
     const propertySerializer = propertySerializers[annotationType];
     const { rank } = propertySerializer;
     const serializeProperties = propertySerializer.serialize;
@@ -1410,35 +1606,80 @@ function serializeAnnotations(
     const serialize = handler.serialize;
     const offset = typeToOffset[annotationType];
     const geometryDataStride = propertySerializer.propertyGroupBytes[0];
+    let polylineInstanceIndex = 0;
     for (let i = 0, count = annotations.length; i < count; ++i) {
       const annotation = annotations[i];
-      serialize(
-        dataView,
-        offset + i * geometryDataStride,
-        isLittleEndian,
-        rank,
-        annotation,
-      );
-      serializeProperties(
-        dataView,
-        offset,
-        i,
-        count,
-        isLittleEndian,
-        annotation.properties,
-      );
+      // Polylines need to be serialized per pair of points
+      // Similar to if they stored each pair of points as a child Line annotation
+      if (annotationType === AnnotationType.POLYLINE) {
+        const polyline = annotation as PolyLine;
+        serialize(
+          dataView,
+          offset,
+          isLittleEndian,
+          rank,
+          polyline,
+          geometryDataStride,
+          polylineInstanceIndex,
+        );
+        idToSizeMap.set(polyline.id, polyline.points.length - 1);
+
+        for (let j = 0; j < polyline.points.length - 1; j++) {
+          serializeProperties(
+            dataView,
+            offset,
+            polylineInstanceIndex + j,
+            polyLinePairCount,
+            isLittleEndian,
+            polyline.properties,
+          );
+        }
+        polylineInstanceIndex += polyline.points.length - 1;
+      } else {
+        serialize(
+          dataView,
+          offset + i * geometryDataStride,
+          isLittleEndian,
+          rank,
+          annotation,
+          geometryDataStride,
+          i,
+        );
+        serializeProperties(
+          dataView,
+          offset,
+          i,
+          count,
+          isLittleEndian,
+          annotation.properties,
+        );
+      }
+    }
+    if (annotationType === AnnotationType.POLYLINE) {
+      // The index represents the next polyline instance, so it is the length at the end
+      typeToSize[annotationType] = polylineInstanceIndex;
+    } else {
+      typeToSize[annotationType] = annotations.length;
     }
   }
-  return { data: new Uint8Array(data), typeToIds, typeToOffset, typeToIdMaps };
+  return {
+    data: new Uint8Array(data),
+    idToSizeMaps,
+    typeToIds,
+    typeToOffset,
+    typeToIdMaps,
+    typeToSize,
+  };
 }
 
 export class AnnotationSerializer {
-  annotations: [Point[], Line[], AxisAlignedBoundingBox[], Ellipsoid[]] = [
-    [],
-    [],
-    [],
-    [],
-  ];
+  annotations: [
+    Point[],
+    Line[],
+    AxisAlignedBoundingBox[],
+    Ellipsoid[],
+    PolyLine[],
+  ] = [[], [], [], [], []];
   constructor(public propertySerializers: AnnotationPropertySerializer[]) {}
   add(annotation: Annotation) {
     (<Annotation[]>this.annotations[annotation.type]).push(annotation);
