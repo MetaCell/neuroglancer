@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type {
+import {
   Annotation,
   AnnotationPropertySpec,
   AnnotationType,
@@ -382,7 +382,11 @@ export abstract class AnnotationRenderHelper extends AnnotationRenderHelperBase 
 vec3 defaultColor() { return uColor; }
 highp uint getPickBaseOffset() { return uint(gl_InstanceID) * ${this.pickIdsPerInstance}u; }
 `);
-
+        if (this.annotationType !== AnnotationType.POLYLINE) {
+          builder.addVertexCode(`
+uint getNumRelatedInstances() { return 0u; }
+`);
+        }
         builder.addFragmentCode(`
 void emitAnnotation(vec4 color) {
   emit(color, vPickID);
@@ -443,12 +447,18 @@ void ng_discard() {
   ng_discardValue = true;
 }
 void setLineColor(vec4 startColor, vec4 endColor);
+void setPolyLineColor(vec4 startColor, vec4 endColor);
 void setLineWidth(float width);
 
 void setEndpointMarkerColor(vec4 startColor, vec4 endColor);
 void setEndpointMarkerBorderColor(vec4 startColor, vec4 endColor);
 void setEndpointMarkerSize(float startSize, float endSize);
 void setEndpointMarkerBorderWidth(float startSize, float endSize);
+
+void setPolyEndpointMarkerColor(vec4 startColor, vec4 endColor);
+void setPolyEndpointMarkerBorderColor(vec4 startColor, vec4 endColor);
+void setPolyEndpointMarkerSize(float startSize, float endSize);
+void setPolyEndpointMarkerBorderWidth(float startSize, float endSize);
 
 void setPointMarkerColor(vec4 color);
 void setPointMarkerColor(vec3 color) { setPointMarkerColor(vec4(color, 1.0)); }
@@ -478,10 +488,29 @@ void setEndpointMarkerBorderWidth(float size) { setEndpointMarkerBorderWidth(siz
 void setLineColor(vec4 color) { setLineColor(color, color); }
 void setLineColor(vec3 color) { setLineColor(vec4(color, 1.0)); }
 void setLineColor(vec3 startColor, vec3 endColor) { setLineColor(vec4(startColor, 1.0), vec4(endColor, 1.0)); }
+
+void setPolyEndpointMarkerColor(vec3 startColor, vec3 endColor) {
+  setEndpointMarkerColor(vec4(startColor, 1.0), vec4(endColor, 1.0));
+}
+void setPolyEndpointMarkerBorderColor(vec3 startColor, vec3 endColor) {
+  setEndpointMarkerBorderColor(vec4(startColor, 1.0), vec4(endColor, 1.0));
+}
+void setPolyEndpointMarkerColor(vec3 color) { setPolyEndpointMarkerColor(color, color); }
+void setPolyEndpointMarkerColor(vec4 color) { setPolyEndpointMarkerColor(color, color); }
+void setPolyEndpointMarkerBorderColor(vec3 color) { setPolyEndpointMarkerBorderColor(color, color); }
+void setPolyEndpointMarkerBorderColor(vec4 color) { setPolyEndpointMarkerBorderColor(color, color); }
+void setPolyEndpointMarkerSize(float size) { setPolyEndpointMarkerSize(size, size); }
+void setPolyEndpointMarkerBorderWidth(float size) { setPolyEndpointMarkerBorderWidth(size, size); }
+void setPolyLineColor(vec4 color) { setPolyLineColor(color, color); }
+void setPolyLineColor(vec3 color) { setPolyLineColor(vec4(color, 1.0)); }
+void setPolyLineColor(vec3 startColor, vec3 endColor) { setPolyLineColor(vec4(startColor, 1.0), vec4(endColor, 1.0)); }
+
 void setColor(vec4 color) {
   setPointMarkerColor(color);
   setLineColor(color);
+  setPolyLineColor(color);
   setEndpointMarkerColor(color);
+  setPolyEndpointMarkerColor(color);
   setBoundingBoxBorderColor(color);
   setEllipsoidFillColor(vec4(color.rgb, color.a * (PROJECTION_VIEW ? 1.0 : 0.5)));
 }
@@ -529,8 +558,9 @@ ${partIndexExpressions
     s += `
   vPickID = pickID + pickOffset0;
   highp uint selectedIndex = uSelectedIndex;
-if (selectedIndex == pickBaseOffset${partIndexExpressions
-      .map((_, i) => ` || selectedIndex == pickOffset${i}`)
+  highp uint relatedInstancePickOffset = getNumRelatedInstances() * uint(${this.pickIdsPerInstance});
+if (selectedIndex + relatedInstancePickOffset == pickBaseOffset${partIndexExpressions
+      .map((_, i) => ` || selectedIndex + relatedInstancePickOffset == pickOffset${i}`)
       .join("")}) {
     vColor = vec4(mix(vColor.rgb, vec3(1.0, 1.0, 1.0), 0.75), vColor.a);
   }
