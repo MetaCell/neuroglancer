@@ -24,7 +24,7 @@ import type {
   CoordinateSpaceTransform,
   WatchableCoordinateSpaceTransform,
 } from "#src/coordinate_transform.js";
-import { arraysEqual, arraysEqualWithPredicate } from "#src/util/array.js";
+import { arraysEqual } from "#src/util/array.js";
 import {
   packColor,
   parseRGBAColorSpecification,
@@ -87,13 +87,6 @@ export const annotationTypes = [
   AnnotationType.AXIS_ALIGNED_BOUNDING_BOX,
   AnnotationType.ELLIPSOID,
   AnnotationType.POLYLINE,
-];
-
-export const oldAnnotationTypes = [
-  AnnotationType.POINT,
-  AnnotationType.LINE,
-  AnnotationType.AXIS_ALIGNED_BOUNDING_BOX,
-  AnnotationType.ELLIPSOID,
 ];
 
 export interface AnnotationPropertySpecBase {
@@ -712,7 +705,6 @@ export interface AnnotationTypeHandler<T extends Annotation = Annotation> {
     isLittleEndian: boolean,
     rank: number,
     id: string,
-    indexBuffer?: DataView,
   ) => T;
   visitGeometry: (
     annotation: T,
@@ -783,16 +775,15 @@ function deserializeTwoFloatVectors(
 
 function deserializeManyFloatVectors(
   buffer: DataView,
-  indexBuffer: DataView,
   offset: number,
   isLittleEndian: boolean,
   rank: number,
   points: Float32Array[],
+  numPoints: number,
 ) {
   // The buffer contains a sequence of vectors, each of length `rank`.
   // Each vector is stored as a sequence of `rank` 32-bit floats.
-  let dataOffset = indexBuffer.getUint32(offset, isLittleEndian);
-  const numPoints = indexBuffer.getUint32(offset + 4, isLittleEndian);
+  let dataOffset = offset;
   for (let i = 0; i < numPoints; ++i) {
     points[i] = new Float32Array(rank);
     dataOffset = deserializeFloatVector(
@@ -914,18 +905,12 @@ export const annotationTypeHandlers: Record<
       // P1 P2 PROPERTIES P3 P4 PROPERTIES ...
       // TODO SKM don't actually need intance index
       let startingOffset = offset + instanceIndex * geometryDataStride;
-      const isClosed = annotation.points.length > 1 && arraysEqualWithPredicate(
-        annotation.points[0],
-        annotation.points[annotation.points.length - 1],
-        (a, b) => Math.abs(a - b) / Math.max(Math.abs(a), Math.abs(b)) < 1e-6,
-      );
       for (let i = 0; i < annotation.points.length - 1; i++) {
-        // 0 for regular points, 1 for last point unless closed
-        const pointType = i === annotation.points.length - 2 ? (isClosed ? 0 : 1) : 0;
-        console.log(isClosed, pointType);
+        // 0 for regular points, 1 for last point
+        const pointType = i === annotation.points.length - 2 ? 1 : 0;
         const tempOffset = startingOffset + i * geometryDataStride;
         // Combine the point type and i into a single uint32
-        buffer.setUint32(tempOffset, pointType << 31 | i, isLittleEndian);
+        buffer.setUint32(tempOffset, (pointType << 31) | i, isLittleEndian);
         const firstPoint = annotation.points[i];
         const secondPoint = annotation.points[i + 1];
         serializeTwoFloatVectors(
@@ -938,31 +923,23 @@ export const annotationTypeHandlers: Record<
         );
       }
     },
-    // TODO (SKM) how to make the calls to this give the index offset?
     deserialize(
       buffer: DataView,
       offset: number,
       isLittleEndian: boolean,
       rank: number,
       id: string,
-      indexBuffer?: DataView,
     ): PolyLine {
-      if (indexBuffer === undefined) {
-        return {
-          type: AnnotationType.POLYLINE,
-          points: [],
-          id,
-          properties: [],
-        };
-      }
       const points = new Array<Float32Array>();
+      // Remove the high bit - that's the point type
+      const numPoints = buffer.getUint32(offset, isLittleEndian) & 0x7fffffff;
       deserializeManyFloatVectors(
         buffer,
-        indexBuffer,
-        offset,
+        offset + 4,
         isLittleEndian,
         rank,
         points,
+        numPoints,
       );
       return { type: AnnotationType.POLYLINE, points, id, properties: [] };
     },
