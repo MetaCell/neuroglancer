@@ -18,6 +18,7 @@ import "#src/annotation/bounding_box.js";
 import "#src/annotation/line.js";
 import "#src/annotation/point.js";
 import "#src/annotation/ellipsoid.js";
+import "#src/annotation/polyline.js";
 
 import type {
   AnnotationLayerState,
@@ -45,6 +46,7 @@ import type {
 import {
   AnnotationSerializer,
   AnnotationSource,
+  AnnotationType,
   annotationTypes,
   formatAnnotationPropertyValue,
 } from "#src/annotation/index.js";
@@ -632,7 +634,7 @@ function AnnotationRenderLayer<
       const { base } = this;
       const { chunkDisplayTransform } = state;
       const { serializedAnnotations } = chunk;
-      const { typeToIdMaps, typeToOffset } = serializedAnnotations;
+      const { typeToIdMaps, typeToOffset, typeToSize } = serializedAnnotations;
       let pickId = 0;
       if (renderContext.emitPickID) {
         pickId = renderContext.pickIDs.register(
@@ -670,16 +672,38 @@ function AnnotationRenderLayer<
           .visibleHistograms > 0;
       for (const annotationType of annotationTypes) {
         const idMap = typeToIdMaps[annotationType];
-        let count = idMap.size;
+        let count = 0;
+        count += typeToSize[annotationType];
         if (count > 0) {
           const handler = getAnnotationTypeRenderHandler(annotationType);
           let selectedIndex = 0xffffffff;
           if (hoverValue !== undefined) {
             const index = idMap.get(hoverValue.id);
             if (index !== undefined) {
-              selectedIndex = index * handler.pickIdsPerInstance;
+              // TODO (SKM) fix this, but this is only for rendering
+              // TODO (SKM) for now I'll use a loop over the map but
+              // This could be made better
+              if (annotationType === AnnotationType.POLYLINE) {
+                const idToSizeMap = serializedAnnotations.idToSizeMaps[
+                  annotationType
+                ];
+                let count = 0;
+                // For each value in the map, get the index and add the size
+                // If the index is less than the current index
+                for (const [id, size] of idToSizeMap) {
+                  const tempIndex = idMap.get(id);
+                  if (tempIndex !== undefined && tempIndex < index) {
+                    count += size;
+                  }
+                }
+                selectedIndex = count * handler.pickIdsPerInstance;
+              }
+              else {
+                selectedIndex = index * handler.pickIdsPerInstance;
+              }
               // If we wanted to include the partIndex, we would add:
               // selectedIndex += hoverValue.partIndex;
+              // Though for polylines this would be more complicated
             }
           }
           count = Math.round(count * drawFraction);
@@ -705,17 +729,33 @@ function AnnotationRenderLayer<
     ) {
       const chunk = data as AnnotationGeometryDataInterface;
       const { serializedAnnotations } = chunk;
-      const { typeToIds, typeToOffset } = serializedAnnotations;
+      const { typeToIds, typeToOffset, typeToSize, idToSizeMaps } =
+        serializedAnnotations;
       const rank = this.curRank;
       const chunkTransform = this.chunkTransform;
       if (chunkTransform.error !== undefined) return;
       for (const annotationType of annotationTypes) {
         const ids = typeToIds[annotationType];
+        const numInstances = typeToSize[annotationType];
         const renderHandler = getAnnotationTypeRenderHandler(annotationType);
         const { pickIdsPerInstance } = renderHandler;
-        if (pickedOffset < ids.length * pickIdsPerInstance) {
-          const instanceIndex = Math.floor(pickedOffset / pickIdsPerInstance);
-          const id = ids[instanceIndex];
+        if (pickedOffset < numInstances * pickIdsPerInstance) {
+          let annotationIndex: number = -1;
+          if (annotationType === AnnotationType.POLYLINE) {
+            const idToSizeMap = idToSizeMaps[annotationType];
+            // TODO (SKM) replace by binary search, for loop is fine for now
+            let count = 0;
+            for (let i = 0; i < ids.length; i++) {
+              count += idToSizeMap.get(ids[i])! * pickIdsPerInstance;
+              if (pickedOffset < count) {
+                annotationIndex = i;
+                break;
+              }
+            }
+          } else {
+            annotationIndex = Math.floor(pickedOffset / pickIdsPerInstance);
+          }
+          const id = ids[annotationIndex];
           const partIndex = pickedOffset % pickIdsPerInstance;
           mouseState.pickedAnnotationId = id;
           mouseState.pickedAnnotationLayer = this.base.state;
@@ -725,7 +765,8 @@ function AnnotationRenderLayer<
           mouseState.pickedAnnotationBufferBaseOffset =
             serializedAnnotations.data.byteOffset +
             typeToOffset[annotationType];
-          mouseState.pickedAnnotationIndex = instanceIndex;
+          console.log("annotation index", annotationIndex);
+          mouseState.pickedAnnotationIndex = annotationIndex;
           mouseState.pickedAnnotationCount = ids.length;
           const chunkPosition = this.tempChunkPosition;
           const {
@@ -774,7 +815,7 @@ function AnnotationRenderLayer<
           }
           return;
         }
-        pickedOffset -= ids.length * pickIdsPerInstance;
+        pickedOffset -= numInstances * pickIdsPerInstance;
       }
     }
 
