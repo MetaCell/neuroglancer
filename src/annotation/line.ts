@@ -48,23 +48,23 @@ const FULL_OBJECT_PICK_OFFSET = 0;
 const ENDPOINTS_PICK_OFFSET = FULL_OBJECT_PICK_OFFSET + 1;
 const PICK_IDS_PER_INSTANCE = ENDPOINTS_PICK_OFFSET + 2;
 
-function defineNoOpEndpointMarkerSetters(builder: ShaderBuilder) {
+export function defineNoOpEndpointMarkerSetters(builder: ShaderBuilder) {
   builder.addVertexCode(`
 void setEndpointMarkerSize(float startSize, float endSize) {}
 void setEndpointMarkerBorderWidth(float startSize, float endSize) {}
-void setEndpointMarkerColor(vec4 startColor, vec4 endColor) {}
+void _setEndpointMarkerColor(vec4 startColor, vec4 endColor) {}
 void setEndpointMarkerBorderColor(vec4 startColor, vec4 endColor) {}
 `);
 }
 
-function defineNoOpLineSetters(builder: ShaderBuilder) {
+export function defineNoOpLineSetters(builder: ShaderBuilder) {
   builder.addVertexCode(`
-void setLineWidth(float width) {}
-void setLineColor(vec4 startColor, vec4 endColor) {}
+void _setLineWidth(float width) {}
+void _setLineColor(vec4 startColor, vec4 endColor) {}
 `);
 }
 
-class RenderHelper extends AnnotationRenderHelper {
+export class LineRenderHelper extends AnnotationRenderHelper {
   defineShader(builder: ShaderBuilder) {
     defineVertexId(builder);
     // Position of endpoints in model coordinates.
@@ -94,10 +94,10 @@ float ng_LineWidth;
 `);
       defineNoOpEndpointMarkerSetters(builder);
       builder.addVertexCode(`
-void setLineWidth(float width) {
+void _setLineWidth(float width) {
   ng_LineWidth = width;
 }
-void setLineColor(vec4 startColor, vec4 endColor) {
+void _setLineColor(vec4 startColor, vec4 endColor) {
   vColor = mix(startColor, endColor, getLineEndpointCoefficient());
 }
 `);
@@ -145,7 +145,7 @@ void setEndpointMarkerSize(float startSize, float endSize) {
 void setEndpointMarkerBorderWidth(float startSize, float endSize) {
   ng_markerBorderWidth = mix(startSize, endSize, float(getEndpointIndex()));
 }
-void setEndpointMarkerColor(vec4 startColor, vec4 endColor) {
+void _setEndpointMarkerColor(vec4 startColor, vec4 endColor) {
   vColor = mix(startColor, endColor, float(getEndpointIndex()));
 }
 void setEndpointMarkerBorderColor(vec4 startColor, vec4 endColor) {
@@ -247,8 +247,8 @@ function snapPositionToEndpoint(
 }
 
 registerAnnotationTypeRenderHandler<Line>(AnnotationType.LINE, {
-  sliceViewRenderHelper: RenderHelper,
-  perspectiveViewRenderHelper: RenderHelper,
+  sliceViewRenderHelper: LineRenderHelper,
+  perspectiveViewRenderHelper: LineRenderHelper,
   defineShaderNoOpSetters(builder) {
     defineNoOpEndpointMarkerSetters(builder);
     defineNoOpLineSetters(builder);

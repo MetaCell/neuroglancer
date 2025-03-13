@@ -79,11 +79,11 @@ export function computeNumPickIds(
   serializedAnnotations: SerializedAnnotations,
 ) {
   let numPickIds = 0;
-  const { typeToIds } = serializedAnnotations;
+  const { typeToSize } = serializedAnnotations;
   for (const annotationType of annotationTypes) {
     numPickIds +=
       getAnnotationTypeRenderHandler(annotationType).pickIdsPerInstance *
-      typeToIds[annotationType].length;
+      typeToSize[annotationType];
   }
   return numPickIds;
 }
@@ -97,9 +97,11 @@ export class AnnotationGeometryData {
   constructor(x: SerializedAnnotations) {
     this.serializedAnnotations = {
       data: x.data,
+      idToSizeMaps: x.idToSizeMaps,
       typeToIds: x.typeToIds,
       typeToOffset: x.typeToOffset,
       typeToIdMaps: x.typeToIdMaps,
+      typeToSize: x.typeToSize,
     };
   }
   freeGPUMemory(gl: GL) {
@@ -484,10 +486,15 @@ export function makeTemporaryChunk() {
   const typeToIds: string[][] = [];
   const typeToOffset: number[] = [];
   const typeToIdMaps: Map<string, number>[] = [];
+  const idToSizeMaps: Map<string, number>[] = [];
+  const typeToSize: number[] = [];
+
   for (const annotationType of annotationTypes) {
     typeToIds[annotationType] = [];
     typeToOffset[annotationType] = 0;
     typeToIdMaps[annotationType] = new Map();
+    idToSizeMaps[annotationType] = new Map();
+    typeToSize[annotationType] = 0;
   }
   return new AnnotationGeometryChunk(
     <AnnotationGeometryChunkSource>(<any>undefined),
@@ -497,6 +504,8 @@ export function makeTemporaryChunk() {
       typeToOffset,
       typeToIds,
       typeToIdMaps,
+      idToSizeMaps,
+      typeToSize,
     },
   );
 }
