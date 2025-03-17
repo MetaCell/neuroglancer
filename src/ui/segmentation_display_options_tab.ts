@@ -91,6 +91,7 @@ export class DisplayOptionsTab extends Tab {
               this.layer,
               codeWidget,
               ShaderCodeOverlay,
+              makeSkeletonShaderCodeWidget,
               {
                 title: "Documentation on image layer rendering",
                 href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",

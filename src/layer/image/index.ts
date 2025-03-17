@@ -89,8 +89,10 @@ import {
   registerLayerControl,
 } from "#src/widget/layer_control.js";
 import { enumLayerControl } from "#src/widget/layer_control_enum.js";
+
 import { rangeLayerControl } from "#src/widget/layer_control_range.js";
 import { makeMaximizeButton } from "#src/widget/maximize_button.js";
+
 import {
   renderScaleLayerControl,
   VolumeRenderingRenderScaleWidget,
@@ -99,6 +101,8 @@ import { ShaderCodeOverlay } from "#src/widget/shader_code_overlay.js";
 import {
   ShaderCodeWidget,
 } from "#src/widget/shader_code_widget.js";
+
+
 import type { LegendShaderOptions } from "#src/widget/shader_controls.js";
 import {
   registerLayerShaderControlsTool,
@@ -110,7 +114,7 @@ export const OPACITY_JSON_KEY = "opacity";
 export const BLEND_JSON_KEY = "blend";
 export const SHADER_JSON_KEY = "shader";
 export const CODE_VISIBLE_KEY = "codeVisible";
-export const SHADER_CONTROLS_JSON_KEY = "shaderControls";
+const SHADER_CONTROLS_JSON_KEY = "shaderControls";
 export const CROSS_SECTION_RENDER_SCALE_JSON_KEY = "crossSectionRenderScale";
 export const CHANNEL_DIMENSIONS_JSON_KEY = "channelDimensions";
 export const VOLUME_RENDERING_JSON_KEY = "volumeRendering";
@@ -589,6 +593,7 @@ class RenderingOptionsTab extends Tab {
         new ChannelDimensionsWidget(layer.channelCoordinateSpaceCombiner),
       ).element,
     );
+
 
     element.appendChild(this.codeWidget.element);
     element.appendChild(
