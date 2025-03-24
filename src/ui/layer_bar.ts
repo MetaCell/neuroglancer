@@ -114,21 +114,49 @@ class LayerWidget extends RefCounted {
 
     layerColorElementWrapper.appendChild(layerColorElement);
 
+    const textColorBasedOnBackground = (backgroundColor: any) => {
+      let r, g, b;
+      const rgbValues = backgroundColor.match(/[\d.]+/g);
+      if (rgbValues && rgbValues.length === 3) {
+        r = Math.round(parseFloat(rgbValues[0]));
+        g = Math.round(parseFloat(rgbValues[1]));
+        b = Math.round(parseFloat(rgbValues[2]));
+      } else {
+        throw new Error("Invalid RGB format");
+      }
+    
+      const srgb = [r / 255, g / 255, b / 255];
+      const x = srgb.map((i) => {
+        if (i <= 0.04045) {
+          return i / 12.92;
+        } else {
+          return Math.pow((i + 0.055) / 1.055, 2.4);
+        }
+      });
+    
+      const L = 0.2126 * x[0] + 0.7152 * x[1] + 0.0722 * x[2];
+      return L > 0.179 ? "#000" : "#fff";
+    }
+
     const updateLayerColorWidget = () => {
       if (!this.layer.layerBarColorSyncEnabled) {
-        layerColorElement.style.background = "none";
-        layerColorElement.style.backgroundColor = "";
+        labelElement.style.background = "none";
+        labelElement.style.backgroundColor = "";
+        labelElement.style.color = "#fff"
         return;
       }
       const color = this.layer.layerBarColor;
       if (color) {
-        layerColorElement.style.background = "none";
-        layerColorElement.style.backgroundColor = color;
+        labelElement.style.background = "none";
+        labelElement.style.backgroundColor = color;
+        const textColor = textColorBasedOnBackground(color)
+        labelElement.style.color = textColor
       } else {
-        layerColorElement.className = "neuroglancer-layer-rainbow-color-value"
-
+        labelElement.className = "neuroglancer-layer-rainbow-color-value"
+        labelElement.style.color = "white"
       }
     };
+
     let syncColorsElement = null;
     if (this.layer.supportsLayerBarColorSyncOption) {
       const { element } = new CheckboxIcon(this.layer.layerBarColorSync!, {
