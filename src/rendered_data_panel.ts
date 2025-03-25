@@ -46,6 +46,7 @@ import type {
 import { TouchEventBinder } from "#src/util/touch_bindings.js";
 import { getWheelZoomAmount } from "#src/util/wheel_zoom.js";
 import type { ViewerState } from "#src/viewer_state.js";
+import { StatusMessage } from "#src/status.js";
 
 declare let NEUROGLANCER_SHOW_OBJECT_SELECTION_TOOLTIP: boolean | undefined;
 
@@ -652,6 +653,8 @@ export abstract class RenderedDataPanel extends RenderedPanel {
             const annotationRef =
               annotationLayer.source.getReference(selectedAnnotationId)!;
             const ann = <Annotation>annotationRef.value;
+            // Quit out if still waiting or if the annotation has been deleted.
+            if (ann === undefined || ann === null) return;
 
             const handler = getAnnotationTypeRenderHandler(ann.type);
             const pickedOffset = mouseState.pickedOffset;
@@ -743,6 +746,33 @@ export abstract class RenderedDataPanel extends RenderedPanel {
           ref.dispose();
         }
       }
+    });
+
+    registerActionListener(element, "finish-annotation", () => {
+      const selectedLayer = this.viewer.selectedLayer.layer;
+      if (selectedLayer === undefined) {
+        return;
+      }
+      const userLayer = selectedLayer.layer;
+      if (userLayer === null || userLayer.tool.value === undefined) {
+        return;
+      }
+      const annotationTool = userLayer.tool.value;
+      if (
+        !annotationTool ||
+        !(
+          "complete" in annotationTool &&
+          typeof annotationTool.complete === "function"
+        )
+      ) {
+        StatusMessage.showTemporaryMessage(
+          `The selected layer (${JSON.stringify(
+            selectedLayer.name,
+          )}) does not have annotation tool with complete step.`,
+        );
+        return;
+      }
+      annotationTool.complete();
     });
 
     registerActionListener(

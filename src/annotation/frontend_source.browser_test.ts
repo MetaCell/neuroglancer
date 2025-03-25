@@ -54,6 +54,8 @@ class UpdateTester {
     expect(direct.typeToIds).toEqual(incremental.typeToIds);
     expect(direct.typeToOffset).toEqual(incremental.typeToOffset);
     expect(direct.typeToIdMaps).toEqual(incremental.typeToIdMaps);
+    expect(direct.idToSizeMaps).toEqual(incremental.idToSizeMaps);
+    expect(direct.typeToSize).toEqual(incremental.typeToSize);
   }
   update(annotation: Annotation) {
     const index = this.annotations.findIndex((x) => x.id === annotation.id);
@@ -86,6 +88,7 @@ class UpdateTester {
   }
 }
 
+// TODO (SKM) expand with polyline
 describe("updateAnnotations", () => {
   it("rank 1", () => {
     const tester = new UpdateTester(1, []);
