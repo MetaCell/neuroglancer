@@ -130,6 +130,7 @@ export class StateEditorDialog extends Overlay {
     this.textEditor = CodeMirror((_element) => {}, <any>{
       value: "",
       mode: { name: "javascript", json: true },
+      lineWrapping: true,
       foldGutter: true,
       gutters: ["CodeMirror-lint-markers", "CodeMirror-foldgutter"],
     });
