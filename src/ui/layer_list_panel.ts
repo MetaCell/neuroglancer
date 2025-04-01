@@ -138,15 +138,13 @@ function makeSelectedLayerSidePanelCheckboxIcon(layer: ManagedUserLayer) {
 class LayerListItem extends RefCounted {
   element = document.createElement("div");
   numberElement = document.createElement("div");
-  labelElement = document.createElement("label");
   generation = -1;
   constructor(
     public panel: LayerListPanel,
     public layer: ManagedUserLayer,
   ) {
     super();
-    const { element, numberElement, labelElement } = this;
-    labelElement.classList.add("metacell-neuroglancer-checkbox-label");
+    const { element, numberElement } = this;
     element.classList.add("neuroglancer-layer-list-panel-item");
     if(!layer?.visible) {
       element.classList.add("neuroglancer-layer-list-panel-item-not-visible");
@@ -154,8 +152,7 @@ class LayerListItem extends RefCounted {
       element.classList.remove("neuroglancer-layer-list-panel-item-not-visible");
     }
     numberElement.classList.add("neuroglancer-layer-list-panel-item-number");
-    element.appendChild(labelElement);
-    labelElement.appendChild(
+    element.appendChild(
       this.registerDisposer(
         new TrackableBooleanCheckbox(
           {
