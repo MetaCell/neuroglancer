@@ -184,32 +184,6 @@
   background-size: contain;
 }
 
-
-.neuroglancer-screenshot-keep-slice-fov-checkbox {
-  margin: 0;
-  position: absolute;
-  left: 0;
-  height: 100%;
-  top: 0;
-  opacity: 0;
-  width: 100%;
-  cursor: pointer;
-}
-
-.neuroglancer-screenshot-keep-slice-label span {
-  display: flex;
-  width: 1rem;
-  height: 1rem;
-  background: url('./images/unselected.svg') no-repeat center center;
-  background-size: contain;
-  transition: background 0.3s ease;
-}
-
-.neuroglancer-screenshot-keep-slice-fov-checkbox:checked + span {
-  background: url('./images/selected.svg') no-repeat center center;
-  background-size: contain;
-}
-
 .neuroglancer-screenshot-size-text,
 .neuroglancer-screenshot-keep-slice-label,
 .neuroglancer-screenshot-scale-menu .neuroglancer-screenshot-scale-factor {

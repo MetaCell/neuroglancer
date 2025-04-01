@@ -519,37 +519,26 @@ export class ScreenshotDialog extends Overlay {
     keepSliceFOVFixedDiv.classList.add(
       "neuroglancer-screenshot-keep-slice-label",
     );
-keepSliceFOVFixedDiv.textContent = "Keep slice FOV fixed with scale change";
+    keepSliceFOVFixedDiv.classList.add("neuroglancer-screenshot-label");
+    keepSliceFOVFixedDiv.textContent = "Keep slice FOV fixed with scale change";
 
-const image = document.createElement("span");
-image.classList.add("checkbox-icon"); // Adding class for the image icon
-
-const keepSliceFOVFixedCheckbox = document.createElement("input");
+    const keepSliceFOVFixedCheckbox = document.createElement("input");
     keepSliceFOVFixedCheckbox.classList.add(
       "neuroglancer-screenshot-keep-slice-fov-checkbox",
     );
-keepSliceFOVFixedCheckbox.type = "checkbox";
-keepSliceFOVFixedCheckbox.checked = this.screenshotManager.shouldKeepSliceViewFOVFixed;
+    keepSliceFOVFixedCheckbox.type = "checkbox";
+    keepSliceFOVFixedCheckbox.checked =
+      this.screenshotManager.shouldKeepSliceViewFOVFixed;
+    keepSliceFOVFixedCheckbox.addEventListener("change", () => {
+      this.screenshotManager.shouldKeepSliceViewFOVFixed =
+        keepSliceFOVFixedCheckbox.checked;
+    });
+    this.keepSliceFOVFixedCheckbox = keepSliceFOVFixedCheckbox;
+    keepSliceFOVFixedDiv.appendChild(keepSliceFOVFixedCheckbox);
+    scaleMenu.appendChild(keepSliceFOVFixedDiv);
 
-// Update the checkbox icon initially based on the checked state
-const updateCheckboxIcon = () => {
-  image.classList.toggle('checked', keepSliceFOVFixedCheckbox.checked);
-};
-
-updateCheckboxIcon(); // Update the icon when the checkbox is created
-
-keepSliceFOVFixedCheckbox.addEventListener("change", () => {
-  this.screenshotManager.shouldKeepSliceViewFOVFixed = keepSliceFOVFixedCheckbox.checked;
-  updateCheckboxIcon(); // Update icon on state change
-});
-
-this.keepSliceFOVFixedCheckbox = keepSliceFOVFixedCheckbox;
-keepSliceFOVFixedDiv.appendChild(keepSliceFOVFixedCheckbox);
-keepSliceFOVFixedDiv.appendChild(image); // Append image element after checkbox
-scaleMenu.appendChild(keepSliceFOVFixedDiv);
-
-this.handleScreenshotResize();
-return scaleMenu;
+    this.handleScreenshotResize();
+    return scaleMenu;
   }
 
   private createStatisticsTable() {
