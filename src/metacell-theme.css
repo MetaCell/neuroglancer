@@ -837,6 +837,9 @@ ul#statusContainer {
                 opacity: 0.7;
                 -webkit-transition: .2s;
                 transition: opacity .2s;
+                &::-webkit-slider-runnable-track {
+                  background: var(--background80);
+                }
                 &::-webkit-slider-thumb {
                     -webkit-appearance: none;
                     appearance: none;
