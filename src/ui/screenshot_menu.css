@@ -162,9 +162,25 @@
   display: flex;
   width: 1.5rem;
   height: 1.5rem;
-  background: url('./images/metacell/radio_unchecked.svg') no-repeat center center;
-  background-size: contain;
-  transition: background 0.3s ease;
+  align-items: center;
+  justify-content: center;
+}
+
+.neuroglancer-screenshot-scale-menu .neuroglancer-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.neuroglancer-screenshot-scale-menu .neuroglancer-icon svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.neuroglancer-screenshot-scale-menu input[type="radio"]:checked + span .neuroglancer-icon svg {
+  color: var(--primary100) !important;
 }
 
 .neuroglancer-screenshot-scale-menu .neuroglancer-screenshot-scale-radio {
@@ -176,38 +192,6 @@
   opacity: 0;
   width: 100%;
   cursor: pointer;
-}
-
-/* Change the icon when the radio is checked */
-.neuroglancer-screenshot-scale-menu .neuroglancer-screenshot-scale-radio:checked + span {
-  background: url('./images/metacell/radio_checked.svg') no-repeat center center;
-  background-size: contain;
-}
-
-
-.neuroglancer-screenshot-keep-slice-fov-checkbox {
-  margin: 0;
-  position: absolute;
-  left: 0;
-  height: 100%;
-  top: 0;
-  opacity: 0;
-  width: 100%;
-  cursor: pointer;
-}
-
-.neuroglancer-screenshot-keep-slice-label span {
-  display: flex;
-  width: 1rem;
-  height: 1rem;
-  background: url('./images/unselected.svg') no-repeat center center;
-  background-size: contain;
-  transition: background 0.3s ease;
-}
-
-.neuroglancer-screenshot-keep-slice-fov-checkbox:checked + span {
-  background: url('./images/selected.svg') no-repeat center center;
-  background-size: contain;
 }
 
 .neuroglancer-screenshot-size-text,

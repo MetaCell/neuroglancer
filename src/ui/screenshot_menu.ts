@@ -22,6 +22,8 @@ import { Overlay } from "#src/overlay.js";
 import { StatusMessage } from "#src/status.js";
 import svg_close from "#src/ui/images/metacell/close.svg?raw";
 import svg_help from "#src/ui/images/metacell/help.svg?raw";
+import radio_checked from "#src/ui/images/metacell/radio_checked.svg?raw";
+import radio_unchecked from "#src/ui/images/metacell/radio_unchecked.svg?raw";
 import { setClipboard } from "#src/util/clipboard.js";
 import type {
   ScreenshotLoadStatistics,
@@ -495,23 +497,49 @@ export class ScreenshotDialog extends Overlay {
       const label = document.createElement("label");
       const input = document.createElement("input");
       const image = document.createElement("span");
+
+      const radioIcon = makeIcon({
+        svg: input.checked ? radio_checked : radio_unchecked
+      });
+      image.appendChild(radioIcon);
+
       input.type = "radio";
       input.name = "screenshot-scale";
       input.value = scale.toString();
       input.checked = scale === this.screenshotManager.screenshotScale;
       input.classList.add("neuroglancer-screenshot-scale-radio");
       label.classList.add("neuroglancer-screenshot-scale-label");
-      image.classList.add("radio-icon");
+
+      image.setAttribute("data-state", input.checked ? "checked" : "unchecked");
 
       label.appendChild(input);
       label.appendChild(image);
       label.appendChild(document.createTextNode(`${scale}x`));
       this.scaleRadioButtonsContainer.appendChild(label);
-    
-      input.addEventListener("change", () => {
+
+      const onRadioChange = () => {
         this.screenshotManager.screenshotScale = scale;
         this.handleScreenshotResize();
-      });
+
+        this.scaleRadioButtonsContainer.querySelectorAll('label').forEach(lbl => {
+          const radioInput = lbl.querySelector('input') as HTMLInputElement;
+          const spanEl = lbl.querySelector('span');
+          if (spanEl) {
+            while (spanEl.firstChild) {
+              spanEl.removeChild(spanEl.firstChild);
+            }
+
+            const newIcon = makeIcon({
+              svg: radioInput.checked ? radio_checked : radio_unchecked
+            });
+            spanEl.appendChild(newIcon);
+            spanEl.setAttribute("data-state", radioInput.checked ? "checked" : "unchecked");
+          }
+        });
+      }
+
+      onRadioChange();
+      input.addEventListener("change", onRadioChange);
     });
     scaleMenu.appendChild(this.warningElement);
 
@@ -519,37 +547,26 @@ export class ScreenshotDialog extends Overlay {
     keepSliceFOVFixedDiv.classList.add(
       "neuroglancer-screenshot-keep-slice-label",
     );
-keepSliceFOVFixedDiv.textContent = "Keep slice FOV fixed with scale change";
+    keepSliceFOVFixedDiv.classList.add("neuroglancer-screenshot-label");
+    keepSliceFOVFixedDiv.textContent = "Keep slice FOV fixed with scale change";
 
-const image = document.createElement("span");
-image.classList.add("checkbox-icon"); // Adding class for the image icon
-
-const keepSliceFOVFixedCheckbox = document.createElement("input");
+    const keepSliceFOVFixedCheckbox = document.createElement("input");
     keepSliceFOVFixedCheckbox.classList.add(
       "neuroglancer-screenshot-keep-slice-fov-checkbox",
     );
-keepSliceFOVFixedCheckbox.type = "checkbox";
-keepSliceFOVFixedCheckbox.checked = this.screenshotManager.shouldKeepSliceViewFOVFixed;
+    keepSliceFOVFixedCheckbox.type = "checkbox";
+    keepSliceFOVFixedCheckbox.checked =
+      this.screenshotManager.shouldKeepSliceViewFOVFixed;
+    keepSliceFOVFixedCheckbox.addEventListener("change", () => {
+      this.screenshotManager.shouldKeepSliceViewFOVFixed =
+        keepSliceFOVFixedCheckbox.checked;
+    });
+    this.keepSliceFOVFixedCheckbox = keepSliceFOVFixedCheckbox;
+    keepSliceFOVFixedDiv.appendChild(keepSliceFOVFixedCheckbox);
+    scaleMenu.appendChild(keepSliceFOVFixedDiv);
 
-// Update the checkbox icon initially based on the checked state
-const updateCheckboxIcon = () => {
-  image.classList.toggle('checked', keepSliceFOVFixedCheckbox.checked);
-};
-
-updateCheckboxIcon(); // Update the icon when the checkbox is created
-
-keepSliceFOVFixedCheckbox.addEventListener("change", () => {
-  this.screenshotManager.shouldKeepSliceViewFOVFixed = keepSliceFOVFixedCheckbox.checked;
-  updateCheckboxIcon(); // Update icon on state change
-});
-
-this.keepSliceFOVFixedCheckbox = keepSliceFOVFixedCheckbox;
-keepSliceFOVFixedDiv.appendChild(keepSliceFOVFixedCheckbox);
-keepSliceFOVFixedDiv.appendChild(image); // Append image element after checkbox
-scaleMenu.appendChild(keepSliceFOVFixedDiv);
-
-this.handleScreenshotResize();
-return scaleMenu;
+    this.handleScreenshotResize();
+    return scaleMenu;
   }
 
   private createStatisticsTable() {

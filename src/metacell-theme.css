@@ -25,6 +25,10 @@
     --datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0, 0, 0, 0.72);
 }
 
+input[type="checkbox"]:checked {
+  accent-color: var(--primary100);
+}
+
 * {
     font-family: Graphik;
     box-sizing: border-box;
@@ -247,24 +251,21 @@ ul#statusContainer {
             border: none;
         }
         input[type="checkbox"] {
-            background: url('../src/ui/images/unselected.svg') no-repeat;
+          width: 1rem;
+          height: 1rem;
+          margin: 0;
+          margin-right: 0.5rem;
+          &:checked {
             width: 1rem;
             height: 1rem;
-            margin: 0;
-            -webkit-appearance: none;
-            margin-right: 0.5rem;
-            &:checked {
-                background: url('../src/ui/images/selected.svg') no-repeat;
-                width: 1rem;
-                height: 1rem;
-            }
-            &:focus {
-                outline: none;
-            }
-            &:focus:checked {
-                background-color: rgba(22, 82, 240, 0.15);
-                box-shadow: 0 0 0 4px rgba(22, 82, 240, 0.15);
-            }
+          }
+          &:focus {
+            outline: none;
+          }
+          &:focus:checked {
+            background-color: rgba(22, 82, 240, 0.15);
+            box-shadow: 0 0 0 4px rgba(22, 82, 240, 0.15);
+          }
         }
     }
     .neuroglancer-invlerp-widget  {
@@ -676,24 +677,21 @@ ul#statusContainer {
         border: none;
     }
     input[type="checkbox"] {
-        background: url('../src/ui/images/unselected.svg') no-repeat;
+      width: 1rem;
+      height: 1rem;
+      margin: 0;
+      display: block;
+      &:checked {
         width: 1rem;
         height: 1rem;
-        -webkit-appearance: none;
-        margin: 0;
-        display: block;
-        &:checked {
-            background: url('../src/ui/images/selected.svg') no-repeat;
-            width: 1rem;
-            height: 1rem;
-        }
-        &:focus {
-            outline: none;
-        }
-        &:focus:checked {
-            background-color: rgba(22, 82, 240, 0.15);
-            box-shadow: 0 0 0 4px rgba(22, 82, 240, 0.15);
-        }
+      }
+      &:focus {
+        outline: none;
+      }
+      &:focus:checked {
+        background-color: rgba(22, 82, 240, 0.15);
+        box-shadow: 0 0 0 4px rgba(22, 82, 240, 0.15);
+      }
     }
     .neuroglancer-annotations-tab {
         label {
@@ -839,6 +837,9 @@ ul#statusContainer {
                 opacity: 0.7;
                 -webkit-transition: .2s;
                 transition: opacity .2s;
+                &::-webkit-slider-runnable-track {
+                  background: var(--background80);
+                }
                 &::-webkit-slider-thumb {
                     -webkit-appearance: none;
                     appearance: none;
@@ -1277,17 +1278,12 @@ ul#statusContainer {
       
     .neuroglancer-display-dimensions-widget-default input::after {
         content: "";
-        background: url('../src/ui/images/unselected.svg') no-repeat;
         width: 1rem;
         height: 1rem;
         display: block;
         position: absolute;
         top: 0;
         left: 0;
-    }
-      
-    .neuroglancer-display-dimensions-widget-default input:checked::after {
-        background: url('../src/ui/images/selected.svg') no-repeat;
     }
 
     .neuroglancer-depth-range-relative-checkbox-label input {
@@ -1306,17 +1302,12 @@ ul#statusContainer {
       
     .neuroglancer-depth-range-relative-checkbox-label input::after {
         content: "";
-        background: url('../src/ui/images/unselected.svg') no-repeat;
         width: 1rem;
         height: 1rem;
         display: block;
         position: absolute;
         top: 0;
         left: 0;
-    }
-      
-    .neuroglancer-depth-range-relative-checkbox-label input:checked::after {
-        background: url('../src/ui/images/selected.svg') no-repeat;
     }
 
     .neuroglancer-display-dimensions-widget {
@@ -1380,7 +1371,6 @@ ul#statusContainer {
       
     label.perspective-panel-show-slice-views input::after {
         content: "";
-        background: url('../src/ui/images/unselected.svg') no-repeat;
         width: 1rem;
         height: 1rem;
         display: block;
@@ -1388,10 +1378,6 @@ ul#statusContainer {
         top: 50%;
         transform: translateY(-50%);
         left: 0;
-    }
-      
-    label.perspective-panel-show-slice-views input:checked::after {
-        background: url('../src/ui/images/selected.svg') no-repeat;
     }
 
     &.neuroglancer-show-panel-borders .neuroglancer-panel {
@@ -1792,14 +1778,11 @@ ul#statusContainer {
             margin: 0;
             color: var(--content100);
             input {
-                background: url('../src/ui/images/unselected.svg') no-repeat;
                 width: 1rem;
                 height: 1rem;
-                -webkit-appearance: none;
                 margin: 0 0 0 auto;
                 display: block;
                 &:checked {
-                    background: url('../src/ui/images/selected.svg') no-repeat;
                     width: 1rem;
                     height: 1rem;
                     margin: 0 0 0 auto;
@@ -2438,17 +2421,16 @@ ul#statusContainer {
             .metacell-neuroglancer-checkbox-label {
                 margin: 0.25rem;
                 &:after {
-                    content: "";
-                    background: url('../src/ui/images/unselected.svg')  no-repeat;
                     width: 1rem;
                     height: 1rem;
                     display: block;
                 }
                 input {
                     margin: 0.25rem;
-                    opacity: 0;
                     position: absolute;
-                  
+                }
+                input[type="checkbox"]:checked {
+                  accent-color: var(--primary100);
                 }
             }
 
@@ -2509,14 +2491,12 @@ ul#statusContainer {
                 margin: 0.25rem;
                 &:after {
                     content: "";
-                    background: url('../src/ui/images/selected.svg') no-repeat;
                     width: 1rem;
                     height: 1rem;
                     display: block;
                 }
                 input {
                     margin: 0.25rem;
-                    opacity: 0;
                     position: absolute;
                   
                 }
@@ -2526,14 +2506,12 @@ ul#statusContainer {
                 margin: 0.25rem;
                 &:after {
                     content: "";
-                    background: url('../src/ui/images/selected.svg') no-repeat;
                     width: 1rem;
                     height: 1rem;
                     display: block;
                 }
                 input {
                     margin: 0.25rem;
-                    opacity: 0;
                     position: absolute;
                   
                 }
@@ -2723,10 +2701,8 @@ ul#statusContainer {
 
                 &[type='checkbox'] {
                     width: auto;
-                    -webkit-appearance: none;
                     &:before {
                         content: "";
-                        background: url('../src/ui/images/unselected.svg') no-repeat;
                         width: 1rem;
                         height: 1rem;
                         display: block;
@@ -2735,7 +2711,6 @@ ul#statusContainer {
                     &:checked {
                         &:before {
                             content: "";
-                            background: url('../src/ui/images/selected.svg') no-repeat;
                             width: 1rem;
                             height: 1rem;
                             display: block;
