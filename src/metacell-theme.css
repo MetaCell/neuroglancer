@@ -753,14 +753,6 @@ ul#statusContainer {
                 }
             }
         }
-        .neuroglancer-annotation-list {
-            height: auto !important;
-            min-height: inherit !important;
-            .list-scroll-container {
-                /* height: 12.5rem !important; */
-                overflow: auto;
-            }
-        }
         .neuroglancer-annotation-list-header {
             margin-top: 1.25rem;
             padding: 0 0.3rem;
