@@ -86,7 +86,7 @@ export class LinkedLayerGroupWidget extends RefCounted {
 
     const isNonEmptyRoot = group.linkedLayers.size !== 0;
     linkedLayers.style.display = isNonEmptyRoot ? "" : "none";
-    this.unlinkButton.textContent = isNonEmptyRoot ? "Unlink all" : "Unlink";
+    this.unlinkButton.setAttribute("neuroglancer-label-linkedto-data-tooltip", isNonEmptyRoot ? "Unlink all" : "Unlink");
 
     if (isNonEmptyRoot) {
       this.element.style.display = "";

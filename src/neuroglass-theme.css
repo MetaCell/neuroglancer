@@ -1915,7 +1915,7 @@ ul#statusContainer {
 
                     &:after {
                         background: var(--dark80);
-                        content: "Unlink";
+                        content: attr(neuroglancer-label-linkedto-data-tooltip);
                         display: block;
                         text-indent: 0;
                         position: absolute;
