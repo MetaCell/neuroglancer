@@ -28,7 +28,7 @@ import {
 import { setupDefaultViewer } from "#src/ui/default_viewer_setup.js";
 import "#src/util/google_tag_manager.js";
 import { encodeFragment } from "#src/ui/url_hash_binding.js";
-import "#src/metacell-theme.css";
+import "#src/neuroglass-theme.css";
 declare const window: any;
 
 window.neuroglancer = window.setupDefaultViewer = setupDefaultViewer;
