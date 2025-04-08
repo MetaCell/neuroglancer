@@ -389,12 +389,15 @@ ul#statusContainer {
             color: var(--codetrue);
         }
     }
-    .neuroglancer-star-icon {
-        svg {
-            stroke: transparent !important;
-            fill: transparent !important;
-        }
+
+    .neuroglancer-star-icon > svg {
+      stroke: var(--content100);
     }
+
+    .neuroglancer-star-icon.neuroglancer-starred > svg {
+      fill: var(--content100);
+    }
+
     .neuroglancer-segment-list-entry {
         background: transparent;
         .neuroglancer-eye-icon {
