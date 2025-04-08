@@ -711,7 +711,6 @@ export class Viewer extends RefCounted implements ViewerState {
 
   private makeUI() {
     const gridContainer = this.element;
-    gridContainer.classList.add("metacell-theme");
     gridContainer.classList.add("neuroglancer-viewer");
     gridContainer.classList.add("neuroglancer-noselect");
     gridContainer.style.display = "flex";
