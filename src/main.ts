@@ -36,6 +36,7 @@ declare let viewer: any;
 
 if(!process.env.MANUAL_LOAD) {
   setupDefaultViewer();
+  document.body.classList.add("neuroglass-theme");
 }
 
 // @metacell
