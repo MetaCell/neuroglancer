@@ -2018,18 +2018,18 @@ ul#statusContainer {
             position: relative;
         }
         .neuroglancer-annotation-property {
-      
-            width: 7.5rem;
+            display: flex;
+            max-width: max-content;
+            min-width: 7.5rem;
             font-size: 0.75rem;
-            text-overflow: ellipsis;
-            overflow: hidden;
-            white-space: nowrap;
             color: var(--content100);
             font-family: monospace;
             font-weight: 400;
+
             .neuroglancer-annotation-property-label {
                 font-family: monospace;
                 margin-right: 0.15rem;
+                flex-shrink: 0;
             }
             .neuroglancer-annotation-property-value {
                 text-overflow: ellipsis;
@@ -2037,6 +2037,8 @@ ul#statusContainer {
                 white-space: nowrap;
                 font-size: 0.75rem;
                 color: var(--content100);
+                flex: 1;
+                min-width: 0;
             }
         }
     }
