@@ -301,7 +301,7 @@ ul#statusContainer {
     }
     
 }
-.neuroglass-theme {
+.metacell-theme {
     .neuroglancer-icon svg {
         stroke: unset;
         stroke-width: unset;
@@ -389,15 +389,12 @@ ul#statusContainer {
             color: var(--codetrue);
         }
     }
-
-    .neuroglancer-star-icon > svg {
-      stroke: var(--content100);
+    .neuroglancer-star-icon {
+        svg {
+            stroke: transparent !important;
+            fill: transparent !important;
+        }
     }
-
-    .neuroglancer-star-icon.neuroglancer-starred > svg {
-      fill: var(--content100);
-    }
-
     .neuroglancer-segment-list-entry {
         background: transparent;
         .neuroglancer-eye-icon {
@@ -754,6 +751,14 @@ ul#statusContainer {
                         background-image: url('../src/ui/images/filter_tilt_shift-white.svg');
                     }
                 }
+            }
+        }
+        .neuroglancer-annotation-list {
+            height: auto !important;
+            min-height: inherit !important;
+            .list-scroll-container {
+                /* height: 12.5rem !important; */
+                overflow: auto;
             }
         }
         .neuroglancer-annotation-list-header {
@@ -2013,18 +2018,18 @@ ul#statusContainer {
             position: relative;
         }
         .neuroglancer-annotation-property {
-            display: flex;
-            max-width: max-content;
-            min-width: 7.5rem;
+      
+            width: 7.5rem;
             font-size: 0.75rem;
+            text-overflow: ellipsis;
+            overflow: hidden;
+            white-space: nowrap;
             color: var(--content100);
             font-family: monospace;
             font-weight: 400;
-
             .neuroglancer-annotation-property-label {
                 font-family: monospace;
                 margin-right: 0.15rem;
-                flex-shrink: 0;
             }
             .neuroglancer-annotation-property-value {
                 text-overflow: ellipsis;
@@ -2032,8 +2037,6 @@ ul#statusContainer {
                 white-space: nowrap;
                 font-size: 0.75rem;
                 color: var(--content100);
-                flex: 1;
-                min-width: 0;
             }
         }
     }
