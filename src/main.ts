@@ -31,10 +31,13 @@ import { encodeFragment } from "#src/ui/url_hash_binding.js";
 import "#src/metacell-theme.css";
 declare const window: any;
 
-window.neuroglancer = setupDefaultViewer;
-const viewer = setupDefaultViewer();
+window.neuroglancer = window.setupDefaultViewer = setupDefaultViewer;
+declare let viewer: any;
 
-document.body.classList.add("metacell-theme");
+if(!process.env.MANUAL_LOAD) {
+  setupDefaultViewer();
+  document.body.classList.add("neuroglass-theme");
+}
 
 // @metacell
 
