@@ -498,26 +498,28 @@ export class ScreenshotDialog extends Overlay {
       const input = document.createElement("input");
       const image = document.createElement("span");
 
+      const isChecked = scale === this.screenshotManager.screenshotScale;
+
       const radioIcon = makeIcon({
-        svg: input.checked ? radio_checked : radio_unchecked
+        svg: isChecked ? radio_checked : radio_unchecked
       });
       image.appendChild(radioIcon);
 
       input.type = "radio";
       input.name = "screenshot-scale";
       input.value = scale.toString();
-      input.checked = scale === this.screenshotManager.screenshotScale;
+      input.checked = isChecked;
       input.classList.add("neuroglancer-screenshot-scale-radio");
       label.classList.add("neuroglancer-screenshot-scale-label");
 
-      image.setAttribute("data-state", input.checked ? "checked" : "unchecked");
+      image.setAttribute("data-state", isChecked ? "checked" : "unchecked");
 
       label.appendChild(input);
       label.appendChild(image);
       label.appendChild(document.createTextNode(`${scale}x`));
       this.scaleRadioButtonsContainer.appendChild(label);
 
-      const onRadioChange = () => {
+      input.addEventListener("change", () => {
         this.screenshotManager.screenshotScale = scale;
         this.handleScreenshotResize();
 
@@ -536,11 +538,10 @@ export class ScreenshotDialog extends Overlay {
             spanEl.setAttribute("data-state", radioInput.checked ? "checked" : "unchecked");
           }
         });
-      }
-
-      onRadioChange();
-      input.addEventListener("change", onRadioChange);
+      });
     });
+    this.handleScreenshotResize(); // just to update the buttons
+
     scaleMenu.appendChild(this.warningElement);
 
     const keepSliceFOVFixedDiv = document.createElement("div");
