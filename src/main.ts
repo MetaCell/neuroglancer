@@ -34,7 +34,9 @@ declare const window: any;
 window.neuroglancer = window.setupDefaultViewer = setupDefaultViewer;
 declare let viewer: any;
 
-
+if(!process.env.MANUAL_LOAD) {
+  setupDefaultViewer();
+}
 
 // @metacell
 

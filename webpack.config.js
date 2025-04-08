@@ -114,6 +114,9 @@ export default (env, args) => {
         writeToDisk: true,
         entrypoints: true,
       }),
+      new webpack.DefinePlugin({
+        'process.env.MANUAL_LOAD': JSON.stringify(env.MANUAL_LOAD)
+      }),
     ],
     output: {
       path: path.resolve(import.meta.dirname, "dist", "client"),
