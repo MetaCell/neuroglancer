@@ -474,7 +474,12 @@ ul#statusContainer {
         font-size: 0.75rem;
     }
 
-    .neuroglancer-segment-list-entry-id,
+    .neuroglancer-segment-list-entry-id {
+      text-align: center;
+      width: auto;
+      padding: 0.063rem 0.125rem;
+    }
+
     .neuroglancer-selection-details-segment-id {
         text-align: center;
         color: var(--white) !important;
@@ -3144,7 +3149,6 @@ ul#statusContainer {
             }
         }
 
-        .neuroglancer-segment-list-entry-id,
         .neuroglancer-selection-details-segment-id {
             text-align: center;
             color: var(--white) !important;
