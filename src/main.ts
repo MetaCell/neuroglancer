@@ -29,10 +29,11 @@ import { setupDefaultViewer } from "#src/ui/default_viewer_setup.js";
 import "#src/util/google_tag_manager.js";
 import { encodeFragment } from "#src/ui/url_hash_binding.js";
 import "#src/neuroglass-theme.css";
-declare const window: any;
+import type { Viewer } from "#src/viewer.js";
 
+declare const window: any;
 window.neuroglancer = window.setupDefaultViewer = setupDefaultViewer;
-declare let viewer: any;
+declare let viewer: Viewer | undefined;
 
 if(!process.env.MANUAL_LOAD) {
   setupDefaultViewer();
@@ -50,7 +51,7 @@ function watchViewerLoadState() {
     dispatchMessage(LOADING, state);
   };
 
-  const hasLoaded = viewer.isReady();
+  const hasLoaded = viewer?.isReady() ?? false;
   sendEvent(hasLoaded);
 
   if (hasLoaded) {
@@ -58,7 +59,7 @@ function watchViewerLoadState() {
   }
 
   const pollInterval = setInterval(() => {
-    if (viewer.isReady()) {
+    if (viewer?.isReady()) {
       sendEvent(true);
       clearInterval(pollInterval);
     }
