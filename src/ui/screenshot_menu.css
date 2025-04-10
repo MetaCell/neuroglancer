@@ -599,7 +599,7 @@
   color: red;
   width: auto;
   font-size: 0.75rem;
-  margin: 0.12rem 0 0 -1.25rem;
+  margin: 0.32rem 0 0 0rem;
 }
 
 .neuroglancer-screenshot-tooltip {
