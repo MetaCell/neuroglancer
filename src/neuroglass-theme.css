@@ -342,12 +342,9 @@ ul#statusContainer {
 
 }
 
-:root {
-  font-family: var(--text-font);
-  box-sizing: border-box;
-}
-
 .neuroglass-theme {
+    font-family: var(--text-font);
+    box-sizing: border-box;
 
     .neuroglancer-icon svg {
         stroke: unset;
