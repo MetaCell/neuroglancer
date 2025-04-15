@@ -2475,7 +2475,10 @@ ul#statusContainer {
     }
 
     .neuroglancer-position-widget {
-        font-family: var(--monospaced-font) !important;
+        * {
+          font-family: var(--monospaced-font) !important;
+        }
+
         .neuroglancer-position-dimension+.neuroglancer-position-dimension {
             margin-left: 0.5rem;
         }
@@ -2486,7 +2489,36 @@ ul#statusContainer {
     }
 
     .neuroglancer-position-dimension-coordinate-label {
-      width: auto !important;
+      color: var(--warning60);
+      font-size: 12px;
+      font-weight: 400;
+
+      &::before {
+        color: var(--warning60);
+      }
+
+      &::after {
+        color: var(--warning60);
+      }
+    }
+
+    .neuroglancer-position-dimension-coordinate-dropdown {
+      gap: 2px;
+    }
+
+    .neuroglancer-dimension-dropdown-coordinate-entry {
+      font-size: 12px;
+      font-weight: 400;
+    }
+
+    .neuroglancer-dimension-dropdown-coordinate-entry:hover {
+      background-color: var(--background80);
+    }
+
+    .neuroglancer-dimension-dropdown-coordinate-label {
+      color: var(--warning60);
+      font-size: 12px;
+      font-weight: 400;
     }
 
     .neuroglancer-position-dimension-scale-container {
