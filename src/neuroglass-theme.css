@@ -1301,7 +1301,7 @@ ul#statusContainer {
     .neuroglancer-layer-item {
         margin: 0;
         border-color: var(--background80);
-        padding: 0.125rem 0.25rem;
+        padding-left: 0.15rem;
         min-height: 1.875rem;
 
         &[data-selected="true"] {
@@ -1418,6 +1418,10 @@ ul#statusContainer {
             color: var(--content100);
         }
 
+        .neuroglancer-layer-item-value {
+          font-size: inherit !important;
+        }
+
         .neuroglancer-layer-item-button-container {
             padding-left: 4px;
         }
@@ -1450,8 +1454,6 @@ ul#statusContainer {
 
     .neuroglancer-layer-panel {
         margin: 0;
-        padding: 0.5rem;
-        gap: 0.25rem;
     }
 
     .neuroglancer-display-dimensions-widget-default {
