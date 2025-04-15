@@ -343,8 +343,10 @@ ul#statusContainer {
 }
 
 .neuroglass-theme {
-    font-family: var(--text-font);
-    box-sizing: border-box;
+    * {
+      font-family: var(--text-font);
+      box-sizing: border-box;
+    }
 
     .neuroglancer-icon svg {
         stroke: unset;
@@ -3088,6 +3090,7 @@ ul#statusContainer {
     .neuroglancer-selection-details-position-dimension-coordinate {
         font-size: 0.75rem;
         font-weight: 400;
+        font-family: var(--monospaced-font);
         line-height: 0.8731rem;
         margin: 0;
         padding: 0;
