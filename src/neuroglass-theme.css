@@ -413,11 +413,11 @@ ul#statusContainer {
     }
 
     .CodeMirror-lines {
-        font-family: monospace;
+        font-family: "DejaVu Sans Mono", monospace !important;
 
         * {
             color: var(--white);
-            font-family: monospace;
+            font-family: "DejaVu Sans Mono", monospace !important;
         }
     }
 
@@ -673,13 +673,13 @@ ul#statusContainer {
             gap: 0.25rem;
 
             .neuroglancer-annotation-shader-property {
-                font-family: monospace;
+                font-family: "DejaVu Sans Mono", monospace !important;
                 font-size: 0.75rem;
                 font-style: normal;
                 font-weight: 400;
 
                 * {
-                    font-family: monospace;
+                    font-family: "DejaVu Sans Mono", monospace !important;
                 }
             }
 
@@ -2051,7 +2051,7 @@ ul#statusContainer {
                 flex: none;
                 align-items: center;
                 height: 1.125rem;
-                font-family: monospace;
+                font-family: "DejaVu Sans Mono", monospace !important;
                 color: var(--primary100);
                 border: 1px solid var(--stroke60);
                 border-radius: 0.125rem;
@@ -2284,11 +2284,11 @@ ul#statusContainer {
             min-width: 7.5rem;
             font-size: 0.75rem;
             color: var(--content100);
-            font-family: monospace;
+            font-family: "DejaVu Sans Mono", monospace !important;
             font-weight: 400;
 
             .neuroglancer-annotation-property-label {
-                font-family: monospace;
+                font-family: "DejaVu Sans Mono", monospace !important;
                 margin-right: 0.15rem;
                 flex-shrink: 0;
             }
@@ -2362,11 +2362,11 @@ ul#statusContainer {
             box-shadow: none !important;
             font-style: normal;
             color: var(--content100);
-            font-family: monospace;
+            font-family: "DejaVu Sans Mono", monospace !important;
             font-size: 0.875rem;
 
             &:first-child {
-                font-family: monospace;
+                font-family: "DejaVu Sans Mono", monospace !important;
                 color: var(--content100);
                 font-size: 0.875rem;
 
@@ -2391,7 +2391,7 @@ ul#statusContainer {
     }
 
     .neuroglancer-multiline-autocomplete-input {
-        font-family: monospace;
+        font-family: "DejaVu Sans Mono", monospace !important;
         font-size: 0.875rem;
     }
 
@@ -3046,7 +3046,7 @@ ul#statusContainer {
     }
 
     .neuroglancer-selection-details-position-dimension-name {
-        font-family: monospace;
+        font-family: "DejaVu Sans Mono", monospace !important;
         padding: 0;
         font-size: 0.75rem;
         color: var(--caramel60);
