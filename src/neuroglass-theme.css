@@ -25,7 +25,7 @@
     --datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0, 0, 0, 0.72);
 
     --text-font: Graphik, -apple-system, system-ui;
-    --monospaced-font: 'DejaVu Sans Mono', monospace;
+    --monospaced-font: "DejaVu Sans Mono", monospace;
 }
 
 input[type="checkbox"]:checked {
