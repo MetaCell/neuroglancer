@@ -23,13 +23,14 @@
     --codenumber: #00875A;
     --overlayBg: #14141580;
     --datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0, 0, 0, 0.72);
+
+    --text-font: Graphik, -apple-system, system-ui;
+    --monospaced-font: 'DejaVu Sans Mono', monospace;
 }
 
 input[type="checkbox"]:checked {
     accent-color: var(--primary100);
 }
-
-
 
 /* Track */
 ::-webkit-scrollbar-track {
@@ -341,12 +342,12 @@ ul#statusContainer {
 
 }
 
-.neuroglass-theme {
+:root {
+  font-family: var(--text-font);
+  box-sizing: border-box;
+}
 
-    * {
-        font-family: Graphik !important;
-        box-sizing: border-box;
-    }
+.neuroglass-theme {
 
     .neuroglancer-icon svg {
         stroke: unset;
@@ -413,11 +414,11 @@ ul#statusContainer {
     }
 
     .CodeMirror-lines {
-        font-family: monospace;
+        font-family: var(--monospaced-font);
 
         * {
             color: var(--white);
-            font-family: monospace;
+            font-family: var(--monospaced-font);
         }
     }
 
@@ -554,7 +555,7 @@ ul#statusContainer {
             color: var(--content100);
             font-size: 0.875rem;
             font-weight: 400;
-            font-family: Graphik;
+            font-family: var(--text-font);
             line-height: 20px;
         }
 
@@ -563,7 +564,7 @@ ul#statusContainer {
             font-size: 0.875rem;
             font-weight: 500;
             line-height: 18px;
-            font-family: Graphik;
+            font-family: var(--text-font);
             background: transparent !important;
         }
     }
@@ -574,7 +575,7 @@ ul#statusContainer {
 
     .neuroglancer-layer-side-panel-type,
     .neuroglancer-layer-side-panel-type-measure {
-        font-family: Graphik;
+        font-family: var(--text-font);
     }
 
     .neuroglancer-related-segment-list {
@@ -673,13 +674,13 @@ ul#statusContainer {
             gap: 0.25rem;
 
             .neuroglancer-annotation-shader-property {
-                font-family: monospace;
+                font-family: var(--monospaced-font);
                 font-size: 0.75rem;
                 font-style: normal;
                 font-weight: 400;
 
                 * {
-                    font-family: monospace;
+                    font-family: var(--monospaced-font);
                 }
             }
 
@@ -944,7 +945,7 @@ ul#statusContainer {
     }
 
     .neuroglancer-layer-side-panel-tab-view {
-        font-family: Graphik;
+        font-family: var(--text-font);
     }
 
     .neuroglancer-annotations-tab,
@@ -1081,13 +1082,13 @@ ul#statusContainer {
 
     .neuroglancer-annotations-view-dimension-scale {
         font-size: 0.75rem;
-        font-family: Graphik;
+        font-family: var(--text-font);
         font-weight: 400;
     }
 
     .neuroglancer-annotations-view-dimension-name {
         font-size: 0.75rem;
-        font-family: Graphik;
+        font-family: var(--text-font);
         font-weight: 400;
         color: var(--caramel60);
     }
@@ -1552,7 +1553,7 @@ ul#statusContainer {
         display: flex;
         align-items: center;
         gap: 0.25rem;
-        font-family: Graphik;
+        font-family: var(--text-font);
     }
 
     label.perspective-panel-show-slice-views input {
@@ -2051,7 +2052,7 @@ ul#statusContainer {
                 flex: none;
                 align-items: center;
                 height: 1.125rem;
-                font-family: monospace;
+                font-family: var(--monospaced-font);
                 color: var(--primary100);
                 border: 1px solid var(--stroke60);
                 border-radius: 0.125rem;
@@ -2173,11 +2174,11 @@ ul#statusContainer {
         font-weight: 400;
         line-height: 1.25rem;
         color: var(--content100);
-        font-family: Graphik;
+        font-family: var(--text-font);
     }
 
     .neuroglancer-related-segment-list-title {
-        font-family: Graphik;
+        font-family: var(--text-font);
     }
 
 
@@ -2232,7 +2233,7 @@ ul#statusContainer {
             color: var(--content100);
             padding: 0.5rem;
             height: 3.25rem;
-            font-family: Graphik;
+            font-family: var(--text-font);
             resize: none;
             overflow-y: scroll;
 
@@ -2284,11 +2285,11 @@ ul#statusContainer {
             min-width: 7.5rem;
             font-size: 0.75rem;
             color: var(--content100);
-            font-family: monospace;
+            font-family: var(--monospaced-font);
             font-weight: 400;
 
             .neuroglancer-annotation-property-label {
-                font-family: monospace;
+                font-family: var(--monospaced-font);
                 margin-right: 0.15rem;
                 flex-shrink: 0;
             }
@@ -2362,17 +2363,17 @@ ul#statusContainer {
             box-shadow: none !important;
             font-style: normal;
             color: var(--content100);
-            font-family: monospace;
+            font-family: var(--monospaced-font);
             font-size: 0.875rem;
 
             &:first-child {
-                font-family: monospace;
+                font-family: var(--monospaced-font);
                 color: var(--content100);
                 font-size: 0.875rem;
 
                 &:last-child {
                     color: var(--purple10);
-                    font-family: Graphik;
+                    font-family: var(--text-font);
                     font-size: 0.75rem;
                 }
             }
@@ -2391,7 +2392,7 @@ ul#statusContainer {
     }
 
     .neuroglancer-multiline-autocomplete-input {
-        font-family: monospace;
+        font-family: var(--monospaced-font);
         font-size: 0.875rem;
     }
 
@@ -2477,6 +2478,7 @@ ul#statusContainer {
     }
 
     .neuroglancer-position-widget {
+        font-family: var(--monospaced-font) !important;
         .neuroglancer-position-dimension+.neuroglancer-position-dimension {
             margin-left: 0.5rem;
         }
@@ -2624,7 +2626,7 @@ ul#statusContainer {
         }
 
         .neuroglancer-side-panel-para {
-            font-family: 'Graphik' !important;
+            font-family: var(--text-font) !important;
             font-size: 0.875rem;
             margin: 0;
             font-weight: 300 !important;
@@ -2928,7 +2930,7 @@ ul#statusContainer {
     }
 
     .neuroglancer-layer-side-panel-name {
-        font-family: "Graphik";
+        font-family: var(--text-font);
         font-size: 0.875rem;
         font-weight: 400;
         line-height: 1.125rem;
@@ -2990,7 +2992,7 @@ ul#statusContainer {
 
                 &[type='text'] {
                     height: 2.25rem;
-                    font-family: Graphik;
+                    font-family: var(--text-font);
                     border: 0.0625rem solid var(--dark80);
                     padding: 0.5rem;
                     box-sizing: border-box;
@@ -3046,7 +3048,7 @@ ul#statusContainer {
     }
 
     .neuroglancer-selection-details-position-dimension-name {
-        font-family: monospace;
+        font-family: var(--monospaced-font);
         padding: 0;
         font-size: 0.75rem;
         color: var(--caramel60);
@@ -3155,7 +3157,7 @@ ul#statusContainer {
     }
 
     .neuroglancer-settings-title {
-        font-family: Graphik;
+        font-family: var(--text-font);
         width: 100%;
         padding: 0.375rem 0.75rem;
         background-color: var(--dark100) !important;
