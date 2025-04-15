@@ -2466,12 +2466,6 @@ ul#statusContainer {
         border-bottom: 0.0625rem solid var(--dark80);
     }
 
-    .neuroglancer-position-dimension {
-        display: flex;
-        align-items: center;
-        line-height: 0;
-    }
-
     .neuroglancer-position-dimension-coordinate {
         font-size: 0.75rem;
         font-weight: 400;
@@ -2483,31 +2477,21 @@ ul#statusContainer {
     }
 
     .neuroglancer-position-widget {
-        display: flex;
-        align-items: center;
-
         .neuroglancer-position-dimension+.neuroglancer-position-dimension {
-            margin-left: 0;
+            margin-left: 0.5rem;
         }
 
         .neuroglancer-icon {
             margin-left: 0.25rem;
         }
-
-        .neuroglancer-position-dimension-dropdown {
-            top: 100%;
-
-            .neuroglancer-position-dimension-plot {
-                overflow: inherit;
-            }
-        }
     }
 
+    .neuroglancer-position-dimension-coordinate-label {
+      width: auto !important;
+    }
 
     .neuroglancer-position-dimension-scale-container {
         margin-left: 0;
-        display: flex;
-        align-items: center;
         margin-right: 0;
     }
 
@@ -3260,6 +3244,7 @@ ul#statusContainer {
         align-items: center;
         display: flex;
         padding: 1.875rem 0;
+        z-index: 1300; /* same as MUI modal */
 
         & .overlay-content {
             width: auto;
@@ -3269,8 +3254,7 @@ ul#statusContainer {
             transform: none;
             margin: auto;
             background-color: var(--background80);
-            z-index: 100;
-
+            z-index: 1300; /* same as MUI modal */
 
             &:focus-visible {
                 outline: none;
