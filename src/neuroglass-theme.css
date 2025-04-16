@@ -24,7 +24,7 @@
     --overlayBg: #14141580;
     --datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0, 0, 0, 0.72);
 
-    --text-font: Graphik, -apple-system, system-ui;
+    --text-font: Graphik,-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen-Sans, Ubuntu, Cantarell, Helvetica Neue, system-ui, sans-serif;
     --monospaced-font: "DejaVu Sans Mono", monospace;
 }
 
@@ -1440,98 +1440,51 @@ ul#statusContainer {
         }
     }
 
+    .neuroglancer-display-dimensions-widget-dimension-grid > :not(:last-child),
+    .neuroglancer-display-dimensions-widget > :not(:last-child) {
+      padding-bottom: 4px;
+    }
+
     .neuroglancer-display-dimensions-widget-default,
     .neuroglancer-depth-range-relative-checkbox-label {
-        display: flex;
-        align-items: center;
-        gap: 0.25rem;
-        font-size: 0.875rem;
-    }
-
-    .neuroglancer-layer-panel {
-        margin: 0;
-        padding: 0.5rem;
-        gap: 0.25rem;
-    }
-
-    .neuroglancer-display-dimensions-widget-default {
-        margin-top: 0.25rem;
-        display: flex;
-        align-items: center;
-        width: fit-content;
-        font-size: 0.875rem;
-    }
-
-    .neuroglancer-display-dimensions-widget-default input {
-        width: 1rem;
-        height: 1rem;
-        position: relative;
-        appearance: none;
-        cursor: pointer;
-    }
-
-    .neuroglancer-display-dimensions-widget-default input::after {
-        content: "";
-        width: 1rem;
-        height: 1rem;
-        display: block;
-        position: absolute;
-        top: 0;
-        left: 0;
-    }
-
-    .neuroglancer-depth-range-relative-checkbox-label input {
-        width: 1rem;
-        height: 1rem;
-        margin: 0.25rem;
-    }
-
-    .neuroglancer-depth-range-relative-checkbox-label input {
-        width: 1rem;
-        height: 1rem;
-        position: relative;
-        appearance: none;
-        cursor: pointer;
-    }
-
-    .neuroglancer-depth-range-relative-checkbox-label input::after {
-        content: "";
-        width: 1rem;
-        height: 1rem;
-        display: block;
-        position: absolute;
-        top: 0;
-        left: 0;
+      display: flex;
+      align-items: center;
+      gap: 4px;
     }
 
     .neuroglancer-display-dimensions-widget {
         border-radius: 0.125rem;
         background: rgba(20, 20, 21, 0.30);
         backdrop-filter: blur(0.125rem);
-        padding: 0.125rem 0.25rem;
-        display: flex;
+        padding: 0 0.25rem;
         top: 0.5rem;
         left: 0.5rem;
-        flex-direction: column;
-        gap: 0.25rem;
+    }
+
+    .neuroglancer-display-dimensions-widget:hover {
+      padding-bottom: 0.25rem;
     }
 
     .neuroglancer-display-dimensions-widget-dimension {
         align-items: center;
 
+        * {
+          font-family: var(--monospaced-font);
+        }
+
         &:hover {
             outline: none;
         }
+
+        .neuroglancer-display-dimensions-widget-name,
+        .neuroglancer-display-dimensions-widget-scale-factor input {
+          font-size: 0.75rem;
+        }
     }
 
-    /* .neuroglancer-display-dimensions-widget-dimension-grid {
-        display: flex;
-        flex-direction: column;
-        gap: 0.25rem;
-    } */
-
     .neuroglancer-depth-range-widget-grid {
-        margin: 0;
+      margin: 0;
+      font-size: 1.125rem;
     }
 
     .neuroglancer-display-dimensions-widget input {
@@ -1541,6 +1494,12 @@ ul#statusContainer {
         text-align: center;
         width: 1rem;
         height: 1.375rem;
+    }
+
+    .neuroglancer-depth-range-widget-grid input {
+      font-family: var(--monospaced-font);
+      font-size: 1.125rem;
+      font-weight: 400;
     }
 
     label.perspective-panel-show-slice-views {
