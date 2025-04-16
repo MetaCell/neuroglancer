@@ -1301,7 +1301,7 @@ ul#statusContainer {
     .neuroglancer-layer-item {
         margin: 0;
         border-color: var(--background80);
-        padding: 0.125rem 0.25rem;
+        padding-left: 0.15rem;
         min-height: 1.875rem;
 
         &[data-selected="true"] {
@@ -1416,6 +1416,10 @@ ul#statusContainer {
             letter-spacing: -0.01em;
             background-color: transparent;
             color: var(--content100);
+        }
+
+        .neuroglancer-layer-item-value {
+          font-size: inherit !important;
         }
 
         .neuroglancer-layer-item-button-container {
