@@ -14,6 +14,33 @@ export default {
   },
 
   create(context) {
+    function isInArrowFunction(node) {
+      if (!node) {
+        return false;
+      }
+      if (
+        node.type === "ArrowFunctionExpression" ||
+        node.type === "FunctionExpression"
+      ) {
+        return true;
+      }
+      return isInArrowFunction(node.parent);
+    }
+
+    function callExpressionNumber(node, found = 0) {
+      if (!node) {
+        return found;
+      }
+      return callExpressionNumber(
+        node.parent,
+        found + (node.type === "CallExpression" ? 1 : 0),
+      );
+    }
+
+    function isRootCall(node) {
+      return callExpressionNumber(node) <= 1;
+    }
+
     function containsThisExpression(node) {
       if (!node || typeof node !== "object") return false;
       if (
@@ -22,10 +49,14 @@ export default {
       ) {
         return false;
       }
-      if (node.type === "ThisExpression") return true;
+      if (node.type === "ThisExpression") {
+        return !isInArrowFunction(node) && !isRootCall(node);
+      }
 
       if (node.type === "CallExpression") {
         // If we have a call, we check the presence of "this" in the arguments
+        // console.log("Checking", node)
+
         for (const argument of node.arguments) {
           if (containsThisExpression(argument)) return true;
         }
@@ -35,6 +66,9 @@ export default {
           callee.type === "ArrowFunctionExpression" &&
           containsThisExpression(callee.body)
         ) {
+          return true;
+        }
+        if (containsThisExpression(callee)) {
           return true;
         }
         // We visited the arguments and the callee, no need to go further
