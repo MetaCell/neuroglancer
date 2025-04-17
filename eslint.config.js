@@ -4,6 +4,7 @@ import eslint from "@eslint/js";
 // @ts-expect-error missing .d.ts file
 import importPlugin from "eslint-plugin-import";
 import tseslint from "typescript-eslint";
+import customRules from "./eslint-custom-rule/index.js";
 
 export default tseslint.config(
   {
@@ -120,6 +121,14 @@ export default tseslint.config(
     files: ["build_tools/**/*.cjs"],
     languageOptions: {
       sourceType: "commonjs",
+    },
+  },
+  {
+    plugins: {
+      custom: customRules,
+    },
+    rules: {
+      "custom/no-this-in-class-property": "error",
     },
   },
 );
