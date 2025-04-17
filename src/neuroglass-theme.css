@@ -26,6 +26,9 @@
 
     --text-font: Graphik,-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen-Sans, Ubuntu, Cantarell, Helvetica Neue, system-ui, sans-serif;
     --monospaced-font: "DejaVu Sans Mono", monospace;
+
+    /* sets the status bar top offset so we can position it in neuroglass */
+    --neuroglancer-drag-status-top: 0px;
 }
 
 input[type="checkbox"]:checked {
@@ -3408,4 +3411,18 @@ ul#statusContainer {
     input[type="number"] {
         appearance: textfield;
     }
+}
+
+.neuroglancer-drag-status {
+  top: var(--neuroglancer-drag-status-top, 0px);
+  z-index: 1500; /* same as MUI tooltip */
+  background-color: var(--primary100);
+  color: var(--white);
+  font: 12px var(--text-font);
+  padding: 4px 8px;
+  border-radius: 2px;
+  margin: 4px;
+  box-shadow:
+    0px 0px 1px 0px rgba(0, 0, 0, 0.4),
+    0px 6px 6px -6px rgba(0, 0, 0, 0.52);
 }
