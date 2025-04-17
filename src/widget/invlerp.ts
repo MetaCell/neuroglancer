@@ -361,42 +361,45 @@ class CdfPanel extends IndirectRenderedPanel {
         },
       ),
     );
+    this.dataValuesBuffer = this.registerDisposer(
+      getMemoizedBuffer(this.gl, WebGL2RenderingContext.ARRAY_BUFFER, () => {
+        const array = new Uint8Array(NUM_CDF_LINES * VERTICES_PER_LINE);
+        for (let i = 0; i < NUM_CDF_LINES; ++i) {
+          for (let j = 0; j < VERTICES_PER_LINE; ++j) {
+            array[i * VERTICES_PER_LINE + j] = i;
+          }
+        }
+        return array;
+      }),
+    ).value;
+
+    this.lineShader = this.registerDisposer(
+      (() => createCDFLineShader(this.gl, histogramSamplerTextureUnit))(),
+    );
+
+    this.regionCornersBuffer = getSquareCornersBuffer(this.gl, 0, -1, 1, 1);
+    this.regionShader = this.registerDisposer(
+      (() => {
+        const builder = new ShaderBuilder(this.gl);
+        builder.addAttribute("vec2", "aVertexPosition");
+        builder.addUniform("vec2", "uBounds");
+        builder.addUniform("vec4", "uColor");
+        builder.addOutputBuffer("vec4", "out_color", 0);
+        builder.setVertexMain(`
+  gl_Position = vec4(mix(uBounds[0], uBounds[1], aVertexPosition.x) * 2.0 - 1.0, aVertexPosition.y, 0.0, 1.0);
+  `);
+        builder.setFragmentMain(`
+  out_color = uColor;
+  `);
+        return builder.build();
+      })(),
+    );
   }
 
-  private dataValuesBuffer = this.registerDisposer(
-    getMemoizedBuffer(this.gl, WebGL2RenderingContext.ARRAY_BUFFER, () => {
-      const array = new Uint8Array(NUM_CDF_LINES * VERTICES_PER_LINE);
-      for (let i = 0; i < NUM_CDF_LINES; ++i) {
-        for (let j = 0; j < VERTICES_PER_LINE; ++j) {
-          array[i * VERTICES_PER_LINE + j] = i;
-        }
-      }
-      return array;
-    }),
-  ).value;
-
-  private lineShader = this.registerDisposer(
-    (() => createCDFLineShader(this.gl, histogramSamplerTextureUnit))(),
-  );
-
-  private regionCornersBuffer = getSquareCornersBuffer(this.gl, 0, -1, 1, 1);
-
-  private regionShader = this.registerDisposer(
-    (() => {
-      const builder = new ShaderBuilder(this.gl);
-      builder.addAttribute("vec2", "aVertexPosition");
-      builder.addUniform("vec2", "uBounds");
-      builder.addUniform("vec4", "uColor");
-      builder.addOutputBuffer("vec4", "out_color", 0);
-      builder.setVertexMain(`
-gl_Position = vec4(mix(uBounds[0], uBounds[1], aVertexPosition.x) * 2.0 - 1.0, aVertexPosition.y, 0.0, 1.0);
-`);
-      builder.setFragmentMain(`
-out_color = uColor;
-`);
-      return builder.build();
-    })(),
-  );
+  private dataValuesBuffer;
+  private lineShader;
+  private regionCornersBuffer;
+  private regionShader;
 
   drawIndirect() {
     const {
