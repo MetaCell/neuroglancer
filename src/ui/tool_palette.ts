@@ -19,8 +19,8 @@ import "#src/ui/tool_palette.css";
 import svg_search from "ikonate/icons/search.svg?raw";
 import swap_horizontal from "ikonate/icons/swap-horizontal.svg?raw";
 import swap_vertical from "ikonate/icons/swap-vertical.svg?raw";
-import svg_switch_off from "ikonate/icons/switch-off.svg?raw";
-import svg_switch_on from "ikonate/icons/switch-on.svg?raw";
+// import svg_switch_off from "ikonate/icons/switch-off.svg?raw";
+// import svg_switch_on from "ikonate/icons/switch-on.svg?raw";
 import svg_tool from "ikonate/icons/tool.svg?raw";
 import { debounce } from "lodash-es";
 import type { UserLayer } from "#src/layer/index.js";
@@ -30,7 +30,7 @@ import {
   TrackableBooleanCheckbox,
 } from "#src/trackable_boolean.js";
 import {
-  linkWatchableValue,
+  // linkWatchableValue,
   makeCachedDerivedWatchableValue,
   makeCachedLazyDerivedWatchableValue,
   TrackableValue,
@@ -738,8 +738,10 @@ export class ToolPalettePanel extends SidePanel {
         disableSvg: swap_vertical,
         enableTitle: "Swap to vertical group stacking",
         disableTitle: "Swap to horizontal group stacking",
+        disabled: self.state.stackingMode.value === StackingMode.AUTO,
       }),
     );
+
     changeStackingButton.element.addEventListener("click", () => {
       if (self.state.verticalStacking.value) {
         self.state.stackingMode.value = StackingMode.VERTICAL;
@@ -748,10 +750,10 @@ export class ToolPalettePanel extends SidePanel {
       }
     });
     titleBar.appendChild(changeStackingButton.element);
-    linkWatchableValue(
-      this.state.manualOrientationStacking,
-      changeStackingButton.disabled,
-    );
+    // linkWatchableValue(
+    //   this.state.manualOrientationStacking,
+    //   changeStackingButton.disabled,
+    // );
 
     const searchButton = this.registerDisposer(
       new CheckboxIcon(
