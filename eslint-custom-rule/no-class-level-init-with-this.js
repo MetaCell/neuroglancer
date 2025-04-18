@@ -14,7 +14,38 @@ export default {
   },
 
   create(context) {
-    function isInArrowFunction(node) {
+    function isInChildren(node, target) {
+      if (node === target) {
+        return true;
+      }
+      for (const key of Object.keys(node)) {
+        if (key === "parent") {
+          return false;
+        }
+        const value = node[key];
+
+        if (Array.isArray(value)) {
+          for (const el of value) {
+            if (isInChildren(el)) return true;
+          }
+        } else if (value && typeof value === "object") {
+          if (isInChildren(value)) return true;
+        }
+      }
+      return false;
+    }
+
+    function parentCallExpression(node) {
+      if (!node) {
+        return undefined;
+      }
+      if (node.type === "CallExpression") {
+        return node;
+      }
+      return parentCallExpression(node.parent);
+    }
+
+    function isInCalledArrowFunction(node) {
       if (!node) {
         return false;
       }
@@ -22,23 +53,28 @@ export default {
         node.type === "ArrowFunctionExpression" ||
         node.type === "FunctionExpression"
       ) {
+        const parentCallExpr = parentCallExpression(node);
+        if (!parentCallExpr) {
+          return false;
+        }
+        for (const arg of parentCallExpr.arguments) {
+          if (isInChildren(arg, node)) {
+            return true;
+          }
+        }
+        return parentCallExpr && isInChildren(parentCallExpr.callee, node);
+      }
+      return isInCalledArrowFunction(node.parent);
+    }
+
+    function isInArrowFunction(node) {
+      if (!node) {
+        return false;
+      }
+      if (node.type === "ArrowFunctionExpression") {
         return true;
       }
       return isInArrowFunction(node.parent);
-    }
-
-    function callExpressionNumber(node, found = 0) {
-      if (!node) {
-        return found;
-      }
-      return callExpressionNumber(
-        node.parent,
-        found + (node.type === "CallExpression" ? 1 : 0),
-      );
-    }
-
-    function isRootCall(node) {
-      return callExpressionNumber(node) <= 1;
     }
 
     function containsThisExpression(node) {
@@ -49,14 +85,19 @@ export default {
       ) {
         return false;
       }
+
       if (node.type === "ThisExpression") {
-        return !isInArrowFunction(node) && !isRootCall(node);
+        // We report an error if "this" is in a lambda directly called:
+        //   (() => this.foo)()
+        // of if it's not in an arrow function
+        //   this.foo
+        //   () => this.foo  -- this will not trigger an error as the execution of foo is delayed for later
+        // return true
+        return isInCalledArrowFunction(node) || !isInArrowFunction(node);
       }
 
       if (node.type === "CallExpression") {
         // If we have a call, we check the presence of "this" in the arguments
-        // console.log("Checking", node)
-
         for (const argument of node.arguments) {
           if (containsThisExpression(argument)) return true;
         }
@@ -95,7 +136,6 @@ export default {
     }
 
     return {
-      // For class fields (in modern JS/TS)
       PropertyDefinition(node) {
         if (!node.value) return;
         if (containsThisExpression(node.value)) {
