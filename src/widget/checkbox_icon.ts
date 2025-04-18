@@ -16,7 +16,10 @@
 
 import "#src/widget/checkbox_icon.css";
 
-import type { WatchableValueInterface } from "#src/trackable_value.js";
+import {
+  WatchableValue,
+  type WatchableValueInterface,
+} from "#src/trackable_value.js";
 import { RefCounted } from "#src/util/disposable.js";
 import type { MakeIconOptions } from "#src/widget/icon.js";
 import { makeIcon } from "#src/widget/icon.js";
@@ -29,10 +32,12 @@ export interface MakeCheckboxIconOptions
   disableTitle?: string;
   backgroundScheme?: "light" | "dark";
   disableSvg?: string;
+  disabled?: boolean;
 }
 
 export class CheckboxIcon extends RefCounted {
   readonly element: HTMLElement;
+  disabled: WatchableValueInterface<boolean>;
   constructor(
     model: WatchableValueInterface<boolean>,
     options: MakeCheckboxIconOptions,
@@ -41,6 +46,9 @@ export class CheckboxIcon extends RefCounted {
     this.element = makeIcon({
       ...options,
       onClick: () => {
+        if (this.disabled.value) {
+          return;
+        }
         model.value = !model.value;
       },
     });
@@ -50,6 +58,8 @@ export class CheckboxIcon extends RefCounted {
         ? "dark-background"
         : "light-background",
     );
+    this.disabled = new WatchableValue(Boolean(options.disabled));
+
     const updateView = () => {
       const value = model.value;
       this.element.title =
@@ -59,8 +69,10 @@ export class CheckboxIcon extends RefCounted {
       } else {
         this.element.dataset.checked = value ? "true" : "false";
       }
+      this.element.dataset.disabled = this.disabled.value.toString();
     };
     this.registerDisposer(model.changed.add(updateView));
+    this.registerDisposer(this.disabled.changed.add(updateView));
     updateView();
   }
 }

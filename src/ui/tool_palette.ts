@@ -19,6 +19,8 @@ import "#src/ui/tool_palette.css";
 import svg_search from "ikonate/icons/search.svg?raw";
 import swap_horizontal from "ikonate/icons/swap-horizontal.svg?raw";
 import swap_vertical from "ikonate/icons/swap-vertical.svg?raw";
+import svg_switch_off from "ikonate/icons/switch-off.svg?raw";
+import svg_switch_on from "ikonate/icons/switch-on.svg?raw";
 import svg_tool from "ikonate/icons/tool.svg?raw";
 import { debounce } from "lodash-es";
 import type { UserLayer } from "#src/layer/index.js";
@@ -28,6 +30,7 @@ import {
   TrackableBooleanCheckbox,
 } from "#src/trackable_boolean.js";
 import {
+  linkWatchableValue,
   makeCachedDerivedWatchableValue,
   makeCachedLazyDerivedWatchableValue,
   TrackableValue,
@@ -277,6 +280,7 @@ export class ToolPaletteState extends RefCounted implements Trackable {
   }
 
   verticalStacking = new TrackableBoolean(true, true);
+  manualOrientationStacking = new TrackableBoolean(true, true);
 
   constructor(public viewer: Viewer) {
     super();
@@ -286,6 +290,7 @@ export class ToolPaletteState extends RefCounted implements Trackable {
     this.trackable.add("tools", this.tools);
     this.trackable.add("query", this.query);
     this.trackable.add("verticalStacking", this.verticalStacking);
+    this.trackable.add("manualOrientationStacking", this.manualOrientationStacking);
     this.queryDefined = this.registerDisposer(
       makeCachedDerivedWatchableValue(
         (value) => value.length === 0,
@@ -694,15 +699,31 @@ export class ToolPalettePanel extends SidePanel {
       makeCachedDerivedWatchableValue((value) => value !== "", [state.query]),
     );
     const self = this;
+
     const changeStackingButton = this.registerDisposer(
       new CheckboxIcon(this.state.verticalStacking, {
         svg: swap_horizontal,
         disableSvg: swap_vertical,
         enableTitle: "Swap to vertical stacking",
         disableTitle: "Swap to horizontal stacking",
+        disabled: true,
       }),
     );
+    const autoManualButton = this.registerDisposer(
+      new CheckboxIcon(this.state.manualOrientationStacking, {
+        svg: svg_switch_off,
+        disableSvg: svg_switch_on,
+        enableTitle: "Swap to manual stacking",
+        disableTitle: "Swap to automatic stacking",
+      }),
+    );
+    titleBar.appendChild(autoManualButton.element);
     titleBar.appendChild(changeStackingButton.element);
+    linkWatchableValue(
+      this.state.manualOrientationStacking,
+      changeStackingButton.disabled,
+    );
+
     const searchButton = this.registerDisposer(
       new CheckboxIcon(
         {
