@@ -31,7 +31,7 @@ import {
   getChunkSourceIdentifier,
   getFormattedNames,
 } from "#src/ui/statistics.js";
-import { toBase64 } from "#src/util/base64.ts";
+import { toBase64 } from "#src/util/base64.js";
 import { RefCounted } from "#src/util/disposable.js";
 import { NullarySignal, Signal } from "#src/util/signal.js";
 import { ScreenshotMode } from "#src/util/trackable_screenshot_mode.js";
@@ -41,6 +41,7 @@ import {
 } from "#src/util/viewer_resolution_stats.js";
 import type { Viewer } from "#src/viewer.js";
 
+export const MAX_RENDER_AREA_PIXELS = 5100 * 5100;
 const SCREENSHOT_TIMEOUT = 3000;
 
 export interface ScreenshotLoadStatistics extends ScreenshotChunkStatistics {
@@ -209,8 +210,7 @@ export class ScreenshotManager extends RefCounted {
   }
 
   public set screenshotScale(scale: number) {
-    this.handleScreenshotZoomAndResize(scale);
-    this._screenshotScale = scale;
+    this._screenshotScale = this.handleScreenshotZoomAndResize(scale);
     this.zoomMaybeChanged.dispatch();
   }
 
@@ -278,7 +278,7 @@ export class ScreenshotManager extends RefCounted {
     this.screenshotStartTime =
       this.lastUpdateTimestamp =
       this.gpuMemoryChangeTimestamp =
-      Date.now();
+        Date.now();
     this.screenshotLoadStats = null;
 
     // Pass a new screenshot ID to the viewer to trigger a new screenshot.
@@ -301,7 +301,6 @@ export class ScreenshotManager extends RefCounted {
       };
       viewer.display.canvas.width = newSize.width;
       viewer.display.canvas.height = newSize.height;
-      ++viewer.display.resizeGeneration;
       viewer.display.resizeCallback();
     }
   }
@@ -348,8 +347,23 @@ export class ScreenshotManager extends RefCounted {
     resetZoom: boolean = false,
   ) {
     const oldScale = this.screenshotScale;
-    const zoomScaleFactor = resetZoom ? scale : oldScale / scale;
-    const canvasScaleFactor = resetZoom ? 1 : scale / oldScale;
+
+    // Because the scale is applied to the canvas, we need to check if the new scale will exceed the maximum render area
+    // If so, that means the scale needs to be adjusted to fit within the maximum render area
+    let intendedScale = scale;
+    if (!resetZoom && scale > 1) {
+      const currentCanvasSize = this.calculatedClippedViewportSize();
+      const numPixels =
+        (currentCanvasSize.width * currentCanvasSize.height) /
+        (oldScale * oldScale);
+      if (numPixels * intendedScale * intendedScale > MAX_RENDER_AREA_PIXELS) {
+        intendedScale = Math.sqrt(MAX_RENDER_AREA_PIXELS / numPixels);
+      }
+    }
+
+    const scaleFactor = intendedScale / oldScale;
+    const zoomScaleFactor = resetZoom ? scale : 1 / scaleFactor;
+    const canvasScaleFactor = resetZoom ? 1 : scaleFactor;
 
     if (this.shouldKeepSliceViewFOVFixed || resetZoom) {
       // Scale the zoom factor of each slice view panel
@@ -364,6 +378,8 @@ export class ScreenshotManager extends RefCounted {
     }
 
     this.resizeCanvasIfNeeded(canvasScaleFactor);
+
+    return intendedScale;
   }
 
   /**
@@ -394,7 +410,7 @@ export class ScreenshotManager extends RefCounted {
     ) {
       if (
         newStats.timestamp - this.gpuMemoryChangeTimestamp >
-        SCREENSHOT_TIMEOUT &&
+          SCREENSHOT_TIMEOUT &&
         Date.now() - this.lastUpdateTimestamp > SCREENSHOT_TIMEOUT
       ) {
         this.statisticsUpdated.dispatch(fullStats);

@@ -26,9 +26,11 @@ import {
   decodeParametersFromDragTypeList,
   encodeParametersAsDragType,
   getDropEffect,
+  getDropEffectFromModifiers,
   setDropEffect,
 } from "#src/util/drag_and_drop.js";
 import {
+  bigintToStringJsonReplacer,
   parseArray,
   verifyBoolean,
   verifyObjectProperty,
@@ -63,10 +65,13 @@ export function startLayerDrag(
         visible: layer.visible,
       })),
     ),
-    JSON.stringify({
-      layers: sourceInfo.layers.map((layer) => layer.toJSON()),
-      layout: sourceInfo.layoutSpec,
-    }),
+    JSON.stringify(
+      {
+        layers: sourceInfo.layers.map((layer) => layer.toJSON()),
+        layout: sourceInfo.layoutSpec,
+      },
+      bigintToStringJsonReplacer,
+    ),
   );
   if (dragSource !== undefined) {
     dragSource.disposer();
@@ -227,42 +232,6 @@ export class DropLayers {
 }
 
 type LayerDropEffect = "none" | "move" | "copy" | "link";
-
-export function getDropEffectFromModifiers<DropEffect extends string>(
-  event: DragEvent,
-  defaultDropEffect: DropEffect,
-  moveAllowed: boolean,
-): { dropEffect: DropEffect | "move" | "copy"; dropEffectMessage: string } {
-  let dropEffect: DropEffect | "move" | "copy";
-  if (event.shiftKey) {
-    dropEffect = "copy";
-  } else if (event.ctrlKey && moveAllowed) {
-    dropEffect = "move";
-  } else {
-    dropEffect = defaultDropEffect;
-  }
-  let message = "";
-  const addMessage = (msg: string) => {
-    if (message !== "") {
-      message += ", ";
-    }
-    message += msg;
-  };
-  if (defaultDropEffect !== "none" && dropEffect !== defaultDropEffect) {
-    if (event.shiftKey) {
-      addMessage(`release SHIFT to ${defaultDropEffect}`);
-    } else {
-      addMessage(`release CONTROL to ${defaultDropEffect}`);
-    }
-  }
-  if (dropEffect !== "copy") {
-    addMessage("hold SHIFT to copy");
-  }
-  if (dropEffect !== "move" && moveAllowed && defaultDropEffect !== "move") {
-    addMessage("hold CONTROL to move");
-  }
-  return { dropEffect, dropEffectMessage: message };
-}
 
 export function getLayerDropEffect(
   event: DragEvent,
@@ -523,13 +492,13 @@ export function registerLayerBarDropHandlers(
     if (update(event, /*updateDropEffect=*/ true) !== undefined) {
       event.preventDefault();
     } else {
-      popDragStatus(panel.element, "drop");
+      popDragStatus(event, panel.element, "drop");
     }
   });
   target.addEventListener("drop", (event: DragEvent) => {
     event.preventDefault();
     panel.dragEnterCount = 0;
-    popDragStatus(panel.element, "drop");
+    popDragStatus(event, panel.element, "drop");
     const dropLayers = update(event, /*updateDropEffect=*/ false)?.dropLayers;
     panel.dropLayers = undefined;
     if (dropLayers === undefined) return;
@@ -545,7 +514,7 @@ export function registerLayerBarDropHandlers(
   target.addEventListener("dragover", (event: DragEvent) => {
     const updateResult = update(event, /*updateDropEffect=*/ true);
     if (updateResult === undefined) {
-      popDragStatus(panel.element, "drop");
+      popDragStatus(event, panel.element, "drop");
       return;
     }
     const { dropLayers, dropEffect, dropEffectMessage } = updateResult;
@@ -565,7 +534,7 @@ export function registerLayerBarDropHandlers(
     if (dropEffectMessage) {
       message += ` (${dropEffectMessage})`;
     }
-    pushDragStatus(panel.element, "drop", message);
+    pushDragStatus(event, panel.element, "drop", message);
     event.preventDefault();
     event.stopPropagation();
   });
@@ -580,6 +549,7 @@ export function registerLayerDragHandlers(
   element.draggable = true;
   element.addEventListener("dragstart", (event: DragEvent) => {
     pushDragStatus(
+      event,
       element,
       "drag",
       "Drag layer to another layer bar/panel (including in another Neuroglancer window), " +
@@ -593,8 +563,8 @@ export function registerLayerDragHandlers(
     });
     event.stopPropagation();
   });
-  element.addEventListener("dragend", () => {
-    popDragStatus(element, "drag");
+  element.addEventListener("dragend", (event) => {
+    popDragStatus(event, element, "drag");
     // This call to endLayerDrag is a no-op if a drag was completed successfully within the same
     // browser window, because it will already have been called by the `drop` handler.  This call
     // has an effect only for a cancelled drag or a successful cross-browser window drag.
@@ -610,9 +580,9 @@ export function registerLayerBarDragLeaveHandler(panel: LayerBarDropInterface) {
   panel.element.addEventListener("dragenter", () => {
     ++panel.dragEnterCount;
   });
-  panel.element.addEventListener("dragleave", () => {
+  panel.element.addEventListener("dragleave", (event) => {
     if (--panel.dragEnterCount !== 0) return;
-    popDragStatus(panel.element, "drop");
+    popDragStatus(event, panel.element, "drop");
     const { dropLayers } = panel;
     if (dropLayers !== undefined) {
       destroyDropLayers(dropLayers);

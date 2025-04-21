@@ -28,9 +28,8 @@ import {
   getObjectKey,
 } from "#src/segmentation_display_state/base.js";
 import { SKELETON_LAYER_RPC_ID } from "#src/skeleton/base.js";
-import type { TypedArray } from "#src/util/array.js";
+import type { TypedNumberArray } from "#src/util/array.js";
 import type { Endianness } from "#src/util/endian.js";
-import { Uint64 } from "#src/util/uint64.js";
 import {
   getBasePriority,
   getPriorityTier,
@@ -43,14 +42,14 @@ const SKELETON_CHUNK_PRIORITY = 60;
 
 // Chunk that contains the skeleton of a single object.
 export class SkeletonChunk extends Chunk {
-  objectId = new Uint64();
+  objectId: bigint = 0n;
   vertexPositions: Float32Array | null = null;
-  vertexAttributes: TypedArray[] | null = null;
+  vertexAttributes: TypedNumberArray[] | null = null;
   indices: Uint32Array | null = null;
 
-  initializeSkeletonChunk(key: string, objectId: Uint64) {
+  initializeSkeletonChunk(key: string, objectId: bigint) {
     super.initialize(key);
-    this.objectId.assign(objectId);
+    this.objectId = objectId;
   }
   freeSystemMemory() {
     this.vertexPositions = this.indices = null;
@@ -120,8 +119,8 @@ export class SkeletonChunk extends Chunk {
 }
 
 export class SkeletonSource extends ChunkSource {
-  chunks: Map<string, SkeletonChunk>;
-  getChunk(objectId: Uint64) {
+  declare chunks: Map<string, SkeletonChunk>;
+  getChunk(objectId: bigint) {
     const key = getObjectKey(objectId);
     let chunk = this.chunks.get(key);
     if (chunk === undefined) {

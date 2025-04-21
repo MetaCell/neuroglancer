@@ -37,7 +37,6 @@ import {
   AnnotationType,
   annotationTypeHandlers,
   annotationTypes,
-  fixAnnotationAfterStructuredCloning,
   makeAnnotationId,
   makeAnnotationPropertySerializers,
 } from "#src/annotation/index.js";
@@ -61,7 +60,7 @@ import { ENDIANNESS, Endianness } from "#src/util/endian.js";
 import * as matrix from "#src/util/matrix.js";
 import type { Signal } from "#src/util/signal.js";
 import { NullarySignal } from "#src/util/signal.js";
-import type { Buffer } from "#src/webgl/buffer.js";
+import type { GLBuffer } from "#src/webgl/buffer.js";
 import type { GL } from "#src/webgl/context.js";
 import type { RPC } from "#src/worker_rpc.js";
 import {
@@ -90,7 +89,7 @@ export function computeNumPickIds(
 }
 
 export class AnnotationGeometryData {
-  buffer: Buffer | undefined;
+  buffer: GLBuffer | undefined;
   bufferValid = false;
   serializedAnnotations: SerializedAnnotations;
   numPickIds = 0;
@@ -115,7 +114,7 @@ export class AnnotationGeometryData {
 }
 
 export class AnnotationSubsetGeometryChunk extends Chunk {
-  source: AnnotationSubsetGeometryChunkSource;
+  declare source: AnnotationSubsetGeometryChunkSource;
   // undefined indicates chunk not found
   data: AnnotationGeometryData | undefined;
   constructor(source: AnnotationSubsetGeometryChunkSource, x: any) {
@@ -139,7 +138,7 @@ export class AnnotationSubsetGeometryChunk extends Chunk {
 }
 
 export class AnnotationGeometryChunk extends SliceViewChunk {
-  source: AnnotationGeometryChunkSource;
+  declare source: AnnotationGeometryChunkSource;
   // undefined indicates chunk not found
   data: AnnotationGeometryData | undefined;
 
@@ -168,7 +167,7 @@ export class AnnotationGeometryChunkSource extends SliceViewChunkSource<
   AnnotationGeometryChunkSpecification,
   AnnotationGeometryChunk
 > {
-  OPTIONS: AnnotationGeometryChunkSourceOptions;
+  declare OPTIONS: AnnotationGeometryChunkSourceOptions;
   parent: Borrowed<MultiscaleAnnotationSource>;
   immediateChunkUpdates = true;
 
@@ -226,7 +225,7 @@ export class AnnotationGeometryChunkSource extends SliceViewChunkSource<
 @registerSharedObjectOwner(ANNOTATION_SUBSET_GEOMETRY_CHUNK_SOURCE_RPC_ID)
 export class AnnotationSubsetGeometryChunkSource extends ChunkSource {
   immediateChunkUpdates = true;
-  chunks: Map<string, AnnotationSubsetGeometryChunk>;
+  declare chunks: Map<string, AnnotationSubsetGeometryChunk>;
 
   constructor(
     chunkManager: Borrowed<ChunkManager>,
@@ -250,13 +249,13 @@ export class AnnotationMetadataChunk extends Chunk {
   annotation: Annotation | null;
   constructor(source: Borrowed<AnnotationMetadataChunkSource>, x: any) {
     super(source);
-    this.annotation = fixAnnotationAfterStructuredCloning(x.annotation);
+    this.annotation = x.annotation;
   }
 }
 
 @registerSharedObjectOwner(ANNOTATION_METADATA_CHUNK_SOURCE_RPC_ID)
 export class AnnotationMetadataChunkSource extends ChunkSource {
-  chunks: Map<string, AnnotationMetadataChunk>;
+  declare chunks: Map<string, AnnotationMetadataChunk>;
   constructor(
     chunkManager: Borrowed<ChunkManager>,
     public parent: Borrowed<MultiscaleAnnotationSource>,
@@ -290,7 +289,7 @@ function copyOtherAnnotations(
   propertySerializers: AnnotationPropertySerializer[],
   excludedType: AnnotationType,
   excludedTypeAdjustment: number,
-): Uint8Array {
+): Uint8Array<ArrayBuffer> {
   const newData = new Uint8Array(
     serializedAnnotations.data.length + excludedTypeAdjustment,
   );
@@ -510,9 +509,7 @@ export class MultiscaleAnnotationSource
 {
   OPTIONS: object;
   key: any;
-  metadataChunkSource = this.registerDisposer(
-    new AnnotationMetadataChunkSource(this.chunkManager, this),
-  );
+  metadataChunkSource: AnnotationMetadataChunkSource;
   segmentFilteredSources: Owned<AnnotationSubsetGeometryChunkSource>[];
   spatiallyIndexedSources = new Set<Borrowed<AnnotationGeometryChunkSource>>();
   rank: number;
@@ -528,6 +525,9 @@ export class MultiscaleAnnotationSource
     },
   ) {
     super();
+    this.metadataChunkSource = this.registerDisposer(
+      new AnnotationMetadataChunkSource(this.chunkManager, this),
+    );
     this.rank = options.rank;
     this.properties = options.properties;
     this.annotationPropertySerializers = makeAnnotationPropertySerializers(
@@ -1007,8 +1007,7 @@ registerRPC(ANNOTATION_COMMIT_UPDATE_RESULT_RPC_ID, function (x) {
   if (error !== undefined) {
     source.handleFailedUpdate(annotationId, error);
   } else {
-    const newAnnotation: Annotation | null =
-      fixAnnotationAfterStructuredCloning(x.newAnnotation);
+    const newAnnotation: Annotation | null = x.newAnnotation;
     source.handleSuccessfulUpdate(annotationId, newAnnotation);
   }
 });

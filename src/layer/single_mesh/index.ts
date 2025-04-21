@@ -23,6 +23,7 @@ import {
   UserLayer,
 } from "#src/layer/index.js";
 import type { LoadedDataSubsource } from "#src/layer/layer_data_source.js";
+import { Overlay } from "#src/overlay.js";
 import type { VertexAttributeInfo } from "#src/single_mesh/base.js";
 import {
   getShaderAttributeType,
@@ -30,15 +31,16 @@ import {
   SingleMeshDisplayState,
   SingleMeshLayer,
 } from "#src/single_mesh/frontend.js";
+import { TrackableBoolean } from "#src/trackable_boolean.js";
 import type { WatchableValueInterface } from "#src/trackable_value.js";
 import { WatchableValue } from "#src/trackable_value.js";
 import type { Borrowed } from "#src/util/disposable.js";
 import { RefCounted } from "#src/util/disposable.js";
 import { removeChildren, removeFromParent } from "#src/util/dom.js";
-import { makeHelpButton } from "#src/widget/help_button.js";
-import { makeMaximizeButton } from "#src/widget/maximize_button.js";
-import { ShaderCodeOverlay } from "#src/widget/shader_code_overlay.js";
-import { ShaderCodeWidget } from "#src/widget/shader_code_widget.js";
+import {
+  makeShaderCodeWidgetTopRow,
+  ShaderCodeWidget,
+} from "#src/widget/shader_code_widget.js";
 import {
   registerLayerShaderControlsTool,
   ShaderControls,
@@ -47,14 +49,18 @@ import { Tab } from "#src/widget/tab_view.js";
 
 const SHADER_JSON_KEY = "shader";
 const SHADER_CONTROLS_JSON_KEY = "shaderControls";
+const CODE_VISIBLE_KEY = "codeVisible";
 
 export class SingleMeshUserLayer extends UserLayer {
   displayState = new SingleMeshDisplayState();
+  codeVisible = new TrackableBoolean(true);
+
   vertexAttributes = new WatchableValue<VertexAttributeInfo[] | undefined>(
     undefined,
   );
   constructor(public managedLayer: Borrowed<ManagedUserLayer>) {
     super(managedLayer);
+    this.codeVisible.changed.add(this.specificationChanged.dispatch);
     this.registerDisposer(
       this.displayState.shaderControlState.changed.add(
         this.specificationChanged.dispatch,
@@ -75,6 +81,7 @@ export class SingleMeshUserLayer extends UserLayer {
 
   restoreState(specification: any) {
     super.restoreState(specification);
+    this.codeVisible.restoreState(specification[CODE_VISIBLE_KEY]);
     this.displayState.fragmentMain.restoreState(specification[SHADER_JSON_KEY]);
     this.displayState.shaderControlState.restoreState(
       specification[SHADER_CONTROLS_JSON_KEY],
@@ -116,11 +123,12 @@ export class SingleMeshUserLayer extends UserLayer {
     const x = super.toJSON();
     x[SHADER_JSON_KEY] = this.displayState.fragmentMain.toJSON();
     x[SHADER_CONTROLS_JSON_KEY] = this.displayState.shaderControlState.toJSON();
+    x[CODE_VISIBLE_KEY] = this.codeVisible.toJSON();
     return x;
   }
 
   static type = "mesh";
-  static typeAbbreviation = "mesh";
+  static typeAbbreviation = "msh";
 }
 
 function makeShaderCodeWidget(layer: SingleMeshUserLayer) {
@@ -193,41 +201,29 @@ function makeVertexAttributeWidget(layer: SingleMeshUserLayer) {
 }
 
 class DisplayOptionsTab extends Tab {
-  attributeWidget = this.registerDisposer(
-    makeVertexAttributeWidget(this.layer),
-  );
-  codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
+  attributeWidget: VertexAttributeWidget;
+  codeWidget: ShaderCodeWidget;
+
   constructor(public layer: SingleMeshUserLayer) {
     super();
     const { element } = this;
+    this.attributeWidget = this.registerDisposer(
+      makeVertexAttributeWidget(layer),
+    );
+    this.codeWidget = this.registerDisposer(makeShaderCodeWidget(layer));
     element.classList.add("neuroglancer-single-mesh-dropdown");
-    const topRow = document.createElement("div");
-    topRow.className = "neuroglancer-single-mesh-dropdown-top-row";
-    const spacer = document.createElement("div");
-    spacer.style.flex = "1";
-
-    topRow.appendChild(spacer);
-    topRow.appendChild(
-      makeMaximizeButton({
-        title: "Show larger editor view",
-        onClick: () => {
-          new ShaderCodeOverlay(
-            this.layer, 
-            makeShaderCodeWidget,
-            { additionalClass: 'neuroglancer-single-mesh-layer-shader-overlay' },
-            makeVertexAttributeWidget
-          );
+    element.appendChild(
+      makeShaderCodeWidgetTopRow(
+        this.layer,
+        this.codeWidget,
+        ShaderCodeOverlay,
+        {
+          title: "Documentation on image layer rendering",
+          href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
         },
-      }),
+        "neuroglancer-single-mesh-dropdown-top-row",
+      ),
     );
-    topRow.appendChild(
-      makeHelpButton({
-        title: "Documentation on single mesh layer rendering",
-        href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
-      }),
-    );
-
-    element.appendChild(topRow);
     element.appendChild(this.attributeWidget.element);
     element.appendChild(this.codeWidget.element);
     element.appendChild(
@@ -240,6 +236,22 @@ class DisplayOptionsTab extends Tab {
         ),
       ).element,
     );
+  }
+}
+
+class ShaderCodeOverlay extends Overlay {
+  attributeWidget: VertexAttributeWidget;
+  codeWidget: ShaderCodeWidget;
+  constructor(public layer: SingleMeshUserLayer) {
+    super();
+    this.attributeWidget = this.registerDisposer(
+      makeVertexAttributeWidget(layer),
+    );
+    this.codeWidget = this.registerDisposer(makeShaderCodeWidget(layer));
+    this.content.classList.add("neuroglancer-single-mesh-layer-shader-overlay");
+    this.content.appendChild(this.attributeWidget.element);
+    this.content.appendChild(this.codeWidget.element);
+    this.codeWidget.textEditor.refresh();
   }
 }
 

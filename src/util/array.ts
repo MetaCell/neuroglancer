@@ -63,35 +63,63 @@ export function filterArrayInplace<T>(
   array.length = outIndex;
 }
 
-export type TypedArrayConstructor =
-  | typeof Int8Array
-  | typeof Uint8Array
-  | typeof Int16Array
-  | typeof Uint16Array
-  | typeof Int32Array
-  | typeof Uint32Array
-  | typeof Float32Array
-  | typeof Float64Array;
+export type TypedNumberArrayConstructor<
+  TArrayBuffer extends ArrayBufferLike = ArrayBufferLike,
+> = (
+  | typeof Int8Array<TArrayBuffer>
+  | typeof Uint8Array<TArrayBuffer>
+  | typeof Int16Array<TArrayBuffer>
+  | typeof Uint16Array<TArrayBuffer>
+  | typeof Int32Array<TArrayBuffer>
+  | typeof Uint32Array<TArrayBuffer>
+  | typeof Float32Array<TArrayBuffer>
+  | typeof Float64Array<TArrayBuffer>
+) &
+  (TArrayBuffer extends ArrayBuffer
+    ? { new (count: number): TypedNumberArray<ArrayBuffer> }
+    : Record<string, never>);
 
-export type TypedArray =
-  | Int8Array
-  | Uint8Array
-  | Int16Array
-  | Uint16Array
-  | Int32Array
-  | Uint32Array
-  | Float32Array
-  | Float64Array;
+export type TypedBigIntArrayConstructor<
+  TArrayBuffer extends ArrayBufferLike = ArrayBufferLike,
+> = (typeof BigUint64Array<TArrayBuffer> | typeof BigInt64Array<TArrayBuffer>) &
+  (TArrayBuffer extends ArrayBuffer
+    ? { new (count: number): TypedBigIntArray<ArrayBuffer> }
+    : Record<string, never>);
+
+export type TypedArrayConstructor<
+  TArrayBuffer extends ArrayBufferLike = ArrayBufferLike,
+> =
+  | TypedNumberArrayConstructor<TArrayBuffer>
+  | TypedBigIntArrayConstructor<TArrayBuffer>;
+
+export type TypedNumberArray<
+  TArrayBuffer extends ArrayBufferLike = ArrayBufferLike,
+> =
+  | Int8Array<TArrayBuffer>
+  | Uint8Array<TArrayBuffer>
+  | Int16Array<TArrayBuffer>
+  | Uint16Array<TArrayBuffer>
+  | Int32Array<TArrayBuffer>
+  | Uint32Array<TArrayBuffer>
+  | Float32Array<TArrayBuffer>
+  | Float64Array<TArrayBuffer>;
+
+export type TypedBigIntArray<
+  TArrayBuffer extends ArrayBufferLike = ArrayBufferLike,
+> = BigInt64Array<TArrayBuffer> | BigUint64Array<TArrayBuffer>;
+
+export type TypedArray<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> =
+  TypedNumberArray<TArrayBuffer> | TypedBigIntArray<TArrayBuffer>;
 
 /**
  * Returns an array of size newSize that starts with the contents of array.
  * Either returns array if it has the correct size, or a new array with zero
  * padding at the end.
  */
-export function maybePadArray<T extends TypedArray>(
-  array: T,
-  newSize: number,
-): T {
+export function maybePadArray<
+  TArrayBuffer extends ArrayBufferLike,
+  T extends TypedNumberArray<TArrayBuffer>,
+>(array: T, newSize: number): T {
   if (array.length === newSize) {
     return array;
   }
@@ -118,7 +146,7 @@ export function getFortranOrderStrides(
  * Converts an array of shape [majorSize, minorSize] to
  * [minorSize, majorSize].
  */
-export function transposeArray2d<T extends TypedArray>(
+export function transposeArray2d<T extends TypedNumberArray>(
   array: T,
   majorSize: number,
   minorSize: number,
@@ -133,7 +161,7 @@ export function transposeArray2d<T extends TypedArray>(
   return transpose;
 }
 
-export function tile2dArray<T extends TypedArray>(
+export function tile2dArray<T extends TypedNumberArray>(
   array: T,
   majorDimension: number,
   minorTiles: number,
@@ -163,13 +191,13 @@ export function tile2dArray<T extends TypedArray>(
   return result;
 }
 
-export function binarySearch<T>(
-  haystack: ArrayLike<T>,
-  needle: T,
-  compare: (a: T, b: T) => number,
+export function binarySearch<Hay, Needle>(
+  haystack: ArrayLike<Hay>,
+  needle: Needle,
+  compare: (a: Needle, b: Hay) => number,
   low = 0,
   high = haystack.length,
-) {
+): number {
   while (low < high) {
     const mid = (low + high - 1) >> 1;
     const compareResult = compare(needle, haystack[mid]);
@@ -545,5 +573,48 @@ export function mergeSequences(
   while (b < bCount) {
     bCallback(b);
     ++b;
+  }
+}
+
+export class TypedArrayBuilder<T extends TypedArray<ArrayBuffer>> {
+  data: T;
+  length: number = 0;
+  constructor(cls: { new (count: number): T }, initialCapacity: number = 16) {
+    this.data = new cls(initialCapacity);
+  }
+
+  resize(newLength: number) {
+    const { data } = this;
+    if (newLength > data.length) {
+      const newData = new (data.constructor as { new (count: number): T })(
+        Math.max(newLength, data.length * 2),
+      );
+      newData.set(data.subarray(0, this.length) as any);
+      this.data = newData;
+    }
+    this.length = newLength;
+  }
+
+  get view(): T {
+    return this.data.subarray(0, this.length) as T;
+  }
+
+  shrinkToFit() {
+    this.data = this.data.slice(0, length) as T;
+  }
+
+  clear() {
+    this.length = 0;
+  }
+
+  appendArray(other: ArrayLike<T extends TypedBigIntArray ? bigint : number>) {
+    const { length } = this;
+    this.resize(length + other.length);
+    this.data.set(other as any, length);
+  }
+
+  eraseRange(start: number, end: number) {
+    this.data.copyWithin(start, end, this.length);
+    this.length -= end - start;
   }
 }

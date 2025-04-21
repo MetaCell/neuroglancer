@@ -11,11 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import atexit
+
 import os
 import pathlib
-from collections.abc import Iterator
-from typing import Callable
+import threading
+from collections.abc import Callable, Iterator
 
 import neuroglancer.static_file_server
 import neuroglancer.webdriver
@@ -63,6 +63,10 @@ def pytest_addoption(parser):
         help="Specifies the browser to use.",
     )
     parser.addoption(
+        "--browser-binary-path",
+        help="Overrides default browser executable path.",
+    )
+    parser.addoption(
         "--skip-browser-tests",
         action="store_true",
         default=False,
@@ -72,6 +76,25 @@ def pytest_addoption(parser):
         "--failure-screenshot-dir",
         help="Save screenshots to specified directory in case of test failures.",
     )
+
+
+def _setup_webdriver(request, cls):
+    webdriver = cls(
+        headless=request.config.getoption("--headless"),
+        docker=request.config.getoption("--webdriver-docker"),
+        debug=request.config.getoption("--debug-webdriver"),
+        browser=request.config.getoption("--browser"),
+        browser_binary_path=request.config.getoption("--browser-binary-path"),
+    )
+
+    # Note: Regular atexit functions are run only after non-daemon threads are joined.
+    # However, Selenium creates a non-daemon thread for bidi websocket communication,
+    # which blocks Python from exiting.
+    #
+    # The `threading._register_atexit` function registers an early atexit callback to be
+    # invoked *before* non-daemon threads are joined.
+    threading._register_atexit(webdriver.driver.quit)
+    return webdriver
 
 
 @pytest.fixture(scope="session")
@@ -84,15 +107,9 @@ def _webdriver_internal(request):
         static_content_url = request.config.getoption("--static-content-url")
         if static_content_url is not None:
             neuroglancer.set_static_content_source(url=static_content_url)
-    webdriver = neuroglancer.webdriver.Webdriver(
-        headless=request.config.getoption("--headless"),
-        docker=request.config.getoption("--webdriver-docker"),
-        debug=request.config.getoption("--debug-webdriver"),
-        browser=request.config.getoption("--browser"),
-    )
+    webdriver = _setup_webdriver(request, neuroglancer.webdriver.Webdriver)
     if request.config.getoption("--neuroglancer-server-debug"):
         neuroglancer.server.debug = True
-    atexit.register(webdriver.driver.close)
     return webdriver
 
 
@@ -100,13 +117,7 @@ def _webdriver_internal(request):
 def webdriver_generic(request):
     if request.config.getoption("--skip-browser-tests"):
         pytest.skip("--skip-browser-tests")
-    webdriver = neuroglancer.webdriver.WebdriverBase(
-        headless=request.config.getoption("--headless"),
-        docker=request.config.getoption("--webdriver-docker"),
-        debug=request.config.getoption("--debug-webdriver"),
-        browser=request.config.getoption("--browser"),
-    )
-    atexit.register(webdriver.driver.close)
+    webdriver = _setup_webdriver(request, neuroglancer.webdriver.WebdriverBase)
     return webdriver
 
 

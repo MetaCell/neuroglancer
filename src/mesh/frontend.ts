@@ -66,8 +66,7 @@ import {
   vec3,
 } from "#src/util/geom.js";
 import * as matrix from "#src/util/matrix.js";
-import type { Uint64 } from "#src/util/uint64.js";
-import { Buffer } from "#src/webgl/buffer.js";
+import { GLBuffer } from "#src/webgl/buffer.js";
 import type { GL } from "#src/webgl/context.js";
 import { parameterizedEmitterDependentShaderGetter } from "#src/webgl/dynamic_shader.js";
 import type { ShaderBuilder, ShaderProgram } from "#src/webgl/shader.js";
@@ -86,19 +85,19 @@ function copyMeshDataToGpu(
   gl: GL,
   chunk: FragmentChunk | MultiscaleFragmentChunk,
 ) {
-  chunk.vertexBuffer = Buffer.fromData(
+  chunk.vertexBuffer = GLBuffer.fromData(
     gl,
     chunk.meshData.vertexPositions,
     gl.ARRAY_BUFFER,
     gl.STATIC_DRAW,
   );
-  chunk.indexBuffer = Buffer.fromData(
+  chunk.indexBuffer = GLBuffer.fromData(
     gl,
     chunk.meshData.indices,
     gl.ELEMENT_ARRAY_BUFFER,
     gl.STATIC_DRAW,
   );
-  chunk.normalBuffer = Buffer.fromData(
+  chunk.normalBuffer = GLBuffer.fromData(
     gl,
     chunk.meshData.vertexNormals,
     gl.ARRAY_BUFFER,
@@ -240,12 +239,13 @@ highp vec3 getVertexPosition() {
 
 export class MeshShaderManager {
   private tempLightVec = new Float32Array(4);
-  private vertexPositionHandler =
-    vertexPositionHandlers[this.vertexPositionFormat];
+  private vertexPositionHandler: VertexPositionFormatHandler;
   constructor(
     public fragmentRelativeVertices: boolean,
     public vertexPositionFormat: VertexPositionFormat,
-  ) {}
+  ) {
+    this.vertexPositionHandler = vertexPositionHandlers[vertexPositionFormat];
+  }
 
   beginLayer(
     gl: GL,
@@ -412,11 +412,8 @@ export interface MeshDisplayState extends SegmentationDisplayState3D {
 }
 
 export class MeshLayer extends PerspectiveViewRenderLayer<ThreeDimensionalRenderLayerAttachmentState> {
-  protected meshShaderManager = new MeshShaderManager(
-    /*fragmentRelativeVertices=*/ false,
-    VertexPositionFormat.float32,
-  );
-  private getShader = this.meshShaderManager.makeGetter(this);
+  protected meshShaderManager;
+  private getShader;
   backend: SegmentationLayerSharedObject;
 
   constructor(
@@ -425,6 +422,11 @@ export class MeshLayer extends PerspectiveViewRenderLayer<ThreeDimensionalRender
     public displayState: MeshDisplayState,
   ) {
     super();
+    this.meshShaderManager = new MeshShaderManager(
+      /*fragmentRelativeVertices=*/ false,
+      VertexPositionFormat.float32,
+    );
+    this.getShader = this.meshShaderManager.makeGetter(this);
 
     registerRedrawWhenSegmentationDisplayState3DChanged(displayState, this);
     this.registerDisposer(
@@ -584,7 +586,7 @@ export class MeshLayer extends PerspectiveViewRenderLayer<ThreeDimensionalRender
   }
 
   getObjectPosition(
-    id: Uint64,
+    id: bigint,
     nearestTo: Float32Array,
   ): Float32Array | undefined {
     const transform = this.displayState.transform.value;
@@ -676,10 +678,10 @@ export class ManifestChunk extends Chunk {
 }
 
 export class FragmentChunk extends Chunk {
-  source: FragmentSource;
-  vertexBuffer: Buffer;
-  indexBuffer: Buffer;
-  normalBuffer: Buffer;
+  declare source: FragmentSource;
+  vertexBuffer: GLBuffer;
+  indexBuffer: GLBuffer;
+  normalBuffer: GLBuffer;
   meshData: EncodedMeshData;
 
   constructor(source: FragmentSource, x: any) {
@@ -704,7 +706,7 @@ export class MeshSource extends ChunkSource {
   fragmentSource = this.registerDisposer(
     new FragmentSource(this.chunkManager, this),
   );
-  chunks: Map<string, ManifestChunk>;
+  declare chunks: Map<string, ManifestChunk>;
 
   initializeCounterpart(rpc: RPC, options: any) {
     this.fragmentSource.initializeCounterpart(this.chunkManager.rpc!, {});
@@ -721,7 +723,7 @@ export class MeshSource extends ChunkSource {
 
 @registerSharedObjectOwner(FRAGMENT_SOURCE_RPC_ID)
 export class FragmentSource extends ChunkSource {
-  chunks: Map<string, FragmentChunk>;
+  declare chunks: Map<string, FragmentChunk>;
   get key() {
     return this.meshSource.key;
   }
@@ -751,11 +753,8 @@ function hasFragmentChunk(
 }
 
 export class MultiscaleMeshLayer extends PerspectiveViewRenderLayer<ThreeDimensionalRenderLayerAttachmentState> {
-  protected meshShaderManager = new MeshShaderManager(
-    /*fragmentRelativeVertices=*/ this.source.format.fragmentRelativeVertices,
-    this.source.format.vertexPositionFormat,
-  );
-  private getShader = this.meshShaderManager.makeGetter(this);
+  protected meshShaderManager: MeshShaderManager;
+  private getShader;
   backend: SegmentationLayerSharedObject;
 
   constructor(
@@ -764,6 +763,11 @@ export class MultiscaleMeshLayer extends PerspectiveViewRenderLayer<ThreeDimensi
     public displayState: MeshDisplayState,
   ) {
     super();
+    this.meshShaderManager = new MeshShaderManager(
+      /*fragmentRelativeVertices=*/ source.format.fragmentRelativeVertices,
+      source.format.vertexPositionFormat,
+    );
+    this.getShader = this.meshShaderManager.makeGetter(this);
 
     registerRedrawWhenSegmentationDisplayState3DChanged(displayState, this);
     this.registerDisposer(
@@ -1056,7 +1060,7 @@ export class MultiscaleMeshLayer extends PerspectiveViewRenderLayer<ThreeDimensi
     return hasAllChunks;
   }
 
-  getObjectPosition(id: Uint64): Float32Array | undefined {
+  getObjectPosition(id: bigint): Float32Array | undefined {
     const transform = this.displayState.transform.value;
     if (transform.error !== undefined) return undefined;
     const chunk = this.source.chunks.get(getObjectKey(id));
@@ -1083,7 +1087,7 @@ export class MultiscaleMeshLayer extends PerspectiveViewRenderLayer<ThreeDimensi
 
 export class MultiscaleManifestChunk extends Chunk {
   manifest: MultiscaleMeshManifest;
-  source: MultiscaleMeshSource;
+  declare source: MultiscaleMeshSource;
 
   constructor(source: MultiscaleMeshSource, x: any) {
     super(source);
@@ -1093,10 +1097,10 @@ export class MultiscaleManifestChunk extends Chunk {
 
 export class MultiscaleFragmentChunk extends Chunk {
   meshData: EncodedMeshData & { subChunkOffsets: Uint32Array };
-  source: MultiscaleFragmentSource;
-  vertexBuffer: Buffer;
-  indexBuffer: Buffer;
-  normalBuffer: Buffer;
+  declare source: MultiscaleFragmentSource;
+  vertexBuffer: GLBuffer;
+  indexBuffer: GLBuffer;
+  normalBuffer: GLBuffer;
 
   constructor(source: MultiscaleFragmentSource, x: any) {
     super(source);
@@ -1119,11 +1123,11 @@ export interface MultiscaleMeshSourceOptions extends MeshSourceOptions {
 }
 
 export class MultiscaleMeshSource extends ChunkSource {
-  OPTIONS: MultiscaleMeshSourceOptions;
+  declare OPTIONS: MultiscaleMeshSourceOptions;
   fragmentSource = this.registerDisposer(
     new MultiscaleFragmentSource(this.chunkManager, this),
   );
-  chunks: Map<string, MultiscaleManifestChunk>;
+  declare chunks: Map<string, MultiscaleManifestChunk>;
   format: MultiscaleFragmentFormat;
   constructor(
     chunkManager: Borrowed<ChunkManager>,
@@ -1150,7 +1154,7 @@ export class MultiscaleMeshSource extends ChunkSource {
 
 @registerSharedObjectOwner(MULTISCALE_FRAGMENT_SOURCE_RPC_ID)
 export class MultiscaleFragmentSource extends ChunkSource {
-  chunks: Map<string, MultiscaleFragmentChunk>;
+  declare chunks: Map<string, MultiscaleFragmentChunk>;
   get key() {
     return this.meshSource.key;
   }

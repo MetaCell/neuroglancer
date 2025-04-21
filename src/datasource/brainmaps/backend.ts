@@ -79,12 +79,12 @@ import { decodeJpegChunk } from "#src/sliceview/backend_chunk_decoders/jpeg.js";
 import { decodeRawChunk } from "#src/sliceview/backend_chunk_decoders/raw.js";
 import type { VolumeChunk } from "#src/sliceview/volume/backend.js";
 import { VolumeChunkSource } from "#src/sliceview/volume/backend.js";
-import type { CancellationToken } from "#src/util/cancellation.js";
 import { convertEndian32, Endianness } from "#src/util/endian.js";
 import { kInfinityVec, kZeroVec, vec3, vec3Key } from "#src/util/geom.js";
 import {
   parseArray,
   parseFixedLengthArray,
+  parseUint64,
   verifyObject,
   verifyObjectProperty,
   verifyOptionalString,
@@ -92,7 +92,6 @@ import {
   verifyStringArray,
 } from "#src/util/json.js";
 import { defaultStringCompare } from "#src/util/string.js";
-import { Uint64 } from "#src/util/uint64.js";
 import * as vector from "#src/util/vector.js";
 import {
   decodeZIndexCompressed,
@@ -143,8 +142,6 @@ function BrainmapsSource<
   );
 }
 
-const tempUint64 = new Uint64();
-
 @registerSharedObject()
 export class BrainmapsVolumeChunkSource extends BrainmapsSource(
   VolumeChunkSource,
@@ -178,7 +175,7 @@ export class BrainmapsVolumeChunkSource extends BrainmapsSource(
     }
   }
 
-  async download(chunk: VolumeChunk, cancellationToken: CancellationToken) {
+  async download(chunk: VolumeChunk, signal: AbortSignal) {
     const { parameters } = this;
 
     // chunkPosition must not be captured, since it will be invalidated by the next call to
@@ -201,15 +198,14 @@ export class BrainmapsVolumeChunkSource extends BrainmapsSource(
     const response = await makeRequest(
       parameters.instance,
       this.credentialsProvider,
+      path,
       {
         method: "POST",
-        payload: JSON.stringify(payload),
-        path,
-        responseType: "arraybuffer",
+        body: JSON.stringify(payload),
+        signal: signal,
       },
-      cancellationToken,
     );
-    await this.chunkDecoder(chunk, cancellationToken, response);
+    await this.chunkDecoder(chunk, signal, await response.arrayBuffer());
   }
 }
 
@@ -219,13 +215,8 @@ function getFragmentCorner(
   yBits: number,
   zBits: number,
 ): Uint32Array {
-  const id = new Uint64();
-  if (!id.tryParseString(fragmentId, 16)) {
-    throw new Error(
-      `Couldn't parse fragmentId ${fragmentId} as hex-encoded Uint64`,
-    );
-  }
-  return decodeZIndexCompressed(id, xBits, yBits, zBits);
+  const value = parseUint64(BigInt("0x" + fragmentId));
+  return decodeZIndexCompressed(value, xBits, yBits, zBits);
 }
 
 interface BrainmapsMultiscaleManifestChunk extends MultiscaleManifestChunk {
@@ -387,9 +378,8 @@ function decodeBatchMeshResponse(
     if (index + headerSize > length) {
       throw new Error("Invalid batch mesh fragment response.");
     }
-    const objectIdLow = dataView.getUint32(index, /*littleEndian=*/ true);
-    const objectIdHigh = dataView.getUint32(index + 4, /*littleEndian=*/ true);
-    const objectIdString = new Uint64(objectIdLow, objectIdHigh).toString();
+    const objectId = dataView.getBigUint64(index, /*littleEndian=*/ true);
+    const objectIdString = objectId.toString();
     const prefix = objectIdString + "\0";
     index += 8;
     const fragmentKeyLength = dataView.getUint32(index, /*littleEndian=*/ true);
@@ -487,7 +477,7 @@ async function makeBatchMeshRequest<T>(
     meshName: string;
   },
   ids: Map<string, T>,
-  cancellationToken: CancellationToken,
+  signal: AbortSignal,
 ): Promise<ArrayBuffer> {
   const path = "/v1/objects/meshes:batch";
   const batches: BatchMeshFragment[] = [];
@@ -512,17 +502,13 @@ async function makeBatchMeshRequest<T>(
     batches: batches,
   };
   try {
-    return await makeRequest(
-      parameters.instance,
-      credentialsProvider,
-      {
+    return await (
+      await makeRequest(parameters.instance, credentialsProvider, path, {
         method: "POST",
-        path,
-        payload: JSON.stringify(payload),
-        responseType: "arraybuffer",
-      },
-      cancellationToken,
-    );
+        body: JSON.stringify(payload),
+        signal: signal,
+      })
+    ).arrayBuffer();
   } finally {
     for (const [id, idData] of pendingIds) {
       ids.set(id, idData);
@@ -544,32 +530,21 @@ export class BrainmapsMultiscaleMeshSource extends BrainmapsSource(
     return "";
   })();
 
-  download(
-    chunk: BrainmapsMultiscaleManifestChunk,
-    cancellationToken: CancellationToken,
-  ) {
+  download(chunk: BrainmapsMultiscaleManifestChunk, signal: AbortSignal) {
     const { parameters } = this;
     const path =
       `/v1/objects/${parameters.volumeId}/meshes/` +
       `${parameters.info.lods[0].info.name}:listfragments?` +
       `object_id=${chunk.objectId}&return_supervoxel_ids=true` +
       this.listFragmentsParams;
-    return makeRequest(
-      parameters.instance,
-      this.credentialsProvider,
-      {
-        method: "GET",
-        path,
-        responseType: "json",
-      },
-      cancellationToken,
-    ).then((response) => decodeMultiscaleManifestChunk(chunk, response));
+    return makeRequest(parameters.instance, this.credentialsProvider, path, {
+      signal: signal,
+    })
+      .then((response) => response.json())
+      .then((response) => decodeMultiscaleManifestChunk(chunk, response));
   }
 
-  async downloadFragment(
-    chunk: MultiscaleFragmentChunk,
-    cancellationToken: CancellationToken,
-  ) {
+  async downloadFragment(chunk: MultiscaleFragmentChunk, signal: AbortSignal) {
     const { parameters } = this;
 
     const manifestChunk =
@@ -608,7 +583,6 @@ export class BrainmapsMultiscaleMeshSource extends BrainmapsSource(
         octree[chunkIndex * 5 + 2] / relativeBlockShape[2],
       );
       const fragmentKey = encodeZIndexCompressed3d(
-        tempUint64,
         xBits,
         yBits,
         zBits,
@@ -652,7 +626,7 @@ export class BrainmapsMultiscaleMeshSource extends BrainmapsSource(
               meshName,
             },
             ids,
-            cancellationToken,
+            signal,
           )
             .then((response) => {
               --requestsInProgress;
@@ -783,29 +757,23 @@ export class BrainmapsMeshSource extends BrainmapsSource(
     return "";
   })();
 
-  download(chunk: ManifestChunk, cancellationToken: CancellationToken) {
+  download(chunk: ManifestChunk, signal: AbortSignal) {
     const { parameters } = this;
     const path =
       `/v1/objects/${parameters.volumeId}/meshes/` +
       `${parameters.meshName}:listfragments?` +
       `object_id=${chunk.objectId}&return_supervoxel_ids=true` +
       this.listFragmentsParams;
-    return makeRequest(
-      parameters.instance,
-      this.credentialsProvider,
-      {
-        method: "GET",
-        path,
-        responseType: "json",
-      },
-      cancellationToken,
-    ).then((response) => decodeManifestChunkWithSupervoxelIds(chunk, response));
+    return makeRequest(parameters.instance, this.credentialsProvider, path, {
+      signal,
+    })
+      .then((response) => response.json())
+      .then((response) =>
+        decodeManifestChunkWithSupervoxelIds(chunk, response),
+      );
   }
 
-  async downloadFragment(
-    chunk: FragmentChunk,
-    cancellationToken: CancellationToken,
-  ) {
+  async downloadFragment(chunk: FragmentChunk, signal: AbortSignal) {
     const { parameters } = this;
 
     const ids = new Map<string, null>();
@@ -822,7 +790,7 @@ export class BrainmapsMeshSource extends BrainmapsSource(
         credentialsProvider,
         parameters,
         ids,
-        cancellationToken,
+        signal,
       );
       decodeBatchMeshResponse(response, (fragment) => {
         if (!ids.delete(fragment.fullKey)) {
@@ -867,7 +835,7 @@ export class BrainmapsSkeletonSource extends BrainmapsSource(
   SkeletonSource,
   SkeletonSourceParameters,
 ) {
-  download(chunk: SkeletonChunk, cancellationToken: CancellationToken) {
+  download(chunk: SkeletonChunk, signal: AbortSignal) {
     const { parameters } = this;
     const payload: SkeletonPayload = {
       object_id: `${chunk.objectId}`,
@@ -877,17 +845,13 @@ export class BrainmapsSkeletonSource extends BrainmapsSource(
       `/meshes/${parameters.meshName}` +
       "/skeleton:binary";
     applyChangeStack(parameters.changeSpec, payload);
-    return makeRequest(
-      parameters.instance,
-      this.credentialsProvider,
-      {
-        method: "POST",
-        path,
-        payload: JSON.stringify(payload),
-        responseType: "arraybuffer",
-      },
-      cancellationToken,
-    ).then((response) => decodeSkeletonChunk(chunk, response));
+    return makeRequest(parameters.instance, this.credentialsProvider, path, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      signal,
+    })
+      .then((response) => response.arrayBuffer())
+      .then((response) => decodeSkeletonChunk(chunk, response));
   }
 }
 
@@ -922,11 +886,11 @@ function parseBrainmapsAnnotationId(idPrefix: string, fullId: string) {
   return id;
 }
 
-function parseObjectLabels(obj: any): Uint64[][] | undefined {
+function parseObjectLabels(obj: any): BigUint64Array[] | undefined {
   if (obj == null) {
     return undefined;
   }
-  return [parseArray(obj, (x) => Uint64.parseString("" + x, 10))];
+  return [BigUint64Array.from(parseArray(obj, parseUint64))];
 }
 
 function parseAnnotation(
@@ -1094,7 +1058,7 @@ function annotationToBrainmaps(annotation: Annotation): any {
   const objectLabels =
     annotation.relatedSegments === undefined
       ? undefined
-      : annotation.relatedSegments[0].map((x) => x.toString());
+      : Array.from(annotation.relatedSegments[0], (x) => x.toString());
   switch (annotation.type) {
     case AnnotationType.LINE: {
       const { pointA, pointB } = annotation;
@@ -1152,27 +1116,23 @@ export class BrainmapsAnnotationGeometryChunkSource extends BrainmapsSource(
   AnnotationGeometryChunkSourceBackend,
   AnnotationSpatialIndexSourceParameters,
 ) {
-  async download(
-    chunk: AnnotationGeometryChunk,
-    cancellationToken: CancellationToken,
-  ) {
+  async download(chunk: AnnotationGeometryChunk, signal: AbortSignal) {
     const { parameters } = this;
     return Promise.all(
       spatialAnnotationTypes.map((spatialAnnotationType) =>
         makeRequest(
           parameters.instance,
           this.credentialsProvider,
+          `/v1/changes/${parameters.volumeId}/${parameters.changestack}/spatials:get`,
           {
+            signal,
             method: "POST",
-            path: `/v1/changes/${parameters.volumeId}/${parameters.changestack}/spatials:get`,
-            payload: JSON.stringify({
+            body: JSON.stringify({
               type: spatialAnnotationType,
               ignore_payload: true,
             }),
-            responseType: "json",
           },
-          cancellationToken,
-        ),
+        ).then((response) => response.json()),
       ),
     ).then((values) => {
       parseAnnotations(chunk, values);
@@ -1188,7 +1148,7 @@ export class BrainmapsAnnotationSource extends BrainmapsSource(
   downloadSegmentFilteredGeometry(
     chunk: AnnotationSubsetGeometryChunk,
     _relationshipIndex: number,
-    cancellationToken: CancellationToken,
+    signal: AbortSignal,
   ) {
     const { parameters } = this;
     return Promise.all(
@@ -1196,100 +1156,108 @@ export class BrainmapsAnnotationSource extends BrainmapsSource(
         makeRequest(
           parameters.instance,
           this.credentialsProvider,
+          `/v1/changes/${parameters.volumeId}/${parameters.changestack}/spatials:get`,
           {
+            signal,
             method: "POST",
-            path: `/v1/changes/${parameters.volumeId}/${parameters.changestack}/spatials:get`,
-            payload: JSON.stringify({
+            body: JSON.stringify({
               type: spatialAnnotationType,
               object_labels: [chunk.objectId.toString()],
               ignore_payload: true,
             }),
-            responseType: "json",
           },
-          cancellationToken,
-        ),
+        ).then((response) => response.json()),
       ),
     ).then((values) => {
       parseAnnotations(chunk, values);
     });
   }
 
-  downloadMetadata(
-    chunk: AnnotationMetadataChunk,
-    cancellationToken: CancellationToken,
-  ) {
+  downloadMetadata(chunk: AnnotationMetadataChunk, signal: AbortSignal) {
     const { parameters } = this;
     const id = chunk.key!;
     return makeRequest(
       parameters.instance,
       this.credentialsProvider,
+      `/v1/changes/${parameters.volumeId}/${parameters.changestack}/spatials:get`,
       {
+        signal,
         method: "POST",
-        path: `/v1/changes/${parameters.volumeId}/${parameters.changestack}/spatials:get`,
-        payload: JSON.stringify({
+        body: JSON.stringify({
           type: getSpatialAnnotationTypeFromId(id),
           id: getFullSpatialAnnotationId(parameters, id),
         }),
-        responseType: "json",
       },
-      cancellationToken,
-    ).then(
-      (response) => {
-        chunk.annotation = parseAnnotationResponse(
-          response,
-          getIdPrefix(parameters),
-          id,
-        );
-      },
-      () => {
-        chunk.annotation = null;
-      },
-    );
+    )
+      .then((response) => response.json())
+      .then(
+        (response) => {
+          chunk.annotation = parseAnnotationResponse(
+            response,
+            getIdPrefix(parameters),
+            id,
+          );
+        },
+        () => {
+          chunk.annotation = null;
+        },
+      );
   }
 
   add(annotation: Annotation) {
     const { parameters } = this;
     const brainmapsAnnotation = annotationToBrainmaps(annotation);
-    return makeRequest(parameters.instance, this.credentialsProvider, {
-      method: "POST",
-      path: `/v1/changes/${parameters.volumeId}/${parameters.changestack}/spatials:push`,
-      payload: JSON.stringify({ annotations: [brainmapsAnnotation] }),
-      responseType: "json",
-    }).then((response) => {
-      verifyObject(response);
-      const ids = verifyObjectProperty(response, "ids", verifyStringArray);
-      if (ids.length !== 1) {
-        throw new Error(
-          `Expected list of 1 id, but received ${JSON.stringify(ids)}.`,
-        );
-      }
-      const idPrefix = getIdPrefix(this.parameters);
-      return parseBrainmapsAnnotationId(idPrefix, ids[0]);
-    });
+    return makeRequest(
+      parameters.instance,
+      this.credentialsProvider,
+      `/v1/changes/${parameters.volumeId}/${parameters.changestack}/spatials:push`,
+      {
+        method: "POST",
+        body: JSON.stringify({ annotations: [brainmapsAnnotation] }),
+      },
+    )
+      .then((response) => response.json())
+      .then((response) => {
+        verifyObject(response);
+        const ids = verifyObjectProperty(response, "ids", verifyStringArray);
+        if (ids.length !== 1) {
+          throw new Error(
+            `Expected list of 1 id, but received ${JSON.stringify(ids)}.`,
+          );
+        }
+        const idPrefix = getIdPrefix(this.parameters);
+        return parseBrainmapsAnnotationId(idPrefix, ids[0]);
+      });
   }
 
   update(id: AnnotationId, annotation: Annotation) {
     const { parameters } = this;
     const brainmapsAnnotation = annotationToBrainmaps(annotation);
     brainmapsAnnotation.id = getFullSpatialAnnotationId(parameters, id);
-    return makeRequest(parameters.instance, this.credentialsProvider, {
-      method: "POST",
-      path: `/v1/changes/${parameters.volumeId}/${parameters.changestack}/spatials:push`,
-      payload: JSON.stringify({ annotations: [brainmapsAnnotation] }),
-      responseType: "json",
-    });
+    return makeRequest(
+      parameters.instance,
+      this.credentialsProvider,
+      `/v1/changes/${parameters.volumeId}/${parameters.changestack}/spatials:push`,
+      {
+        method: "POST",
+        body: JSON.stringify({ annotations: [brainmapsAnnotation] }),
+      },
+    ).then((response) => response.json());
   }
 
   delete(id: AnnotationId) {
     const { parameters } = this;
-    return makeRequest(parameters.instance, this.credentialsProvider, {
-      method: "POST",
-      path: `/v1/changes/${parameters.volumeId}/${parameters.changestack}/spatials:delete`,
-      payload: JSON.stringify({
-        type: getSpatialAnnotationTypeFromId(id),
-        ids: [getFullSpatialAnnotationId(parameters, id)],
-      }),
-      responseType: "json",
-    });
+    return makeRequest(
+      parameters.instance,
+      this.credentialsProvider,
+      `/v1/changes/${parameters.volumeId}/${parameters.changestack}/spatials:delete`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: getSpatialAnnotationTypeFromId(id),
+          ids: [getFullSpatialAnnotationId(parameters, id)],
+        }),
+      },
+    ).then((response) => response.json());
   }
 }

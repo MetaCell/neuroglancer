@@ -17,19 +17,17 @@
 import { registerAsyncComputation } from "#src/async_computation/handler.js";
 import { parseOBJFromArrayBuffer } from "#src/async_computation/obj_mesh_request.js";
 import type { SingleMesh } from "#src/single_mesh/backend.js";
-import { Float32ArrayBuilder } from "#src/util/float32array_builder.js";
+import { TypedArrayBuilder } from "#src/util/array.js";
 import { maybeDecompressGzip } from "#src/util/gzip.js";
-import { Uint32ArrayBuilder } from "#src/util/uint32array_builder.js";
 
 registerAsyncComputation(
   parseOBJFromArrayBuffer,
   async (buffer: ArrayBuffer) => {
-    buffer = await maybeDecompressGzip(buffer);
-    let text = new TextDecoder().decode(buffer);
+    let text = new TextDecoder().decode(await maybeDecompressGzip(buffer));
     // Strip comments
     text = text.replace(/#.*/g, "");
-    const vertexPositions = new Float32ArrayBuilder();
-    const indices = new Uint32ArrayBuilder();
+    const vertexPositions = new TypedArrayBuilder(Float32Array);
+    const indices = new TypedArrayBuilder(Uint32Array);
 
     // Find vertices
     for (const match of text.matchAll(

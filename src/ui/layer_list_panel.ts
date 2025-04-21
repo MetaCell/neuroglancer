@@ -47,6 +47,7 @@ import type { Trackable } from "#src/util/trackable.js";
 import { CheckboxIcon } from "#src/widget/checkbox_icon.js";
 import { makeDeleteButton } from "#src/widget/delete_button.js";
 import { makeIcon } from "#src/widget/icon.js";
+import { LayerTypeIndicatorWidget } from "#src/widget/layer_type_indicator.js";
 
 const DEFAULT_LAYER_LIST_PANEL_LOCATION: SidePanelLocation = {
   ...DEFAULT_SIDE_PANEL_LOCATION,
@@ -72,7 +73,7 @@ export class LayerListPanelState implements Trackable {
   }
 }
 
-class LayerVisibilityWidget extends RefCounted {
+export class LayerVisibilityWidget extends RefCounted {
   element = document.createElement("div");
   constructor(public layer: ManagedUserLayer) {
     super();
@@ -91,6 +92,8 @@ class LayerVisibilityWidget extends RefCounted {
         this.layer.setVisible(true);
       },
     });
+    hideIcon.classList.add("neuroglancer-layer-list-panel-eye-icon");
+    showIcon.classList.add("neuroglancer-layer-list-panel-eye-icon");
     element.appendChild(showIcon);
     element.appendChild(hideIcon);
     const updateView = () => {
@@ -152,6 +155,10 @@ class LayerListItem extends RefCounted {
       element.classList.remove("neuroglancer-layer-list-panel-item-not-visible");
     }
     numberElement.classList.add("neuroglancer-layer-list-panel-item-number");
+    const layerNameWidget = this.registerDisposer(new LayerNameWidget(layer));
+    layerNameWidget.element.classList.add(
+      "neuroglancer-layer-list-panel-item-name",
+    );
     element.appendChild(
       this.registerDisposer(
         new TrackableBooleanCheckbox(
@@ -174,8 +181,10 @@ class LayerListItem extends RefCounted {
     );
     element.appendChild(numberElement);
     element.appendChild(
-      this.registerDisposer(new LayerNameWidget(layer)).element,
+      this.registerDisposer(new LayerVisibilityWidget(layer)).element,
     );
+    element.appendChild(new LayerTypeIndicatorWidget(layer).element);
+    element.appendChild(layerNameWidget.element);
     element.appendChild(
       this.registerDisposer(makeSelectedLayerSidePanelCheckboxIcon(layer))
         .element,
@@ -278,9 +287,7 @@ export class LayerListPanel extends SidePanel {
       for (const layer of self.layerManager.managedLayers) {
         if (!layer.archived) ++numNonArchivedLayers;
       }
-      const numberElementWidth = `${
-        (numNonArchivedLayers + 1).toString().length
-      }ch`;
+      const numberElementWidth = `${numNonArchivedLayers.toString().length}ch`;
       for (const layer of self.layerManager.managedLayers) {
         if (layer.visible) {
           ++numVisible;
@@ -299,7 +306,7 @@ export class LayerListPanel extends SidePanel {
         }
         const { nonArchivedLayerIndex } = layer;
         item.numberElement.style.width = numberElementWidth;
-        if (nonArchivedLayerIndex === -1) {
+        if (layer.archived) {
           item.numberElement.style.visibility = "hidden";
         } else {
           item.numberElement.style.visibility = "";

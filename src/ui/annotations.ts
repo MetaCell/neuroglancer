@@ -18,6 +18,7 @@
  * @file User interface for display and editing annotations.
  */
 
+import svg_help from "ikonate/icons/help.svg?raw";
 import "#src/ui/annotations.css";
 import {
   AnnotationDisplayState,
@@ -91,6 +92,7 @@ import { removeChildren } from "#src/util/dom.js";
 import { Endianness, ENDIANNESS } from "#src/util/endian.js";
 import type { ValueOrError } from "#src/util/error.js";
 import { vec3 } from "#src/util/geom.js";
+import { parseUint64 } from "#src/util/json.js";
 import {
   EventActionMap,
   KeyboardEventBinder,
@@ -100,7 +102,6 @@ import * as matrix from "#src/util/matrix.js";
 import { MouseEventBinder } from "#src/util/mouse_bindings.js";
 import { formatScaleWithUnitAsString } from "#src/util/si_units.js";
 import { NullarySignal, Signal } from "#src/util/signal.js";
-import { Uint64 } from "#src/util/uint64.js";
 import * as vector from "#src/util/vector.js";
 import { makeAddButton } from "#src/widget/add_button.js";
 import { ColorWidget } from "#src/widget/color.js";
@@ -384,6 +385,29 @@ export class AnnotationLayerView extends Tab {
   ) {
     super();
     this.element.classList.add("neuroglancer-annotation-layer-view");
+    this.selectedAnnotationState = makeCachedLazyDerivedWatchableValue(
+      (selectionState, pin) => {
+        if (selectionState === undefined) return undefined;
+        const { layer } = this;
+        const layerSelectionState = selectionState.layers.find(
+          (s) => s.layer === layer,
+        )?.state;
+        if (layerSelectionState === undefined) return undefined;
+        const { annotationId } = layerSelectionState;
+        if (annotationId === undefined) return undefined;
+        const annotationLayerState = this.annotationStates.states.find(
+          (x) =>
+            x.sourceIndex === layerSelectionState.annotationSourceIndex &&
+            (layerSelectionState.annotationSubsource === undefined ||
+              x.subsourceId === layerSelectionState.annotationSubsource),
+        );
+        if (annotationLayerState === undefined) return undefined;
+        return { annotationId, annotationLayerState, pin };
+      },
+      layer.manager.root.selectionState,
+      layer.manager.root.selectionState.pin,
+    );
+
     this.registerDisposer(this.visibility.changed.add(() => this.updateView()));
     this.registerDisposer(
       this.annotationStates.changed.add(() =>
@@ -396,20 +420,27 @@ export class AnnotationLayerView extends Tab {
     toolbox.className = "neuroglancer-annotation-toolbox";
 
     layer.initializeAnnotationLayerViewTab(this);
-    const colorPicker = this.registerDisposer(
-      new ColorWidget(this.displayState.color),
-    );
-    colorPicker.element.title = "Change annotation display color";
-    this.registerDisposer(
-      new ElementVisibilityFromTrackableBoolean(
-        makeCachedLazyDerivedWatchableValue(
-          (shader) => shader.match(/\bdefaultColor\b/) !== null,
-          displayState.shaderControls.processedFragmentMain,
+
+    const annotationColorPickerEnabled = (
+      layer.constructor as unknown as UserLayerWithAnnotationsClass
+    ).supportColorPickerInAnnotationTab;
+    if (annotationColorPickerEnabled) {
+      const colorPicker = this.registerDisposer(
+        new ColorWidget(this.displayState.color),
+      );
+      colorPicker.element.title = "Change annotation display color";
+      this.registerDisposer(
+        new ElementVisibilityFromTrackableBoolean(
+          makeCachedLazyDerivedWatchableValue(
+            (shader) => shader.match(/\bdefaultColor\b/) !== null,
+            displayState.shaderControls.processedFragmentMain,
+          ),
+          colorPicker.element,
         ),
-        colorPicker.element,
-      ),
-    );
-    toolbox.appendChild(colorPicker.element);
+      );
+      toolbox.appendChild(colorPicker.element);
+    }
+
     const { mutableControls } = this;
     const pointButton = makeIcon({
       text: annotationTypeHandlers[AnnotationType.POINT].icon,
@@ -447,6 +478,15 @@ export class AnnotationLayerView extends Tab {
       },
     });
     mutableControls.appendChild(ellipsoidButton);
+    const helpIcon = makeIcon({
+      title:
+        "The left icons allow you to select the type of the anotation. Color and other display settings are available in the 'Rendering' tab.",
+      svg: svg_help,
+      clickable: false,
+    });
+    helpIcon.style.marginLeft = "auto";
+    mutableControls.appendChild(helpIcon);
+
     toolbox.appendChild(mutableControls);
     this.element.appendChild(toolbox);
 
@@ -532,28 +572,7 @@ export class AnnotationLayerView extends Tab {
     }
   }
 
-  private selectedAnnotationState = makeCachedLazyDerivedWatchableValue(
-    (selectionState, pin) => {
-      if (selectionState === undefined) return undefined;
-      const { layer } = this;
-      const layerSelectionState = selectionState.layers.find(
-        (s) => s.layer === layer,
-      )?.state;
-      if (layerSelectionState === undefined) return undefined;
-      const { annotationId } = layerSelectionState;
-      if (annotationId === undefined) return undefined;
-      const annotationLayerState = this.annotationStates.states.find(
-        (x) =>
-          x.sourceIndex === layerSelectionState.annotationSourceIndex &&
-          (layerSelectionState.annotationSubsource === undefined ||
-            x.subsourceId === layerSelectionState.annotationSubsource),
-      );
-      if (annotationLayerState === undefined) return undefined;
-      return { annotationId, annotationLayerState, pin };
-    },
-    this.layer.manager.root.selectionState,
-    this.layer.manager.root.selectionState.pin,
-  );
+  private selectedAnnotationState;
 
   private updateSelectionView() {
     const selectionState = this.selectedAnnotationState.value;
@@ -970,11 +989,13 @@ export class AnnotationLayerView extends Tab {
 }
 
 export class AnnotationTab extends Tab {
-  private layerView = this.registerDisposer(
-    new AnnotationLayerView(this.layer, this.layer.annotationDisplayState),
-  );
+  private layerView: AnnotationLayerView;
   constructor(public layer: Borrowed<UserLayerWithAnnotations>) {
     super();
+    this.layerView = this.registerDisposer(
+      new AnnotationLayerView(layer, layer.annotationDisplayState),
+    );
+
     const { element } = this;
     element.classList.add("neuroglancer-annotations-tab");
     element.appendChild(this.layerView.element);
@@ -984,8 +1005,8 @@ export class AnnotationTab extends Tab {
 function getSelectedAssociatedSegments(
   annotationLayer: AnnotationLayerState,
   getBase = false,
-) {
-  const segments: Uint64[][] = [];
+): BigUint64Array[] {
+  const segments: bigint[][] = [];
   const { relationships } = annotationLayer.source;
   const { relationshipStates } = annotationLayer.displayState;
   for (let i = 0, count = relationships.length; i < count; ++i) {
@@ -993,13 +1014,11 @@ function getSelectedAssociatedSegments(
       .segmentationState.value;
     if (segmentationState != null) {
       if (segmentationState.segmentSelectionState.hasSelectedSegment) {
-        segments[i] = [
-          segmentationState.segmentSelectionState.selectedSegment.clone(),
-        ];
+        segments[i] = [segmentationState.segmentSelectionState.selectedSegment];
         if (getBase) {
           segments[i] = [
             ...segments[i],
-            segmentationState.segmentSelectionState.baseSelectedSegment.clone(),
+            segmentationState.segmentSelectionState.baseSelectedSegment,
           ];
         }
         continue;
@@ -1007,11 +1026,11 @@ function getSelectedAssociatedSegments(
     }
     segments[i] = [];
   }
-  return segments;
+  return segments.map((x) => BigUint64Array.from(x));
 }
 
 abstract class PlaceAnnotationTool extends LegacyTool {
-  layer: UserLayerWithAnnotations;
+  declare layer: UserLayerWithAnnotations;
   constructor(layer: UserLayerWithAnnotations, options: any) {
     super(layer);
     options;
@@ -1183,7 +1202,7 @@ abstract class TwoStepAnnotationTool extends PlaceAnnotationTool {
 }
 
 abstract class PlaceTwoCornerAnnotationTool extends TwoStepAnnotationTool {
-  annotationType:
+  declare annotationType:
     | AnnotationType.LINE
     | AnnotationType.AXIS_ALIGNED_BOUNDING_BOX;
 
@@ -1258,7 +1277,7 @@ export class PlaceLineTool extends PlaceTwoCornerAnnotationTool {
     return "annotate line";
   }
 
-  private initialRelationships: Uint64[][] | undefined;
+  private initialRelationships: BigUint64Array[] | undefined;
 
   getInitialAnnotation(
     mouseState: MouseSelectionState,
@@ -1292,10 +1311,8 @@ export class PlaceLineTool extends PlaceTwoCornerAnnotationTool {
         newRelationships,
         (newSegments, i) => {
           const initialSegments = initialRelationships[i];
-          newSegments = newSegments.filter(
-            (x) => initialSegments.findIndex((y) => Uint64.equal(x, y)) === -1,
-          );
-          return [...initialSegments, ...newSegments];
+          newSegments = newSegments.filter((x) => !initialSegments.includes(x));
+          return BigUint64Array.from([...initialSegments, ...newSegments]);
         },
       );
     }
@@ -1386,11 +1403,11 @@ const newRelatedSegmentKeyMap = EventActionMap.fromObject({
 
 function makeRelatedSegmentList(
   listName: string,
-  segments: Uint64[],
+  segments: BigUint64Array,
   segmentationDisplayState: WatchableValueInterface<
     SegmentationDisplayState | null | undefined
   >,
-  mutate?: ((newSegments: Uint64[]) => void) | undefined,
+  mutate?: ((newSegments: BigUint64Array) => void) | undefined,
 ) {
   return new DependentViewWidget(
     segmentationDisplayState,
@@ -1407,12 +1424,7 @@ function makeRelatedSegmentList(
       const copyButton = makeCopyButton({
         title: "Copy segment IDs",
         onClick: () => {
-          const result = setClipboard(segments.map((x) => x.toString()).join(", "));
-          StatusMessage.showTemporaryMessage(
-            result
-              ? "Segment IDs copied to clipboard"
-              : "Failed to copy segment IDs to clipboard",
-          );
+          setClipboard(Array.from(segments, (x) => x.toString()).join(", "));
         },
       });
       headerRow.appendChild(copyButton);
@@ -1434,7 +1446,7 @@ function makeRelatedSegmentList(
         const deleteButton = makeDeleteButton({
           title: "Remove all IDs",
           onClick: () => {
-            mutate([]);
+            mutate(new BigUint64Array(0));
           },
         });
         headerRow.appendChild(deleteButton);
@@ -1484,13 +1496,14 @@ function makeRelatedSegmentList(
             );
             keyboardEventBinder.allShortcutsAreGlobal = true;
             const validateInput = () => {
-              const id = new Uint64();
-              if (id.tryParseString(idElement.value)) {
+              try {
+                const id = parseUint64(idElement.value);
                 idElement.dataset.valid = "true";
                 return id;
+              } catch {
+                idElement.dataset.valid = "false";
+                return undefined;
               }
-              idElement.dataset.valid = "false";
-              return undefined;
             };
             validateInput();
             idElement.addEventListener("input", () => {
@@ -1499,7 +1512,7 @@ function makeRelatedSegmentList(
             idElement.addEventListener("blur", () => {
               const id = validateInput();
               if (id !== undefined) {
-                mutate([...segments, id]);
+                mutate(BigUint64Array.from([...segments, id]));
               }
               addContextDisposer();
             });
@@ -1507,7 +1520,7 @@ function makeRelatedSegmentList(
             registerActionListener(idElement, "commit", () => {
               const id = validateInput();
               if (id !== undefined) {
-                mutate([...segments, id]);
+                mutate(BigUint64Array.from([...segments, id]));
               }
               addContextDisposer();
             });
@@ -1537,7 +1550,7 @@ function makeRelatedSegmentList(
           const deleteButton = makeDeleteButton({
             title: "Remove ID",
             onClick: (event) => {
-              mutate(segments.filter((x) => !Uint64.equal(x, id)));
+              mutate(segments.filter((x) => x !== id));
               event.stopPropagation();
             },
           });
@@ -1595,6 +1608,7 @@ export function UserLayerWithAnnotationsMixin<
     annotationCrossSectionRenderScaleTarget = trackableRenderScaleTarget(8);
     annotationProjectionRenderScaleHistogram = new RenderScaleHistogram();
     annotationProjectionRenderScaleTarget = trackableRenderScaleTarget(8);
+    static supportColorPickerInAnnotationTab = true;
 
     constructor(...args: any[]) {
       super(...args);
@@ -1938,7 +1952,9 @@ export function UserLayerWithAnnotationsMixin<
                 const { relatedSegments } = annotation;
                 for (let i = 0, count = relationships.length; i < count; ++i) {
                   const related =
-                    relatedSegments === undefined ? [] : relatedSegments[i];
+                    relatedSegments === undefined
+                      ? new BigUint64Array(0)
+                      : relatedSegments[i];
                   if (related.length === 0 && sourceReadonly) continue;
                   const relationshipIndex = i;
                   const relationship = relationships[i];
@@ -1961,7 +1977,7 @@ export function UserLayerWithAnnotationsMixin<
                               if (relatedSegments === undefined) {
                                 relatedSegments =
                                   annotationLayer.source.relationships.map(
-                                    () => [],
+                                    () => new BigUint64Array(0),
                                   );
                               } else {
                                 relatedSegments = relatedSegments.slice();
@@ -2052,6 +2068,7 @@ export function UserLayerWithAnnotationsMixin<
         subsourceId: subsourceEntry.id,
         role,
       });
+      this.annotationDisplayState.annotationProperties.value = [];
       this.addAnnotationLayerState(state, loadedSubsource);
     }
 
@@ -2163,6 +2180,9 @@ export function UserLayerWithAnnotationsMixin<
   return C;
 }
 
-export type UserLayerWithAnnotations = InstanceType<
-  ReturnType<typeof UserLayerWithAnnotationsMixin>
+type UserLayerWithAnnotationsClass = ReturnType<
+  typeof UserLayerWithAnnotationsMixin
 >;
+
+export type UserLayerWithAnnotations =
+  InstanceType<UserLayerWithAnnotationsClass>;

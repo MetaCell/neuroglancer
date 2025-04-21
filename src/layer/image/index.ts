@@ -34,6 +34,7 @@ import {
   UserLayer,
 } from "#src/layer/index.js";
 import type { LoadedDataSubsource } from "#src/layer/layer_data_source.js";
+import { Overlay } from "#src/overlay.js";
 import { getChannelSpace } from "#src/render_coordinate_transform.js";
 import {
   RenderScaleHistogram,
@@ -49,6 +50,7 @@ import {
 import { StatusMessage } from "#src/status.js";
 import { trackableAlphaValue } from "#src/trackable_alpha.js";
 import { trackableBlendModeValue } from "#src/trackable_blend.js";
+import { TrackableBoolean } from "#src/trackable_boolean.js";
 import { trackableFiniteFloat } from "#src/trackable_finite_float.js";
 import type { WatchableValueInterface } from "#src/trackable_value.js";
 import {
@@ -81,7 +83,6 @@ import {
 import { ChannelDimensionsWidget } from "#src/widget/channel_dimensions_widget.js";
 import { makeCopyButton } from "#src/widget/copy_button.js";
 import type { DependentViewContext } from "#src/widget/dependent_view_widget.js";
-import { makeHelpButton } from "#src/widget/help_button.js";
 import type { LayerControlDefinition } from "#src/widget/layer_control.js";
 import {
   addLayerControlToOptionsTab,
@@ -89,13 +90,14 @@ import {
 } from "#src/widget/layer_control.js";
 import { enumLayerControl } from "#src/widget/layer_control_enum.js";
 import { rangeLayerControl } from "#src/widget/layer_control_range.js";
-import { makeMaximizeButton } from "#src/widget/maximize_button.js";
 import {
   renderScaleLayerControl,
   VolumeRenderingRenderScaleWidget,
 } from "#src/widget/render_scale_widget.js";
-import { ShaderCodeOverlay } from "#src/widget/shader_code_overlay.js";
-import { ShaderCodeWidget } from "#src/widget/shader_code_widget.js";
+import {
+  makeShaderCodeWidgetTopRow,
+  ShaderCodeWidget,
+} from "#src/widget/shader_code_widget.js";
 import type { LegendShaderOptions } from "#src/widget/shader_controls.js";
 import {
   registerLayerShaderControlsTool,
@@ -106,6 +108,7 @@ import { Tab } from "#src/widget/tab_view.js";
 export const OPACITY_JSON_KEY = "opacity";
 export const BLEND_JSON_KEY = "blend";
 export const SHADER_JSON_KEY = "shader";
+export const CODE_VISIBLE_KEY = "codeVisible";
 export const SHADER_CONTROLS_JSON_KEY = "shaderControls";
 export const CROSS_SECTION_RENDER_SCALE_JSON_KEY = "crossSectionRenderScale";
 export const CHANNEL_DIMENSIONS_JSON_KEY = "channelDimensions";
@@ -126,6 +129,7 @@ const [
 export class ImageUserLayer extends Base {
   opacity = trackableAlphaValue(0.5);
   blendMode = trackableBlendModeValue();
+  codeVisible = new TrackableBoolean(true);
   fragmentMain = getTrackableFragmentMain();
   shaderError = makeWatchableShaderError();
   dataType = new WatchableValue<DataType | undefined>(undefined);
@@ -198,7 +202,7 @@ export class ImageUserLayer extends Base {
     };
   }
 
-  selectionState: ImageLayerSelectionState;
+  declare selectionState: ImageLayerSelectionState;
 
   constructor(managedLayer: Borrowed<ManagedUserLayer>) {
     super(managedLayer);
@@ -206,6 +210,7 @@ export class ImageUserLayer extends Base {
       isLocalDimension;
     this.blendMode.changed.add(this.specificationChanged.dispatch);
     this.opacity.changed.add(this.specificationChanged.dispatch);
+    this.codeVisible.changed.add(this.specificationChanged.dispatch);
     this.volumeRenderingGain.changed.add(this.specificationChanged.dispatch);
     this.fragmentMain.changed.add(this.specificationChanged.dispatch);
     this.shaderControlState.changed.add(this.specificationChanged.dispatch);
@@ -295,6 +300,7 @@ export class ImageUserLayer extends Base {
   restoreState(specification: any) {
     super.restoreState(specification);
     this.opacity.restoreState(specification[OPACITY_JSON_KEY]);
+    this.codeVisible.restoreState(specification[CODE_VISIBLE_KEY]);
     verifyOptionalObjectProperty(specification, BLEND_JSON_KEY, (blendValue) =>
       this.blendMode.restoreState(blendValue),
     );
@@ -340,6 +346,7 @@ export class ImageUserLayer extends Base {
     const x = super.toJSON();
     x[OPACITY_JSON_KEY] = this.opacity.toJSON();
     x[BLEND_JSON_KEY] = this.blendMode.toJSON();
+    x[CODE_VISIBLE_KEY] = this.codeVisible.toJSON();
     x[SHADER_JSON_KEY] = this.fragmentMain.toJSON();
     x[SHADER_CONTROLS_JSON_KEY] = this.shaderControlState.toJSON();
     x[CROSS_SECTION_RENDER_SCALE_JSON_KEY] =
@@ -528,10 +535,11 @@ for (const control of LAYER_CONTROLS) {
 }
 
 class RenderingOptionsTab extends Tab {
-  codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
+  codeWidget: ShaderCodeWidget;
   constructor(public layer: ImageUserLayer) {
     super();
     const { element } = this;
+    this.codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
     element.classList.add("neuroglancer-image-dropdown");
 
     for (const control of LAYER_CONTROLS) {
@@ -545,43 +553,26 @@ class RenderingOptionsTab extends Tab {
       element.appendChild(cntlElem);
     }
 
-    const spacer = document.createElement("div");
-    spacer.style.flex = "1";
-
-    const channelElem = document.createElement("div");
-    channelElem.id = SHADER_CONTROLS_JSON_KEY;
-
-    const topRow = document.createElement("div");
-    topRow.className = "neuroglancer-image-dropdown-top-row";
-    topRow.appendChild(document.createTextNode("Shader"));
-    topRow.appendChild(spacer);
-    topRow.appendChild(
-      makeMaximizeButton({
-        title: "Show larger editor view",
-        onClick: () => {
-          new ShaderCodeOverlay(
-            this.layer, 
-            makeShaderCodeWidget,
-            { additionalClass: 'neuroglancer-image-layer-shader-overlay' }
-          );
+    element.appendChild(
+      makeShaderCodeWidgetTopRow(
+        this.layer,
+        this.codeWidget,
+        ShaderCodeOverlay,
+        {
+          title: "Documentation on image layer rendering",
+          href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
         },
-      }),
+        "neuroglancer-image-dropdown-top-row",
+      ),
     );
-    topRow.appendChild(
-      makeHelpButton({
-        title: "Documentation on image layer rendering",
-        href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
-      }),
-    );
-
-    channelElem.appendChild(topRow);
-    channelElem.appendChild(
+    element.appendChild(
       this.registerDisposer(
         new ChannelDimensionsWidget(layer.channelCoordinateSpaceCombiner),
       ).element,
     );
-    channelElem.appendChild(this.codeWidget.element);
-    channelElem.appendChild(
+
+    element.appendChild(this.codeWidget.element);
+    element.appendChild(
       this.registerDisposer(
         new ShaderControls(
           layer.shaderControlState,
@@ -594,8 +585,17 @@ class RenderingOptionsTab extends Tab {
         ),
       ).element,
     );
+  }
+}
 
-    element.appendChild(channelElem);
+class ShaderCodeOverlay extends Overlay {
+  codeWidget: ShaderCodeWidget;
+  constructor(public layer: ImageUserLayer) {
+    super();
+    this.codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
+    this.content.classList.add("neuroglancer-image-layer-shader-overlay");
+    this.content.appendChild(this.codeWidget.element);
+    this.codeWidget.textEditor.refresh();
   }
 }
 

@@ -16,7 +16,6 @@
 
 import { DataType } from "#src/util/data_type.js";
 import { RefCounted } from "#src/util/disposable.js";
-import { Uint64 } from "#src/util/uint64.js";
 import type { GL } from "#src/webgl/context.js";
 import {
   FramebufferConfiguration,
@@ -39,7 +38,7 @@ export interface FragmentShaderTestOutputs {
 
 export type ShaderIoJavascriptType<T extends ShaderIoType> = T extends DataType
   ? T extends DataType.UINT64
-    ? Uint64
+    ? bigint
     : number
   : T extends "bool"
     ? boolean
@@ -117,10 +116,10 @@ export class FragmentShaderTester<
   Inputs extends FragmentShaderTestOutputs,
   Outputs extends FragmentShaderTestOutputs,
 > extends RefCounted {
-  builder = new ShaderBuilder(this.gl);
+  builder: ShaderBuilder;
   private shader_: ShaderProgram;
   offscreenFramebuffer: FramebufferConfiguration<TextureBuffer>;
-  private vertexPositionsBuffer = getSquareCornersBuffer(this.gl, -1, -1, 1, 1);
+  private vertexPositionsBuffer;
 
   constructor(
     public gl: GL,
@@ -128,8 +127,10 @@ export class FragmentShaderTester<
     public outputs: Outputs,
   ) {
     super();
-    const { builder } = this;
-    this.offscreenFramebuffer = new FramebufferConfiguration(this.gl, {
+    const builder = (this.builder = new ShaderBuilder(gl));
+    this.vertexPositionsBuffer = getSquareCornersBuffer(gl, -1, -1, 1, 1);
+
+    this.offscreenFramebuffer = new FramebufferConfiguration(gl, {
       colorBuffers: makeTextureBuffersForOutputs(gl, outputs),
     });
     builder.addAttribute("vec4", "shader_testing_aVertexPosition");
@@ -252,13 +253,12 @@ void main() {
             gl.uniform1f(shader.uniform(key), value);
             break;
           case DataType.UINT64: {
-            let v: Uint64;
-            if (typeof value === "number") {
-              v = Uint64.parseString(value.toString());
-            } else {
-              v = value;
-            }
-            gl.uniform2ui(shader.uniform(`ngin_${key}`), v.low, v.high);
+            const v = BigInt(value);
+            gl.uniform2ui(
+              shader.uniform(`ngin_${key}`),
+              Number(v & 0xffffffffn),
+              Number(v >> 32n),
+            );
             break;
           }
         }
@@ -282,7 +282,7 @@ void main() {
     return values;
   }
 
-  read(key: keyof Outputs): number | Uint64 | boolean {
+  read(key: keyof Outputs): number | bigint | boolean {
     const t = this.outputs[key];
     const index = Object.keys(this.outputs).indexOf(key as string);
     const { offscreenFramebuffer } = this;
@@ -334,7 +334,7 @@ void main() {
             WebGL2RenderingContext.UNSIGNED_INT,
             buf,
           );
-          return new Uint64(buf[0], buf[1]);
+          return BigInt(buf[0]) | (BigInt(buf[1]) << 32n);
         }
         default: {
           const buf = new Float32Array(4);

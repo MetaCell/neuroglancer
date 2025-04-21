@@ -126,9 +126,8 @@ import type { MessageList } from "#src/util/message_list.js";
 import { MessageSeverity } from "#src/util/message_list.js";
 import type { AnyConstructor, MixinConstructor } from "#src/util/mixin.js";
 import { NullarySignal } from "#src/util/signal.js";
-import type { Uint64 } from "#src/util/uint64.js";
 import { withSharedVisibility } from "#src/visibility_priority/frontend.js";
-import { Buffer } from "#src/webgl/buffer.js";
+import { GLBuffer } from "#src/webgl/buffer.js";
 import type { ParameterizedContextDependentShaderGetter } from "#src/webgl/dynamic_shader.js";
 import { parameterizedEmitterDependentShaderGetter } from "#src/webgl/dynamic_shader.js";
 import type {
@@ -228,7 +227,7 @@ export class AnnotationLayer extends RefCounted {
   /**
    * Stores a serialized representation of the information needed to render the annotations.
    */
-  buffer: Buffer | undefined;
+  buffer: GLBuffer | undefined;
 
   numPickIds = 0;
 
@@ -265,32 +264,9 @@ export class AnnotationLayer extends RefCounted {
     return sharedObject.visibility;
   }
 
-  segmentationStates = this.registerDisposer(
-    makeCachedDerivedWatchableValue(
-      (_relationshipStates, _ignoreNullSegmentFilter) => {
-        const { displayState, source } = this.state;
-        const { relationshipStates } = displayState;
-        return displayState.displayUnfiltered.value
-          ? undefined
-          : source.relationships.map((relationship) => {
-              const state = relationshipStates.get(relationship);
-              return state.showMatches.value
-                ? state.segmentationState.value
-                : undefined;
-            });
-      },
-      [
-        this.state.displayState.relationshipStates,
-        this.state.displayState.ignoreNullSegmentFilter,
-      ],
-      (a, b) => {
-        if (a === undefined || b === undefined) {
-          return a === b;
-        }
-        return arraysEqual(a, b);
-      },
-    ),
-  );
+  segmentationStates: WatchableValueInterface<
+    OptionalSegmentationDisplayState[] | undefined
+  >;
 
   constructor(
     public chunkManager: ChunkManager,
@@ -298,6 +274,32 @@ export class AnnotationLayer extends RefCounted {
   ) {
     super();
     this.registerDisposer(state);
+    this.segmentationStates = this.registerDisposer(
+      makeCachedDerivedWatchableValue(
+        (_relationshipStates, _ignoreNullSegmentFilter) => {
+          const { displayState, source } = this.state;
+          const { relationshipStates } = displayState;
+          return displayState.displayUnfiltered.value
+            ? undefined
+            : source.relationships.map((relationship) => {
+                const state = relationshipStates.get(relationship);
+                return state.showMatches.value
+                  ? state.segmentationState.value
+                  : undefined;
+              });
+        },
+        [
+          this.state.displayState.relationshipStates,
+          this.state.displayState.ignoreNullSegmentFilter,
+        ],
+        (a, b) => {
+          if (a === undefined || b === undefined) {
+            return a === b;
+          }
+          return arraysEqual(a, b);
+        },
+      ),
+    );
     this.registerDisposer(
       this.source.changed.add(this.handleChangeAffectingBuffer),
     );
@@ -364,7 +366,7 @@ export class AnnotationLayer extends RefCounted {
         let { buffer } = this;
         if (buffer === undefined) {
           buffer = this.buffer = this.registerDisposer(
-            new Buffer(this.chunkManager.gl),
+            new GLBuffer(this.chunkManager.gl),
           );
         }
         this.generation = generation;
@@ -382,7 +384,7 @@ export class AnnotationLayer extends RefCounted {
 
 interface AnnotationGeometryDataInterface {
   serializedAnnotations: SerializedAnnotations;
-  buffer: Buffer;
+  buffer: GLBuffer;
   numPickIds: number;
 }
 
@@ -606,7 +608,7 @@ function AnnotationRenderLayer<
       if (!chunk.bufferValid) {
         let { buffer } = chunk;
         if (buffer === undefined) {
-          buffer = chunk.buffer = new Buffer(this.gl);
+          buffer = chunk.buffer = new GLBuffer(this.gl);
         }
         const { serializedAnnotations } = chunk;
         buffer.setData(serializedAnnotations.data);
@@ -636,8 +638,7 @@ function AnnotationRenderLayer<
         pickId = renderContext.pickIDs.register(
           this,
           chunk.numPickIds,
-          0,
-          0,
+          0n,
           chunk,
         );
       }
@@ -698,7 +699,7 @@ function AnnotationRenderLayer<
 
     updateMouseState(
       mouseState: MouseSelectionState,
-      _pickedValue: Uint64,
+      _pickedValue: bigint,
       pickedOffset: number,
       data: any,
     ) {

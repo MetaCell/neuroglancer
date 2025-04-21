@@ -35,10 +35,9 @@ declare const window: any;
 window.neuroglancer = window.setupDefaultViewer = setupDefaultViewer;
 declare let viewer: Viewer | undefined;
 
-if(!process.env.MANUAL_LOAD) {
-  setupDefaultViewer();
-  document.body.classList.add("neuroglass-theme");
-}
+setupDefaultViewer();
+document.body.classList.add("neuroglass-theme");
+
 
 // @metacell
 

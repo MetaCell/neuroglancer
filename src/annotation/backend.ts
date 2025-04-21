@@ -33,7 +33,6 @@ import type {
   AnnotationId,
   SerializedAnnotations,
 } from "#src/annotation/index.js";
-import { fixAnnotationAfterStructuredCloning } from "#src/annotation/index.js";
 import type { ChunkManager } from "#src/chunk_manager/backend.js";
 import {
   Chunk,
@@ -66,9 +65,7 @@ import {
 } from "#src/sliceview/backend.js";
 import type { TransformedSource } from "#src/sliceview/base.js";
 import { registerNested, WatchableValue } from "#src/trackable_value.js";
-import type { CancellationToken } from "#src/util/cancellation.js";
 import type { Borrowed } from "#src/util/disposable.js";
-import type { Uint64 } from "#src/util/uint64.js";
 import {
   getBasePriority,
   getPriorityTier,
@@ -100,7 +97,7 @@ export class AnnotationMetadataChunk extends Chunk {
 }
 
 export class AnnotationGeometryData implements SerializedAnnotations {
-  data: Uint8Array;
+  data: Uint8Array<ArrayBuffer>;
   typeToOffset: number[];
   typeToIds: string[][];
   typeToIdMaps: Map<string, number>[];
@@ -149,12 +146,12 @@ function GeometryChunkMixin<TBase extends { new (...args: any[]): Chunk }>(
 export class AnnotationGeometryChunk extends GeometryChunkMixin(
   SliceViewChunk,
 ) {
-  source: AnnotationGeometryChunkSourceBackend;
+  declare source: AnnotationGeometryChunkSourceBackend;
 }
 
 export class AnnotationSubsetGeometryChunk extends GeometryChunkMixin(Chunk) {
-  source: AnnotationSubsetGeometryChunkSource;
-  objectId: Uint64;
+  declare source: AnnotationSubsetGeometryChunkSource;
+  objectId: bigint;
 }
 
 @registerSharedObject(ANNOTATION_METADATA_CHUNK_SOURCE_RPC_ID)
@@ -171,11 +168,8 @@ class AnnotationMetadataChunkSource extends ChunkSource {
     return chunk;
   }
 
-  download(
-    chunk: AnnotationMetadataChunk,
-    cancellationToken: CancellationToken,
-  ) {
-    return this.parent!.downloadMetadata(chunk, cancellationToken);
+  download(chunk: AnnotationMetadataChunk, signal: AbortSignal) {
+    return this.parent!.downloadMetadata(chunk, signal);
   }
 }
 
@@ -195,28 +189,25 @@ AnnotationGeometryChunkSourceBackend.prototype.chunkConstructor =
 @registerSharedObject(ANNOTATION_SUBSET_GEOMETRY_CHUNK_SOURCE_RPC_ID)
 class AnnotationSubsetGeometryChunkSource extends ChunkSource {
   parent: Borrowed<AnnotationSource> | undefined = undefined;
-  chunks: Map<string, AnnotationSubsetGeometryChunk>;
+  declare chunks: Map<string, AnnotationSubsetGeometryChunk>;
   relationshipIndex: number;
-  getChunk(objectId: Uint64) {
+  getChunk(objectId: bigint) {
     const key = getObjectKey(objectId);
     const { chunks } = this;
     let chunk = chunks.get(key);
     if (chunk === undefined) {
       chunk = this.getNewChunk_(AnnotationSubsetGeometryChunk);
       chunk.initialize(key);
-      chunk.objectId = objectId.clone();
+      chunk.objectId = objectId;
       this.addChunk(chunk);
     }
     return chunk;
   }
-  download(
-    chunk: AnnotationSubsetGeometryChunk,
-    cancellationToken: CancellationToken,
-  ) {
+  download(chunk: AnnotationSubsetGeometryChunk, signal: AbortSignal) {
     return this.parent!.downloadSegmentFilteredGeometry(
       chunk,
       this.relationshipIndex,
-      cancellationToken,
+      signal,
     );
   }
 }
@@ -227,12 +218,12 @@ export interface AnnotationSource {
   // TypeScript supports mixins with abstract classes.
   downloadMetadata(
     chunk: AnnotationMetadataChunk,
-    cancellationToken: CancellationToken,
+    signal: AbortSignal,
   ): Promise<void>;
   downloadSegmentFilteredGeometry(
     chunk: AnnotationSubsetGeometryChunk,
     relationshipIndex: number,
-    cancellationToken: CancellationToken,
+    signal: AbortSignal,
   ): Promise<void>;
 }
 
@@ -310,9 +301,7 @@ registerRPC(ANNOTATION_REFERENCE_DELETE_RPC_ID, function (x: any) {
 registerRPC(ANNOTATION_COMMIT_UPDATE_RPC_ID, function (x: any) {
   const obj = <AnnotationSource>this.get(x.id);
   const annotationId: AnnotationId | undefined = x.annotationId;
-  const newAnnotation: Annotation | null = fixAnnotationAfterStructuredCloning(
-    x.newAnnotation,
-  );
+  const newAnnotation: Annotation | null = x.newAnnotation;
 
   let promise: Promise<Annotation | null>;
   if (annotationId === undefined) {
