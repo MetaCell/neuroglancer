@@ -381,16 +381,19 @@ export class ScreenshotDialog extends Overlay {
       () => this.cancelScreenshot(),
       "neuroglancer-screenshot-footer-button",
     );
+    this.cancelScreenshotButton.classList.add("cancel-button"); // @metacell
     this.takeScreenshotButton = this.createButton(
-      "Take screenshot",
+      "Create figure", // @metacell
       () => this.screenshot(),
       "neuroglancer-screenshot-footer-button",
     );
+    this.takeScreenshotButton.classList.add("primary-button"); // @metacell
     this.forceScreenshotButton = this.createButton(
       "Force screenshot",
       () => this.forceScreenshot(),
       "neuroglancer-screenshot-footer-button",
     );
+    this.forceScreenshotButton.classList.add("danger-button"); // @metacell
     this.filenameInputContainer = document.createElement("div");
     this.filenameInputContainer.classList.add(
       "neuroglancer-screenshot-filename-container",
@@ -417,6 +420,19 @@ export class ScreenshotDialog extends Overlay {
 
     // This is the header
     this.content.appendChild(closeAndHelpContainer);
+
+    // @metacell
+    const descriptionContainer = document.createElement("div");
+    descriptionContainer.classList.add("neuroglancer-screenshot-description-section");
+
+    const description = document.createElement("p");
+    description.textContent = "A snapshot of your current state will be taken and this will create a figure. View your figures on the sidebar panel and the dashboard.";
+    descriptionContainer.appendChild(description);
+
+    descriptionContainer.appendChild(document.createElement("hr"));
+
+    this.content.appendChild(descriptionContainer);
+    // end @metacell
 
     const mainBody = document.createElement("div");
     mainBody.classList.add("neuroglancer-screenshot-main-body-container");
@@ -446,7 +462,8 @@ export class ScreenshotDialog extends Overlay {
     this.screenshotSizeText.classList.add("neuroglancer-screenshot-label");
     this.screenshotSizeText.classList.add("neuroglancer-screenshot-size-text");
     const screenshotLabel = document.createElement("h3");
-    screenshotLabel.textContent = "Screenshot size";
+    // screenshotLabel.textContent = "Screenshot size";
+    screenshotLabel.textContent = "Image size"; // @metacell
     screenshotLabel.classList.add(
       "neuroglancer-screenshot-resolution-size-label",
     );

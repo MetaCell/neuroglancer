@@ -3411,6 +3411,260 @@ ul#statusContainer {
     input[type="number"] {
         appearance: textfield;
     }
+
+    /* Screenshot menu */
+    .neuroglancer-screenshot-dialog {
+      padding: 1.5rem;
+      overflow: auto;
+      max-width: 1000px !important;
+      height: calc(80vh - (4rem + 4.5rem));
+      border-radius: 0;
+    }
+
+    .neuroglancer-screenshot-close {
+      border-bottom: 0.0625rem solid var(--dark80);
+      padding: 0 1.5rem;
+      height: 4rem;
+
+      .neuroglancer-screenshot-title {
+        color: var(--white);
+        font-size: 1.25rem;
+        font-style: normal;
+        font-weight: 500;
+        line-height: 1.5rem;
+        letter-spacing: -0.025rem;
+      }
+
+      .neuroglancer-screenshot-close-button {
+        & .neuroglancer-icon {
+          width: 1.5rem;
+          height: 1.5rem;
+
+          & svg {
+              width: 1.5rem;
+              height: 1.5rem;
+          }
+        }
+      }
+    }
+
+    .neuroglancer-screenshot-description-section {
+      p {
+        color: var(--content100);
+        font-size: 14px;
+      }
+    }
+
+    .neuroglancer-screenshot-filename-container {
+      .neuroglancer-screenshot-title-subheading {
+        color: var(--white);
+        font-size: 1rem;
+        font-style: normal;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-weight: 500;
+        margin: 0 0 1.5rem;
+        line-height: 1.25rem; /* 125% */
+        letter-spacing: -0.02rem;
+
+        & .neuroglancer-icon {
+          stroke: none
+        }
+      }
+
+      label {
+        color: var(--white);
+        font-size: 0.875rem;
+        font-style: normal;
+        font-weight: 500;
+        line-height: 1.125rem; /* 128.571% */
+        letter-spacing: -0.0088rem;
+        display: flex;
+        gap: 0.25rem;
+        align-items: center;
+        margin: 0 0 0.625rem;
+      }
+
+      .neuroglancer-screenshot-name-input {
+        margin-right: 0;
+        border-radius: 0;
+        border-radius: 0;
+        border: 0.0625rem solid var(--dark80);
+        height: 3rem;
+        font-size: 0.875rem;
+        padding: 0 1rem;
+        gap: 0.5rem;
+        background-color: var(--background80);
+        color: var(--white);
+        box-shadow: 0rem 0.0625rem 0.125rem 0rem rgba(16, 24, 40, 0.05);
+        line-height: 1.25rem;
+      }
+
+      .neuroglancer-screenshot-name-input:hover {
+        background-color: var(--background80);
+        outline: 0.0625rem solid var(--dark80);
+      }
+
+      .neuroglancer-screenshot-name-input:focus {
+        background-color: var(--dark80);
+        border-color: var(--primary100);
+        outline: none;
+        box-shadow: 0rem 0rem 0rem 0.125rem rgba(22, 82, 240, 0.20);
+      }
+
+      .neuroglancer-screenshot-name-input:disabled {
+        background: var(--gray500);
+        color: var(--gray400);
+      }
+      .neuroglancer-screenshot-name-input::placeholder {
+        color: var(--content100);
+      }
+    }
+
+    .neuroglancer-screenshot-scale-menu {
+      padding-top: 24px;
+
+      .neuroglancer-screenshot-scale-factor-label {
+        color: var(--white);
+        font-size: 0.875rem;
+        font-style: normal;
+        font-weight: 500;
+        line-height: 1.125rem; /* 128.571% */
+        letter-spacing: -0.0088rem;
+        gap: 0.25rem;
+        margin: 0 0 0.625rem;
+      }
+    }
+
+    .neuroglancer-screenshot-scale-radio-container {
+      .neuroglancer-screenshot-scale-label {
+        color: var(--content100);
+        font-size: 0.875rem;
+        font-style: normal;
+        display: inline-flex;
+        align-items: center;
+        font-weight: 400;
+        line-height: 1.25rem; /* 142.857% */
+        margin-right: 1rem;
+        cursor: pointer;
+
+        input[type="radio"] {
+          -webkit-appearance: none;
+          -moz-appearance: none;
+          appearance: none;
+          margin: 0;
+          padding: 0;
+          outline: none;
+        }
+
+        input[type="radio"]:checked + span .neuroglancer-icon svg {
+          color: var(--primary100) !important;
+        }
+
+        span {
+          display: flex;
+          width: 1.5rem;
+          height: 1.5rem;
+          align-items: center;
+          justify-content: center;
+          margin-right: 0.25em;
+
+          .neuroglancer-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.5rem;
+            height: 1.5rem;
+
+            svg {
+              width: 1.5rem;
+              height: 1.5rem;
+            }
+          }
+        }
+      }
+    }
+
+    .neuroglancer-screenshot-keep-slice-label {
+      color: var(--white);
+      font-weight: normal;
+      padding: 24px 0;
+    }
+
+    .neuroglancer-screenshot-resolution-preview-container {
+      --gray600: #141415;
+
+      background: var(--gray600);
+      border-color: transparent;
+
+      h2, h3 {
+        color: var(--white);
+      }
+
+      span {
+        color: var(--content100);
+      }
+
+      .neuroglancer-screenshot-resolution-preview-top-container {
+        justify-content: space-between;
+      }
+    }
+
+    .neuroglancer-screenshot-resolution-table-container {
+      .neuroglancer-screenshot-resolution-table{
+        background-color: var(--background120);
+
+        tr {
+          background-color: var(--background120);
+
+          th {
+            background-color: var(--background120);
+            color: var(--white);
+          }
+
+          td {
+            background-color: var(--background80);
+            color: var(--content100);
+          }
+
+          td .neuroglancer-screenshot-dimension {
+            color: var(--caramel60);
+          }
+        }
+      }
+    }
+
+    .neuroglancer-screenshot-statistics-title {
+      .neuroglancer-screenshot-statistics-table {
+        .neuroglancer-screenshot-title {
+          color: var(--white);
+        }
+
+        .neuroglancer-statistics-table-description-header {
+          color: var(--content100);
+        }
+
+        .neuroglancer-screenshot-statistics-table-data-key {
+          color: var(--white);
+        }
+
+        .neuroglancer-screenshot-statistics-table-data-value {
+          color: var(--content100)
+        }
+      }
+    }
+
+    .neuroglancer-screenshot-footer-container {
+      --border-color: #2b2b2b;
+
+      border-color: var(--border-color);
+
+      button {
+        padding: 12px 16px;
+        border-radius: 0;
+      }
+    }
 }
 
 .neuroglancer-drag-status {
