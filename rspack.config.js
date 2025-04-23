@@ -1,10 +1,13 @@
 import path from "node:path";
 import { HtmlRspackPlugin, ProgressPlugin } from "@rspack/core";
+import { RspackManifestPlugin } from "rspack-manifest-plugin";
 import { normalizeConfigurationWithDefine } from "./build_tools/rspack/configuration_with_define.js";
 import packageJson from "./package.json";
 
 export default (env, args) => {
   const mode = args.mode === "production" ? "production" : "development";
+  const prefix = env.NG_BUILD_PREFIX ?? "";
+
   const config = {
     mode,
     context: import.meta.dirname,
@@ -44,7 +47,7 @@ export default (env, args) => {
         {
           test: /\.wasm$/,
           generator: {
-            filename: "[name].[contenthash][ext]",
+            filename: prefix + "[name].[contenthash][ext]",
           },
         },
         // Needed for .svg?raw imports used for embedding icons.
@@ -78,11 +81,15 @@ export default (env, args) => {
       new HtmlRspackPlugin({
         title: "neuroglancer",
       }),
+      new RspackManifestPlugin({
+        fileName: prefix + "assets.json",
+        writeToFileEmit: true,
+      })
     ],
     output: {
       path: path.resolve(import.meta.dirname, "dist", "client"),
-      filename: "[name].[chunkhash].js",
-      chunkFilename: "[name].[contenthash].js",
+      filename: prefix + "[name].[chunkhash].js",
+      chunkFilename: prefix + "[name].[contenthash].js",
       asyncChunks: true,
       clean: true,
     },
@@ -116,6 +123,10 @@ export default (env, args) => {
       // NEUROGLANCER_SHOW_OBJECT_SELECTION_TOOLTIP: true
 
       // NEUROGLANCER_GOOGLE_TAG_MANAGER: JSON.stringify('GTM-XXXXXX'),
+      //
+      // @metacell
+      MANUAL_LOAD: JSON.stringify(env.MANUAL_LOAD),
+      // end @metacell
     },
     watchOptions: {
       ignored: /node_modules/,

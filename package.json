@@ -75,6 +75,7 @@
     "oxlint": "^0.15.9",
     "playwright": "^1.50.1",
     "prettier": "3.4.2",
+    "rspack-manifest-plugin": "^5.0.3",
     "ts-checker-rspack-plugin": "^1.1.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",

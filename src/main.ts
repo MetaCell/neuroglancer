@@ -31,15 +31,18 @@ import { encodeFragment } from "#src/ui/url_hash_binding.js";
 import "#src/neuroglass-theme.css";
 import type { Viewer } from "#src/viewer.js";
 
+// @metacell
+
 declare const window: any;
 window.neuroglancer = window.setupDefaultViewer = setupDefaultViewer;
 declare let viewer: Viewer | undefined;
 
-setupDefaultViewer();
-document.body.classList.add("neuroglass-theme");
+declare const MANUAL_LOAD: string | undefined;
 
-
-// @metacell
+if (!MANUAL_LOAD) {
+  setupDefaultViewer();
+  document.body.classList.add("neuroglass-theme");
+}
 
 // check viewer is ready and send message
 function watchViewerLoadState() {
