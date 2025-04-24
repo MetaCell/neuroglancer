@@ -1,7 +1,6 @@
-import path from "node:path";
 import fs from 'fs';
+import path from "node:path";
 import { HtmlRspackPlugin, ProgressPlugin } from "@rspack/core";
-import { RspackManifestPlugin } from "rspack-manifest-plugin";
 import { normalizeConfigurationWithDefine } from "./build_tools/rspack/configuration_with_define.js";
 import packageJson from "./package.json";
 
