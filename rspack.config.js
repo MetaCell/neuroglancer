@@ -1,12 +1,26 @@
 import path from "node:path";
+import fs from 'fs';
 import { HtmlRspackPlugin, ProgressPlugin } from "@rspack/core";
 import { RspackManifestPlugin } from "rspack-manifest-plugin";
 import { normalizeConfigurationWithDefine } from "./build_tools/rspack/configuration_with_define.js";
 import packageJson from "./package.json";
 
+// @neuroglass start
+class RspackAssetsManifestPlugin {
+  apply(compiler) {
+    compiler.hooks.done.tap('RspackAssetsManifestPlugin', (stats) => {
+      const assets = stats.toJson();
+
+      const outputPath = path.resolve(compiler.options.output.path, 'assets.json');
+      fs.writeFileSync(outputPath, JSON.stringify(assets.entrypoints, null, 2));
+    });
+  }
+}
+// @neuroglass
+
 export default (env, args) => {
   const mode = args.mode === "production" ? "production" : "development";
-  const prefix = env.NG_BUILD_PREFIX ?? "";
+  const prefix = env.NG_BUILD_PREFIX ?? ""; // @neuroglass
 
   const config = {
     mode,
@@ -81,14 +95,12 @@ export default (env, args) => {
       new HtmlRspackPlugin({
         title: "neuroglancer",
       }),
-      new RspackManifestPlugin({
-        fileName: prefix + "assets.json",
-        writeToFileEmit: true,
-      })
+      new RspackAssetsManifestPlugin(),
     ],
     output: {
       path: path.resolve(import.meta.dirname, "dist", "client"),
       filename: prefix + "[name].[chunkhash].js",
+      assetModuleFilename: prefix + "[name].[ext]",
       chunkFilename: prefix + "[name].[contenthash].js",
       asyncChunks: true,
       clean: true,
