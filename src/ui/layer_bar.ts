@@ -179,12 +179,19 @@ class LayerWidget extends RefCounted {
         if (color) {
           element.dataset.color = "fixed";
           labelElement.style.backgroundColor = color;
-          const textColor = useWhiteBackground(
+          // Replace the above by a gradient across three colors
+          const tempColor1 = color;
+          const tempColor2 = "red";
+          const tempColor3 = "blue";
+          const gradient = `linear-gradient(to right, ${tempColor1}, ${tempColor2}, ${tempColor3})`;
+          labelElement.style.backgroundImage = gradient;
+          const whiteBackground = useWhiteBackground(
             parseRGBColorSpecification(color),
-          )
-            ? "white"
-            : "black";
+          );
+          const textColor = whiteBackground ? "white" : "black";
+          const textShadowColor = whiteBackground ? "black" : "white";
           labelElement.style.color = textColor;
+          labelElement.style.textShadow = `0 0 5px ${textShadowColor}`;
         } else {
           element.dataset.color = "rainbow";
           labelElement.style.color = "black";
