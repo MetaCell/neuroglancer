@@ -727,8 +727,6 @@ ul#statusContainer {
     }
 
     .neuroglancer-single-mesh-dropdown {
-        padding-top: 0.75rem !important;
-
         svg {
             stroke: var(--content100) !important;
         }

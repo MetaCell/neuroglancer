@@ -212,7 +212,9 @@ class DisplayOptionsTab extends Tab {
     );
     this.codeWidget = this.registerDisposer(makeShaderCodeWidget(layer));
     element.classList.add("neuroglancer-single-mesh-dropdown");
-    element.appendChild(
+    const elementWrapper = document.createElement("div");
+    elementWrapper.classList.add("neuroglancer-single-mesh-dropdown-wrapper")
+    elementWrapper.appendChild(
       makeShaderCodeWidgetTopRow(
         this.layer,
         this.codeWidget,
@@ -224,9 +226,9 @@ class DisplayOptionsTab extends Tab {
         "neuroglancer-single-mesh-dropdown-top-row",
       ),
     );
-    element.appendChild(this.attributeWidget.element);
-    element.appendChild(this.codeWidget.element);
-    element.appendChild(
+    elementWrapper.appendChild(this.attributeWidget.element);
+    elementWrapper.appendChild(this.codeWidget.element);
+    elementWrapper.appendChild(
       this.registerDisposer(
         new ShaderControls(
           layer.displayState.shaderControlState,
@@ -236,6 +238,8 @@ class DisplayOptionsTab extends Tab {
         ),
       ).element,
     );
+
+    element.appendChild(elementWrapper);
   }
 }
 
