@@ -429,7 +429,7 @@ export class ScreenshotDialog extends Overlay {
     description.textContent = "A snapshot of your current state will be taken and this will create a figure. View your figures on the sidebar panel and the dashboard.";
     descriptionContainer.appendChild(description);
 
-    descriptionContainer.appendChild(document.createElement("hr"));
+    // descriptionContainer.appendChild(document.createElement("hr"));
 
     this.content.appendChild(descriptionContainer);
     // end @metacell
