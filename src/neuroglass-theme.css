@@ -1183,8 +1183,6 @@ ul#statusContainer {
         background: var(--dark100);
         outline: 0 !important;
         padding-top: 0;
-        max-width: 80vw;
-        height: 80vh;
 
         .CodeMirror-cursor {
             border-color: var(--white);
@@ -3247,7 +3245,7 @@ ul#statusContainer {
         z-index: 1300; /* same as MUI modal */
 
         & .overlay-content {
-            width: auto;
+            /* width: auto; */
             max-width: 100%;
             padding: 0;
             position: static;
@@ -3415,9 +3413,7 @@ ul#statusContainer {
     /* Screenshot menu */
     .neuroglancer-screenshot-dialog {
       padding: 1.5rem;
-      overflow: auto;
       max-width: 1000px !important;
-      height: calc(80vh - (4rem + 4.5rem));
       border-radius: 0;
     }
 
@@ -3449,9 +3445,14 @@ ul#statusContainer {
     }
 
     .neuroglancer-screenshot-description-section {
+      padding-top: 24px;
+      padding-bottom: 24px;
+      margin: 0 24px;
+      border-bottom: 1px solid var(--dark80);
       p {
         color: var(--content100);
         font-size: 14px;
+        margin: 0;
       }
     }
 
@@ -3523,8 +3524,6 @@ ul#statusContainer {
     }
 
     .neuroglancer-screenshot-scale-menu {
-      padding-top: 24px;
-
       .neuroglancer-screenshot-scale-factor-label {
         color: var(--white);
         font-size: 0.875rem;
@@ -3589,7 +3588,6 @@ ul#statusContainer {
     .neuroglancer-screenshot-keep-slice-label {
       color: var(--white);
       font-weight: normal;
-      padding: 24px 0;
     }
 
     .neuroglancer-screenshot-resolution-preview-container {
