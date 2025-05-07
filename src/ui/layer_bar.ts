@@ -45,6 +45,7 @@ class LayerWidget extends RefCounted {
   element = document.createElement("div");
   layerNumberElement = document.createElement("div");
   labelElement = document.createElement("div");
+  labelColorElement = document.createElement("div");
   visibleProgress = document.createElement("div");
   prefetchProgress = document.createElement("div");
   labelElementText = document.createTextNode("");
@@ -60,6 +61,7 @@ class LayerWidget extends RefCounted {
     const {
       element,
       labelElement,
+      labelColorElement,
       layerNumberElement,
       valueElement,
       visibleProgress,
@@ -75,6 +77,25 @@ class LayerWidget extends RefCounted {
     prefetchProgress.className = "neuroglancer-layer-item-prefetch-progress";
     layerNumberElement.className = "neuroglancer-layer-item-number";
     valueElement.className = "neuroglancer-layer-item-value";
+
+    const labelColorWrapper = document.createElement("div");
+    labelColorWrapper.className = "neuroglancer-layer-item-label-color-wrapper";
+    labelColorWrapper.style.position = "relative";
+    labelColorWrapper.style.overflow = "hidden";
+
+    labelColorElement.className = "neuroglancer-layer-item-label-color";
+    labelColorElement.style.position = "absolute";
+    labelColorElement.style.top = "0px";
+    labelColorElement.style.left = "0px";
+    labelColorElement.style.width = "100%";
+    labelColorElement.style.height = "100%";
+    labelColorElement.style.filter = "blur(10px)";
+    labelColorElement.style.zIndex = "0";
+    labelColorElement.style.pointerEvents = "none";
+    labelColorElement.style.transform = "scale(1.2)";
+
+    labelColorWrapper.appendChild(labelElement);
+    labelColorWrapper.appendChild(labelColorElement);
 
     const valueContainer = document.createElement("div");
     valueContainer.className = "neuroglancer-layer-item-value-container";
@@ -114,7 +135,7 @@ class LayerWidget extends RefCounted {
     valueContainer.appendChild(buttonContainer);
     buttonContainer.appendChild(closeElement);
     buttonContainer.appendChild(deleteElement);
-    element.appendChild(labelElement);
+    element.appendChild(labelColorWrapper);
     element.appendChild(valueContainer);
     const positionWidget = this.registerDisposer(
       new PositionWidget(
@@ -157,7 +178,14 @@ class LayerWidget extends RefCounted {
   }
 
   update() {
-    const { layer, element, panel, labelElement, labelElementText } = this;
+    const {
+      layer,
+      element,
+      panel,
+      labelElement,
+      labelColorElement,
+      labelElementText,
+    } = this;
     labelElementText.textContent = layer.name;
     element.dataset.visible = layer.visible.toString();
     element.dataset.selected = (layer === panel.selectedLayer.layer).toString();
@@ -171,16 +199,22 @@ class LayerWidget extends RefCounted {
     }
     title += ", drag to move, shift+drag to copy";
     element.title = title;
-    // Color widget updates
     if (layer.supportsLayerBarColorSyncOption) {
       const color = layer.layerBarColor;
       if (color) {
-        labelElement.style.backgroundColor = color;
-        const textColor = useWhiteBackground(parseRGBColorSpecification(color))
-          ? "white"
-          : "black";
-        labelElement.dataset.color = "solid";
-        labelElement.style.color = textColor;
+        labelColorElement.style.backgroundColor = color;
+        labelColorElement.style.background = `linear-gradient(to right, 
+        #ff0000 0%, 
+        #ff0000 33.33%, 
+        #00ff00 33.33%, 
+        #00ff00 66.66%, 
+        #ffffff 66.66%, 
+        #ffffff 100%)`;
+        // const textColor = useWhiteBackground(parseRGBColorSpecification(color))
+        //   ? "white"
+        //   : "black";
+        // labelElement.dataset.color = "solid";
+        labelElement.style.color = "white";
       } else {
         labelElement.dataset.color = "rainbow";
         labelElement.style.color = "white";
@@ -190,7 +224,6 @@ class LayerWidget extends RefCounted {
       labelElement.style.color = "";
     }
   }
-
   disposed() {
     this.element.remove();
     super.disposed();

@@ -66,6 +66,7 @@
   display: inline-block;
   position: relative;
   padding-right: 3px;
+  z-index: 1;
 }
 
 .neuroglancer-layer-item-number {
