@@ -210,6 +210,8 @@ class LayerWidget extends RefCounted {
         #00ff00 66.66%, 
         #ffffff 66.66%, 
         #ffffff 100%)`;
+        // Add a black text shadow to the label element
+        labelElement.style.textShadow = "0px 0px 5px #000000aa";
         // const textColor = useWhiteBackground(parseRGBColorSpecification(color))
         //   ? "white"
         //   : "black";
