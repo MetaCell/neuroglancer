@@ -1695,6 +1695,10 @@ ul#statusContainer {
         /* margin-bottom: 0.5rem; */
     }
 
+    .CodeMirror-cursor {
+        border-left: 1px solid #fff;
+    }
+
     .CodeMirror-gutters {
         background-color: var(--background80);
         border-color: var(--dark80);
