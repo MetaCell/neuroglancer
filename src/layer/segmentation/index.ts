@@ -133,6 +133,8 @@ import { makeWatchableShaderError } from "#src/webgl/dynamic_shader.js";
 import type { DependentViewContext } from "#src/widget/dependent_view_widget.js";
 import { registerLayerShaderControlsTool } from "#src/widget/shader_controls.js";
 
+const MAX_LAYER_BAR_COLORS = 3;
+
 export class SegmentationUserLayerGroupState
   extends RefCounted
   implements SegmentationGroupState
@@ -1311,17 +1313,30 @@ export class SegmentationUserLayer extends Base {
     };
   }
 
-  get automaticLayerBarColor() {
-    const visibleSegments =
+  get automaticLayerBarColors() {
+    const visibleSegmentsSet =
       this.displayState.segmentationGroupState.value.visibleSegments;
-    if (visibleSegments.size === 1) {
-      const color = getCssColor(
-        getBaseObjectColor(this.displayState, [...visibleSegments][0]),
-      );
-      return color;
+    if (
+      visibleSegmentsSet.size === 0 ||
+      visibleSegmentsSet.size > MAX_LAYER_BAR_COLORS
+    ) {
+      return undefined;
     }
+    const visibleSegments = [...visibleSegmentsSet];
+    const colors = visibleSegments.map((id) => {
+      const color = getCssColor(getBaseObjectColor(this.displayState, id));
+      return { color, id };
+    });
 
-    return undefined;
+    // Sort the colors by their segment ID
+    // Otherwise, the order is random which is a bit confusing in the UI
+    colors.sort((a, b) => {
+      const aId = a.id;
+      const bId = b.id;
+      return aId < bId ? -1 : aId > bId ? 1 : 0;
+    });
+    // Extract just the colors
+    return colors.map((color) => color.color);
   }
 
   static type = "segmentation";
