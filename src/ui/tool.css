@@ -48,8 +48,13 @@
 }
 
 .neuroglancer-tool-status-bindings {
-  background-color: #333;
+  background-color: #282828;
   user-select: none;
+  color: #999CA0;
+  display: flex;
+  align-items: center;
+  text-align: end;
+  width: max-content;
 }
 
 .neuroglancer-tool-status-content {
@@ -58,7 +63,7 @@
 }
 
 .neuroglancer-tool-status-header-container {
-  background-color: #555;
+  background-color: #292929;
   width: min-content;
   padding: 3px;
   display: flex;
@@ -73,4 +78,5 @@
 .neuroglancer-tool-status-body {
   flex: 1;
   padding: 2px;
+  background-color: #292929;
 }
