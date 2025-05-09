@@ -91,7 +91,7 @@ export class ViewerSettingsPanel extends SidePanel {
       scroll.appendChild(widget.element);
     };
     addLimitWidget(
-      "GPU memory limit",
+      "GPU memory limit TEMP",
       viewer.chunkQueueManager.capacities.gpuMemory.sizeLimit,
     );
     addLimitWidget(
