@@ -29,7 +29,6 @@
 
 #neuroglancer-status-container li {
   width: 100%;
-  max-height: 25vh;
   overflow-y: auto;
   border: 1px solid #383838;
   border-radius: 2px;
