@@ -16,19 +16,26 @@
 
 #neuroglancer-status-container {
   position: absolute;
-  bottom: 0px;
+  bottom: 20px;
   z-index: 1400;
   background-color: #808080;
   color: white;
   margin: 0px;
   padding: 0px;
   font: 10pt sans-serif;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 #neuroglancer-status-container li {
-  width: 100vw;
-  max-height: 25vh;
+  width: 100%;
   overflow-y: auto;
+  border: 1px solid #383838;
+  border-radius: 2px;
+  display: flex;
+  background: #282828;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
 }
 
 .neuroglancer-status-header {
