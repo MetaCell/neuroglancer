@@ -2528,6 +2528,7 @@ ul#statusContainer {
         padding: 0;
         border-radius: 0.125rem;
         margin: 0;
+        color: var(--content100);
 
         &+.neuroglancer-icon {
             margin-left: 0.25rem;
