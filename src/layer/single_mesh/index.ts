@@ -23,7 +23,6 @@ import {
   UserLayer,
 } from "#src/layer/index.js";
 import type { LoadedDataSubsource } from "#src/layer/layer_data_source.js";
-import { Overlay } from "#src/overlay.js";
 import type { VertexAttributeInfo } from "#src/single_mesh/base.js";
 import {
   getShaderAttributeType,
@@ -37,8 +36,10 @@ import { WatchableValue } from "#src/trackable_value.js";
 import type { Borrowed } from "#src/util/disposable.js";
 import { RefCounted } from "#src/util/disposable.js";
 import { removeChildren, removeFromParent } from "#src/util/dom.js";
+import { makeHelpButton } from "#src/widget/help_button.js";
+import { makeMaximizeButton } from "#src/widget/maximize_button.js";
+import { ShaderCodeOverlay } from "#src/widget/shader_code_overlay.js";
 import {
-  makeShaderCodeWidgetTopRow,
   ShaderCodeWidget,
 } from "#src/widget/shader_code_widget.js";
 import {
@@ -212,18 +213,33 @@ class DisplayOptionsTab extends Tab {
     );
     this.codeWidget = this.registerDisposer(makeShaderCodeWidget(layer));
     element.classList.add("neuroglancer-single-mesh-dropdown");
-    element.appendChild(
-      makeShaderCodeWidgetTopRow(
-        this.layer,
-        this.codeWidget,
-        ShaderCodeOverlay,
-        {
-          title: "Documentation on image layer rendering",
-          href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
+    const topRow = document.createElement("div");
+    topRow.className = "neuroglancer-single-mesh-dropdown-top-row";
+    topRow.appendChild(document.createTextNode("Shader"));
+    const spacer = document.createElement("div");
+    spacer.style.flex = "1";
+    topRow.appendChild(spacer);
+
+    topRow.appendChild(
+      makeMaximizeButton({
+        title: "Show larger editor view",
+        onClick: () => {
+          new ShaderCodeOverlay(
+            this.layer, 
+            makeShaderCodeWidget,
+            { additionalClass: 'neuroglancer-single-mesh-layer-shader-overlay' },
+            makeVertexAttributeWidget
+          );
         },
-        "neuroglancer-single-mesh-dropdown-top-row",
-      ),
+      }),
     );
+    topRow.appendChild(
+      makeHelpButton({
+        title: "Documentation on single mesh layer rendering",
+        href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
+      }),
+    );
+    element.appendChild(topRow);
     element.appendChild(this.attributeWidget.element);
     element.appendChild(this.codeWidget.element);
     element.appendChild(
@@ -236,22 +252,6 @@ class DisplayOptionsTab extends Tab {
         ),
       ).element,
     );
-  }
-}
-
-class ShaderCodeOverlay extends Overlay {
-  attributeWidget: VertexAttributeWidget;
-  codeWidget: ShaderCodeWidget;
-  constructor(public layer: SingleMeshUserLayer) {
-    super();
-    this.attributeWidget = this.registerDisposer(
-      makeVertexAttributeWidget(layer),
-    );
-    this.codeWidget = this.registerDisposer(makeShaderCodeWidget(layer));
-    this.content.classList.add("neuroglancer-single-mesh-layer-shader-overlay");
-    this.content.appendChild(this.attributeWidget.element);
-    this.content.appendChild(this.codeWidget.element);
-    this.codeWidget.textEditor.refresh();
   }
 }
 

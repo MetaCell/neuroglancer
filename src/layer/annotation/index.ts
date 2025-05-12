@@ -39,7 +39,6 @@ import {
 } from "#src/layer/index.js";
 import type { LoadedDataSubsource } from "#src/layer/layer_data_source.js";
 import { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
-import { Overlay } from "#src/overlay.js";
 import { getWatchableRenderLayerTransform } from "#src/render_coordinate_transform.js";
 import { RenderLayerRole } from "#src/renderlayer.js";
 import type { SegmentationDisplayState } from "#src/segmentation_display_state/frontend.js";
@@ -71,6 +70,7 @@ import {
 } from "#src/util/json.js";
 import { NullarySignal } from "#src/util/signal.js";
 import { DependentViewWidget } from "#src/widget/dependent_view_widget.js";
+import { makeHelpButton } from "#src/widget/help_button.js";
 import {
   addLayerControlToOptionsTab,
   type LayerControlDefinition,
@@ -78,9 +78,10 @@ import {
 } from "#src/widget/layer_control.js";
 import { colorLayerControl } from "#src/widget/layer_control_color.js";
 import { LayerReferenceWidget } from "#src/widget/layer_reference.js";
+import { makeMaximizeButton } from "#src/widget/maximize_button.js";
 import { RenderScaleWidget } from "#src/widget/render_scale_widget.js";
+import { ShaderCodeOverlay } from "#src/widget/shader_code_overlay.js";
 import {
-  makeShaderCodeWidgetTopRow,
   ShaderCodeWidget,
 } from "#src/widget/shader_code_widget.js";
 import {
@@ -746,16 +747,6 @@ export function makeShaderCodeWidget(layer: AnnotationUserLayer) {
   });
 }
 
-class ShaderCodeOverlay extends Overlay {
-  codeWidget: ShaderCodeWidget;
-  constructor(public layer: AnnotationUserLayer) {
-    super();
-    this.codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
-    this.content.appendChild(this.codeWidget.element);
-    this.codeWidget.textEditor.refresh();
-  }
-}
-
 class RenderingOptionsTab extends Tab {
   codeWidget: ShaderCodeWidget;
   constructor(public layer: AnnotationUserLayer) {
@@ -798,6 +789,35 @@ class RenderingOptionsTab extends Tab {
       ),
     ).element;
 
+    const topRow = document.createElement("div");
+    topRow.className =
+      "neuroglancer-segmentation-dropdown-skeleton-shader-header";
+    const label = document.createElement("div");
+    label.style.flex = "1";
+    label.textContent = "Annotation shader:";
+    topRow.appendChild(label);
+
+    topRow.appendChild(
+      makeMaximizeButton({
+        title: "Show larger editor view",
+        onClick: () => {
+          new ShaderCodeOverlay(
+            this.layer, 
+            makeShaderCodeWidget,
+            { additionalClass: 'neuroglancer-annotation-layer-shader-overlay' }
+          );
+        },
+      }),
+    );
+
+    topRow.appendChild(
+      makeHelpButton({
+        title: "Documentation on annotation rendering",
+        href: "https://github.com/google/neuroglancer/blob/master/src/annotation/rendering.md",
+      }),
+    );
+    element.appendChild(topRow);
+
     layer.registerDisposer(
       new ElementVisibilityFromTrackableBoolean(
         layer.codeVisible,
@@ -806,18 +826,6 @@ class RenderingOptionsTab extends Tab {
     );
 
     element.appendChild(shaderProperties);
-    element.appendChild(
-      makeShaderCodeWidgetTopRow(
-        this.layer,
-        this.codeWidget,
-        ShaderCodeOverlay,
-        {
-          title: "Documentation on image layer rendering",
-          href: "https://github.com/google/neuroglancer/blob/master/src/annotation/rendering.md",
-        },
-        "neuroglancer-annotation-dropdown-shader-top-row",
-      ),
-    );
 
     element.appendChild(this.codeWidget.element);
     element.appendChild(

@@ -1183,6 +1183,7 @@ ul#statusContainer {
         background: var(--dark100);
         outline: 0 !important;
         padding-top: 0;
+        height: 80vh;
 
         .CodeMirror-cursor {
             border-color: var(--white);
