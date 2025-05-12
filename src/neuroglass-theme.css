@@ -23,8 +23,9 @@
     --codenumber: #00875A;
     --overlayBg: #14141580;
     --datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0, 0, 0, 0.72);
+    --Dark-Stroke-100: #1F1F1F;
 
-    --text-font: Graphik,-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen-Sans, Ubuntu, Cantarell, Helvetica Neue, system-ui, sans-serif;
+    --text-font: Graphik, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen-Sans, Ubuntu, Cantarell, Helvetica Neue, system-ui, sans-serif;
     --monospaced-font: "DejaVu Sans Mono", monospace;
 
     /* sets the status bar top offset so we can position it in neuroglass */
@@ -316,6 +317,7 @@ ul#statusContainer {
                 svg {
                     stroke-width: 1;
                     stroke: var(--content100);
+
                 }
             }
         }
@@ -347,8 +349,8 @@ ul#statusContainer {
 
 .neuroglass-theme {
     * {
-      font-family: var(--text-font);
-      box-sizing: border-box;
+        font-family: var(--text-font);
+        box-sizing: border-box;
     }
 
     .neuroglancer-icon svg {
@@ -393,6 +395,12 @@ ul#statusContainer {
         height: 3.125rem;
     }
 
+    
+    .neuroglancer-render-scale-widget canvas {
+        background: var(--primary120);
+    }
+
+
     .neuroglancer-transfer-function-widget-bound,
     .neuroglancer-invlerp-widget-window-bound,
     .neuroglancer-invlerp-widget-range-bound {
@@ -413,6 +421,10 @@ ul#statusContainer {
 
     .CodeMirror-gutter {
         background: var(--background80);
+    }
+
+    .CodeMirror-scroll {
+        overflow: auto !important;
     }
 
     .CodeMirror-lines {
@@ -714,6 +726,7 @@ ul#statusContainer {
 
     .neuroglancer-selection-details {
         .neuroglancer-selection-details-position {
+
             .neuroglancer-icon {
                 svg {
                     stroke: var(--content100);
@@ -1176,6 +1189,7 @@ ul#statusContainer {
                 color: var(--white);
             }
         }
+
     }
 
     .overlay-content {
@@ -1421,7 +1435,7 @@ ul#statusContainer {
         }
 
         .neuroglancer-layer-item-value {
-          font-size: inherit !important;
+            font-size: inherit !important;
         }
 
         .neuroglancer-layer-item-button-container {
@@ -1446,16 +1460,16 @@ ul#statusContainer {
         }
     }
 
-    .neuroglancer-display-dimensions-widget-dimension-grid > :not(:last-child),
-    .neuroglancer-display-dimensions-widget > :not(:last-child) {
-      padding-bottom: 4px;
+    .neuroglancer-display-dimensions-widget-dimension-grid> :not(:last-child),
+    .neuroglancer-display-dimensions-widget> :not(:last-child) {
+        padding-bottom: 4px;
     }
 
     .neuroglancer-display-dimensions-widget-default,
     .neuroglancer-depth-range-relative-checkbox-label {
-      display: flex;
-      align-items: center;
-      gap: 4px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
     }
 
     .neuroglancer-display-dimensions-widget {
@@ -1468,14 +1482,14 @@ ul#statusContainer {
     }
 
     .neuroglancer-display-dimensions-widget:hover {
-      padding-bottom: 0.25rem;
+        padding-bottom: 0.25rem;
     }
 
     .neuroglancer-display-dimensions-widget-dimension {
         align-items: center;
 
         * {
-          font-family: var(--monospaced-font);
+            font-family: var(--monospaced-font);
         }
 
         &:hover {
@@ -1484,12 +1498,12 @@ ul#statusContainer {
 
         .neuroglancer-display-dimensions-widget-name,
         .neuroglancer-display-dimensions-widget-scale-factor input {
-          font-size: 0.75rem;
+            font-size: 0.75rem;
         }
     }
 
     .neuroglancer-depth-range-widget-grid {
-      margin: 0;
+        margin: 0;
     }
 
     .neuroglancer-display-dimensions-widget input {
@@ -1500,8 +1514,8 @@ ul#statusContainer {
     }
 
     .neuroglancer-depth-range-widget-grid input {
-      font-family: var(--monospaced-font);
-      font-weight: 400;
+        font-family: var(--monospaced-font);
+        font-weight: 400;
     }
 
     label.perspective-panel-show-slice-views {
@@ -1825,181 +1839,185 @@ ul#statusContainer {
             }
         }
 
-        .accordion-content {
-            padding: 0 0.75rem 0.75rem;
-            height: 100%;
+        .skeleton-container {
+            .neuroglancer-layer-control-container {
+                margin-bottom: 0.5rem;
+            }
+        }
+
+        .neuroglancer-render-scale-widget-legend {
+            color: var(--content100);
+            font-size: 0.75rem;
+            font-weight: 400;
+            line-height: 100%;
             display: flex;
             flex-direction: column;
+            gap: 0.25rem;
+        }
 
-            .skeleton-container {
-                .neuroglancer-layer-control-container {
-                    margin-bottom: 0.5rem;
+        .slice2d-container,
+        .slice-2d-container,
+        .volume-rendering-container,
+        .appearance-container,
+        .mesh3d-container,
+        .visibility-container {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        select {
+            width: 150px;
+        }
+
+        .neuroglancer-label-linkedto {
+            width: 51%;
+            display: inline-flex;
+            color: var(--content100);
+            font-size: 0.875rem;
+
+            ~button {
+                background-color: transparent;
+                background-image: url('../src/ui/images/link_off.svg');
+                background-repeat: no-repeat;
+                background-position: center;
+                border: 0;
+                width: 1.4rem;
+                height: 1.4rem;
+                border-radius: 0.25rem;
+                float: right;
+                text-indent: -999px;
+                cursor: pointer;
+                margin: 0.15rem 0 0 0.5rem;
+                position: relative;
+
+                &:after {
+                    background: var(--dark80);
+                    content: attr(neuroglancer-label-linkedto-data-tooltip);
+                    display: block;
+                    text-indent: 0;
+                    position: absolute;
+                    right: 0;
+                    font-size: 0.75rem;
+                    top: 100%;
+                    margin: 0.25rem 0 0;
+                    padding: 0.35rem 0.35rem;
+                    color: var(--white);
+                    border-radius: 4px;
+                    opacity: 0;
                 }
-            }
 
-            .neuroglancer-render-scale-widget-legend {
-                color: var(--content100);
-                font-size: 0.75rem;
-                font-weight: 400;
-                line-height: 100%;
-                display: flex;
-                flex-direction: column;
-                gap: 0.25rem;
-            }
-
-            .slice2d-container,
-            .slice-2d-container,
-            .volume-rendering-container,
-            .appearance-container,
-            .mesh3d-container,
-            .visibility-container {
-                display: flex;
-                flex-direction: column;
-                gap: 0.5rem;
-            }
-
-            select {
-                width: 150px;
-            }
-
-            .neuroglancer-label-linkedto {
-                width: 51%;
-                display: inline-flex;
-                color: var(--content100);
-                font-size: 0.875rem;
-
-                ~button {
-                    background-color: transparent;
-                    background-image: url('../src/ui/images/link_off.svg');
+                &:hover {
+                    background-image: url('../src/ui/images/link_on.svg');
                     background-repeat: no-repeat;
                     background-position: center;
-                    border: 0;
-                    width: 1.4rem;
-                    height: 1.4rem;
-                    border-radius: 0.25rem;
-                    float: right;
-                    text-indent: -999px;
-                    cursor: pointer;
-                    margin: 0.15rem 0 0 0.5rem;
-                    position: relative;
+                    background-color: var(--dark80);
 
                     &:after {
-                        background: var(--dark80);
-                        content: attr(neuroglancer-label-linkedto-data-tooltip);
-                        display: block;
-                        text-indent: 0;
-                        position: absolute;
-                        right: 0;
-                        font-size: 0.75rem;
-                        top: 100%;
-                        margin: 0.25rem 0 0;
-                        padding: 0.35rem 0.35rem;
-                        color: var(--white);
-                        border-radius: 4px;
-                        opacity: 0;
+                        opacity: 1;
                     }
-
-                    &:hover {
-                        background-image: url('../src/ui/images/link_on.svg');
-                        background-repeat: no-repeat;
-                        background-position: center;
-                        background-color: var(--dark80);
-
-                        &:after {
-                            opacity: 1;
-                        }
-                    }
-
                 }
+
             }
         }
+    }
 
-        .neuroglancer-coordinate-space-transform-scale-container {
-            border: 0;
+    .neuroglancer-coordinate-space-transform-scale-container {
+        border: 0;
+    }
+
+    .neuroglancer-coordinate-space-transform-output-name-container {
+        border: 0;
+        margin-right: 0;
+    }
+
+    .neuroglancer-coordinate-space-transform-output-scale-container {
+        margin: 0;
+    }
+
+    .neuroglancer-coordinate-space-transform-scale-suggestion {
+        border-radius: 0;
+        background: var(--background80);
+        border-color: var(--dark80);
+        font-size: 0.75rem;
+        padding: 0.125rem 0.5rem 0.125rem 0.25rem;
+        display: flex;
+        align-items: center;
+        margin: 0.188rem;
+
+        svg {
+            width: 0.625rem;
+            height: 0.625rem;
         }
 
-        .neuroglancer-coordinate-space-transform-output-name-container {
-            border: 0;
-            margin-right: 0;
-        }
-
-        .neuroglancer-coordinate-space-transform-output-scale-container {
-            margin: 0;
-        }
-
-        .neuroglancer-coordinate-space-transform-scale-suggestion {
-            border-radius: 0;
-            background: var(--background80);
-            border-color: var(--dark80);
-            font-size: 0.75rem;
-            padding: 0.125rem 0.5rem 0.125rem 0.25rem;
-            display: flex;
-            align-items: center;
-            margin: 0.188rem;
-
-            svg {
-                width: 0.625rem;
-                height: 0.625rem;
-            }
-
-            &:hover {
-                border: 1px solid var(--dark80);
-                color: var(--content100);
-            }
-        }
-
-        .neuroglancer-coordinate-space-transform-widget {
-            input {
-                margin: 0.188rem;
-                background: var(--background80);
-                border: 1px solid var(--dark80) !important;
-                color: var(--content100);
-                padding: 0.5rem;
-                text-align: left;
-                outline: 0;
-                font-size: 0.875rem;
-            }
-        }
-
-        .neuroglancer-layer-data-sources-source-default {
-            padding: 0.4rem 0 0;
-        }
-
-        .neuroglancer-layer-data-sources-source-default,
-        .neuroglancer-layer-data-sources-info-line {
-            display: flex;
-            flex-direction: row-reverse;
-            position: relative;
-            margin: 0;
+        &:hover {
+            border: 1px solid var(--dark80);
             color: var(--content100);
+        }
+    }
 
-            input {
+    .neuroglancer-coordinate-space-transform-widget {
+        input {
+            margin: 0.188rem;
+            background: var(--background80);
+            border: 1px solid var(--dark80) !important;
+            color: var(--content100);
+            padding: 0.5rem;
+            text-align: left;
+            outline: 0;
+            font-size: 0.875rem;
+        }
+    }
+
+    .neuroglancer-layer-data-sources-source-default {
+        padding: 0.4rem 0 0;
+        display: flex;
+        gap: 0.5em;
+    }
+
+    .neuroglancer-layer-data-sources-source-default,
+    .neuroglancer-layer-data-sources-info-line {
+        display: flex;
+        flex-direction: row-reverse;
+        position: relative;
+        margin: 0;
+        color: var(--content100);
+
+        input {
+            width: 1rem;
+            height: 1rem;
+            margin: 0 0 0 auto;
+            display: block;
+
+            &:checked {
                 width: 1rem;
                 height: 1rem;
                 margin: 0 0 0 auto;
-                display: block;
-
-                &:checked {
-                    width: 1rem;
-                    height: 1rem;
-                    margin: 0 0 0 auto;
-                }
-
-                &:focus {
-                    outline: none;
-                }
-
-                &:focus:checked {
-                    background-color: rgba(22, 82, 240, 0.15);
-                    box-shadow: 0 0 0 4px rgba(22, 82, 240, 0.15);
-                }
             }
 
+            &:focus {
+                outline: none;
+            }
+
+            &:focus:checked {
+                background-color: rgba(22, 82, 240, 0.15);
+                box-shadow: 0 0 0 4px rgba(22, 82, 240, 0.15);
+            }
         }
 
-        .neuroglancer-layer-data-source-subsource {
-            margin: 1.8rem 0 0.5rem
-        }
+    }
+
+    .neuroglancer-layer-data-source-subsource {
+        margin: 1.8rem 0 0.5rem
+    }
+
+    .accordion-content {
+        padding: 0 0.75rem 0.75rem;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+
+
     }
 
     .neuroglancer-layer-options-control-container {
@@ -2071,6 +2089,10 @@ ul#statusContainer {
     .neuroglancer-layer-data-source {
         .metacell-neuroglancer-add-button {
             margin: 0;
+        }
+
+        .neuroglancer-layer-data-source-div {
+            padding: 0.75rem;
         }
 
         .neuroglancer-icon {
@@ -2241,15 +2263,18 @@ ul#statusContainer {
 
         .neuroglancer-annotation-property {
             display: flex;
-            max-width: max-content;
+            width: 100%;
             min-width: 7.5rem;
             font-size: 0.75rem;
             color: var(--content100);
-            font-family: var(--monospaced-font);
+            border-bottom: 1px solid var(--Dark-Stroke-100, #1F1F1F);
+            padding: 4px 0;
+            gap: 0.5rem;
+
+
             font-weight: 400;
 
             .neuroglancer-annotation-property-label {
-                font-family: var(--monospaced-font);
                 margin-right: 0.15rem;
                 flex-shrink: 0;
             }
@@ -2259,7 +2284,8 @@ ul#statusContainer {
                 overflow: hidden;
                 white-space: nowrap;
                 font-size: 0.75rem;
-                color: var(--content100);
+                color: white;
+                font-family: var(--monospaced-font);
                 flex: 1;
                 min-width: 0;
             }
@@ -2439,7 +2465,7 @@ ul#statusContainer {
 
     .neuroglancer-position-widget {
         * {
-          font-family: var(--monospaced-font) !important;
+            font-family: var(--monospaced-font) !important;
         }
 
         .neuroglancer-position-dimension+.neuroglancer-position-dimension {
@@ -2452,36 +2478,36 @@ ul#statusContainer {
     }
 
     .neuroglancer-position-dimension-coordinate-label {
-      color: var(--warning60);
-      font-size: 12px;
-      font-weight: 400;
-
-      &::before {
         color: var(--warning60);
-      }
+        font-size: 12px;
+        font-weight: 400;
 
-      &::after {
-        color: var(--warning60);
-      }
+        &::before {
+            color: var(--warning60);
+        }
+
+        &::after {
+            color: var(--warning60);
+        }
     }
 
     .neuroglancer-position-dimension-coordinate-dropdown {
-      gap: 2px;
+        gap: 2px;
     }
 
     .neuroglancer-dimension-dropdown-coordinate-entry {
-      font-size: 12px;
-      font-weight: 400;
+        font-size: 12px;
+        font-weight: 400;
     }
 
     .neuroglancer-dimension-dropdown-coordinate-entry:hover {
-      background-color: var(--background80);
+        background-color: var(--background80);
     }
 
     .neuroglancer-dimension-dropdown-coordinate-label {
-      color: var(--warning60);
-      font-size: 12px;
-      font-weight: 400;
+        color: var(--warning60);
+        font-size: 12px;
+        font-weight: 400;
     }
 
     .neuroglancer-position-dimension-scale-container {
@@ -3071,8 +3097,8 @@ ul#statusContainer {
 
     .neuroglancer-selection-details-position {
         display: flex;
-        align-items: center;
         gap: 0.5rem;
+        flex-flow: wrap;
         margin-bottom: 0.5rem;
 
         div[title="Copy position"] {
@@ -3240,7 +3266,8 @@ ul#statusContainer {
         align-items: center;
         display: flex;
         padding: 1.875rem 0;
-        z-index: 1300; /* same as MUI modal */
+        z-index: 1300;
+        /* same as MUI modal */
 
         & .overlay-content {
             /* width: auto; */
@@ -3250,7 +3277,8 @@ ul#statusContainer {
             transform: none;
             margin: auto;
             background-color: var(--background80);
-            z-index: 1300; /* same as MUI modal */
+            z-index: 1300;
+            /* same as MUI modal */
 
             &:focus-visible {
                 outline: none;
@@ -3410,269 +3438,277 @@ ul#statusContainer {
 
     /* Screenshot menu */
     .neuroglancer-screenshot-dialog {
-      padding: 1.5rem;
-      max-width: 1000px !important;
-      border-radius: 0;
+        padding: 1.5rem;
+        max-width: 1000px !important;
+        border-radius: 0;
     }
 
     .neuroglancer-screenshot-close {
-      border-bottom: 0.0625rem solid var(--dark80);
-      padding: 0 1.5rem;
-      height: 4rem;
+        border-bottom: 0.0625rem solid var(--dark80);
+        padding: 0 1.5rem;
+        height: 4rem;
 
-      .neuroglancer-screenshot-title {
-        color: var(--white);
-        font-size: 1.25rem;
-        font-style: normal;
-        font-weight: 500;
-        line-height: 1.5rem;
-        letter-spacing: -0.025rem;
-      }
-
-      .neuroglancer-screenshot-close-button {
-        & .neuroglancer-icon {
-          width: 1.5rem;
-          height: 1.5rem;
-
-          & svg {
-              width: 1.5rem;
-              height: 1.5rem;
-          }
+        .neuroglancer-screenshot-title {
+            color: var(--white);
+            font-size: 1.25rem;
+            font-style: normal;
+            font-weight: 500;
+            line-height: 1.5rem;
+            letter-spacing: -0.025rem;
         }
-      }
+
+        .neuroglancer-screenshot-close-button {
+            & .neuroglancer-icon {
+                width: 1.5rem;
+                height: 1.5rem;
+
+                & svg {
+                    width: 1.5rem;
+                    height: 1.5rem;
+                }
+            }
+        }
     }
 
     .neuroglancer-screenshot-description-section {
-      padding-top: 24px;
-      padding-bottom: 24px;
-      margin: 0 24px;
-      border-bottom: 1px solid var(--dark80);
-      p {
-        color: var(--content100);
-        font-size: 14px;
-        margin: 0;
-      }
+        padding-top: 24px;
+        padding-bottom: 24px;
+        margin: 0 24px;
+        border-bottom: 1px solid var(--dark80);
+
+        p {
+            color: var(--content100);
+            font-size: 14px;
+            margin: 0;
+        }
     }
 
     .neuroglancer-screenshot-filename-container {
-      .neuroglancer-screenshot-title-subheading {
-        color: var(--white);
-        font-size: 1rem;
-        font-style: normal;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        font-weight: 500;
-        margin: 0 0 1.5rem;
-        line-height: 1.25rem; /* 125% */
-        letter-spacing: -0.02rem;
+        .neuroglancer-screenshot-title-subheading {
+            color: var(--white);
+            font-size: 1rem;
+            font-style: normal;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-weight: 500;
+            margin: 0 0 1.5rem;
+            line-height: 1.25rem;
+            /* 125% */
+            letter-spacing: -0.02rem;
 
-        & .neuroglancer-icon {
-          stroke: none
+            & .neuroglancer-icon {
+                stroke: none
+            }
         }
-      }
 
-      label {
-        color: var(--white);
-        font-size: 0.875rem;
-        font-style: normal;
-        font-weight: 500;
-        line-height: 1.125rem; /* 128.571% */
-        letter-spacing: -0.0088rem;
-        display: flex;
-        gap: 0.25rem;
-        align-items: center;
-        margin: 0 0 0.625rem;
-      }
+        label {
+            color: var(--white);
+            font-size: 0.875rem;
+            font-style: normal;
+            font-weight: 500;
+            line-height: 1.125rem;
+            /* 128.571% */
+            letter-spacing: -0.0088rem;
+            display: flex;
+            gap: 0.25rem;
+            align-items: center;
+            margin: 0 0 0.625rem;
+        }
 
-      .neuroglancer-screenshot-name-input {
-        margin-right: 0;
-        border-radius: 0;
-        border-radius: 0;
-        border: 0.0625rem solid var(--dark80);
-        height: 3rem;
-        font-size: 0.875rem;
-        padding: 0 1rem;
-        gap: 0.5rem;
-        background-color: var(--background80);
-        color: var(--white);
-        box-shadow: 0rem 0.0625rem 0.125rem 0rem rgba(16, 24, 40, 0.05);
-        line-height: 1.25rem;
-      }
+        .neuroglancer-screenshot-name-input {
+            margin-right: 0;
+            border-radius: 0;
+            border-radius: 0;
+            border: 0.0625rem solid var(--dark80);
+            height: 3rem;
+            font-size: 0.875rem;
+            padding: 0 1rem;
+            gap: 0.5rem;
+            background-color: var(--background80);
+            color: var(--white);
+            box-shadow: 0rem 0.0625rem 0.125rem 0rem rgba(16, 24, 40, 0.05);
+            line-height: 1.25rem;
+        }
 
-      .neuroglancer-screenshot-name-input:hover {
-        background-color: var(--background80);
-        outline: 0.0625rem solid var(--dark80);
-      }
+        .neuroglancer-screenshot-name-input:hover {
+            background-color: var(--background80);
+            outline: 0.0625rem solid var(--dark80);
+        }
 
-      .neuroglancer-screenshot-name-input:focus {
-        background-color: var(--dark80);
-        border-color: var(--primary100);
-        outline: none;
-        box-shadow: 0rem 0rem 0rem 0.125rem rgba(22, 82, 240, 0.20);
-      }
+        .neuroglancer-screenshot-name-input:focus {
+            background-color: var(--dark80);
+            border-color: var(--primary100);
+            outline: none;
+            box-shadow: 0rem 0rem 0rem 0.125rem rgba(22, 82, 240, 0.20);
+        }
 
-      .neuroglancer-screenshot-name-input:disabled {
-        background: var(--gray500);
-        color: var(--gray400);
-      }
-      .neuroglancer-screenshot-name-input::placeholder {
-        color: var(--content100);
-      }
+        .neuroglancer-screenshot-name-input:disabled {
+            background: var(--gray500);
+            color: var(--gray400);
+        }
+
+        .neuroglancer-screenshot-name-input::placeholder {
+            color: var(--content100);
+        }
     }
 
     .neuroglancer-screenshot-scale-menu {
-      .neuroglancer-screenshot-scale-factor-label {
-        color: var(--white);
-        font-size: 0.875rem;
-        font-style: normal;
-        font-weight: 500;
-        line-height: 1.125rem; /* 128.571% */
-        letter-spacing: -0.0088rem;
-        gap: 0.25rem;
-        margin: 0 0 0.625rem;
-      }
+        .neuroglancer-screenshot-scale-factor-label {
+            color: var(--white);
+            font-size: 0.875rem;
+            font-style: normal;
+            font-weight: 500;
+            line-height: 1.125rem;
+            /* 128.571% */
+            letter-spacing: -0.0088rem;
+            gap: 0.25rem;
+            margin: 0 0 0.625rem;
+        }
     }
 
     .neuroglancer-screenshot-scale-radio-container {
-      .neuroglancer-screenshot-scale-label {
-        color: var(--content100);
-        font-size: 0.875rem;
-        font-style: normal;
-        display: inline-flex;
-        align-items: center;
-        font-weight: 400;
-        line-height: 1.25rem; /* 142.857% */
-        margin-right: 1rem;
-        cursor: pointer;
-
-        input[type="radio"] {
-          -webkit-appearance: none;
-          -moz-appearance: none;
-          appearance: none;
-          margin: 0;
-          padding: 0;
-          outline: none;
-        }
-
-        input[type="radio"]:checked + span .neuroglancer-icon svg {
-          color: var(--primary100) !important;
-        }
-
-        span {
-          display: flex;
-          width: 1.5rem;
-          height: 1.5rem;
-          align-items: center;
-          justify-content: center;
-          margin-right: 0.25em;
-
-          .neuroglancer-icon {
-            display: flex;
+        .neuroglancer-screenshot-scale-label {
+            color: var(--content100);
+            font-size: 0.875rem;
+            font-style: normal;
+            display: inline-flex;
             align-items: center;
-            justify-content: center;
-            width: 1.5rem;
-            height: 1.5rem;
+            font-weight: 400;
+            line-height: 1.25rem;
+            /* 142.857% */
+            margin-right: 1rem;
+            cursor: pointer;
 
-            svg {
-              width: 1.5rem;
-              height: 1.5rem;
+            input[type="radio"] {
+                -webkit-appearance: none;
+                -moz-appearance: none;
+                appearance: none;
+                margin: 0;
+                padding: 0;
+                outline: none;
             }
-          }
+
+            input[type="radio"]:checked+span .neuroglancer-icon svg {
+                color: var(--primary100) !important;
+            }
+
+            span {
+                display: flex;
+                width: 1.5rem;
+                height: 1.5rem;
+                align-items: center;
+                justify-content: center;
+                margin-right: 0.25em;
+
+                .neuroglancer-icon {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 1.5rem;
+                    height: 1.5rem;
+
+                    svg {
+                        width: 1.5rem;
+                        height: 1.5rem;
+                    }
+                }
+            }
         }
-      }
     }
 
     .neuroglancer-screenshot-keep-slice-label {
-      color: var(--white);
-      font-weight: normal;
+        color: var(--white);
+        font-weight: normal;
     }
 
     .neuroglancer-screenshot-resolution-preview-container {
-      --gray600: #141415;
+        --gray600: #141415;
 
-      background: var(--gray600);
-      border-color: transparent;
+        background: var(--gray600);
+        border-color: transparent;
 
-      h2, h3 {
-        color: var(--white);
-      }
+        h2,
+        h3 {
+            color: var(--white);
+        }
 
-      span {
-        color: var(--content100);
-      }
+        span {
+            color: var(--content100);
+        }
 
-      .neuroglancer-screenshot-resolution-preview-top-container {
-        justify-content: space-between;
-      }
+        .neuroglancer-screenshot-resolution-preview-top-container {
+            justify-content: space-between;
+        }
     }
 
     .neuroglancer-screenshot-resolution-table-container {
-      .neuroglancer-screenshot-resolution-table{
-        background-color: var(--background120);
-
-        tr {
-          background-color: var(--background120);
-
-          th {
+        .neuroglancer-screenshot-resolution-table {
             background-color: var(--background120);
-            color: var(--white);
-          }
 
-          td {
-            background-color: var(--background80);
-            color: var(--content100);
-          }
+            tr {
+                background-color: var(--background120);
 
-          td .neuroglancer-screenshot-dimension {
-            color: var(--caramel60);
-          }
+                th {
+                    background-color: var(--background120);
+                    color: var(--white);
+                }
+
+                td {
+                    background-color: var(--background80);
+                    color: var(--content100);
+                }
+
+                td .neuroglancer-screenshot-dimension {
+                    color: var(--caramel60);
+                }
+            }
         }
-      }
     }
 
     .neuroglancer-screenshot-statistics-title {
-      .neuroglancer-screenshot-statistics-table {
-        .neuroglancer-screenshot-title {
-          color: var(--white);
-        }
+        .neuroglancer-screenshot-statistics-table {
+            .neuroglancer-screenshot-title {
+                color: var(--white);
+            }
 
-        .neuroglancer-statistics-table-description-header {
-          color: var(--content100);
-        }
+            .neuroglancer-statistics-table-description-header {
+                color: var(--content100);
+            }
 
-        .neuroglancer-screenshot-statistics-table-data-key {
-          color: var(--white);
-        }
+            .neuroglancer-screenshot-statistics-table-data-key {
+                color: var(--white);
+            }
 
-        .neuroglancer-screenshot-statistics-table-data-value {
-          color: var(--content100)
+            .neuroglancer-screenshot-statistics-table-data-value {
+                color: var(--content100)
+            }
         }
-      }
     }
 
     .neuroglancer-screenshot-footer-container {
-      --border-color: #2b2b2b;
+        --border-color: #2b2b2b;
 
-      border-color: var(--border-color);
+        border-color: var(--border-color);
 
-      button {
-        padding: 12px 16px;
-        border-radius: 0;
-      }
+        button {
+            padding: 12px 16px;
+            border-radius: 0;
+        }
     }
 }
 
 .neuroglancer-drag-status {
-  top: var(--neuroglancer-drag-status-top, 0px);
-  z-index: 1500; /* same as MUI tooltip */
-  background-color: var(--primary100);
-  color: var(--white);
-  font: 12px var(--text-font);
-  padding: 4px 8px;
-  border-radius: 2px;
-  margin: 4px;
-  box-shadow:
-    0px 0px 1px 0px rgba(0, 0, 0, 0.4),
-    0px 6px 6px -6px rgba(0, 0, 0, 0.52);
+    top: var(--neuroglancer-drag-status-top, 0px);
+    z-index: 1500;
+    /* same as MUI tooltip */
+    background-color: var(--primary100);
+    color: var(--white);
+    font: 12px var(--text-font);
+    padding: 4px 8px;
+    border-radius: 2px;
+    margin: 4px;
+    box-shadow:
+        0px 0px 1px 0px rgba(0, 0, 0, 0.4),
+        0px 6px 6px -6px rgba(0, 0, 0, 0.52);
 }
