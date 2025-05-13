@@ -1542,15 +1542,14 @@ ul#statusContainer {
         font-family: var(--text-font);
     }
 
-    label.perspective-panel-show-slice-views input {
+    label.perspective-panel-show-slice-views input[type="checkbox"] {
         width: 1rem;
         height: 1rem;
         position: relative;
-        appearance: none;
         cursor: pointer;
     }
 
-    label.perspective-panel-show-slice-views input::after {
+    label.perspective-panel-show-slice-views input[type="checkbox"]::after {
         content: "";
         width: 1rem;
         height: 1rem;
@@ -2210,13 +2209,11 @@ ul#statusContainer {
             font-size: 0.75rem;
             color: var(--caramel60);
             font-weight: 400;
-            line-height: 0.8731rem;
         }
 
         .neuroglancer-selected-annotation-details-position-coord {
             font-size: 0.75rem;
             font-weight: 400;
-            line-height: 0.8731rem;
             padding: 0;
             color: var(--white);
         }
