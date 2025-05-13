@@ -667,7 +667,9 @@ export class SidePanelManager extends RefCounted {
         } else {
           flexGroup.visible = visible;
           flexGroup.minSize = minSize;
-          flexGroup.crossSize = Math.max(flexGroup.crossSize, minSize);
+          if (!visible) {
+            flexGroup.crossSize = -1;
+          }
         }
         function* getCells() {
           yield flexGroup.beginDropZone;
@@ -688,8 +690,13 @@ export class SidePanelManager extends RefCounted {
               cell.registeredPanel = registeredPanel;
             }
             const oldLocation = cell.registeredPanel.location.value;
-            if (flexGroup.crossSize === -1) {
-              flexGroup.crossSize = Math.max(minSize, oldLocation.size);
+            if (oldLocation.visible) {
+              flexGroup.crossSize = Math.max(
+                minSize,
+                flexGroup.crossSize === -1
+                  ? oldLocation.size
+                  : flexGroup.crossSize,
+              );
             }
             if (
               oldLocation[crossKey] !== crossIndex ||
