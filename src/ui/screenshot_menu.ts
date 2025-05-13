@@ -154,7 +154,7 @@ function formatPhysicalResolution(resolution: DimensionResolutionStats[]) {
   if (resolution.length === 0) {
     return {
       type: "Loading...",
-      resolution: "Loading...",
+      resolution: "Data not loaded",
     };
   }
 
