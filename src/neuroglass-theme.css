@@ -24,7 +24,7 @@
     --overlayBg: #14141580;
     --datapanelshadow: 0px 48px 48px -6px rgba(0, 0, 0, 0.88), 0px 0px 1px 0px rgba(0, 0, 0, 0.72);
     --Dark-Stroke-100: #1F1F1F;
-
+    --spacing1: 8px;
     --text-font: Graphik, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen-Sans, Ubuntu, Cantarell, Helvetica Neue, system-ui, sans-serif;
     --monospaced-font: "DejaVu Sans Mono", monospace;
 
@@ -685,7 +685,7 @@ ul#statusContainer {
         .neuroglancer-annotation-shader-property-list {
             display: flex;
             flex-direction: column;
-            padding: 0.75rem;
+            padding: 0.75rem 0;
             gap: 0.25rem;
 
             .neuroglancer-annotation-shader-property {
@@ -1053,8 +1053,7 @@ ul#statusContainer {
 
     .CodeMirror.cm-s-default.neuroglancer-shader-code-widget+.neuroglancer-tab-content {
         .neuroglancer-layer-options-control-container {
-            padding: 0.25rem 1rem 0.5rem;
-            margin: 0;
+            margin: 0.5rem 0;
 
         }
     }
@@ -1062,8 +1061,7 @@ ul#statusContainer {
     .channels-container.shader {
         .neuroglancer-tab-content {
             .neuroglancer-layer-options-control-container {
-                padding: 0.25rem 0 0.5rem;
-                margin: 0;
+                margin: 0.5rem 0;
                 /* .neuroglancer-layer-control-label {
                     width: 6rem;
                 } */
@@ -1074,6 +1072,23 @@ ul#statusContainer {
             border-color: var(--white);
         }
     }
+
+    .neuroglancer-tab-view {
+        .neuroglancer-tab-content {
+            padding: var(--spacing1);
+
+            .neuroglancer-tab-content {
+                padding: 0;
+            }
+            
+        }
+        overflow: auto;
+        > div, > div > div, > div > div > div {
+            overflow-y: visible;
+        }
+
+    }
+
 
     .neuroglancer-layer-control-container {
         margin: 0;
@@ -1200,7 +1215,7 @@ ul#statusContainer {
         padding-top: 0;
         height: 80vh;
 
-        
+
 
         .overlay-header {
             display: flex;
@@ -1697,6 +1712,13 @@ ul#statusContainer {
 
     }
 
+    .neuroglancer-layer-type-indicator {
+        font-weight: normal;
+        padding: 2px 6px;
+        width: auto;
+        line-height: 1rem;
+    }
+
     .CodeMirror {
         width: 100%;
         box-sizing: border-box;
@@ -1712,26 +1734,30 @@ ul#statusContainer {
         border-color: var(--dark80);
     }
 
-    .neuroglancer-tab-view {
-        &>.neuroglancer-stack-view {
-            &>.neuroglancer-tab-content {
-                padding: 0;
-            }
-        }
-    }
-
     .accordion {
         background-color: var(--dark100);
+        margin: 0 calc(var(--spacing1) * -1);
 
         .accordion-item {
             border-bottom: 1px solid var(--dark80);
+            margin-bottom: 1em;
             position: relative;
 
             .accordion-title {
-                padding: 0.75rem;
+                padding: 2px var(--spacing1);
+                line-height: 2rem;
+
                 cursor: pointer;
                 font-size: 0.875rem;
                 font-weight: 500;
+            }
+
+            .accordion-content {
+                display: flex;
+                flex-direction: column;
+                padding: var(--spacing1);
+
+
             }
 
             &:not(.accordion-expanded) .accordion-title {
@@ -1956,6 +1982,8 @@ ul#statusContainer {
     }
 
     .neuroglancer-coordinate-space-transform-widget {
+        width: 100%;
+        overflow: auto;
         input {
             margin: 0.188rem;
             background: var(--background80);
@@ -2010,14 +2038,7 @@ ul#statusContainer {
         margin: 1.8rem 0 0.5rem
     }
 
-    .accordion-content {
-        padding: 0 0.75rem 0.75rem;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
 
-
-    }
 
     .neuroglancer-layer-options-control-container {
         .neuroglancer-layer-control-label {
@@ -2090,9 +2111,6 @@ ul#statusContainer {
             margin: 0;
         }
 
-        .neuroglancer-layer-data-source-div {
-            padding: 0.75rem;
-        }
 
         .neuroglancer-icon {
             font-size: 0.75rem;
