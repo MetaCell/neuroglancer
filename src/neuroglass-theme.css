@@ -353,12 +353,42 @@ ul#statusContainer {
         box-sizing: border-box;
     }
 
-    .neuroglancer-icon svg {
-        stroke: unset;
-        stroke-width: unset;
-        stroke-linecap: unset;
-        stroke-linejoin: unset;
-        pointer-events: unset;
+    .neuroglancer-icon.no-stroke {
+        svg {
+            stroke: unset;
+            stroke-width: unset;
+            stroke-linecap: unset;
+            stroke-linejoin: unset;
+            pointer-events: unset;
+        }
+
+        &:hover svg {
+            color: white;
+        }
+    }
+
+    .neuroglancer-icon.ikonate {
+        &:hover svg {
+            stroke: white;
+        }
+
+        svg {
+            stroke: var(--content100);
+
+
+        }
+    }
+
+    .neuroglancer-tool-palette-dropdown {
+
+
+        &>ul {
+            gap: var(--spacing1);
+
+            >li {
+                font-family: var(--text-font);
+            }
+        }
     }
 
     .neuroglancer-invlerp-widget,
@@ -1080,10 +1110,14 @@ ul#statusContainer {
             .neuroglancer-tab-content {
                 padding: 0;
             }
-            
+
         }
+
         overflow: auto;
-        > div, > div > div, > div > div > div {
+
+        >div,
+        >div>div,
+        >div>div>div {
             overflow-y: visible;
         }
 
@@ -1981,6 +2015,7 @@ ul#statusContainer {
     .neuroglancer-coordinate-space-transform-widget {
         width: 100%;
         overflow: auto;
+
         input {
             margin: 0.188rem;
             background: var(--background80);

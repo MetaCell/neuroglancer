@@ -63,6 +63,7 @@ export class SelectionDetailsPanel extends SidePanel {
       onClick: () => {
         this.state.goBack();
       },
+      className: "ikonate",
     });
     const forwardButton = makeIcon({
       svg: svg_arrowRight,
@@ -70,6 +71,7 @@ export class SelectionDetailsPanel extends SidePanel {
       onClick: () => {
         this.state.goForward();
       },
+      className: "ikonate",
     });
     titleBar.appendChild(backButton);
     titleBar.appendChild(forwardButton);

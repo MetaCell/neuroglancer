@@ -19,5 +19,5 @@ import type { MakeIconOptions } from "#src/widget/icon.js";
 import { makeIcon } from "#src/widget/icon.js";
 
 export function makeAddButton(options: MakeIconOptions = {}) {
-  return makeIcon({ svg: svg_plus, ...options });
+  return makeIcon({ svg: svg_plus, ...options, className: "ikonate" });
 }
