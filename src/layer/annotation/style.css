@@ -22,7 +22,6 @@
 
 .neuroglancer-annotation-rendering-tab .neuroglancer-shader-code-widget {
   flex-shrink: 0;
-  border-radius: 0 !important;
 }
 
 .neuroglancer-annotation-dropdown-shader-top-row {
@@ -30,11 +29,6 @@
   flex-direction: row;
   align-items: center;
   margin-bottom: 0.75rem;
-}
-
-.neuroglancer-annotation-rendering-tab-wrapper {
-  background-color: #1f1f1f;
-  padding: 12px;
 }
 
 .neuroglancer-annotation-shader-property-list {
@@ -64,6 +58,5 @@
 }
 
 .neuroglancer-annotation-rendering-tab .neuroglancer-icon {
-  stroke: currentColor !important;
   color: #999;
 }

@@ -25,7 +25,6 @@
   flex-shrink: 0;
   height: 8em;
   border: 1px solid transparent;
-  border-radius: 0 !important;
 }
 
 .neuroglancer-image-dropdown-top-row {
@@ -33,16 +32,14 @@
   flex-direction: row;
   align-items: center;
   margin-bottom: 0.75rem;
+
+  color: rgba(255, 255, 255, 0.80);
+  font-size: 0.875rem;
 }
 
 .neuroglancer-image-layer-shader-overlay .neuroglancer-shader-code-widget {
   width: 80vw;
   height: 80vh;
-}
-
-.neuroglancer-image-dropdown-wrapper {
-  background-color: #1f1f1f;
-  padding: 12px;
 }
 
 .neuroglancer-selection-details-value-grid {
@@ -75,6 +72,5 @@
 }
 
 .neuroglancer-image-dropdown .neuroglancer-icon {
-  stroke: currentColor !important;
   color: #999;
 }

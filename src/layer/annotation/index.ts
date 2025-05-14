@@ -753,8 +753,6 @@ class RenderingOptionsTab extends Tab {
     const { element } = this;
     this.codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
     element.classList.add("neuroglancer-annotation-rendering-tab");
-    const elementWrapper = document.createElement("div");
-    elementWrapper.classList.add("neuroglancer-annotation-rendering-tab-wrapper")
 
     const shaderProperties = this.registerDisposer(
       new DependentViewWidget(
@@ -799,8 +797,8 @@ class RenderingOptionsTab extends Tab {
       ),
     );
 
-    elementWrapper.appendChild(shaderProperties);
-    elementWrapper.appendChild(
+    element.appendChild(shaderProperties);
+    element.appendChild(
       makeShaderCodeWidgetTopRow(
         this.layer,
         this.codeWidget,
@@ -814,8 +812,8 @@ class RenderingOptionsTab extends Tab {
       ),
     );
 
-    elementWrapper.appendChild(this.codeWidget.element);
-    elementWrapper.appendChild(
+    element.appendChild(this.codeWidget.element);
+    element.appendChild(
       this.registerDisposer(
         new ShaderControls(
           layer.annotationDisplayState.shaderControls,
@@ -826,7 +824,7 @@ class RenderingOptionsTab extends Tab {
       ).element,
     );
 
-    elementWrapper.appendChild(
+    element.appendChild(
       addLayerControlToOptionsTab(
         this,
         layer,
@@ -834,8 +832,6 @@ class RenderingOptionsTab extends Tab {
         LAYER_CONTROLS[ANNOTATION_COLOR_JSON_KEY],
       ),
     );
-
-    element.appendChild(elementWrapper);
   }
 }
 

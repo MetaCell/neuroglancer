@@ -546,8 +546,6 @@ class RenderingOptionsTab extends Tab {
     const { element } = this;
     this.codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
     element.classList.add("neuroglancer-image-dropdown");
-    const elementWrapper = document.createElement("div");
-    elementWrapper.classList.add("neuroglancer-image-dropdown-wrapper")
 
     for (const control of LAYER_CONTROLS) {
       const cntlElem = addLayerControlToOptionsTab(
@@ -611,8 +609,6 @@ class RenderingOptionsTab extends Tab {
         ),
       ).element,
     );
-
-    element.appendChild(elementWrapper);
   }
 }
 

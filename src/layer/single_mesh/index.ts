@@ -252,8 +252,6 @@ class DisplayOptionsTab extends Tab {
         ),
       ).element,
     );
-
-    element.appendChild(elementWrapper);
   }
 }
 
