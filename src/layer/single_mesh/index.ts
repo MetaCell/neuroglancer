@@ -36,10 +36,9 @@ import { WatchableValue } from "#src/trackable_value.js";
 import type { Borrowed } from "#src/util/disposable.js";
 import { RefCounted } from "#src/util/disposable.js";
 import { removeChildren, removeFromParent } from "#src/util/dom.js";
-import { makeHelpButton } from "#src/widget/help_button.js";
-import { makeMaximizeButton } from "#src/widget/maximize_button.js";
 import { ShaderCodeOverlay } from "#src/widget/shader_code_overlay.js";
 import {
+  makeShaderCodeWidgetTopRow,
   ShaderCodeWidget,
 } from "#src/widget/shader_code_widget.js";
 import {
@@ -213,33 +212,24 @@ class DisplayOptionsTab extends Tab {
     );
     this.codeWidget = this.registerDisposer(makeShaderCodeWidget(layer));
     element.classList.add("neuroglancer-single-mesh-dropdown");
-    const topRow = document.createElement("div");
-    topRow.className = "neuroglancer-single-mesh-dropdown-top-row";
-    topRow.appendChild(document.createTextNode("Shader"));
+
     const spacer = document.createElement("div");
     spacer.style.flex = "1";
-    topRow.appendChild(spacer);
 
-    topRow.appendChild(
-      makeMaximizeButton({
-        title: "Show larger editor view",
-        onClick: () => {
-          new ShaderCodeOverlay(
-            this.layer, 
-            makeShaderCodeWidget,
-            { additionalClass: 'neuroglancer-single-mesh-layer-shader-overlay' },
-            makeVertexAttributeWidget
-          );
+    element.appendChild(
+      makeShaderCodeWidgetTopRow(
+        this.layer,
+        this.codeWidget,
+        ShaderCodeOverlay,
+        makeShaderCodeWidget,
+        {
+          title: "Documentation on image layer rendering",
+          href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
         },
-      }),
+        "neuroglancer-single-mesh-layer-shader-top-row",
+      ),
     );
-    topRow.appendChild(
-      makeHelpButton({
-        title: "Documentation on single mesh layer rendering",
-        href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
-      }),
-    );
-    element.appendChild(topRow);
+
     element.appendChild(this.attributeWidget.element);
     element.appendChild(this.codeWidget.element);
     element.appendChild(

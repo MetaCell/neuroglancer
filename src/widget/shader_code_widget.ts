@@ -226,7 +226,7 @@ export function makeShaderCodeWidgetTopRow<T extends Overlay>(
   spacer.style.flex = "1";
 
   const topRow = document.createElement("div");
-  topRow.className = className;
+  topRow.className = className + " shader-top-row";
   topRow.appendChild(document.createTextNode("Shader"));
   topRow.appendChild(spacer);
 

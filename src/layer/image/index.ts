@@ -82,7 +82,6 @@ import {
 import { ChannelDimensionsWidget } from "#src/widget/channel_dimensions_widget.js";
 import { makeCopyButton } from "#src/widget/copy_button.js";
 import type { DependentViewContext } from "#src/widget/dependent_view_widget.js";
-import { makeHelpButton } from "#src/widget/help_button.js";
 import type { LayerControlDefinition } from "#src/widget/layer_control.js";
 import {
   addLayerControlToOptionsTab,
@@ -91,7 +90,6 @@ import {
 import { enumLayerControl } from "#src/widget/layer_control_enum.js";
 
 import { rangeLayerControl } from "#src/widget/layer_control_range.js";
-import { makeMaximizeButton } from "#src/widget/maximize_button.js";
 
 import {
   renderScaleLayerControl,
@@ -99,6 +97,7 @@ import {
 } from "#src/widget/render_scale_widget.js";
 import { ShaderCodeOverlay } from "#src/widget/shader_code_overlay.js";
 import {
+  makeShaderCodeWidgetTopRow,
   ShaderCodeWidget,
 } from "#src/widget/shader_code_widget.js";
 
@@ -561,32 +560,22 @@ class RenderingOptionsTab extends Tab {
     const spacer = document.createElement("div");
     spacer.style.flex = "1";
 
-    const topRow = document.createElement("div");
-    topRow.className = "neuroglancer-image-dropdown-top-row";
-    topRow.appendChild(document.createTextNode("Shader"));
-    topRow.appendChild(spacer);
 
-    topRow.appendChild(
-      makeMaximizeButton({
-        title: "Show larger editor view",
-        onClick: () => {
-          new ShaderCodeOverlay(
-            this.layer, 
-            makeShaderCodeWidget,
-            { additionalClass: 'neuroglancer-image-layer-shader-overlay' }
-          );
+
+    element.appendChild(
+      makeShaderCodeWidgetTopRow(
+        this.layer,
+        this.codeWidget,
+        ShaderCodeOverlay,
+        makeShaderCodeWidget,
+        {
+          title: "Documentation on image layer rendering",
+          href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
         },
-      }),
+        "neuroglancer-image-dropdown-top-row",
+      ),
     );
 
-    topRow.appendChild(
-      makeHelpButton({
-        title: "Documentation on image layer rendering",
-        href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
-      }),
-    );
-
-    element.appendChild(topRow);
 
     element.appendChild(
       this.registerDisposer(
