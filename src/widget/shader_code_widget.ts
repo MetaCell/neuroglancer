@@ -15,7 +15,7 @@
  */
 
 import CodeMirror from "codemirror";
-import svgCode from "ikonate/icons/code-alt.svg?raw";
+
 import "codemirror/addon/lint/lint.js";
 import "#src/widget/shader_code_widget.css";
 import "codemirror/lib/codemirror.css";
@@ -29,7 +29,9 @@ import {
   ElementVisibilityFromTrackableBoolean,
   type TrackableBoolean,
 } from "#src/trackable_boolean.js";
+
 import type { WatchableValue } from "#src/trackable_value.js";
+import svgCode from "#src/ui/images/code.svg?raw";
 import { RefCounted } from "#src/util/disposable.js";
 import { removeFromParent } from "#src/util/dom.js";
 import type { WatchableShaderError } from "#src/webgl/dynamic_shader.js";
@@ -44,6 +46,7 @@ import type {
 import { CheckboxIcon } from "#src/widget/checkbox_icon.js";
 import { makeHelpButton } from "#src/widget/help_button.js";
 import { makeMaximizeButton } from "#src/widget/maximize_button.js";
+
 
 // Install glsl support in CodeMirror.
 glslCodeMirror(CodeMirror);
@@ -201,15 +204,18 @@ export class ShaderCodeWidget extends RefCounted {
   }
 }
 
+
 type UserLayerWithCodeEditor = UserLayer & { codeVisible: TrackableBoolean };
 type ShaderCodeOverlayConstructor<T extends Overlay> = new (
   layer: UserLayerWithCodeEditor,
+  makeShaderCodeWidget: (layer: UserLayer) => ShaderCodeWidget, options: any, makeVertexAttributeWidget?: any
 ) => T;
 
 export function makeShaderCodeWidgetTopRow<T extends Overlay>(
   layer: UserLayerWithCodeEditor,
   codeWidget: ShaderCodeWidget,
   ShaderCodeOverlay: ShaderCodeOverlayConstructor<T>,
+  makeShaderCodeWidget: (layer: UserLayer) => ShaderCodeWidget,
   help: {
     title: string;
     href: string;
@@ -243,7 +249,7 @@ export function makeShaderCodeWidgetTopRow<T extends Overlay>(
     makeMaximizeButton({
       title: "Show larger editor view",
       onClick: () => {
-        new ShaderCodeOverlay(layer);
+        new ShaderCodeOverlay(layer, makeShaderCodeWidget, { additionalClass: 'neuroglancer-annotation-layer-shader-overlay' });
       },
     }),
   );

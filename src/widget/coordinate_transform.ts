@@ -244,8 +244,8 @@ export class CoordinateSpaceTransformWidget extends RefCounted {
     lower: HTMLDivElement;
     upper: HTMLDivElement;
   }[] = [];
-  private addSourceDimensionIcon = makeIcon({ svg: svg_plus, text: "add source dimension" });
-  private addOutputDimensionIcon = makeAddMoreButton({ svg: svg_plus, text: "add dimension" });
+  private addSourceDimensionIcon = makeIcon({ svg: svg_plus, text: "add source dimension", className: "ikonate", });
+  private addOutputDimensionIcon = makeAddMoreButton({ svg: svg_plus, text: "add dimension", className: "ikonate", });
   private addOutputDimensionCell = document.createElement("div");
   private addOutputDimensionInput = makeOutputNameElement();
   private inputScaleModified: boolean[] = [];

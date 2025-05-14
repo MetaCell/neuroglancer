@@ -34,7 +34,6 @@ import {
   UserLayer,
 } from "#src/layer/index.js";
 import type { LoadedDataSubsource } from "#src/layer/layer_data_source.js";
-import { Overlay } from "#src/overlay.js";
 import { getChannelSpace } from "#src/render_coordinate_transform.js";
 import {
   RenderScaleHistogram,
@@ -83,21 +82,27 @@ import {
 import { ChannelDimensionsWidget } from "#src/widget/channel_dimensions_widget.js";
 import { makeCopyButton } from "#src/widget/copy_button.js";
 import type { DependentViewContext } from "#src/widget/dependent_view_widget.js";
+import { makeHelpButton } from "#src/widget/help_button.js";
 import type { LayerControlDefinition } from "#src/widget/layer_control.js";
 import {
   addLayerControlToOptionsTab,
   registerLayerControl,
 } from "#src/widget/layer_control.js";
 import { enumLayerControl } from "#src/widget/layer_control_enum.js";
+
 import { rangeLayerControl } from "#src/widget/layer_control_range.js";
+import { makeMaximizeButton } from "#src/widget/maximize_button.js";
+
 import {
   renderScaleLayerControl,
   VolumeRenderingRenderScaleWidget,
 } from "#src/widget/render_scale_widget.js";
+import { ShaderCodeOverlay } from "#src/widget/shader_code_overlay.js";
 import {
-  makeShaderCodeWidgetTopRow,
   ShaderCodeWidget,
 } from "#src/widget/shader_code_widget.js";
+
+
 import type { LegendShaderOptions } from "#src/widget/shader_controls.js";
 import {
   registerLayerShaderControlsTool,
@@ -109,7 +114,7 @@ export const OPACITY_JSON_KEY = "opacity";
 export const BLEND_JSON_KEY = "blend";
 export const SHADER_JSON_KEY = "shader";
 export const CODE_VISIBLE_KEY = "codeVisible";
-export const SHADER_CONTROLS_JSON_KEY = "shaderControls";
+const SHADER_CONTROLS_JSON_KEY = "shaderControls";
 export const CROSS_SECTION_RENDER_SCALE_JSON_KEY = "crossSectionRenderScale";
 export const CHANNEL_DIMENSIONS_JSON_KEY = "channelDimensions";
 export const VOLUME_RENDERING_JSON_KEY = "volumeRendering";
@@ -555,26 +560,45 @@ class RenderingOptionsTab extends Tab {
       element.appendChild(cntlElem);
     }
 
-    elementWrapper.appendChild(
-      makeShaderCodeWidgetTopRow(
-        this.layer,
-        this.codeWidget,
-        ShaderCodeOverlay,
-        {
-          title: "Documentation on image layer rendering",
-          href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
+    const spacer = document.createElement("div");
+    spacer.style.flex = "1";
+
+    const topRow = document.createElement("div");
+    topRow.className = "neuroglancer-image-dropdown-top-row";
+    topRow.appendChild(document.createTextNode("Shader"));
+    topRow.appendChild(spacer);
+
+    topRow.appendChild(
+      makeMaximizeButton({
+        title: "Show larger editor view",
+        onClick: () => {
+          new ShaderCodeOverlay(
+            this.layer, 
+            makeShaderCodeWidget,
+            { additionalClass: 'neuroglancer-image-layer-shader-overlay' }
+          );
         },
-        "neuroglancer-image-dropdown-top-row",
-      ),
+      }),
     );
-    elementWrapper.appendChild(
+
+    topRow.appendChild(
+      makeHelpButton({
+        title: "Documentation on image layer rendering",
+        href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
+      }),
+    );
+
+    element.appendChild(topRow);
+
+    element.appendChild(
       this.registerDisposer(
         new ChannelDimensionsWidget(layer.channelCoordinateSpaceCombiner),
       ).element,
     );
 
-    elementWrapper.appendChild(this.codeWidget.element);
-    elementWrapper.appendChild(
+
+    element.appendChild(this.codeWidget.element);
+    element.appendChild(
       this.registerDisposer(
         new ShaderControls(
           layer.shaderControlState,
@@ -589,17 +613,6 @@ class RenderingOptionsTab extends Tab {
     );
 
     element.appendChild(elementWrapper);
-  }
-}
-
-class ShaderCodeOverlay extends Overlay {
-  codeWidget: ShaderCodeWidget;
-  constructor(public layer: ImageUserLayer) {
-    super();
-    this.codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
-    this.content.classList.add("neuroglancer-image-layer-shader-overlay");
-    this.content.appendChild(this.codeWidget.element);
-    this.codeWidget.textEditor.refresh();
   }
 }
 

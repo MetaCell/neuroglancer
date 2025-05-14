@@ -772,6 +772,7 @@ export class InvlerpWidget extends Tab {
         onClick: () => {
           this.invertRange();
         },
+        className: "ikonate",
       });
       boundElements.range.spacers![1].appendChild(icon);
       return icon;

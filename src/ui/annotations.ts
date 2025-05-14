@@ -483,6 +483,7 @@ export class AnnotationLayerView extends Tab {
         "The left icons allow you to select the type of the anotation. Color and other display settings are available in the 'Rendering' tab.",
       svg: svg_help,
       clickable: false,
+      className: "ikonate",
     });
     helpIcon.style.marginLeft = "auto";
     mutableControls.appendChild(helpIcon);

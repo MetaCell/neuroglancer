@@ -177,6 +177,7 @@ class LayerSidePanel extends SidePanel {
           svg: svg_cursor,
           enableTitle: "Spatial object selection: disabled",
           disableTitle: "Spatial object selection: enabled",
+          className: "ikonate"
         },
       ),
     );

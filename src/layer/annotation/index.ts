@@ -39,7 +39,6 @@ import {
 } from "#src/layer/index.js";
 import type { LoadedDataSubsource } from "#src/layer/layer_data_source.js";
 import { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
-import { Overlay } from "#src/overlay.js";
 import { getWatchableRenderLayerTransform } from "#src/render_coordinate_transform.js";
 import { RenderLayerRole } from "#src/renderlayer.js";
 import type { SegmentationDisplayState } from "#src/segmentation_display_state/frontend.js";
@@ -79,6 +78,7 @@ import {
 import { colorLayerControl } from "#src/widget/layer_control_color.js";
 import { LayerReferenceWidget } from "#src/widget/layer_reference.js";
 import { RenderScaleWidget } from "#src/widget/render_scale_widget.js";
+import { ShaderCodeOverlay } from "#src/widget/shader_code_overlay.js";
 import {
   makeShaderCodeWidgetTopRow,
   ShaderCodeWidget,
@@ -746,16 +746,6 @@ export function makeShaderCodeWidget(layer: AnnotationUserLayer) {
   });
 }
 
-class ShaderCodeOverlay extends Overlay {
-  codeWidget: ShaderCodeWidget;
-  constructor(public layer: AnnotationUserLayer) {
-    super();
-    this.codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
-    this.content.appendChild(this.codeWidget.element);
-    this.codeWidget.textEditor.refresh();
-  }
-}
-
 class RenderingOptionsTab extends Tab {
   codeWidget: ShaderCodeWidget;
   constructor(public layer: AnnotationUserLayer) {
@@ -801,6 +791,7 @@ class RenderingOptionsTab extends Tab {
       ),
     ).element;
 
+
     layer.registerDisposer(
       new ElementVisibilityFromTrackableBoolean(
         layer.codeVisible,
@@ -814,6 +805,7 @@ class RenderingOptionsTab extends Tab {
         this.layer,
         this.codeWidget,
         ShaderCodeOverlay,
+        makeShaderCodeWidget,
         {
           title: "Documentation on image layer rendering",
           href: "https://github.com/google/neuroglancer/blob/master/src/annotation/rendering.md",

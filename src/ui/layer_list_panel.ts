@@ -180,9 +180,9 @@ class LayerListItem extends RefCounted {
       ).element,
     );
     element.appendChild(numberElement);
-    element.appendChild(
-      this.registerDisposer(new LayerVisibilityWidget(layer)).element,
-    );
+    // element.appendChild(
+    //   this.registerDisposer(new LayerVisibilityWidget(layer)).element,
+    // );
     element.appendChild(new LayerTypeIndicatorWidget(layer).element);
     element.appendChild(layerNameWidget.element);
     element.appendChild(

@@ -21,11 +21,13 @@ import { RefCounted } from "#src/util/disposable.js";
 import type { MakeIconOptions } from "#src/widget/icon.js";
 import { makeIcon } from "#src/widget/icon.js";
 
+
 export interface MakeCheckboxIconOptions
   extends Omit<MakeIconOptions, "onClick" | "title"> {
   enableTitle?: string;
   disableTitle?: string;
   backgroundScheme?: "light" | "dark";
+  className?: string;
 }
 
 export class CheckboxIcon extends RefCounted {
@@ -47,6 +49,7 @@ export class CheckboxIcon extends RefCounted {
         ? "dark-background"
         : "light-background",
     );
+    this.element.classList.add(options.className || "no-stroke");
     const updateView = () => {
       const value = model.value;
       this.element.dataset.checked = value ? "true" : "false";

@@ -58,6 +58,7 @@ export function colorSeedLayerControl(): LayerControlFactory<SegmentationUserLay
         svg: svg_rotate,
         title: "Randomize",
         onClick: () => randomize(layer),
+        className: "ikonate",
       });
       controlElement.appendChild(randomizeButton);
       context.registerDisposer(

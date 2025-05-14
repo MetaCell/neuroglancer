@@ -23,6 +23,7 @@ export interface MakeIconOptions {
   onClick?: (this: HTMLElement, event: MouseEvent) => void;
   href?: string;
   clickable?: boolean;
+  className?: string;
 }
 
 export interface MakeHoverIconOptions extends MakeIconOptions {
@@ -48,6 +49,7 @@ export function makeIcon(options: MakeIconOptions): HTMLElement {
   } else {
     element = document.createElement("div");
   }
+  element.classList.add(options.className || "no-stroke");
 
   if (title !== undefined) {
     element.title = title;

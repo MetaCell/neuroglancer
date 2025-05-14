@@ -703,6 +703,7 @@ export class ToolPalettePanel extends SidePanel {
         {
           svg: svg_search,
           disableTitle: "Convert query results to an explicit tool palette",
+          className: "ikonate",
         },
       ),
     );
@@ -1256,6 +1257,7 @@ export class MultiToolPaletteDropdownButton extends RefCounted {
         enableTitle: "Show tool palette list (control+click to create new)",
         disableTitle: "Hide tool palette list",
         backgroundScheme: "dark",
+        className: "ikonate",
       }),
     ).element;
     element.appendChild(checkbox);
