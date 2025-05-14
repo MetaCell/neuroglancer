@@ -16,12 +16,12 @@
 
 .neuroglancer-single-mesh-dropdown .neuroglancer-single-mesh-attribute-widget {
   max-height: 6em;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .neuroglancer-single-mesh-dropdown .neuroglancer-shader-code-widget {
   height: 6em;
-  width: 60ch;
+  width: auto !important;
   border: 1px solid transparent;
 }
 

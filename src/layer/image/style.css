@@ -31,6 +31,10 @@
   display: flex;
   flex-direction: row;
   align-items: center;
+  margin-bottom: 0.75rem;
+
+  color: rgba(255, 255, 255, 0.80);
+  font-size: 0.875rem;
 }
 
 .neuroglancer-image-layer-shader-overlay .neuroglancer-shader-code-widget {
@@ -65,4 +69,8 @@
 .neuroglancer-selection-details-value-grid-value {
   grid-column: value;
   user-select: text;
+}
+
+.neuroglancer-image-dropdown .neuroglancer-icon {
+  color: #999;
 }

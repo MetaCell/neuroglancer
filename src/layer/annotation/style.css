@@ -28,6 +28,7 @@
   display: flex;
   flex-direction: row;
   align-items: center;
+  margin-bottom: 0.75rem;
 }
 
 .neuroglancer-annotation-shader-property-list {
@@ -53,5 +54,9 @@
 
 .neuroglancer-annotation-shader-property-identifier::after {
   content: "()";
+  color: #999;
+}
+
+.neuroglancer-annotation-rendering-tab .neuroglancer-icon {
   color: #999;
 }
