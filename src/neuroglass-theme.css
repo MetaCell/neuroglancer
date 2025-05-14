@@ -769,12 +769,6 @@ ul#statusContainer {
     }
 
     .neuroglancer-single-mesh-dropdown {
-        padding-top: 0.75rem !important;
-
-        svg {
-            stroke: var(--content100) !important;
-        }
-
         a {
             font-size: 1rem;
             color: var(--content100);
@@ -1103,7 +1097,7 @@ ul#statusContainer {
 
     .neuroglancer-tab-view {
         .neuroglancer-tab-content {
-            padding: var(--spacing1);
+            padding: calc(var(--spacing1) * 1.5);
 
             .neuroglancer-tab-content {
                 padding: 0;
@@ -1330,7 +1324,7 @@ ul#statusContainer {
 
         .CodeMirror {
             margin-bottom: 0.5rem;
-            border-radius: 0.25rem;
+            border-radius: 2px;
 
             .CodeMirror-gutter-elt {
                 .CodeMirror-guttermarker-subtle {
@@ -1751,11 +1745,15 @@ ul#statusContainer {
     .CodeMirror {
         width: 100%;
         box-sizing: border-box;
-        border-radius: 0.25rem;
+        border-radius: 2px;
         border: 0.0625rem solid var(--dark80);
         color: rgba(255, 255, 255, 0.60);
         background-color: var(--background70);
         /* margin-bottom: 0.5rem; */
+    }
+
+    .CodeMirror-cursor {
+        border-left: 1px solid #fff;
     }
 
     .CodeMirror-gutters {
