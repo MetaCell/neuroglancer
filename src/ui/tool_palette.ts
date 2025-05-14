@@ -897,6 +897,7 @@ export class ToolPalettePanel extends SidePanel {
 
   render() {
     const self = this;
+    const allChildren: HTMLElement[] = [];
     function* getItems() {
       const tools = self.state.queryDefined.value
         ? self.queryResults.value
@@ -941,7 +942,10 @@ export class ToolPalettePanel extends SidePanel {
               renderedTool = self.getRenderedTool(tool);
             }
           }
-          updateChildren(layerGroup.content, getGroupItems());
+          for (const tool of getGroupItems()) {
+            allChildren.push(tool);
+          }
+          // updateChildren(layerGroup.content, getGroupItems());
           yield layerGroup.element;
           layerGroup.dispose();
         } else {
@@ -957,7 +961,11 @@ export class ToolPalettePanel extends SidePanel {
         }
       }
     }
-    updateChildren(this.layerGroupItemsContainer, getItems());
+    for (const val of getItems()) {
+      console.log(val);
+    }
+    updateChildren(this.layerGroupItemsContainer, allChildren);
+    // updateChildren(this.layerGroupItemsContainer, getItems());
   }
 
   disposed() {}
