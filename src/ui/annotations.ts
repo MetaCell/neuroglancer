@@ -480,7 +480,7 @@ export class AnnotationLayerView extends Tab {
     mutableControls.appendChild(ellipsoidButton);
     const helpIcon = makeIcon({
       title:
-        "The left icons allow you to select the type of the anotation. Color and other display settings are available in the 'Rendering' tab.",
+        "The left icons allow you to select the type of the annotation. Color and other display settings are available in the 'Rendering' tab.",
       svg: svg_help,
       clickable: false,
       className: "ikonate",

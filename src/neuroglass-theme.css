@@ -880,7 +880,8 @@ ul#statusContainer {
         }
 
         .neuroglancer-annotation-toolbox {
-            gap: 0.25rem;
+            margin-top: var(--spacing1);
+            gap: var(--spacing1);
             align-items: center;
 
             input[type=color] {
@@ -889,18 +890,17 @@ ul#statusContainer {
                 margin-right: auto;
             }
 
+            
+            &:hover,
+            &.active {
+                    background-color: var(--background60);
+            }
+
             .neuroglancer-icon {
                 color: var(--content100);
                 text-indent: -999px;
-                min-width: inherit;
                 background-position: center;
                 background-repeat: no-repeat;
-                min-height: inherit;
-
-                &:hover,
-                &.active {
-                    background-color: var(--background60);
-                }
 
                 &:nth-child(1) {
                     background-image: url('../src/ui/images/circle.svg');
@@ -2490,6 +2490,7 @@ ul#statusContainer {
 
     .neuroglancer-viewer-top-row {
         margin-bottom: 0;
+        gap: var(--spacing1);
         height: 2.25rem;
         padding: 0 0.5rem;
         background-color: var(--dark100);
@@ -2601,9 +2602,7 @@ ul#statusContainer {
         margin: 0;
         color: var(--content100);
 
-        &+.neuroglancer-icon {
-            margin-left: 0.25rem;
-        }
+
 
         &.dark-background[data-checked="true"] {
             background-color: var(--background60);
