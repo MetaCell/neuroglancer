@@ -2657,7 +2657,7 @@ ul#statusContainer {
         padding: 0.25rem 0.75rem;
         background-color: transparent !important;
 
-        .neuroglancer-checkbox-icon {
+        .neuroglancer-selection-details-pin {
             background-image: url('../src/ui/images/push_pin.svg');
             background-repeat: no-repeat;
             background-position: center center;

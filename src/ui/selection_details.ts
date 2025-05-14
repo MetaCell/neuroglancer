@@ -83,6 +83,7 @@ export class SelectionDetailsPanel extends SidePanel {
           // text: "📌\ufe0e",
           enableTitle: "Pin selection",
           disableTitle: "Unpin selection",
+          className: "neuroglancer-selection-details-pin",
         }),
       ).element,
     );
