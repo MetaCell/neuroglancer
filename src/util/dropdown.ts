@@ -86,6 +86,7 @@ export function positionRelativeDropdown(
   const rect = parent.getBoundingClientRect();
   const topMargin = 6;
   const bottomMargin = 6;
+  dropdown.classList.add("neuroglancer-dropdown");
 
   const { clientHeight: viewportWidth, clientWidth: viewportHeight } =
     dropdown.ownerDocument!.documentElement!;
@@ -105,7 +106,7 @@ export function positionRelativeDropdown(
     dropdown.style.bottom = `${viewportHeight - rect.top}px`;
     dropdown.style.maxHeight = distanceToTop + "px";
   } else {
-    dropdown.style.top = `${rect.bottom}px`;
+    dropdown.style.top = `${rect.height}px`;
     dropdown.style.bottom = "";
     dropdown.style.maxHeight = distanceToBottom + "px";
   }

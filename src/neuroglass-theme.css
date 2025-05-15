@@ -353,6 +353,7 @@ ul#statusContainer {
         box-sizing: border-box;
     }
 
+
     .neuroglancer-icon.no-stroke {
         svg {
             stroke: unset;
@@ -368,6 +369,7 @@ ul#statusContainer {
     }
 
     .neuroglancer-icon.ikonate {
+        
         &:hover svg {
             stroke: white;
         }
@@ -377,15 +379,20 @@ ul#statusContainer {
         }
     }
 
-    .neuroglancer-tool-palette-dropdown {
-
-
-        &>ul {
-            gap: var(--spacing1);
+    .neuroglancer-dropdown {
+        background-color: var(--background80);
+        box-shadow: rgba(0, 0, 0, 0.52) 0px 12px 12px -6px, rgba(0, 0, 0, 0.4) 0px 0px 1px 0px;
+        border: none;
+        &>ul {            
 
             >li {
                 font-family: var(--text-font);
+                padding: var(--spacing1);
             }
+        }
+        .neuroglancer-tool-palette-dropdown-separator{
+            padding: 0;
+            background-color: var(--dark80);
         }
     }
 
@@ -850,7 +857,7 @@ ul#statusContainer {
     input[type="checkbox"] {
         width: 1rem;
         height: 1rem;
-        margin: 0;
+        margin-right: 0.5em;
         display: block;
 
         &:checked {
@@ -867,6 +874,12 @@ ul#statusContainer {
             box-shadow: 0 0 0 4px rgba(22, 82, 240, 0.15);
         }
     }
+
+    .neuroglancer-layer-list-panel-item, label {
+        input[type="checkbox"]  {
+            margin: 0;
+        }
+    } 
 
     .neuroglancer-annotations-tab {
         label {
