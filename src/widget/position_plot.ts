@@ -376,21 +376,43 @@ export class PositionPlot extends RefCounted {
             ctx.fillRect(x, 0, 1, this.tickWidth);
           };
     ctx.fillStyle = "#fff";
-    for (const { lower, upper } of normalizedBounds) {
-      drawTick(lower);
-      drawTick(upper);
+    // find the biggest upper bound
+    let maxUpperBound = 0;
+    for (const { upper } of normalizedBounds) {
+      maxUpperBound = Math.max(maxUpperBound, upper);
     }
-    const length = normalizedBounds.length;
+    // find the smallest lower bound
+    let minLowerBound = Number.MAX_VALUE;
+    for (const { lower } of normalizedBounds) {
+      minLowerBound = Math.min(minLowerBound, lower);
+    }
+    drawTick(minLowerBound);
+    drawTick(maxUpperBound);
+    // for (const { lower, upper } of normalizedBounds) {
+    //   drawTick(lower);
+    //   drawTick(upper);
+    // }
+    // const length = normalizedBounds.length;
     ctx.fillStyle = "#ccc";
-    for (let i = 0; i < length; ++i) {
-      const { lower, upper } = normalizedBounds[i];
-      const startX = Math.floor((i * this.barWidth) / length);
-      const width = Math.max(1, this.barWidth / length);
-      if (orientation === "column") {
-        ctx.fillRect(startX + this.tickWidth, lower, width, upper + 1 - lower);
-      } else {
-        ctx.fillRect(lower, startX + this.tickWidth, upper + 1 - lower, width);
-      }
+    // for (let i = 0; i < length; ++i) {
+    //   const { lower, upper } = normalizedBounds[i];
+    const startX = 0;
+    const width = Math.max(1, this.barWidth);
+    if (orientation === "column") {
+      ctx.fillRect(
+        startX + this.tickWidth,
+        minLowerBound,
+        width,
+        maxUpperBound + 1 - minLowerBound,
+      );
+    } else {
+      ctx.fillRect(
+        minLowerBound,
+        startX + this.tickWidth,
+        maxUpperBound + 1 - minLowerBound,
+        width,
+      );
     }
+    // }
   }
 }
