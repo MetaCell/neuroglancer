@@ -928,19 +928,38 @@ export class ToolPalettePanel extends SidePanel {
 
           // Fill layer group.
           function* getGroupItems() {
+            let containerDiv: HTMLDivElement | null = null;
+            let itemCount = 0;
+
             while (true) {
+              // Create a new container every 5 items
+              if (itemCount % 5 === 0) {
+                if (containerDiv) yield containerDiv; // Yield previous div if it exists
+                containerDiv = document.createElement("div");
+                containerDiv.classList.add("tool-container"); // Add any desired class
+              }
+
+              // Reset layer group on each iteration
               renderedTool.layerGroup?.dispose();
               renderedTool.layerGroup = layerGroup!.addRef();
-              yield renderedTool.element;
+
+              containerDiv!.appendChild(renderedTool.element);
+              itemCount++;
+
               if (
                 ++toolIndex === numTools ||
                 (tool = tools[toolIndex]).localBinder !== localBinder
               ) {
                 break;
               }
+
               renderedTool = self.getRenderedTool(tool);
             }
+
+            // Yield the last container
+            if (containerDiv) yield containerDiv;
           }
+
           updateChildren(layerGroup.content, getGroupItems());
           yield layerGroup.element;
           layerGroup.dispose();

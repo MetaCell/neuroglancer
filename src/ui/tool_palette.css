@@ -127,9 +127,12 @@
 }
 
 .neuroglancer-tool-palette-layer-group {
-  width: 100%;
   height: 100%;
   box-sizing: border-box;
+}
+
+.neuroglancer-tool-palette-layer-group-content {
+  display: inline-flex;
 }
 
 .neuroglancer-tool-palette-layer-group-content
@@ -143,7 +146,7 @@
   align-items: flex-start;
   padding-top: 2px;
   padding-bottom: 2px;
-  width: 100%;
+  width: 320px;
 }
 
 .neuroglancer-tool-palette-tool-container:hover {
