@@ -28,13 +28,16 @@ import { MultiscaleAnnotationSource } from "#src/annotation/frontend_source.js";
 import type {
   Annotation,
   AnnotationId,
+  AnnotationPropertySpec,
   AnnotationReference,
   AxisAlignedBoundingBox,
   Ellipsoid,
   Line,
+  LocalAnnotationSource,
 } from "#src/annotation/index.js";
 import {
   AnnotationPropertySerializer,
+  annotationPropertySpecsToJson,
   AnnotationSource,
   annotationToJson,
   AnnotationType,
@@ -85,11 +88,11 @@ import {
 } from "#src/util/color.js";
 import type { Borrowed } from "#src/util/disposable.js";
 import { disposableOnce, RefCounted } from "#src/util/disposable.js";
-import { removeChildren } from "#src/util/dom.js";
+import { removeChildren, updateChildren } from "#src/util/dom.js";
 import { Endianness, ENDIANNESS } from "#src/util/endian.js";
 import type { ValueOrError } from "#src/util/error.js";
 import { vec3 } from "#src/util/geom.js";
-import { parseUint64 } from "#src/util/json.js";
+import { parseUint64, stableStringify } from "#src/util/json.js";
 import {
   EventActionMap,
   KeyboardEventBinder,
@@ -111,6 +114,9 @@ import { makeMoveToButton } from "#src/widget/move_to_button.js";
 import { Tab } from "#src/widget/tab_view.js";
 import type { VirtualListSource } from "#src/widget/virtual_list.js";
 import { VirtualList } from "#src/widget/virtual_list.js";
+import { getRandomHexString } from "#src/util/random.js";
+import { saveBlobToFile } from "#src/util/file_download.js";
+import { StatusMessage } from "#src/status.js";
 
 export class MergedAnnotationStates
   extends RefCounted
@@ -993,6 +999,246 @@ export class AnnotationTab extends Tab {
   }
 }
 
+export class AnnotationSchemaView extends Tab {
+  get annotationStates() {
+    return this.layer.annotationStates;
+  }
+
+  private schemaTable = document.createElement("div");
+
+  constructor(
+    public layer: Borrowed<UserLayerWithAnnotations>,
+    public displayState: AnnotationDisplayState,
+  ) {
+    super();
+    this.element.classList.add("neuroglancer-annotation-schema-view");
+    this.schemaTable.className = "neuroglancer-annotation-schema-grid";
+    this.element.appendChild(this.schemaTable);
+    this.updateView();
+
+    this.makeUI();
+    this.registerDisposer(
+      this.annotationStates.changed.add(() => this.updateView()),
+    );
+    this.registerDisposer(this.visibility.changed.add(() => this.updateView()));
+  }
+
+  private makeUI() {
+    // TODO add paste etc only for mutable sources
+    // TODO add remove etc need to actually determine the property from UI input
+    const addButton = makeAddButton({
+      title: "Add property",
+      onClick: () => {
+        const property: AnnotationPropertySpec = {
+          type: "float32",
+          identifier: `new_property${getRandomHexString(2)}`,
+          default: 0,
+          description: "",
+        };
+        this.addProperty(property);
+      },
+    });
+    this.element.appendChild(addButton);
+
+    const removeButton = makeDeleteButton({
+      title: "Remove property",
+      onClick: () => {
+        const property: AnnotationPropertySpec = {
+          type: "float32",
+          identifier: `new_property${getRandomHexString(2)}`,
+          default: 0,
+          description: "",
+        };
+        this.removeProperty(property);
+      },
+    });
+    this.element.appendChild(removeButton);
+
+    const updateButton = makeIcon({
+      text: "Update property",
+      title: "Update property",
+      onClick: () => {
+        const oldProperty: AnnotationPropertySpec = {
+          type: "float32",
+          identifier: `old_property${getRandomHexString(2)}`,
+          default: 0,
+          description: "",
+        };
+        const newProperty: AnnotationPropertySpec = {
+          type: "float32",
+          identifier: `new_property${getRandomHexString(2)}`,
+          default: 0,
+          description: "",
+        };
+        this.updateProperty(oldProperty, newProperty);
+      },
+    });
+    this.element.appendChild(updateButton);
+
+    const downloadButton = makeIcon({
+      text: "Download schema",
+      title: "Download schema",
+      onClick: () => this.downloadSchema(),
+    });
+    this.element.appendChild(downloadButton);
+
+    const copyButton = makeCopyButton({
+      title: "Copy schema to clipboard",
+      onClick: () => this.copySchemaToClipboard(),
+    });
+    this.element.appendChild(copyButton);
+
+    const pasteButton = makeIcon({
+      text: "Paste schema from clipboard",
+      title: "Paste schema from clipboard",
+      onClick: () => this.pasteSchemaFromClipboard(),
+    });
+    this.element.appendChild(pasteButton);
+  }
+
+  private get mutableSources() {
+    // Get all modifiable sources
+    const states = this.layer.annotationStates.states.filter(
+      (state) => !state.source.readonly && "addProperty" in state.source,
+    );
+    return states.map((state) => state.source as LocalAnnotationSource);
+  }
+
+  private addProperty(property: AnnotationPropertySpec) {
+    this.mutableSources.forEach((s) => {
+      s.addProperty(property);
+    });
+    this.annotationStates.changed.dispatch();
+  }
+
+  private removeProperty(property: AnnotationPropertySpec) {
+    this.mutableSources.forEach((s) => {
+      s.removeProperty(property.identifier);
+    });
+    this.annotationStates.changed.dispatch();
+  }
+
+  private updateProperty(
+    oldProperty: AnnotationPropertySpec,
+    newProperty: AnnotationPropertySpec,
+  ) {
+    this.mutableSources.forEach((s) => {
+      s.updateProperty(oldProperty, newProperty);
+    });
+    this.annotationStates.changed.dispatch();
+  }
+
+  private get jsonSchema() {
+    const states = this.annotationStates.states;
+    const jsonSchema = states.map((state) =>
+      annotationPropertySpecsToJson(state.source.properties.value),
+    );
+    const finalSchema = [];
+    // Remove all undefined values
+    for (const state of jsonSchema) {
+      if (state !== undefined) {
+        finalSchema.push(
+          state.map((property) => {
+            const entries = Object.entries(property).filter(
+              ([, value]) => value !== undefined,
+            );
+            return Object.fromEntries(entries);
+          }),
+        );
+      }
+    }
+    return stableStringify(finalSchema);
+  }
+
+  private downloadSchema() {
+    const blob = new Blob([this.jsonSchema], {
+      type: "application/json",
+    });
+    saveBlobToFile(blob, "schema.json");
+  }
+
+  private copySchemaToClipboard() {
+    navigator.clipboard.writeText(this.jsonSchema).then(() => {
+      StatusMessage.showTemporaryMessage(
+        "Annotation schema copied to clipboard",
+        /*duration=*/ 2000,
+      );
+    });
+  }
+
+  private pasteSchemaFromClipboard() {
+    navigator.clipboard.readText().then((text) => {
+      try {
+        const parsedSchema = JSON.parse(text);
+        const states = this.annotationStates.states;
+        states.forEach((state) => {
+          const source = state.source as LocalAnnotationSource;
+          for (const property of parsedSchema) {
+            source.addProperty(property);
+          }
+        });
+        this.annotationStates.changed.dispatch();
+        StatusMessage.showTemporaryMessage(
+          "Annotation schema pasted from clipboard",
+          /*duration=*/ 2000,
+        );
+      } catch (error) {
+        console.error("Failed to parse schema from clipboard", error);
+        StatusMessage.showTemporaryMessage(
+          "Failed to parse schema from clipboard",
+          /*duration=*/ 2000,
+        );
+      }
+    });
+  }
+
+  private extractSchema() {
+    const schema: Readonly<AnnotationPropertySpec>[] = [];
+    let isMutable = false;
+    for (const state of this.annotationStates.states) {
+      if (!state.source.readonly) isMutable = true;
+      if (state.chunkTransform.value.error !== undefined) continue;
+      const properties = state.source.properties.value;
+      for (const property of properties) {
+        schema.push(property);
+      }
+    }
+    return { schema, isMutable };
+  }
+
+  private updateView() {
+    const { schema } = this.extractSchema();
+
+    function* getItems() {
+      for (const item of schema) {
+        const { type, identifier, default: defaultValue, description } = item;
+        const enumLabels = "enum_labels" in item ? item.enum_labels : undefined;
+        const enumValues = "enum_values" in item ? item.enum_values : undefined;
+        const propertyElement = document.createElement("div");
+        propertyElement.className = "neuroglancer-annotation-property";
+        propertyElement.textContent = `${identifier} (${type}) ${defaultValue} ${enumValues} ${enumLabels} ${description}`;
+        yield propertyElement;
+      }
+    }
+
+    updateChildren(this.schemaTable, getItems());
+  }
+}
+
+export class AnnotationSchemaTab extends Tab {
+  private schemaView: AnnotationSchemaView;
+  constructor(public layer: Borrowed<UserLayerWithAnnotations>) {
+    super();
+    this.schemaView = this.registerDisposer(
+      new AnnotationSchemaView(layer, layer.annotationDisplayState),
+    );
+
+    const { element } = this;
+    element.classList.add("neuroglancer-annotations-schema-tab");
+    element.appendChild(this.schemaView.element);
+  }
+}
+
 function getSelectedAssociatedSegments(
   annotationLayer: AnnotationLayerState,
   getBase = false,
@@ -1059,7 +1305,9 @@ export class PlacePointTool extends PlaceAnnotationTool {
         relatedSegments: getSelectedAssociatedSegments(annotationLayer),
         point,
         type: AnnotationType.POINT,
-        properties: annotationLayer.source.properties.map((x) => x.default),
+        properties: annotationLayer.source.properties.value.map(
+          (x) => x.default,
+        ),
       };
       const reference = annotationLayer.source.add(
         annotation,
@@ -1211,7 +1459,7 @@ abstract class PlaceTwoCornerAnnotationTool extends TwoStepAnnotationTool {
       description: "",
       pointA: point,
       pointB: point,
-      properties: annotationLayer.source.properties.map((x) => x.default),
+      properties: annotationLayer.source.properties.value.map((x) => x.default),
     };
   }
 
@@ -1333,7 +1581,7 @@ class PlaceEllipsoidTool extends TwoStepAnnotationTool {
       segments: getSelectedAssociatedSegments(annotationLayer),
       center: point,
       radii: vec3.fromValues(0, 0, 0),
-      properties: annotationLayer.source.properties.map((x) => x.default),
+      properties: annotationLayer.source.properties.value.map((x) => x.default),
     };
   }
 
@@ -1744,7 +1992,7 @@ export function UserLayerWithAnnotationsMixin<
                     new AnnotationPropertySerializer(
                       rank,
                       numGeometryBytes,
-                      properties,
+                      properties.value,
                     );
                   const annotationIndex = state.annotationIndex!;
                   const annotationCount = state.annotationCount!;
@@ -1763,7 +2011,9 @@ export function UserLayerWithAnnotationsMixin<
                     annotationIndex,
                     annotationCount,
                     isLittleEndian,
-                    (annotation.properties = new Array(properties.length)),
+                    (annotation.properties = new Array(
+                      properties.value.length,
+                    )),
                   );
                   if (annotationLayer.source.hasNonSerializedProperties()) {
                     statusText = "Loading...";
@@ -1861,7 +2111,10 @@ export function UserLayerWithAnnotationsMixin<
                   positionGrid.appendChild(button);
                 }
 
-                const { relationships, properties } = annotationLayer.source;
+                const {
+                  relationships,
+                  properties: { value: properties },
+                } = annotationLayer.source;
                 const sourceReadonly = annotationLayer.source.readonly;
 
                 // Add the ID to the annotation details.
@@ -1896,7 +2149,38 @@ export function UserLayerWithAnnotationsMixin<
                     label.title = description;
                   }
                   const value = annotation.properties[i];
-                  const valueElement = document.createElement("span");
+                  let valueElement: HTMLElement;
+                  let valueElementSetter: (value: any) => void;
+                  if (sourceReadonly) {
+                    valueElement = document.createElement("span");
+                    valueElementSetter = (value) => {
+                      valueElement.textContent = value;
+                    };
+                  } else {
+                    // TODO check how components in shader widgets etc are made
+                    // to try and reuse them
+                    valueElement = document.createElement("input");
+                    // TODO type based on property.type
+                    (valueElement as HTMLInputElement).type = "number"
+                    // TODO RGBA color might need two inputs
+                    valueElementSetter = (value) => {
+                      (valueElement as HTMLInputElement).value = value;
+                    };
+                    (valueElement as HTMLInputElement).addEventListener(
+                      "change",
+                      () => {
+                        const x = (valueElement as HTMLInputElement).value;
+                        const newAnnotation = reference.value;
+                        // TODO switch on type
+                        newAnnotation!.properties[i] = Number(x);
+                        annotationLayer.source.update(
+                          reference,
+                          newAnnotation!,
+                        );
+                        annotationLayer.source.commit(reference);
+                      },
+                    );
+                  }
                   valueElement.classList.add(
                     "neuroglancer-annotation-property-value",
                   );
@@ -1904,7 +2188,7 @@ export function UserLayerWithAnnotationsMixin<
                     case "rgb": {
                       const colorVec = unpackRGB(value);
                       const hex = serializeColor(colorVec);
-                      valueElement.textContent = hex;
+                      valueElementSetter(hex);
                       valueElement.style.backgroundColor = hex;
                       valueElement.style.color = useWhiteBackground(colorVec)
                         ? "white"
@@ -1913,9 +2197,7 @@ export function UserLayerWithAnnotationsMixin<
                     }
                     case "rgba": {
                       const colorVec = unpackRGB(value);
-                      valueElement.textContent = serializeColor(
-                        unpackRGBA(value),
-                      );
+                      valueElementSetter(serializeColor(unpackRGBA(value)));
                       valueElement.style.backgroundColor = serializeColor(
                         unpackRGB(value),
                       );
@@ -1925,10 +2207,11 @@ export function UserLayerWithAnnotationsMixin<
                       break;
                     }
                     default:
-                      valueElement.textContent = formatNumericProperty(
-                        property,
-                        value,
-                      );
+                      console.log(property, value);
+                      const valueToSet = sourceReadonly
+                        ? formatNumericProperty(property, value)
+                        : value;
+                      valueElementSetter(valueToSet);
                       break;
                   }
                   label.appendChild(valueElement);
