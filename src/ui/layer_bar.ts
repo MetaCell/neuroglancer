@@ -21,7 +21,10 @@ import type { ManagedUserLayer } from "#src/layer/index.js";
 import { addNewLayer, deleteLayer, makeLayer } from "#src/layer/index.js";
 import type { LayerGroupViewer } from "#src/layer_group_viewer.js";
 import { NavigationLinkType } from "#src/navigation_state.js";
-import type { WatchableValueInterface } from "#src/trackable_value.js";
+import {
+  WatchableValue,
+  type WatchableValueInterface,
+} from "#src/trackable_value.js";
 import type { DropLayers } from "#src/ui/layer_drag_and_drop.js";
 import {
   registerLayerBarDragLeaveHandler,
@@ -114,6 +117,7 @@ class LayerWidget extends RefCounted {
       new PositionWidget(
         layer.localPosition,
         layer.localCoordinateSpaceCombiner,
+        undefined,
         {
           copyButton: false,
           velocity: layer.localVelocity,
@@ -184,6 +188,7 @@ export class LayerBar extends RefCounted {
   dropZone: HTMLDivElement;
   private layerWidgetInsertionPoint = document.createElement("div");
   private positionWidget: PositionWidget;
+  watchableVisibleLayersList: WatchableValue<boolean[]>;
 
   /**
    * For use within this module only.
@@ -218,10 +223,20 @@ export class LayerBar extends RefCounted {
     public showLayerHoverValues: WatchableValueInterface<boolean>,
   ) {
     super();
+    console.log("viewer", this.manager);
+    const archivedLayersList = this.layerManager.managedLayers.map(
+      (x) => x.visible,
+    );
+    this.watchableVisibleLayersList = new WatchableValue<boolean[]>(
+      archivedLayersList,
+    );
+
+    console.log(archivedLayersList);
     this.positionWidget = this.registerDisposer(
       new PositionWidget(
         this.viewerNavigationState.position.value,
         this.manager.root.coordinateSpaceCombiner,
+        this.watchableVisibleLayersList,
         {
           velocity: this.viewerNavigationState.velocity.velocity,
           getToolBinder: () => this.layerGroupViewer.toolBinder,
@@ -329,6 +344,10 @@ export class LayerBar extends RefCounted {
   handleLayersChanged() {
     this.layerUpdateNeeded = true;
     this.handleLayerValuesChanged();
+    this.watchableVisibleLayersList.value = this.layerManager.managedLayers.map(
+      (x) => x.visible,
+    );
+    console.log(this.watchableVisibleLayersList.value);
   }
 
   handleLayerValuesChanged() {

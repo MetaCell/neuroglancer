@@ -696,6 +696,7 @@ export class Viewer extends RefCounted implements ViewerState {
       new PositionWidget(
         this.navigationState.position,
         this.layerSpecification.coordinateSpaceCombiner,
+        undefined,
         {
           velocity: this.velocity,
           getToolBinder: () => this.toolBinder,

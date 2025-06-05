@@ -106,6 +106,7 @@ export class PositionPlot extends RefCounted {
   constructor(
     public position: Position,
     public dimensionId: DimensionId,
+    // private readonly visibleLayers: WatchableValue<Number[]>,
     public orientation: "row" | "column" = "column",
   ) {
     super();

@@ -57,9 +57,14 @@ export function channelInvlerpLayerControl<LayerType extends UserLayer>(
           new Position(channelCoordinateSpaceCombiner.combined),
         );
         const positionWidget = context.registerDisposer(
-          new PositionWidget(position, channelCoordinateSpaceCombiner, {
-            copyButton: false,
-          }),
+          new PositionWidget(
+            position,
+            channelCoordinateSpaceCombiner,
+            undefined,
+            {
+              copyButton: false,
+            },
+          ),
         );
         context.registerDisposer(
           position.changed.add(() => {

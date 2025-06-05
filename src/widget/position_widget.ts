@@ -1032,6 +1032,7 @@ export class PositionWidget extends RefCounted {
   constructor(
     public position: Borrowed<Position>,
     public combiner: CoordinateSpaceCombiner,
+    public watchableVisibleLayers?: WatchableValueInterface<boolean[]>,
     {
       copyButton = true,
       velocity = undefined,
@@ -1058,6 +1059,14 @@ export class PositionWidget extends RefCounted {
     this.allowFocus = allowFocus;
     this.showPlayback = showPlayback;
     this.showDropdown = showDropdown;
+    if (this.watchableVisibleLayers !== undefined) {
+      this.registerDisposer(
+        this.watchableVisibleLayers.changed.add(() => {
+          console.log(this.watchableVisibleLayers!.value);
+          console.log(this.position.coordinateSpace.value.boundingBoxes);
+        }),
+      );
+    }
     this.registerDisposer(
       position.coordinateSpace.changed.add(
         this.registerCancellable(
@@ -1442,9 +1451,11 @@ class DimensionTool<Viewer extends object> extends Tool<Viewer> {
     } else {
       content.classList.add("neuroglancer-position-tool");
     }
+    console.log(viewer);
     const positionWidget = new PositionWidget(
       viewer.position,
       viewer.coordinateSpaceCombiner,
+      undefined,
       {
         velocity: viewer.velocity,
         singleDimensionId: this.dimensionId,
