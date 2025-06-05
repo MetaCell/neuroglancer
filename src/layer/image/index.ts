@@ -545,6 +545,7 @@ class RenderingOptionsTab extends Tab {
       makeShaderCodeWidgetTopRow(
         this.layer,
         this.codeWidget,
+        makeShaderCodeWidget,
         ShaderCodeOverlay,
         {
           title: "Documentation on image layer rendering",

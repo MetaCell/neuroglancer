@@ -23,7 +23,6 @@ import {
   UserLayer,
 } from "#src/layer/index.js";
 import type { LoadedDataSubsource } from "#src/layer/layer_data_source.js";
-import { Overlay } from "#src/overlay.js";
 import type { VertexAttributeInfo } from "#src/single_mesh/base.js";
 import {
   getShaderAttributeType,
@@ -46,6 +45,7 @@ import {
   ShaderControls,
 } from "#src/widget/shader_controls.js";
 import { Tab } from "#src/widget/tab_view.js";
+import { ShaderCodeOverlay } from "#src/ui/shader_code_overlay.js";
 
 const SHADER_JSON_KEY = "shader";
 const SHADER_CONTROLS_JSON_KEY = "shaderControls";
@@ -139,7 +139,7 @@ function makeShaderCodeWidget(layer: SingleMeshUserLayer) {
   });
 }
 
-class VertexAttributeWidget extends RefCounted {
+export class VertexAttributeWidget extends RefCounted {
   element = document.createElement("div");
   constructor(
     public attributes: WatchableValueInterface<
@@ -216,6 +216,7 @@ class DisplayOptionsTab extends Tab {
       makeShaderCodeWidgetTopRow(
         this.layer,
         this.codeWidget,
+        makeShaderCodeWidget,
         ShaderCodeOverlay,
         {
           title: "Documentation on image layer rendering",
@@ -236,22 +237,6 @@ class DisplayOptionsTab extends Tab {
         ),
       ).element,
     );
-  }
-}
-
-class ShaderCodeOverlay extends Overlay {
-  attributeWidget: VertexAttributeWidget;
-  codeWidget: ShaderCodeWidget;
-  constructor(public layer: SingleMeshUserLayer) {
-    super();
-    this.attributeWidget = this.registerDisposer(
-      makeVertexAttributeWidget(layer),
-    );
-    this.codeWidget = this.registerDisposer(makeShaderCodeWidget(layer));
-    this.content.classList.add("neuroglancer-single-mesh-layer-shader-overlay");
-    this.content.appendChild(this.attributeWidget.element);
-    this.content.appendChild(this.codeWidget.element);
-    this.codeWidget.textEditor.refresh();
   }
 }
 
