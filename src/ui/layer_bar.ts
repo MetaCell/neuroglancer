@@ -118,6 +118,7 @@ class LayerWidget extends RefCounted {
           copyButton: false,
           velocity: layer.localVelocity,
           getToolBinder: () => layer.layer?.toolBinder,
+          showOnlyMaxBounds: true,
         },
       ),
     );
@@ -190,6 +191,7 @@ export class LayerBar extends RefCounted {
       {
         velocity: this.viewerNavigationState.velocity.velocity,
         getToolBinder: () => this.layerGroupViewer.toolBinder,
+        showOnlyMaxBounds: true,
       },
     ),
   );

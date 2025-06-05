@@ -105,6 +105,7 @@ export class PositionPlot extends RefCounted {
     public position: Position,
     public dimensionId: DimensionId,
     public orientation: "row" | "column" = "column",
+    private showOnlyMaxBounds: boolean = false,
   ) {
     super();
     this.canvasWidth = this.tickWidth + this.barWidth + this.barRightMargin;
@@ -195,7 +196,12 @@ export class PositionPlot extends RefCounted {
           canvasMargin - lowerBoundWidth / 2
         }px`;
       }
-      this.drawDimensionBounds(canvas, ctx, normalizedDimensionBounds);
+      this.drawDimensionBounds(
+        canvas,
+        ctx,
+        normalizedDimensionBounds,
+        this.showOnlyMaxBounds,
+      );
       const curPosition = this.position.value[dimensionIndex];
 
       const drawPositionIndicator = (
@@ -356,6 +362,7 @@ export class PositionPlot extends RefCounted {
     canvas: HTMLCanvasElement,
     ctx: CanvasRenderingContext2D,
     bounds: NormalizedDimensionBounds,
+    showOnlyMaxBounds: boolean = false,
   ) {
     const { orientation } = this;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -369,6 +376,35 @@ export class PositionPlot extends RefCounted {
             ctx.fillRect(x, 0, 1, this.tickWidth);
           };
     ctx.fillStyle = "#fff";
+    if (showOnlyMaxBounds) {
+      if (normalizedBounds.length > 0) {
+        let minLower = normalizedBounds[0].lower;
+        let maxUpper = normalizedBounds[0].upper;
+        for (const { lower, upper } of normalizedBounds) {
+          minLower = Math.min(minLower, lower);
+          maxUpper = Math.max(maxUpper, upper);
+        }
+        drawTick(minLower);
+        drawTick(maxUpper);
+        ctx.fillStyle = "#ccc";
+        if (orientation === "column") {
+          ctx.fillRect(
+            this.tickWidth,
+            minLower,
+            this.barWidth,
+            maxUpper + 1 - minLower,
+          );
+        } else {
+          ctx.fillRect(
+            minLower,
+            this.tickWidth,
+            maxUpper + 1 - minLower,
+            this.barWidth,
+          );
+        }
+      }
+      return;
+    }
     for (const { lower, upper } of normalizedBounds) {
       drawTick(lower);
       drawTick(upper);

@@ -291,6 +291,7 @@ export class PositionWidget extends RefCounted {
   private getToolBinder: (() => LocalToolBinder | undefined) | undefined;
   private allowFocus: boolean;
   private showPlayback: boolean;
+  private showOnlyMaxBounds: boolean;
 
   private dimensionWidgets = new Map<DimensionId, DimensionWidget>();
   private dimensionWidgetList: DimensionWidget[] = [];
@@ -320,7 +321,7 @@ export class PositionWidget extends RefCounted {
     }
 
     const plot = dropdownOwner.registerDisposer(
-      new PositionPlot(this.position, widget.id),
+      new PositionPlot(this.position, widget.id, undefined, this.showOnlyMaxBounds),
     );
     dropdown.appendChild(plot.element);
 
@@ -991,6 +992,7 @@ export class PositionWidget extends RefCounted {
       getToolBinder = undefined,
       allowFocus = true,
       showPlayback = true,
+      showOnlyMaxBounds = false,
     }: {
       copyButton?: boolean;
       velocity?: CoordinateSpacePlaybackVelocity;
@@ -998,6 +1000,7 @@ export class PositionWidget extends RefCounted {
       getToolBinder?: (() => LocalToolBinder | undefined) | undefined;
       allowFocus?: boolean;
       showPlayback?: boolean;
+      showOnlyMaxBounds?: boolean;
     } = {},
   ) {
     super();
@@ -1007,6 +1010,7 @@ export class PositionWidget extends RefCounted {
     this.getToolBinder = getToolBinder;
     this.allowFocus = allowFocus;
     this.showPlayback = showPlayback;
+    this.showOnlyMaxBounds = showOnlyMaxBounds;
     this.registerDisposer(
       position.coordinateSpace.changed.add(
         this.registerCancellable(
@@ -1340,6 +1344,7 @@ class DimensionTool<Viewer extends Object> extends Tool<Viewer> {
         copyButton: false,
         allowFocus: false,
         showPlayback: false,
+        showOnlyMaxBounds: true,
       },
     );
     positionWidget.element.style.userSelect = "none";
