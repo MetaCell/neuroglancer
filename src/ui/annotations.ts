@@ -19,6 +19,13 @@
  */
 
 import svg_help from "ikonate/icons/help.svg?raw";
+import svg_clipboard from "ikonate/icons/clipboard.svg?raw";
+import svg_bin from "ikonate/icons/bin.svg?raw";
+import svg_share from "ikonate/icons/share.svg?raw";
+import svg_format_size from "ikonate/icons/text.svg?raw";
+import svg_numbers from "ikonate/icons/hash.svg?raw";
+import svg_palette from "ikonate/icons/drop.svg?raw";
+import svg_check from "ikonate/icons/ok-circle.svg?raw";
 import "#src/ui/annotations.css";
 import {
   AnnotationDisplayState,
@@ -120,8 +127,7 @@ import { StatusMessage } from "#src/status.js";
 
 export class MergedAnnotationStates
   extends RefCounted
-  implements WatchableValueInterface<readonly AnnotationLayerState[]>
-{
+  implements WatchableValueInterface<readonly AnnotationLayerState[]> {
   changed = new NullarySignal();
   isLoadingChanged = new NullarySignal();
   states: Borrowed<AnnotationLayerState>[] = [];
@@ -239,10 +245,10 @@ interface AnnotationLayerViewAttachedState {
 export class AnnotationLayerView extends Tab {
   private previousSelectedState:
     | {
-        annotationId: string;
-        annotationLayerState: AnnotationLayerState;
-        pin: boolean;
-      }
+      annotationId: string;
+      annotationLayerState: AnnotationLayerState;
+      pin: boolean;
+    }
     | undefined = undefined;
   private previousHoverId: string | undefined = undefined;
   private previousHoverAnnotationLayerState: AnnotationLayerState | undefined =
@@ -581,7 +587,7 @@ export class AnnotationLayerView extends Tab {
         selectionState !== undefined &&
         previousSelectedState.annotationId === selectionState.annotationId &&
         previousSelectedState.annotationLayerState ===
-          selectionState.annotationLayerState &&
+        selectionState.annotationLayerState &&
         previousSelectedState.pin === selectionState.pin)
     ) {
       return;
@@ -1005,6 +1011,8 @@ export class AnnotationSchemaView extends Tab {
   }
 
   private schemaTable = document.createElement("div");
+  private schemaTextContainer = document.createElement("div");
+  private schemaActionButtons = document.createElement("div");
 
   constructor(
     public layer: Borrowed<UserLayerWithAnnotations>,
@@ -1012,11 +1020,15 @@ export class AnnotationSchemaView extends Tab {
   ) {
     super();
     this.element.classList.add("neuroglancer-annotation-schema-view");
+    this.schemaTextContainer.className = "neuroglancer-annotation-schema-text-container";
+    this.schemaActionButtons.className = "neuroglancer-annotation-schema-action-buttons"
     this.schemaTable.className = "neuroglancer-annotation-schema-grid";
+    this.element.appendChild(this.schemaTextContainer);
     this.element.appendChild(this.schemaTable);
     this.updateView();
 
     this.makeUI();
+    this.createSchemaTable();
     this.registerDisposer(
       this.annotationStates.changed.add(() => this.updateView()),
     );
@@ -1026,19 +1038,13 @@ export class AnnotationSchemaView extends Tab {
   private makeUI() {
     // TODO add paste etc only for mutable sources
     // TODO add remove etc need to actually determine the property from UI input
-    const addButton = makeAddButton({
-      title: "Add property",
-      onClick: () => {
-        const property: AnnotationPropertySpec = {
-          type: "float32",
-          identifier: `new_property${getRandomHexString(2)}`,
-          default: 0,
-          description: "",
-        };
-        this.addProperty(property);
-      },
-    });
-    this.element.appendChild(addButton);
+    const text = document.createElement("p");
+    text.textContent = "Set default metadata schema for your layer which would apply to all your annotations."
+    text.style.marginTop = "0";
+    text.style.marginBottom = "0.25rem"
+    text.style.padding = "0.25rem"
+    this.schemaTextContainer.appendChild(text);
+    this.schemaTextContainer.appendChild(this.schemaActionButtons);
 
     const removeButton = makeDeleteButton({
       title: "Remove property",
@@ -1052,7 +1058,7 @@ export class AnnotationSchemaView extends Tab {
         this.removeProperty(property);
       },
     });
-    this.element.appendChild(removeButton);
+    this.schemaActionButtons.appendChild(removeButton);
 
     const updateButton = makeIcon({
       text: "Update property",
@@ -1073,43 +1079,348 @@ export class AnnotationSchemaView extends Tab {
         this.updateProperty(oldProperty, newProperty);
       },
     });
-    this.element.appendChild(updateButton);
+    this.schemaActionButtons.appendChild(updateButton);
 
     const downloadButton = makeIcon({
-      text: "Download schema",
       title: "Download schema",
+      svg: svg_share,
       onClick: () => this.downloadSchema(),
     });
-    this.element.appendChild(downloadButton);
+    this.schemaActionButtons.appendChild(downloadButton);
 
     const copyButton = makeCopyButton({
       title: "Copy schema to clipboard",
       onClick: () => this.copySchemaToClipboard(),
     });
-    this.element.appendChild(copyButton);
+    this.schemaActionButtons.appendChild(copyButton);
 
     const pasteButton = makeIcon({
-      text: "Paste schema from clipboard",
       title: "Paste schema from clipboard",
+      svg: svg_clipboard,
       onClick: () => this.pasteSchemaFromClipboard(),
     });
-    this.element.appendChild(pasteButton);
+    this.schemaActionButtons.appendChild(pasteButton);
+  }
+
+  private createSchemaTable() {
+    const TABLE_HEADERS = ["Name", "Type", "Default value", ""];
+
+    const SCHEMA_TABLE_DATA = [
+      { name: "Name", type: "Enum (uint8)", defaultValue: "", deleteCell: "" },
+      { name: "Color alpha", type: "RGBa", defaultValue: "", deleteCell: "" },
+      { name: "is_deleted", type: "Boolean", defaultValue: "", deleteCell: "" },
+      { name: "Decimal", type: "float32", defaultValue: "", deleteCell: "" },
+      { name: "Color", type: "RGB", defaultValue: "", deleteCell: "" },
+      { name: "s0_start_x", type: "int8", defaultValue: "", deleteCell: "" }
+    ];
+
+    const DROPDOWN_OPTIONS = [
+      { header: "General", items: ["float32", "Boolean"] },
+      { header: "Enum", items: ["uint8", "uint16"] },
+      { header: "Colour", items: ["RGB", "RGBa"] },
+      { header: "Integer", items: ["int8", "int16", "int32"] }
+    ];
+
+    const SECTION_ICONS: Record<string, string> = {
+      "Enum": svg_format_size,
+      "Colour": svg_palette,
+      "Integer": svg_numbers
+    };
+
+    const ITEM_ICONS: Record<string, string> = {
+      "float32": svg_numbers,
+      "Boolean": svg_check
+    };
+
+    const createTableCell = (content: string | HTMLElement, className: string = "_"): HTMLDivElement => {
+      const cell = document.createElement("div");
+      cell.classList.add("neuroglancer-annotation-schema-cell", className);
+
+      if (typeof content === "string") {
+        cell.textContent = content;
+      } else {
+        cell.appendChild(content);
+      }
+
+      return cell;
+    };
+
+    const createInputElement = (config: {
+      type: string;
+      value?: string;
+      name: string;
+      id: string;
+      className?: string;
+      placeholder?: string;
+    }): HTMLInputElement => {
+      const input = document.createElement("input");
+      input.type = config.type;
+      input.value = config.value || "";
+      input.name = config.name;
+      input.id = config.id;
+      if (config.className) input.classList.add(config.className);
+      if (config.placeholder) input.placeholder = config.placeholder;
+      return input;
+    };
+
+    const getTypeIcon = (type: string): string => {
+      return ITEM_ICONS[type] ||
+        SECTION_ICONS[
+        Object.keys(SECTION_ICONS).find(section =>
+          DROPDOWN_OPTIONS.find(d => d.header === section)?.items.includes(type)
+        ) || ""
+        ] || svg_format_size;
+    };
+
+    const createDefaultValueInput = (type: string, index: number): HTMLElement => {
+      const container = document.createElement("div");
+      container.style.width = "100%";
+      container.style.display = "flex";
+
+      switch (type) {
+        case "Boolean":
+          container.appendChild(createInputElement({
+            type: "checkbox",
+            name: `boolean-${index}`,
+            id: `boolean-${index}`
+          }));
+          break;
+
+        case "RGB":
+          container.appendChild(createInputElement({
+            type: "color",
+            name: `rgb-${index}`,
+            id: `rgb-${index}`
+          }));
+          break;
+
+        case "RGBa":
+          container.appendChild(createInputElement({
+            type: "color",
+            name: `rgba-${index}`,
+            id: `rgba-${index}`
+          }));
+
+          const alphaInput = createInputElement({
+            type: "number",
+            value: "0.1",
+            name: `alpha-${index}`,
+            id: `alpha-${index}`,
+            className: "schema-default-input"
+          });
+          alphaInput.step = "0.01";
+          alphaInput.style.marginLeft = "2px";
+          container.appendChild(alphaInput);
+          break;
+
+        case "int8":
+        case "int16":
+        case "int32":
+        case "uint8":
+        case "uint16":
+        case "float32":
+          container.appendChild(createInputElement({
+            type: "number",
+            value: "0",
+            name: `number-${index}`,
+            id: `number-${index}`,
+            className: "schema-default-input"
+          }));
+          break;
+
+        default:
+          if (type.includes("Enum")) {
+            const enumContainer = document.createElement("div");
+            enumContainer.className = "enum-container";
+
+            const addEnumEntry = () => {
+              const enumRow = document.createElement("div");
+              enumRow.className = "enum-entry";
+
+              // TODO: append real keybinding element
+              const keyLabel = document.createElement("div");
+              keyLabel.classList.add("neuroglancer-tool-palette-tool-container");
+
+              const nameInput = createInputElement({
+                type: "text",
+                placeholder: "Name",
+                name: `enum-name-${index}`,
+                id: `enum-name-${index}`,
+                className: "schema-default-input"
+              });
+
+              const valueInput = createInputElement({
+                type: "number",
+                value: "0",
+                name: `enum-value-${index}`,
+                id: `enum-value-${index}`,
+                className: "schema-default-input"
+              });
+
+              enumRow.appendChild(keyLabel);
+              enumRow.appendChild(nameInput);
+              enumRow.appendChild(valueInput);
+              enumContainer.insertBefore(enumRow, addEnumButton);
+            };
+
+            const addEnumButton = makeAddButton({
+              title: "Add enum option",
+              onClick: addEnumEntry
+            });
+            enumContainer.appendChild(addEnumButton);
+
+            // Add initial enum entry
+            addEnumEntry();
+
+            container.appendChild(enumContainer);
+          } else {
+            container.textContent = "";
+          }
+      }
+
+      return container;
+    };
+
+    // Initialize Table
+    const addButtonField = document.createElement("div");
+    addButtonField.className = "neuroglancer-annotation-schema-add-button-field";
+
+    // Create Header Row
+    const headerRow = document.createElement("div");
+    headerRow.classList.add("neuroglancer-annotation-schema-row", "header-row");
+    TABLE_HEADERS.forEach(text => {
+      headerRow.appendChild(createTableCell(text));
+    });
+    this.schemaTable.appendChild(headerRow);
+
+    // Create Data Rows
+    SCHEMA_TABLE_DATA.forEach((rowData, index) => {
+      const row = document.createElement("div");
+      row.classList.add("neuroglancer-annotation-schema-row");
+
+      // Name Cell
+      const nameInput = createInputElement({
+        type: "text",
+        value: rowData.name,
+        name: `name-${index}`,
+        id: `name-${index}`,
+        className: "schema-name-input"
+      });
+      row.appendChild(createTableCell(nameInput));
+
+      // Type Cell
+      const typeText = document.createElement("span");
+      typeText.textContent = rowData.type;
+
+      const iconWrapper = document.createElement("span");
+      iconWrapper.classList.add("schema-cell-icon-wrapper");
+      iconWrapper.innerHTML = getTypeIcon(rowData.type);
+
+      const typeCell = createTableCell("");
+      typeCell.appendChild(iconWrapper);
+      typeCell.appendChild(typeText);
+      row.appendChild(typeCell);
+
+      // Default Value Cell
+      row.appendChild(createTableCell(
+        createDefaultValueInput(rowData.type, index)
+      ));
+
+      // Delete Cell
+      const deleteIcon = document.createElement("span");
+      deleteIcon.innerHTML = svg_bin;
+      deleteIcon.title = "Delete row";
+      deleteIcon.style.cursor = "pointer";
+      deleteIcon.addEventListener("click", () => this.schemaTable.removeChild(row));
+
+      const deleteCell = createTableCell(deleteIcon, "delete-cell");
+      row.appendChild(deleteCell);
+
+      this.schemaTable.appendChild(row);
+    });
+
+    // Add Property Button
+    let dropdown: HTMLDivElement | null = null;
+
+    const handleAddPropertyClick = () => {
+      if (dropdown) {
+        dropdown.remove();
+        dropdown = null;
+        return;
+      }
+
+      dropdown = document.createElement("div");
+      dropdown.className = "neuroglancer-annotation-schema-dropdown";
+
+      DROPDOWN_OPTIONS.forEach(section => {
+        const headerEl = document.createElement("div");
+        headerEl.className = "neuroglancer-annotation-schema-dropdown-header";
+        headerEl.textContent = section.header;
+        dropdown?.appendChild(headerEl);
+
+        section.items.forEach(item => {
+          const option = document.createElement("div");
+          option.className = "neuroglancer-annotation-schema-dropdown-option";
+
+          const iconWrapper = document.createElement("span");
+          iconWrapper.classList.add("schema-cell-icon-wrapper");
+          iconWrapper.innerHTML = ITEM_ICONS[item] || SECTION_ICONS[section.header] || "";
+
+          const text = document.createElement("span");
+          text.textContent = item;
+
+          option.appendChild(iconWrapper);
+          option.appendChild(text);
+
+          option.addEventListener("mouseover", () => option.style.backgroundColor = "#333");
+          option.addEventListener("mouseout", () => option.style.backgroundColor = "");
+          option.addEventListener("click", () => {
+            console.log("Selected:", item);
+            dropdown?.remove();
+            dropdown = null;
+          });
+
+          dropdown?.appendChild(option);
+        });
+      });
+
+      document.body.appendChild(dropdown);
+      const rect = addButton.getBoundingClientRect();
+      dropdown.style.left = `${rect.left}px`;
+      dropdown.style.top = `${rect.bottom + window.scrollY}px`;
+
+      const handleOutsideClick = (e: MouseEvent) => {
+        if (dropdown && !dropdown.contains(e.target as Node)) {
+          dropdown.remove();
+          dropdown = null;
+          document.removeEventListener("mousedown", handleOutsideClick);
+        }
+      };
+      document.addEventListener("mousedown", handleOutsideClick);
+    };
+
+    const addButton = makeAddButton({
+      title: "Add property",
+      onClick: handleAddPropertyClick
+    });
+
+    addButtonField.appendChild(addButton);
+    this.schemaTable.appendChild(addButtonField);
   }
 
   private get mutableSources() {
-    // Get all modifiable sources
     const states = this.layer.annotationStates.states.filter(
       (state) => !state.source.readonly && "addProperty" in state.source,
     );
     return states.map((state) => state.source as LocalAnnotationSource);
   }
 
-  private addProperty(property: AnnotationPropertySpec) {
-    this.mutableSources.forEach((s) => {
-      s.addProperty(property);
-    });
-    this.annotationStates.changed.dispatch();
-  }
+  // private addProperty(property: AnnotationPropertySpec) {
+  //   this.mutableSources.forEach((s) => {
+  //     s.addProperty(property);
+  //   });
+  //   this.annotationStates.changed.dispatch();
+  // }
 
   private removeProperty(property: AnnotationPropertySpec) {
     this.mutableSources.forEach((s) => {
@@ -1353,10 +1664,10 @@ function getMousePositionInAnnotationCoordinates(
 abstract class TwoStepAnnotationTool extends PlaceAnnotationTool {
   inProgressAnnotation: WatchableValue<
     | {
-        annotationLayer: AnnotationLayerState;
-        reference: AnnotationReference;
-        disposer: () => void;
-      }
+      annotationLayer: AnnotationLayerState;
+      reference: AnnotationReference;
+      disposer: () => void;
+    }
     | undefined
   > = new WatchableValue(undefined);
 
@@ -1838,7 +2149,7 @@ function makeRelatedSegmentList(
 
 const ANNOTATION_COLOR_JSON_KEY = "annotationColor";
 export function UserLayerWithAnnotationsMixin<
-  TBase extends { new (...args: any[]): UserLayer },
+  TBase extends { new(...args: any[]): UserLayer },
 >(Base: TBase) {
   abstract class C extends Base implements UserLayerWithAnnotations {
     annotationStates = this.registerDisposer(new MergedAnnotationStates());
@@ -1999,8 +2310,8 @@ export function UserLayerWithAnnotationsMixin<
                   annotation = handler.deserialize(
                     dataView,
                     baseOffset +
-                      annotationPropertySerializer.propertyGroupBytes[0] *
-                        annotationIndex,
+                    annotationPropertySerializer.propertyGroupBytes[0] *
+                    annotationIndex,
                     isLittleEndian,
                     rank,
                     state.annotationId!,
@@ -2238,30 +2549,30 @@ export function UserLayerWithAnnotationsMixin<
                         sourceReadonly
                           ? undefined
                           : (newIds) => {
-                              const annotation = reference.value;
-                              if (annotation == null) {
-                                return;
-                              }
-                              let { relatedSegments } = annotation;
-                              if (relatedSegments === undefined) {
-                                relatedSegments =
-                                  annotationLayer.source.relationships.map(
-                                    () => new BigUint64Array(0),
-                                  );
-                              } else {
-                                relatedSegments = relatedSegments.slice();
-                              }
-                              relatedSegments[relationshipIndex] = newIds;
-                              const newAnnotation = {
-                                ...annotation,
-                                relatedSegments,
-                              };
-                              annotationLayer.source.update(
-                                reference,
-                                newAnnotation,
-                              );
-                              annotationLayer.source.commit(reference);
-                            },
+                            const annotation = reference.value;
+                            if (annotation == null) {
+                              return;
+                            }
+                            let { relatedSegments } = annotation;
+                            if (relatedSegments === undefined) {
+                              relatedSegments =
+                                annotationLayer.source.relationships.map(
+                                  () => new BigUint64Array(0),
+                                );
+                            } else {
+                              relatedSegments = relatedSegments.slice();
+                            }
+                            relatedSegments[relationshipIndex] = newIds;
+                            const newAnnotation = {
+                              ...annotation,
+                              relatedSegments,
+                            };
+                            annotationLayer.source.update(
+                              reference,
+                              newAnnotation,
+                            );
+                            annotationLayer.source.commit(reference);
+                          },
                       ),
                     ).element,
                   );
