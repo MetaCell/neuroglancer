@@ -59,57 +59,41 @@ export function makeFooterBtnGroup(onClose: () => void) {
   return buttonApply;
 }
 
-type OverlayWithCodeWidget = Overlay & {
-  footerActionsBtnContainer: HTMLDivElement;
-  footerBtnsWrapper: HTMLDivElement;
-  createButton: (
-    text: string | null,
-    onClick: () => void,
-    cssClass?: string,
-    svgUrl?: string | null,
-  ) => HTMLButtonElement;
-};
-
-export function commonShaderCodeOverlaySetup<T extends OverlayWithCodeWidget>(
-  overlay: T,
-  textEditor: HTMLElement,
-  attributeDisplayElement?: HTMLElement,
-  title: string = "Shader editor",
-) {
-  overlay.content.classList.add("modal-lg");
-  const titleText = document.createElement("p");
-  titleText.textContent = title;
-  const closeMenuButton = overlay.createButton(
-    null,
-    () => overlay.close(),
-    "",
-    svg_close,
-  );
-  const closeAndHelpContainer = document.createElement("div");
-  closeAndHelpContainer.classList.add("overlay-content-header");
-
-  closeAndHelpContainer.appendChild(titleText);
-  closeAndHelpContainer.appendChild(closeMenuButton);
-
-  overlay.content.appendChild(closeAndHelpContainer);
-
-  const mainBody = document.createElement("div");
-  mainBody.classList.add("overlay-content-body");
-  overlay.content.appendChild(mainBody);
-  if (attributeDisplayElement) {
-    mainBody.appendChild(attributeDisplayElement);
+export class OverlayWithCodeEditor extends Overlay {
+  header: HTMLDivElement;
+  body: HTMLDivElement;
+  footer: HTMLDivElement;
+  createCloseMenuButton() {
+    const button = document.createElement("button");
+    const icon = makeIcon({ svg: svg_close });
+    button.appendChild(icon);
+    button.addEventListener("click", () => this.close());
+    return button;
   }
-  mainBody.appendChild(textEditor);
+  constructor(title: string = "Code editor") {
+    super();
+    this.content.classList.add("neuroglancer-code-editor-overlay");
 
-  overlay.footerActionsBtnContainer = document.createElement("div");
-  overlay.footerActionsBtnContainer.classList.add("overlay-content-footer");
-  overlay.footerBtnsWrapper = document.createElement("div");
-  overlay.footerBtnsWrapper.classList.add("button-wrapper");
-  overlay.content.appendChild(overlay.footerActionsBtnContainer);
+    const header = (this.header = document.createElement("div"));
+    const closeMenuButton = this.createCloseMenuButton();
+    const titleText = document.createElement("p");
+    titleText.textContent = title;
+    header.classList.add("neuroglancer-code-editor-overlay-header");
+    header.appendChild(titleText);
+    header.appendChild(closeMenuButton);
+    this.content.appendChild(header);
+
+    const body = (this.body = document.createElement("div"));
+    body.classList.add("neuroglancer-code-editor-overlay-body");
+    this.content.appendChild(body);
+
+    const footer = (this.footer = document.createElement("div"));
+    footer.classList.add("neuroglancer-code-editor-overlay-footer");
+    this.content.appendChild(this.footer);
+  }
 }
 
-export class ShaderCodeOverlay extends Overlay {
-  attributeWidget?: VertexAttributeWidget;
+export class ShaderCodeOverlay extends OverlayWithCodeEditor {
   footerActionsBtnContainer: HTMLDivElement;
   footerBtnsWrapper: HTMLDivElement;
   constructor(
@@ -118,8 +102,8 @@ export class ShaderCodeOverlay extends Overlay {
     options: ShaderCodeOverlayOptions = {},
     makeVertexAttributeWidget?: (layer: UserLayer) => VertexAttributeWidget,
   ) {
-    super();
     const { additionalClass, title = "Shader editor" } = options;
+    super(title);
 
     if (additionalClass) {
       this.content.classList.add(additionalClass);
@@ -129,34 +113,12 @@ export class ShaderCodeOverlay extends Overlay {
       this.makeShaderCodeWidget(this.layer),
     );
     if (makeVertexAttributeWidget) {
-      this.attributeWidget = this.registerDisposer(
+      const attributeWidget = this.registerDisposer(
         makeVertexAttributeWidget(this.layer),
       );
+      this.body.appendChild(attributeWidget.element);
     }
-    commonShaderCodeOverlaySetup(
-      this,
-      codeWidget.element,
-      this.attributeWidget?.element,
-      title,
-    );
+    this.body.appendChild(codeWidget.element);
     codeWidget.textEditor.refresh();
-  }
-
-  public createButton(
-    text: string | null,
-    onClick: () => void,
-    cssClass: string = "",
-    svgUrl: string | null = null,
-  ): HTMLButtonElement {
-    const button = document.createElement("button");
-    if (svgUrl) {
-      const icon = makeIcon({ svg: svgUrl });
-      button.appendChild(icon);
-    } else if (text) {
-      button.textContent = text;
-    }
-    if (cssClass) button.classList.add(cssClass);
-    button.addEventListener("click", onClick);
-    return button;
   }
 }
