@@ -59,7 +59,7 @@ export function makeFooterBtnGroup(onClose: () => void) {
   return buttonApply;
 }
 
-export class OverlayWithCodeEditor extends Overlay {
+export class CodeEditorDialog extends Overlay {
   header: HTMLDivElement;
   body: HTMLDivElement;
   footer: HTMLDivElement;
@@ -93,7 +93,7 @@ export class OverlayWithCodeEditor extends Overlay {
   }
 }
 
-export class ShaderCodeOverlay extends OverlayWithCodeEditor {
+export class ShaderCodeEditorDialog extends CodeEditorDialog {
   footerActionsBtnContainer: HTMLDivElement;
   footerBtnsWrapper: HTMLDivElement;
   constructor(

@@ -40,9 +40,9 @@ import { CheckboxIcon } from "#src/widget/checkbox_icon.js";
 import { makeHelpButton } from "#src/widget/help_button.js";
 import { makeMaximizeButton } from "#src/widget/maximize_button.js";
 import {
-  ShaderCodeOverlay,
+  ShaderCodeEditorDialog,
   UserLayerWithCodeEditor,
-} from "#src/ui/shader_code_overlay.js";
+} from "#src/ui/shader_code_dialog.js";
 
 // Install glsl support in CodeMirror.
 glslCodeMirror(CodeMirror);
@@ -237,7 +237,7 @@ export function makeShaderCodeWidgetTopRow(
     makeMaximizeButton({
       title: "Show larger editor view",
       onClick: () => {
-        new ShaderCodeOverlay(layer, makeShaderCodeWidget);
+        new ShaderCodeEditorDialog(layer, makeShaderCodeWidget);
       },
     }),
   );

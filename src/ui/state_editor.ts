@@ -27,7 +27,7 @@ import "codemirror/addon/fold/foldgutter.css";
 import "codemirror/addon/lint/lint.css";
 import CodeMirror from "codemirror";
 import { debounce } from "lodash-es";
-import { OverlayWithCodeEditor } from "#src/ui/shader_code_overlay.js";
+import { CodeEditorDialog } from "#src/ui/shader_code_dialog.js";
 import "#src/ui/state_editor.css";
 
 import { getCachedJson } from "#src/util/trackable.js";
@@ -35,7 +35,7 @@ import type { Viewer } from "#src/viewer.js";
 
 const valueUpdateDelay = 100;
 
-export class StateEditorDialog extends OverlayWithCodeEditor {
+export class StateEditorDialog extends CodeEditorDialog {
   textEditor: CodeMirror.Editor;
   applyButton: HTMLButtonElement;
   downloadButton: HTMLButtonElement;
