@@ -59,8 +59,56 @@ export function makeFooterBtnGroup(onClose: () => void) {
   return buttonApply;
 }
 
+type OverlayWithCodeWidget = Overlay & {
+  footerActionsBtnContainer: HTMLDivElement;
+  footerBtnsWrapper: HTMLDivElement;
+  createButton: (
+    text: string | null,
+    onClick: () => void,
+    cssClass?: string,
+    svgUrl?: string | null,
+  ) => HTMLButtonElement;
+};
+
+export function commonShaderCodeOverlaySetup<T extends OverlayWithCodeWidget>(
+  overlay: T,
+  textEditor: HTMLElement,
+  attributeDisplayElement?: HTMLElement,
+  title: string = "Shader editor",
+) {
+  overlay.content.classList.add("modal-lg");
+  const titleText = document.createElement("p");
+  titleText.textContent = title;
+  const closeMenuButton = overlay.createButton(
+    null,
+    () => overlay.close(),
+    "",
+    svg_close,
+  );
+  const closeAndHelpContainer = document.createElement("div");
+  closeAndHelpContainer.classList.add("overlay-content-header");
+
+  closeAndHelpContainer.appendChild(titleText);
+  closeAndHelpContainer.appendChild(closeMenuButton);
+
+  overlay.content.appendChild(closeAndHelpContainer);
+
+  const mainBody = document.createElement("div");
+  mainBody.classList.add("overlay-content-body");
+  overlay.content.appendChild(mainBody);
+  if (attributeDisplayElement) {
+    mainBody.appendChild(attributeDisplayElement);
+  }
+  mainBody.appendChild(textEditor);
+
+  overlay.footerActionsBtnContainer = document.createElement("div");
+  overlay.footerActionsBtnContainer.classList.add("overlay-content-footer");
+  overlay.footerBtnsWrapper = document.createElement("div");
+  overlay.footerBtnsWrapper.classList.add("button-wrapper");
+  overlay.content.appendChild(overlay.footerActionsBtnContainer);
+}
+
 export class ShaderCodeOverlay extends Overlay {
-  closeMenuButton: HTMLButtonElement;
   attributeWidget?: VertexAttributeWidget;
   footerActionsBtnContainer: HTMLDivElement;
   footerBtnsWrapper: HTMLDivElement;
@@ -71,57 +119,30 @@ export class ShaderCodeOverlay extends Overlay {
     makeVertexAttributeWidget?: (layer: UserLayer) => VertexAttributeWidget,
   ) {
     super();
-    const { additionalClass = "", title = "Shader editor" } = options;
+    const { additionalClass, title = "Shader editor" } = options;
 
-    this.content.classList.add("modal-lg", ...additionalClass);
-
-    const titleText = document.createElement("p");
-    titleText.textContent = title;
-
-    this.closeMenuButton = this.createButton(
-      null,
-      () => this.close(),
-      "",
-      svg_close,
-    );
-
-    if (makeVertexAttributeWidget) {
-      this.attributeWidget = this.registerDisposer(
-        makeVertexAttributeWidget(this.layer),
-      );
+    if (additionalClass) {
+      this.content.classList.add(additionalClass);
     }
 
     const codeWidget = this.registerDisposer(
       this.makeShaderCodeWidget(this.layer),
     );
-
-    const closeAndHelpContainer = document.createElement("div");
-    closeAndHelpContainer.classList.add("overlay-content-header");
-
-    closeAndHelpContainer.appendChild(titleText);
-    closeAndHelpContainer.appendChild(this.closeMenuButton);
-
-    this.content.appendChild(closeAndHelpContainer);
-
-    const mainBody = document.createElement("div");
-    mainBody.classList.add("overlay-content-body");
-    mainBody.appendChild(
-      this.attributeWidget?.element ?? document.createDocumentFragment(),
+    if (makeVertexAttributeWidget) {
+      this.attributeWidget = this.registerDisposer(
+        makeVertexAttributeWidget(this.layer),
+      );
+    }
+    commonShaderCodeOverlaySetup(
+      this,
+      codeWidget.element,
+      this.attributeWidget?.element,
+      title,
     );
-    mainBody.appendChild(codeWidget.element);
-    this.content.appendChild(mainBody);
-    codeWidget.textEditor.refresh();
-
-    this.footerActionsBtnContainer = document.createElement("div");
-    this.footerActionsBtnContainer.classList.add("overlay-content-footer");
-    this.footerActionsBtnContainer.appendChild(
-      makeFooterBtnGroup(() => this.close()),
-    );
-    this.content.appendChild(this.footerActionsBtnContainer);
     codeWidget.textEditor.refresh();
   }
 
-  private createButton(
+  public createButton(
     text: string | null,
     onClick: () => void,
     cssClass: string = "",
