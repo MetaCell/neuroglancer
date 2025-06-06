@@ -82,8 +82,9 @@ export class DisplayOptionsTab extends Tab {
               codeWidget.element,
               makeSkeletonShaderCodeWidget,
               {
-                title: "Documentation on image layer rendering",
+                title: "Documentation on skeleton rendering",
                 href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
+                type: "Skeleton"
               },
               "neuroglancer-segmentation-dropdown-skeleton-shader-header",
             ),

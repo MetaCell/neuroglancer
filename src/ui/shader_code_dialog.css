@@ -1,5 +1,6 @@
 .neuroglancer-code-editor-dialog {
   padding: 0 !important;
+  outline: 0 !important;
 }
 
 .neuroglancer-code-editor-dialog .neuroglancer-shader-code-widget {

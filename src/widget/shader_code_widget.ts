@@ -212,6 +212,7 @@ export function makeShaderCodeWidgetTopRow(
   help: {
     title: string;
     href: string;
+    type: string;
   },
   className: string,
 ) {
@@ -242,7 +243,9 @@ export function makeShaderCodeWidgetTopRow(
     makeMaximizeButton({
       title: "Show larger editor view",
       onClick: () => {
-        new ShaderCodeEditorDialog(layer, makeShaderCodeWidget);
+        new ShaderCodeEditorDialog(layer, makeShaderCodeWidget, {
+          title: `${help.type} shader editor`,
+        });
       },
     }),
   );

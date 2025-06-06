@@ -548,6 +548,7 @@ class RenderingOptionsTab extends Tab {
         {
           title: "Documentation on image layer rendering",
           href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
+          type: "Image"
         },
         "neuroglancer-image-dropdown-top-row",
       ),

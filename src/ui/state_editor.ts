@@ -41,7 +41,7 @@ export class StateEditorDialog extends CodeEditorDialog {
   downloadButton: HTMLButtonElement;
   closeButton: HTMLButtonElement;
   constructor(public viewer: Viewer) {
-    super();
+    super("State editor", true);
 
     this.content.classList.add("neuroglancer-state-editor");
 
@@ -69,8 +69,8 @@ export class StateEditorDialog extends CodeEditorDialog {
     downloadButton.textContent = "Download";
     downloadButton.title = "Download state as a JSON file";
     downloadButton.addEventListener("click", () => this.downloadState());
-    this.footer.appendChild(downloadButton);
-    this.footer.appendChild(saveAndCloseWrapper);
+    this.footer?.appendChild(downloadButton);
+    this.footer?.appendChild(saveAndCloseWrapper);
 
     this.textEditor = CodeMirror((_element) => {}, <any>{
       value: "",

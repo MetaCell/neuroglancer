@@ -217,8 +217,9 @@ class DisplayOptionsTab extends Tab {
         this.codeWidget.element,
         makeShaderCodeWidget,
         {
-          title: "Documentation on image layer rendering",
+          title: "Documentation on mesh rendering",
           href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
+          type: "Mesh",
         },
         "neuroglancer-single-mesh-dropdown-top-row",
       ),

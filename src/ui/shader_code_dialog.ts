@@ -30,8 +30,8 @@ interface ShaderCodeOverlayOptions {
 export class CodeEditorDialog extends Overlay {
   header: HTMLDivElement;
   body: HTMLDivElement;
-  footer: HTMLDivElement;
-  constructor(title: string = "Code editor") {
+  footer?: HTMLDivElement;
+  constructor(title: string = "Code editor", hasFooter: boolean = false) {
     super();
     this.content.classList.add("neuroglancer-code-editor-dialog");
 
@@ -51,9 +51,11 @@ export class CodeEditorDialog extends Overlay {
     body.classList.add("neuroglancer-code-editor-dialog-body");
     this.content.appendChild(body);
 
-    const footer = (this.footer = document.createElement("div"));
-    footer.classList.add("neuroglancer-code-editor-dialog-footer");
-    this.content.appendChild(this.footer);
+    if (hasFooter) {
+      const footer = (this.footer = document.createElement("div"));
+      footer.classList.add("neuroglancer-code-editor-dialog-footer");
+      this.content.appendChild(this.footer);
+    }
   }
 }
 
