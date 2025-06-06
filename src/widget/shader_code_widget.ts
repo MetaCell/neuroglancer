@@ -22,13 +22,8 @@ import "codemirror/lib/codemirror.css";
 import "codemirror/addon/lint/lint.css";
 
 import { debounce } from "lodash-es";
-import type { UserLayer } from "#src/layer/index.js";
-import type { Overlay } from "#src/overlay.js";
 import glslCodeMirror from "#src/third_party/codemirror-glsl.js";
-import {
-  ElementVisibilityFromTrackableBoolean,
-  type TrackableBoolean,
-} from "#src/trackable_boolean.js";
+import { ElementVisibilityFromTrackableBoolean } from "#src/trackable_boolean.js";
 import type { WatchableValue } from "#src/trackable_value.js";
 import { RefCounted } from "#src/util/disposable.js";
 import { removeFromParent } from "#src/util/dom.js";
@@ -45,7 +40,7 @@ import { CheckboxIcon } from "#src/widget/checkbox_icon.js";
 import { makeHelpButton } from "#src/widget/help_button.js";
 import { makeMaximizeButton } from "#src/widget/maximize_button.js";
 import {
-  ShaderCodeOverlayConstructor,
+  ShaderCodeOverlay,
   UserLayerWithCodeEditor,
 } from "#src/ui/shader_code_overlay.js";
 
@@ -205,11 +200,10 @@ export class ShaderCodeWidget extends RefCounted {
   }
 }
 
-export function makeShaderCodeWidgetTopRow<T extends Overlay>(
+export function makeShaderCodeWidgetTopRow(
   layer: UserLayerWithCodeEditor,
-  codeWidget: ShaderCodeWidget,
+  codeWidgetElement: HTMLElement,
   makeShaderCodeWidget: (layer: UserLayerWithCodeEditor) => ShaderCodeWidget,
-  ShaderCodeOverlay: ShaderCodeOverlayConstructor<T>,
   help: {
     title: string;
     href: string;
@@ -227,7 +221,7 @@ export function makeShaderCodeWidgetTopRow<T extends Overlay>(
   layer.registerDisposer(
     new ElementVisibilityFromTrackableBoolean(
       layer.codeVisible,
-      codeWidget.element,
+      codeWidgetElement,
     ),
   );
 

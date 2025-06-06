@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { AnnotationUserLayer } from "#src/layer/annotation/index.ts";
+import type { AnnotationUserLayer } from "#src/layer/annotation/index.js";
 import type { ImageUserLayer } from "#src/layer/image/index.js";
 import type {
   SingleMeshUserLayer,
@@ -25,8 +25,13 @@ import svg_close from "ikonate/icons/close.svg?raw";
 import { makeIcon } from "#src/widget/icon.js";
 import type { ShaderCodeWidget } from "#src/widget/shader_code_widget.js";
 import { TrackableBoolean } from "#src/trackable_boolean.js";
+import { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 
-type UserLayer = AnnotationUserLayer | ImageUserLayer | SingleMeshUserLayer;
+type UserLayer =
+  | AnnotationUserLayer
+  | ImageUserLayer
+  | SingleMeshUserLayer
+  | SegmentationUserLayer;
 
 interface ShaderCodeOverlayOptions {
   additionalClass?: string;

@@ -45,7 +45,6 @@ import {
   ShaderControls,
 } from "#src/widget/shader_controls.js";
 import { Tab } from "#src/widget/tab_view.js";
-import { ShaderCodeOverlay } from "#src/ui/shader_code_overlay.js";
 
 const SHADER_JSON_KEY = "shader";
 const SHADER_CONTROLS_JSON_KEY = "shaderControls";
@@ -215,9 +214,8 @@ class DisplayOptionsTab extends Tab {
     element.appendChild(
       makeShaderCodeWidgetTopRow(
         this.layer,
-        this.codeWidget,
+        this.codeWidget.element,
         makeShaderCodeWidget,
-        ShaderCodeOverlay,
         {
           title: "Documentation on image layer rendering",
           href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
