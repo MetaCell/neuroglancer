@@ -14,81 +14,45 @@
  * limitations under the License.
  */
 
-import type { AnnotationUserLayer } from "#src/layer/annotation/index.js";
-import type { ImageUserLayer } from "#src/layer/image/index.js";
-import type {
-  SingleMeshUserLayer,
-  VertexAttributeWidget,
-} from "#src/layer/single_mesh/index.js";
+import "#src/ui/shader_code_dialog.css";
+import type { VertexAttributeWidget } from "#src/layer/single_mesh/index.js";
 import { Overlay } from "#src/overlay.js";
 import svg_close from "ikonate/icons/close.svg?raw";
 import { makeIcon } from "#src/widget/icon.js";
 import type { ShaderCodeWidget } from "#src/widget/shader_code_widget.js";
-import { TrackableBoolean } from "#src/trackable_boolean.js";
-import { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
-
-type UserLayer =
-  | AnnotationUserLayer
-  | ImageUserLayer
-  | SingleMeshUserLayer
-  | SegmentationUserLayer;
+import { UserLayer } from "#src/layer/index.js";
 
 interface ShaderCodeOverlayOptions {
   additionalClass?: string;
   title?: string;
 }
 
-export type UserLayerWithCodeEditor = UserLayer & {
-  codeVisible: TrackableBoolean;
-};
-
-export type ShaderCodeOverlayConstructor<T extends Overlay> = new (
-  layer: UserLayerWithCodeEditor,
-  makeShaderCodeWidget: (layer: UserLayerWithCodeEditor) => ShaderCodeWidget,
-) => T;
-
-export function makeFooterBtnGroup(onClose: () => void) {
-  const buttonApply = document.createElement("button");
-  buttonApply.textContent = "Close";
-  buttonApply.classList.add("cancel-button");
-
-  buttonApply.addEventListener("click", () => {
-    onClose();
-  });
-
-  return buttonApply;
-}
-
 export class CodeEditorDialog extends Overlay {
   header: HTMLDivElement;
   body: HTMLDivElement;
   footer: HTMLDivElement;
-  createCloseMenuButton() {
-    const button = document.createElement("button");
-    const icon = makeIcon({ svg: svg_close });
-    button.appendChild(icon);
-    button.addEventListener("click", () => this.close());
-    return button;
-  }
   constructor(title: string = "Code editor") {
     super();
-    this.content.classList.add("neuroglancer-code-editor-overlay");
+    this.content.classList.add("neuroglancer-code-editor-dialog");
 
     const header = (this.header = document.createElement("div"));
-    const closeMenuButton = this.createCloseMenuButton();
+    const closeMenuIcon = makeIcon({ svg: svg_close });
+    closeMenuIcon.addEventListener("click", () => this.close());
+    closeMenuIcon.classList.add("neuroglancer-code-editor-dialog-close-button");
     const titleText = document.createElement("p");
     titleText.textContent = title;
-    header.classList.add("neuroglancer-code-editor-overlay-header");
+    titleText.classList.add("neuroglancer-code-editor-dialog-title");
+    header.classList.add("neuroglancer-code-editor-dialog-header");
     header.appendChild(titleText);
-    header.appendChild(closeMenuButton);
+    header.appendChild(closeMenuIcon);
     this.content.appendChild(header);
 
     const body = (this.body = document.createElement("div"));
-    body.classList.add("neuroglancer-code-editor-overlay-body");
+    body.classList.add("neuroglancer-code-editor-dialog-body");
     this.content.appendChild(body);
 
     const footer = (this.footer = document.createElement("div"));
-    footer.classList.add("neuroglancer-code-editor-overlay-footer");
+    footer.classList.add("neuroglancer-code-editor-dialog-footer");
     this.content.appendChild(this.footer);
   }
 }

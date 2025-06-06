@@ -56,7 +56,7 @@ export class StateEditorDialog extends CodeEditorDialog {
     buttonApply.disabled = true;
 
     const buttonClose = (this.closeButton = document.createElement("button"));
-    buttonClose.classList.add("close-button");
+    buttonClose.classList.add("neuroglancer-state-editor-close-button");
     buttonClose.textContent = "Save & close";
     saveAndCloseWrapper.appendChild(buttonClose);
     buttonClose.addEventListener("click", () => {
@@ -84,7 +84,9 @@ export class StateEditorDialog extends CodeEditorDialog {
       this.debouncedValueUpdater();
     });
 
-    this.body.appendChild(this.textEditor.getWrapperElement());
+    const textEditorWrapper = this.textEditor.getWrapperElement();
+    textEditorWrapper.classList.add("neuroglancer-state-editor-text-editor");
+    this.body.appendChild(textEditorWrapper);
     this.textEditor.refresh();
   }
 

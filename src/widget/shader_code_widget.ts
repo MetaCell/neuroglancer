@@ -23,7 +23,10 @@ import "codemirror/addon/lint/lint.css";
 
 import { debounce } from "lodash-es";
 import glslCodeMirror from "#src/third_party/codemirror-glsl.js";
-import { ElementVisibilityFromTrackableBoolean } from "#src/trackable_boolean.js";
+import {
+  ElementVisibilityFromTrackableBoolean,
+  TrackableBoolean,
+} from "#src/trackable_boolean.js";
 import type { WatchableValue } from "#src/trackable_value.js";
 import { RefCounted } from "#src/util/disposable.js";
 import { removeFromParent } from "#src/util/dom.js";
@@ -39,10 +42,8 @@ import type {
 import { CheckboxIcon } from "#src/widget/checkbox_icon.js";
 import { makeHelpButton } from "#src/widget/help_button.js";
 import { makeMaximizeButton } from "#src/widget/maximize_button.js";
-import {
-  ShaderCodeEditorDialog,
-  UserLayerWithCodeEditor,
-} from "#src/ui/shader_code_dialog.js";
+import { ShaderCodeEditorDialog } from "#src/ui/shader_code_dialog.js";
+import { UserLayer } from "#src/layer/index.js";
 
 // Install glsl support in CodeMirror.
 glslCodeMirror(CodeMirror);
@@ -52,6 +53,10 @@ glslCodeMirror(CodeMirror);
  * recompiled.
  */
 const SHADER_UPDATE_DELAY = 500;
+
+type UserLayerWithCodeEditor = UserLayer & {
+  codeVisible: TrackableBoolean;
+};
 
 interface ShaderCodeState {
   shaderError: WatchableShaderError;
