@@ -459,6 +459,11 @@ ul#statusContainer {
         background: var(--background80);
     }
 
+    .CodeMirror-gutter-wrapper {
+        background-color: transparent;
+        height: auto;
+    }
+
     .CodeMirror-scroll {
         overflow: auto !important;
     }
@@ -470,6 +475,13 @@ ul#statusContainer {
             color: var(--white);
             font-family: var(--monospaced-font);
         }
+    }
+
+    .CodeMirror-linenumber {
+        padding: 0 4px 0 4px;
+        width: 1rem !important;
+        min-width: auto;
+        opacity: 0.6;
     }
 
     input[type=color] {
