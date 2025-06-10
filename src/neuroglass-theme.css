@@ -541,9 +541,8 @@ ul#statusContainer {
     }
 
     .neuroglancer-segment-list-entry-id {
-        text-align: center;
-        width: auto;
-        padding: 0.063rem 0.125rem;
+        text-align: left;
+        font-family: monospace;
     }
 
     .neuroglancer-selection-details-segment-id {

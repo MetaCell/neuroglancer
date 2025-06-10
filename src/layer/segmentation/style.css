@@ -42,7 +42,7 @@
   width: min-content;
   min-width: 100%;
   background-color: black;
-  align-items: start;
+  align-items: center;
 }
 
 .neuroglancer-segment-list-entry.neuroglancer-segment-list-entry-double-line {
