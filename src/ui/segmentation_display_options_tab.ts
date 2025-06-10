@@ -27,6 +27,7 @@ import {
 } from "#src/widget/shader_code_widget.js";
 import { ShaderControls } from "#src/widget/shader_controls.js";
 import { Tab } from "#src/widget/tab_view.js";
+import { applyAccordion, makeAccordionHeader } from "#src/widget/accordion.js";
 
 function makeSkeletonShaderCodeWidget(layer: SegmentationUserLayer) {
   return new ShaderCodeWidget({
@@ -42,6 +43,8 @@ export class DisplayOptionsTab extends Tab {
     super();
     const { element } = this;
     element.classList.add("neuroglancer-segmentation-rendering-tab");
+
+    element.appendChild(makeAccordionHeader("Segmentation links"));
 
     // Linked segmentation control
     {
@@ -63,11 +66,15 @@ export class DisplayOptionsTab extends Tab {
       element.appendChild(widget.element);
     }
 
+    element.appendChild(makeAccordionHeader("Display options"));
+
     for (const control of LAYER_CONTROLS) {
       element.appendChild(
         addLayerControlToOptionsTab(this, layer, this.visibility, control),
       );
     }
+
+    element.appendChild(makeAccordionHeader("Skeleton rendering"));
 
     const skeletonControls = this.registerDisposer(
       new DependentViewWidget(
@@ -109,6 +116,7 @@ export class DisplayOptionsTab extends Tab {
       ),
     );
     element.appendChild(skeletonControls.element);
+    applyAccordion(element);
   }
 }
 
