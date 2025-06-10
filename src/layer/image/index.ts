@@ -103,6 +103,7 @@ import {
   ShaderControls,
 } from "#src/widget/shader_controls.js";
 import { Tab } from "#src/widget/tab_view.js";
+import { applyAccordion, makeAccordionHeader } from "#src/widget/accordion.js";
 
 const OPACITY_JSON_KEY = "opacity";
 const BLEND_JSON_KEY = "blend";
@@ -535,11 +536,15 @@ class RenderingOptionsTab extends Tab {
     this.codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
     element.classList.add("neuroglancer-image-dropdown");
 
+    element.appendChild(makeAccordionHeader("Layer controls"));
+
     for (const control of LAYER_CONTROLS) {
       element.appendChild(
         addLayerControlToOptionsTab(this, layer, this.visibility, control),
       );
     }
+
+    element.appendChild(makeAccordionHeader("Shader"));
 
     element.appendChild(
       makeShaderCodeWidgetTopRow(
@@ -573,6 +578,7 @@ class RenderingOptionsTab extends Tab {
         ),
       ).element,
     );
+    applyAccordion(element);
   }
 }
 

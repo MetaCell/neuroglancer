@@ -1,0 +1,25 @@
+.neuroglancer-accordion-section {
+  border: 1px solid #444;
+  margin-top: 4px;
+}
+
+.neuroglancer-accordion-section > summary.neuroglancer-accordion-header {
+  cursor: pointer;
+  padding: 2px;
+  background-color: #333;
+  list-style: none;
+}
+
+.neuroglancer-accordion-section-body {
+  padding: 4px;
+}
+
+.neuroglancer-accordion-section[open] > summary.neuroglancer-accordion-header::before {
+  content: "\25BC";
+  margin-right: 4px;
+}
+
+.neuroglancer-accordion-section:not([open]) > summary.neuroglancer-accordion-header::before {
+  content: "\25B6";
+  margin-right: 4px;
+}
