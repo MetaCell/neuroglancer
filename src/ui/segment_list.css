@@ -77,7 +77,7 @@
 .neuroglancer-segment-list-entry-name {
   order: 1000;
   display: inline-block;
-  font-family: monospace;
+  font-family: monospace !important;
   font-size: medium;
   user-select: text;
   white-space: nowrap;
@@ -102,6 +102,7 @@
   flex-direction: row;
   align-items: center;
   background-color: #333;
+  gap: 0.25rem;
 }
 
 .neuroglancer-segment-list-status .neuroglancer-eye-icon {
