@@ -27,9 +27,11 @@ import {
 } from "#src/services/events/outgoing_events.js";
 import { setupDefaultViewer } from "#src/ui/default_viewer_setup.js";
 import "#src/util/google_tag_manager.js";
-import { encodeFragment } from "#src/ui/url_hash_binding.js";
 import "#src/neuroglass-theme.css";
+
+import { getCachedJson } from "#src/util/trackable.js";
 import type { Viewer } from "#src/viewer.js";
+
 
 // @metacell
 
@@ -68,33 +70,38 @@ function watchViewerLoadState() {
   }, 250);
 }
 
+async function dispatchUpdate(hashURLState: string) {
+
+  if (hashURLState?.startsWith("#!")) {
+    const hash = hashURLState.slice(2)
+
+    const payload: SessionUpdatePayload = {
+      url: hash,
+      state: viewer?.state ? getCachedJson(viewer.state).value : null,
+    };
+
+    dispatchMessage(STATE_UPDATE, payload);
+
+    watchViewerLoadState();
+  }
+}
 // patch replaceState to trigger an event message with state update
 history.replaceState = (() => {
   const originalReplaceState = history.replaceState;
   return (...args: any) => {
     originalReplaceState.apply(history, args);
-
     const hashURLState = args[2];
-    if (hashURLState?.startsWith("#!")) {
-      const s = decodeURIComponent(hashURLState.slice(2));
-      let state = {};
-      try {
-        state = JSON.parse(s);
-      } catch (error) {
-        console.error("error parsing url encoded state:", error);
-        return;
-      }
-
-      const payload: SessionUpdatePayload = {
-        url: encodeFragment(JSON.stringify(state)),
-        state: state,
-      };
-
-      dispatchMessage(STATE_UPDATE, payload);
-
-      watchViewerLoadState();
-    }
+    dispatchUpdate(hashURLState);
   };
 })();
+
+// const originalUpdateFromUrlHash = UrlHashBinding.prototype.updateFromUrlHash;
+
+// UrlHashBinding.prototype.updateFromUrlHash = function () {
+//   if(!window.location.hash) {
+//     return;
+//   }
+//   originalUpdateFromUrlHash.call(this);
+// }
 
 // end @metacell
