@@ -1092,11 +1092,6 @@ ul#statusContainer {
 
     }
 
-    .CodeMirror pre.CodeMirror-line,
-    .CodeMirror pre.CodeMirror-line-like {
-        white-space: pre-wrap;
-    }
-
     .CodeMirror.cm-s-default.neuroglancer-shader-code-widget+.neuroglancer-tab-content {
         .neuroglancer-layer-options-control-container {
             margin: 0.5rem 0;
