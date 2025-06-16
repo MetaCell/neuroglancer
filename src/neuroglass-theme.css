@@ -1094,7 +1094,7 @@ ul#statusContainer {
 
     .CodeMirror pre.CodeMirror-line,
     .CodeMirror pre.CodeMirror-line-like {
-        white-space: break-spaces;
+        white-space: pre-wrap;
     }
 
     .CodeMirror.cm-s-default.neuroglancer-shader-code-widget+.neuroglancer-tab-content {
