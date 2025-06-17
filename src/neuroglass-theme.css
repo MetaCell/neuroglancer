@@ -479,9 +479,9 @@ ul#statusContainer {
 
     .CodeMirror-linenumber {
         padding: 0 4px 0 4px;
-        width: 1rem !important;
-        min-width: auto;
         opacity: 0.6;
+        font-size: 0.75rem;
+        text-align: left;
     }
 
     input[type=color] {
@@ -1090,11 +1090,6 @@ ul#statusContainer {
             }
         }
 
-    }
-
-    .CodeMirror pre.CodeMirror-line,
-    .CodeMirror pre.CodeMirror-line-like {
-        white-space: break-spaces;
     }
 
     .CodeMirror.cm-s-default.neuroglancer-shader-code-widget+.neuroglancer-tab-content {
@@ -1783,6 +1778,17 @@ ul#statusContainer {
     .CodeMirror-gutters {
         background-color: var(--background80);
         border-color: var(--dark80);
+    }
+
+    .CodeMirror-lint-marker {
+        width: 12px;
+        height: 12px;
+        vertical-align: baseline;
+        margin-left: 4px;
+    }
+
+    .CodeMirror-lint-marker-error, .CodeMirror-lint-message-error {
+        background-image: url('../src/ui/images/lint-marker-error.svg');
     }
 
     .accordion {
