@@ -346,6 +346,7 @@ export class VirtualList extends RefCounted {
     topItems.style.width = "min-content";
     topItems.style.position = "relative";
     topItems.style.minWidth = "100%";
+    topItems.style.height = "0";
     bottomItems.style.height = "0";
     bottomItems.style.position = "relative";
     element.addEventListener("scroll", () => {
