@@ -1787,6 +1787,10 @@ ul#statusContainer {
         margin-left: 4px;
     }
 
+    .CodeMirror-lint-tooltip {
+        z-index: 1500;
+    }
+
     .CodeMirror-lint-marker-error, .CodeMirror-lint-message-error {
         background-image: url('../src/ui/images/lint-marker-error.svg');
     }
