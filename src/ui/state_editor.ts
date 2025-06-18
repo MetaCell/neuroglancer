@@ -133,6 +133,7 @@ export class StateEditorDialog extends Overlay {
       lineWrapping: true,
       foldGutter: true,
       gutters: ["CodeMirror-lint-markers", "CodeMirror-foldgutter"],
+      lineNumbers: true
     });
     this.updateView();
 
