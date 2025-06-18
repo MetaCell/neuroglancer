@@ -480,8 +480,18 @@ ul#statusContainer {
     .CodeMirror-linenumber {
         padding: 0 4px 0 4px;
         opacity: 0.6;
-        font-size: 0.75rem;
         text-align: left;
+        font-size: 12px;
+        font-style: normal;
+        font-weight: 400;
+        line-height: normal;
+    }
+
+    .CodeMirror pre.CodeMirror-line, .CodeMirror pre.CodeMirror-line-like {
+        font-size: 12px;
+        font-style: normal;
+        font-weight: 400;
+        line-height: normal;
     }
 
     input[type=color] {
