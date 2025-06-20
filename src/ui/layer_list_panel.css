@@ -77,14 +77,22 @@
 
 .neuroglancer-layer-list-panel-color-value-wrapper {
   position: relative;
-  padding: 5px;
+  padding: 2px;
+  width: 26px;
 }
 
 .neuroglancer-layer-list-panel-color-value {
-  border-radius: 50%;
-  height: 10px;
-  width: 10px;
+  border-radius: 10%;
+  width: 26px;
+  align-items: center;
+  display: flex;
   overflow: hidden;
+  color: #fff;
+  font-size: 10pt;
+  font-weight: 700;
+  font-family: sans-serif;
+  line-height: normal;
+  justify-content: center;
 }
 
 .neuroglancer-layer-list-panel-color-value[data-color="rainbow"] {
@@ -109,6 +117,7 @@
   );
   filter: blur(0.5px);
   transform: scale(1.35);
+  opacity: 50%;
 }
 
 .neuroglancer-layer-list-panel-color-value[data-color="unsupported"] {

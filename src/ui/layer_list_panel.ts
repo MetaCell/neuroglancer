@@ -23,7 +23,7 @@ import type {
   ManagedUserLayer,
   TopLevelLayerListSpecification,
 } from "#src/layer/index.js";
-import { deleteLayer } from "#src/layer/index.js";
+import { deleteLayer, layerTypes } from "#src/layer/index.js";
 import { TrackableBooleanCheckbox } from "#src/trackable_boolean.js";
 import type { DropLayers } from "#src/ui/layer_drag_and_drop.js";
 import {
@@ -48,7 +48,7 @@ import type { Trackable } from "#src/util/trackable.js";
 import { CheckboxIcon } from "#src/widget/checkbox_icon.js";
 import { makeDeleteButton } from "#src/widget/delete_button.js";
 import { makeIcon } from "#src/widget/icon.js";
-import { LayerTypeIndicatorWidget } from "#src/widget/layer_type_indicator.js";
+// import { LayerTypeIndicatorWidget } from "#src/widget/layer_type_indicator.js";
 
 const DEFAULT_LAYER_LIST_PANEL_LOCATION: SidePanelLocation = {
   ...DEFAULT_SIDE_PANEL_LOCATION,
@@ -179,6 +179,9 @@ class LayerColorWidget extends RefCounted {
     this.registerDisposer(
       layer.layerChanged.add(() => {
         element.dataset.visible = this.layer.visible.toString();
+        const layerType = this.layer.layer?.type ?? "unknown";
+        this.colorIndicator.textContent =
+          layerTypes.get(layerType)?.typeAbbreviation ?? "—";
         updateLayerColorWidget();
       }),
     );
@@ -259,7 +262,7 @@ class LayerListItem extends RefCounted {
     element.appendChild(
       this.registerDisposer(new LayerColorWidget(panel, layer)).element,
     );
-    element.appendChild(new LayerTypeIndicatorWidget(layer).element);
+    // element.appendChild(new LayerTypeIndicatorWidget(layer).element);
     element.appendChild(layerNameWidget.element);
     element.appendChild(
       this.registerDisposer(makeSelectedLayerSidePanelCheckboxIcon(layer))
