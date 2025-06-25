@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
- .range-slider {
+.range-slider {
   display: flex;
   align-items: center;
 }
@@ -40,11 +40,19 @@
 
 /* Filled track color */
 .range-slider input[type="range"]::-webkit-slider-runnable-track {
-  background: linear-gradient(to right, rgba(22, 82, 240, 1) var(--value), rgba(31, 31, 31, 1) var(--value));
+  background: linear-gradient(
+    to right,
+    rgba(22, 82, 240, 1) var(--value),
+    rgba(31, 31, 31, 1) var(--value)
+  );
 }
 
 .range-slider input[type="range"]::-moz-range-track {
-  background: linear-gradient(to right, rgba(22, 82, 240, 1) var(--value), rgba(31, 31, 31, 1) var(--value));
+  background: linear-gradient(
+    to right,
+    rgba(22, 82, 240, 1) var(--value),
+    rgba(31, 31, 31, 1) var(--value)
+  );
 }
 
 /* Thumb styles */
@@ -77,6 +85,3 @@
 .range-slider input[type="number"] {
   margin-left: 10px; /* Space between the slider and numeric input */
 }
-
-
-

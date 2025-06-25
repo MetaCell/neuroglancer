@@ -50,7 +50,7 @@ export interface ScreenshotActionState {
   viewerState: any;
   selectedValues: any;
   screenshot: ScreenshotResult;
-  name?: string
+  name?: string;
 }
 
 export interface ScreenshotChunkStatistics {

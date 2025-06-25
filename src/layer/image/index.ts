@@ -101,7 +101,6 @@ import {
   ShaderCodeWidget,
 } from "#src/widget/shader_code_widget.js";
 
-
 import type { LegendShaderOptions } from "#src/widget/shader_controls.js";
 import {
   registerLayerShaderControlsTool,
@@ -560,8 +559,6 @@ class RenderingOptionsTab extends Tab {
     const spacer = document.createElement("div");
     spacer.style.flex = "1";
 
-
-
     element.appendChild(
       makeShaderCodeWidgetTopRow(
         this.layer,
@@ -576,13 +573,11 @@ class RenderingOptionsTab extends Tab {
       ),
     );
 
-
     element.appendChild(
       this.registerDisposer(
         new ChannelDimensionsWidget(layer.channelCoordinateSpaceCombiner),
       ).element,
     );
-
 
     element.appendChild(this.codeWidget.element);
     element.appendChild(

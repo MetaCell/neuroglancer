@@ -37,7 +37,7 @@ export function updateInputFieldWidth(
   element: HTMLInputElement,
   length = Math.max(1, element.value.length),
 ) {
-  const newWidth = `${length+1}ch`;
+  const newWidth = `${length + 1}ch`;
   if (element.style.width !== newWidth) {
     // Force additional reflow to work around Chrome bug.
     element.style.width = "0px";

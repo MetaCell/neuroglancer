@@ -190,3 +190,13 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+
+# Neuroglancer neuroglass notes
+
+This repository includes a git blame ignore file, `.git-blame-ignore-revs`, which contains a list of commits that are not relevant to the code history. To use this file, you can run the following command and then use `git blame` as usual:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
+If future commits not relevant to code history (such as reformatting commits) are made, the commit hash can be added to this file and tracked in version control.

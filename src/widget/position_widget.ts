@@ -42,10 +42,10 @@ import {
   makeCachedDerivedWatchableValue,
   WatchableValue,
 } from "#src/trackable_value.js";
+import { popDragStatus, pushDragStatus } from "#src/ui/drag_and_drop.js";
 import svg_pause from "#src/ui/images/pause.svg?raw";
 import svg_play from "#src/ui/images/play.svg?raw";
 import svg_video from "#src/ui/images/playback.svg?raw";
-import { popDragStatus, pushDragStatus } from "#src/ui/drag_and_drop.js";
 import type { LocalToolBinder, ToolActivation } from "#src/ui/tool.js";
 import {
   makeToolActivationStatusMessage,
@@ -351,7 +351,7 @@ export class PositionWidget extends RefCounted {
           new CheckboxIcon(this.velocity!.playbackEnabled(widget.id), {
             svg: svg_video,
             enableTitle: "Enable playback/velocity",
-            disableTitle: "Disable playback/velocity"
+            disableTitle: "Disable playback/velocity",
           }),
         ).element,
       );

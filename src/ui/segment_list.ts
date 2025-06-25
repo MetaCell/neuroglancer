@@ -1148,14 +1148,18 @@ abstract class SegmentListGroupBase extends RefCounted {
       title: "Copy all segment IDs",
       onClick: () => {
         this.copySegments(false);
-        StatusMessage.showTemporaryMessage("All segment IDs copied to clipboard");
+        StatusMessage.showTemporaryMessage(
+          "All segment IDs copied to clipboard",
+        );
       },
     });
     this.copyVisibleSegmentsButton = makeCopyButton({
       title: "Copy visible segment IDs",
       onClick: () => {
         this.copySegments(true);
-        StatusMessage.showTemporaryMessage("Visible segment IDs copied to clipboard");
+        StatusMessage.showTemporaryMessage(
+          "Visible segment IDs copied to clipboard",
+        );
       },
     });
     this.visibilityToggleAllButton = makeEyeButton({
@@ -1394,10 +1398,14 @@ class SegmentListGroupQuery extends SegmentListGroupBase {
     const updateQueryErrors = (queryResult: QueryResult | undefined) => {
       const errors = queryResult?.errors;
       removeChildren(queryErrors);
-      queryElement.classList.remove("neuroglancer-segment-list-query-error-state");
+      queryElement.classList.remove(
+        "neuroglancer-segment-list-query-error-state",
+      );
       if (errors === undefined) return;
       for (const error of errors) {
-        queryElement.classList.add("neuroglancer-segment-list-query-error-state");
+        queryElement.classList.add(
+          "neuroglancer-segment-list-query-error-state",
+        );
         const errorElement = document.createElement("li");
         errorElement.textContent = error.message;
         queryErrors.appendChild(errorIcon);

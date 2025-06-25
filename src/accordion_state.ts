@@ -7,14 +7,21 @@ import { type Trackable } from "#src/util/trackable.js";
 export interface TabAccordionState {
   [tabId: string]: {
     [accordionId: string]: TrackableBoolean;
-  }
+  };
 }
 
-export class TrackableTabAccordionState extends RefCounted implements Trackable {
+export class TrackableTabAccordionState
+  extends RefCounted
+  implements Trackable
+{
   changed = new NullarySignal();
   private states: TabAccordionState = {};
 
-  getState(tabId: TabId, accordionId: string, initialValue?: boolean): TrackableBoolean {
+  getState(
+    tabId: TabId,
+    accordionId: string,
+    initialValue?: boolean,
+  ): TrackableBoolean {
     if (!this.states[tabId]) {
       this.states[tabId] = {};
     }
@@ -29,9 +36,9 @@ export class TrackableTabAccordionState extends RefCounted implements Trackable 
   }
 
   restoreState(obj: any) {
-    if (obj && typeof obj === 'object') {
+    if (obj && typeof obj === "object") {
       for (const [tabId, tabStates] of Object.entries(obj)) {
-        if (typeof tabStates === 'object' && tabStates !== null) {
+        if (typeof tabStates === "object" && tabStates !== null) {
           for (const [accordionId, value] of Object.entries(tabStates)) {
             this.getState(tabId as TabId, accordionId).restoreState(value);
           }
@@ -41,9 +48,9 @@ export class TrackableTabAccordionState extends RefCounted implements Trackable 
   }
 
   toJSON() {
-    const result: {[tabId: string]: {[accordionId: string]: boolean}} = {};
+    const result: { [tabId: string]: { [accordionId: string]: boolean } } = {};
     for (const [tabId, tabStates] of Object.entries(this.states)) {
-      const tabResult: {[accordionId: string]: boolean} = {};
+      const tabResult: { [accordionId: string]: boolean } = {};
       for (const [accordionId, state] of Object.entries(tabStates)) {
         tabResult[accordionId] = state.value;
       }

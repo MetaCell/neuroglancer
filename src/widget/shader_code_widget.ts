@@ -47,7 +47,6 @@ import { CheckboxIcon } from "#src/widget/checkbox_icon.js";
 import { makeHelpButton } from "#src/widget/help_button.js";
 import { makeMaximizeButton } from "#src/widget/maximize_button.js";
 
-
 // Install glsl support in CodeMirror.
 glslCodeMirror(CodeMirror);
 
@@ -85,7 +84,7 @@ export class ShaderCodeWidget extends RefCounted {
       value: this.state.fragmentMain.value,
       mode: "glsl",
       gutters: ["CodeMirror-lint-markers"],
-      lineNumbers: true
+      lineNumbers: true,
     });
     this.textEditor.on("change", () => {
       this.setValidState(undefined);
@@ -205,11 +204,12 @@ export class ShaderCodeWidget extends RefCounted {
   }
 }
 
-
 type UserLayerWithCodeEditor = UserLayer & { codeVisible: TrackableBoolean };
 type ShaderCodeOverlayConstructor<T extends Overlay> = new (
   layer: UserLayerWithCodeEditor,
-  makeShaderCodeWidget: (layer: UserLayer) => ShaderCodeWidget, options: any, makeVertexAttributeWidget?: any
+  makeShaderCodeWidget: (layer: UserLayer) => ShaderCodeWidget,
+  options: any,
+  makeVertexAttributeWidget?: any,
 ) => T;
 
 export function makeShaderCodeWidgetTopRow<T extends Overlay>(
@@ -250,7 +250,9 @@ export function makeShaderCodeWidgetTopRow<T extends Overlay>(
     makeMaximizeButton({
       title: "Show larger editor view",
       onClick: () => {
-        new ShaderCodeOverlay(layer, makeShaderCodeWidget, { additionalClass: 'neuroglancer-annotation-layer-shader-overlay' });
+        new ShaderCodeOverlay(layer, makeShaderCodeWidget, {
+          additionalClass: "neuroglancer-annotation-layer-shader-overlay",
+        });
       },
     }),
   );

@@ -77,9 +77,7 @@ export class StateEditorDialog extends Overlay {
     );
 
     const closeAndHelpContainer = document.createElement("div");
-    closeAndHelpContainer.classList.add(
-      "overlay-content-header",
-    );
+    closeAndHelpContainer.classList.add("overlay-content-header");
 
     closeAndHelpContainer.appendChild(titleText);
     closeAndHelpContainer.appendChild(this.closeMenuButton);
@@ -91,13 +89,9 @@ export class StateEditorDialog extends Overlay {
     this.content.appendChild(mainBody);
 
     this.footerActionsBtnContainer = document.createElement("div");
-    this.footerActionsBtnContainer.classList.add(
-      "overlay-content-footer",
-    );
+    this.footerActionsBtnContainer.classList.add("overlay-content-footer");
     this.footerBtnsWrapper = document.createElement("div");
-    this.footerBtnsWrapper.classList.add(
-      "button-wrapper",
-    );
+    this.footerBtnsWrapper.classList.add("button-wrapper");
     this.content.appendChild(this.footerActionsBtnContainer);
 
     const buttonApply = (this.applyButton = document.createElement("button"));
@@ -116,16 +110,15 @@ export class StateEditorDialog extends Overlay {
       this.dispose();
     });
 
-    const downloadButton = (this.downloadButton = document.createElement("button"));
+    const downloadButton = (this.downloadButton =
+      document.createElement("button"));
     downloadButton.textContent = "Download";
     downloadButton.title = "Download state as a JSON file";
     downloadButton.classList.add("text-button");
     downloadButton.addEventListener("click", () => this.downloadState());
 
     this.footerActionsBtnContainer.appendChild(downloadButton);
-    this.footerActionsBtnContainer.appendChild(
-      this.footerBtnsWrapper,
-    );
+    this.footerActionsBtnContainer.appendChild(this.footerBtnsWrapper);
 
     this.textEditor = CodeMirror((_element) => {}, <any>{
       value: "",
@@ -133,7 +126,7 @@ export class StateEditorDialog extends Overlay {
       lineWrapping: true,
       foldGutter: true,
       gutters: ["CodeMirror-lint-markers", "CodeMirror-foldgutter"],
-      lineNumbers: true
+      lineNumbers: true,
     });
     this.updateView();
 

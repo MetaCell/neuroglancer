@@ -1,4 +1,4 @@
-import fs from 'fs';
+import fs from "fs";
 import path from "node:path";
 import { HtmlRspackPlugin, ProgressPlugin } from "@rspack/core";
 import { normalizeConfigurationWithDefine } from "./build_tools/rspack/configuration_with_define.js";
@@ -7,10 +7,13 @@ import packageJson from "./package.json";
 // @neuroglass start
 class RspackAssetsManifestPlugin {
   apply(compiler) {
-    compiler.hooks.done.tap('RspackAssetsManifestPlugin', (stats) => {
+    compiler.hooks.done.tap("RspackAssetsManifestPlugin", (stats) => {
       const assets = stats.toJson();
 
-      const outputPath = path.resolve(compiler.options.output.path, 'assets.json');
+      const outputPath = path.resolve(
+        compiler.options.output.path,
+        "assets.json",
+      );
       fs.writeFileSync(outputPath, JSON.stringify(assets.entrypoints, null, 2));
     });
   }

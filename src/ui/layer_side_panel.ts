@@ -177,7 +177,7 @@ class LayerSidePanel extends SidePanel {
           svg: svg_cursor,
           enableTitle: "Spatial object selection: disabled",
           disableTitle: "Spatial object selection: enabled",
-          className: "ikonate"
+          className: "ikonate",
         },
       ),
     );
@@ -214,7 +214,7 @@ class LayerSidePanel extends SidePanel {
           // text: "📌\ufe0e",
           enableTitle: "Pin panel to this layer",
           disableTitle: "Unpin panel to this layer",
-          svg: pushpin
+          svg: pushpin,
         }),
       ).element,
     );

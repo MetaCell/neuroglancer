@@ -7,7 +7,6 @@ export type MessagePayload = {
 
 export const CREATE_FIGURE = "CREATE_FIGURE" as const;
 
-
 export class IncomingEventsHandler extends RefCounted {
   constructor(public viewer: any) {
     super();
@@ -15,14 +14,17 @@ export class IncomingEventsHandler extends RefCounted {
   }
 
   private initialize() {
-    this.registerEventListener(window, 'message', this.handlePostMessage.bind(this));
+    this.registerEventListener(
+      window,
+      "message",
+      this.handlePostMessage.bind(this),
+    );
   }
-
 
   private handlePostMessage(event: MessageEvent) {
     const { data } = event;
 
-    if (!data || typeof data.type !== 'string') {
+    if (!data || typeof data.type !== "string") {
       return;
     }
 
@@ -39,6 +41,6 @@ export class IncomingEventsHandler extends RefCounted {
   }
 
   private createFigure() {
-    this.viewer.showScreenshotDialog()
+    this.viewer.showScreenshotDialog();
   }
 }

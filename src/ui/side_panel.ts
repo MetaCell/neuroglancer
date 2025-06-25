@@ -184,7 +184,7 @@ export class SidePanel extends RefCounted {
       onClick: () => {
         this.close();
       },
-      svg: close
+      svg: close,
     });
     closeButton.style.order = "100";
     titleBar.appendChild(closeButton);

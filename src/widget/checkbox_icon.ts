@@ -21,7 +21,6 @@ import { RefCounted } from "#src/util/disposable.js";
 import type { MakeIconOptions } from "#src/widget/icon.js";
 import { makeIcon } from "#src/widget/icon.js";
 
-
 export interface MakeCheckboxIconOptions
   extends Omit<MakeIconOptions, "onClick" | "title"> {
   enableTitle?: string;

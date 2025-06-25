@@ -111,12 +111,14 @@ export class SelectionDetailsPanel extends SidePanel {
             const copyButton = makeCopyButton({
               title: "Copy position",
               onClick: () => {
-                const result = setClipboard(position!.map((x) => Math.floor(x)).join(", "));
+                const result = setClipboard(
+                  position!.map((x) => Math.floor(x)).join(", "),
+                );
                 StatusMessage.showTemporaryMessage(
-                    result
-                      ? "Position copied to clipboard"
-                      : "Failed to copy position to clipboard",
-                  );
+                  result
+                    ? "Position copied to clipboard"
+                    : "Failed to copy position to clipboard",
+                );
               },
             });
             positionElement.appendChild(copyButton);

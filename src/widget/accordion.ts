@@ -45,7 +45,7 @@ export class Accordion extends RefCounted {
         this.registerDisposer(
           item.state.changed.add(() => {
             this.toggleContent(itemElement, contentElement, item.state!.value);
-          })
+          }),
         );
 
         this.registerEventListener(titleElement, "click", () => {
