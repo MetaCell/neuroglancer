@@ -800,14 +800,13 @@ class RenderingOptionsTab extends Tab {
     element.appendChild(
       makeShaderCodeWidgetTopRow(
         this.layer,
-        this.codeWidget,
-        ShaderCodeOverlay,
+        this.codeWidget.element,
         makeShaderCodeWidget,
         {
-          title: "Documentation on annotation rendering",
+          title: "Documentation on annotation layer rendering",
           href: "https://github.com/google/neuroglancer/blob/master/src/annotation/rendering.md",
+          type: "Annotation",
         },
-        "neuroglancer-annotation-dropdown-shader-top-row",
       ),
     );
 

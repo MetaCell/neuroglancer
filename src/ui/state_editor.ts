@@ -27,7 +27,7 @@ import "codemirror/addon/fold/foldgutter.css";
 import "codemirror/addon/lint/lint.css";
 import CodeMirror from "codemirror";
 import { debounce } from "lodash-es";
-import { Overlay } from "#src/overlay.js";
+import { CodeEditorDialog } from "#src/ui/shader_code_dialog.js";
 import "#src/ui/state_editor.css";
 import svg_close from "#src/ui/images/metacell/close.svg?raw";
 import { getCachedJson } from "#src/util/trackable.js";
@@ -36,7 +36,7 @@ import { makeIcon } from "#src/widget/icon.js";
 
 const valueUpdateDelay = 100;
 
-export class StateEditorDialog extends Overlay {
+export class StateEditorDialog extends CodeEditorDialog {
   textEditor: CodeMirror.Editor;
   applyButton: HTMLButtonElement;
   downloadButton: HTMLButtonElement;
@@ -62,7 +62,7 @@ export class StateEditorDialog extends Overlay {
     return button;
   }
   constructor(public viewer: Viewer) {
-    super();
+    super("State editor");
 
     this.content.classList.add("modal-lg");
 
@@ -94,18 +94,21 @@ export class StateEditorDialog extends Overlay {
     this.footerBtnsWrapper.classList.add("button-wrapper");
     this.content.appendChild(this.footerActionsBtnContainer);
 
-    const buttonApply = (this.applyButton = document.createElement("button"));
-    buttonApply.textContent = "Save";
-    buttonApply.classList.add("cancel-button");
-    this.footerBtnsWrapper.appendChild(buttonApply);
-    buttonApply.addEventListener("click", () => this.applyChanges());
-    buttonApply.disabled = true;
+    const saveAndCloseWrapper = document.createElement("div");
+    saveAndCloseWrapper.classList.add(
+      "neuroglancer-state-editor-save-container",
+    );
+    const applyButton = (this.applyButton = document.createElement("button"));
+    applyButton.textContent = "Apply changes";
+    saveAndCloseWrapper.appendChild(applyButton);
+    applyButton.addEventListener("click", () => this.applyChanges());
+    applyButton.disabled = true;
 
-    const buttonClose = (this.closeButton = document.createElement("button"));
-    buttonClose.classList.add("primary-button");
-    buttonClose.textContent = "Save & Close";
-    this.footerBtnsWrapper.appendChild(buttonClose);
-    buttonClose.addEventListener("click", () => {
+    const closeButton = (this.closeButton = document.createElement("button"));
+    closeButton.classList.add("neuroglancer-state-editor-close-button");
+    closeButton.textContent = "Save & close";
+    saveAndCloseWrapper.appendChild(closeButton);
+    closeButton.addEventListener("click", () => {
       this.applyChanges();
       this.dispose();
     });
@@ -114,8 +117,10 @@ export class StateEditorDialog extends Overlay {
       document.createElement("button"));
     downloadButton.textContent = "Download";
     downloadButton.title = "Download state as a JSON file";
-    downloadButton.classList.add("text-button");
+    downloadButton.classList.add("text-button"); // @metacell
     downloadButton.addEventListener("click", () => this.downloadState());
+    this.footer.appendChild(downloadButton);
+    this.footer.appendChild(saveAndCloseWrapper);
 
     this.footerActionsBtnContainer.appendChild(downloadButton);
     this.footerActionsBtnContainer.appendChild(this.footerBtnsWrapper);
@@ -134,7 +139,9 @@ export class StateEditorDialog extends Overlay {
       this.debouncedValueUpdater();
     });
 
-    mainBody.appendChild(this.textEditor.getWrapperElement());
+    const textEditorWrapper = this.textEditor.getWrapperElement();
+    textEditorWrapper.classList.add("neuroglancer-state-editor-text-editor");
+    this.body.appendChild(textEditorWrapper);
     this.textEditor.refresh();
   }
 
