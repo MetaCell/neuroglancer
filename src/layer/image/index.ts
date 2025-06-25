@@ -95,7 +95,6 @@ import {
   renderScaleLayerControl,
   VolumeRenderingRenderScaleWidget,
 } from "#src/widget/render_scale_widget.js";
-import { ShaderCodeOverlay } from "#src/widget/shader_code_overlay.js";
 import {
   makeShaderCodeWidgetTopRow,
   ShaderCodeWidget,

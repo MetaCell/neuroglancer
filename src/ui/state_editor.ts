@@ -29,10 +29,8 @@ import CodeMirror from "codemirror";
 import { debounce } from "lodash-es";
 import { CodeEditorDialog } from "#src/ui/shader_code_dialog.js";
 import "#src/ui/state_editor.css";
-import svg_close from "#src/ui/images/metacell/close.svg?raw";
 import { getCachedJson } from "#src/util/trackable.js";
 import type { Viewer } from "#src/viewer.js";
-import { makeIcon } from "#src/widget/icon.js";
 
 const valueUpdateDelay = 100;
 
@@ -41,64 +39,17 @@ export class StateEditorDialog extends CodeEditorDialog {
   applyButton: HTMLButtonElement;
   downloadButton: HTMLButtonElement;
   closeButton: HTMLButtonElement;
-  closeMenuButton: HTMLButtonElement;
-  footerActionsBtnContainer: HTMLDivElement;
-  footerBtnsWrapper: HTMLDivElement;
-  private createButton(
-    text: string | null,
-    onClick: () => void,
-    cssClass: string = "",
-    svgUrl: string | null = null,
-  ): HTMLButtonElement {
-    const button = document.createElement("button");
-    if (svgUrl) {
-      const icon = makeIcon({ svg: svgUrl });
-      button.appendChild(icon);
-    } else if (text) {
-      button.textContent = text;
-    }
-    if (cssClass) button.classList.add(cssClass);
-    button.addEventListener("click", onClick);
-    return button;
-  }
   constructor(public viewer: Viewer) {
     super("State editor");
 
-    this.content.classList.add("modal-lg");
-
-    const titleText = document.createElement("p");
-    titleText.textContent = "Code editor";
-
-    this.closeMenuButton = this.createButton(
-      null,
-      () => this.close(),
-      "",
-      svg_close,
-    );
-
-    const closeAndHelpContainer = document.createElement("div");
-    closeAndHelpContainer.classList.add("overlay-content-header");
-
-    closeAndHelpContainer.appendChild(titleText);
-    closeAndHelpContainer.appendChild(this.closeMenuButton);
-
-    this.content.appendChild(closeAndHelpContainer);
-
-    const mainBody = document.createElement("div");
-    mainBody.classList.add("overlay-content-body");
-    this.content.appendChild(mainBody);
-
-    this.footerActionsBtnContainer = document.createElement("div");
-    this.footerActionsBtnContainer.classList.add("overlay-content-footer");
-    this.footerBtnsWrapper = document.createElement("div");
-    this.footerBtnsWrapper.classList.add("button-wrapper");
-    this.content.appendChild(this.footerActionsBtnContainer);
+    this.content.classList.add("neuroglancer-state-editor");
 
     const saveAndCloseWrapper = document.createElement("div");
     saveAndCloseWrapper.classList.add(
       "neuroglancer-state-editor-save-container",
     );
     const applyButton = (this.applyButton = document.createElement("button"));
+    applyButton.classList.add("neuroglancer-state-editor-apply-button");
     applyButton.textContent = "Apply changes";
     saveAndCloseWrapper.appendChild(applyButton);
     applyButton.addEventListener("click", () => this.applyChanges());
@@ -110,7 +61,7 @@ export class StateEditorDialog extends CodeEditorDialog {
     saveAndCloseWrapper.appendChild(closeButton);
     closeButton.addEventListener("click", () => {
       this.applyChanges();
-      this.dispose();
+      this.close();
     });
 
     const downloadButton = (this.downloadButton =
@@ -121,9 +72,6 @@ export class StateEditorDialog extends CodeEditorDialog {
     downloadButton.addEventListener("click", () => this.downloadState());
     this.footer.appendChild(downloadButton);
     this.footer.appendChild(saveAndCloseWrapper);
-
-    this.footerActionsBtnContainer.appendChild(downloadButton);
-    this.footerActionsBtnContainer.appendChild(this.footerBtnsWrapper);
 
     this.textEditor = CodeMirror((_element) => {}, <any>{
       value: "",

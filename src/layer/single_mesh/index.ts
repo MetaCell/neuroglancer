@@ -36,7 +36,6 @@ import { WatchableValue } from "#src/trackable_value.js";
 import type { Borrowed } from "#src/util/disposable.js";
 import { RefCounted } from "#src/util/disposable.js";
 import { removeChildren, removeFromParent } from "#src/util/dom.js";
-import { ShaderCodeOverlay } from "#src/widget/shader_code_overlay.js";
 import {
   makeShaderCodeWidgetTopRow,
   ShaderCodeWidget,

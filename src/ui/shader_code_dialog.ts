@@ -15,7 +15,7 @@
  */
 
 import "#src/ui/shader_code_dialog.css";
-import svg_close from "ikonate/icons/close.svg?raw";
+import svg_close from "#src/ui/images/metacell/close.svg?raw"; // @metacell
 import type { UserLayer } from "#src/layer/index.js";
 import type { VertexAttributeWidget } from "#src/layer/single_mesh/index.js";
 import { Overlay } from "#src/overlay.js";

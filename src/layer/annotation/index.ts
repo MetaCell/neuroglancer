@@ -78,7 +78,6 @@ import {
 import { colorLayerControl } from "#src/widget/layer_control_color.js";
 import { LayerReferenceWidget } from "#src/widget/layer_reference.js";
 import { RenderScaleWidget } from "#src/widget/render_scale_widget.js";
-import { ShaderCodeOverlay } from "#src/widget/shader_code_overlay.js";
 import {
   makeShaderCodeWidgetTopRow,
   ShaderCodeWidget,
