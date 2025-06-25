@@ -1299,21 +1299,19 @@ ul#statusContainer {
           background-repeat: no-repeat;
           background-position: center;
           background-size: 0.875rem;
-          width: 1.5rem;
+          width: 1.3rem;
           display: block;
-          height: 1.5rem;
+          height: 1.3rem;
 
           border: none;
           background-color: transparent;
-          stroke: var(--content100);
           display: block;
           padding: 0;
           border-radius: 0;
 
           svg {
-            stroke: var(--content100);
-            width: 1.5rem;
-            height: 1.5rem;
+            width: 1.3rem;
+            height: 1.3rem;
           }
         }
       }
@@ -1363,7 +1361,7 @@ ul#statusContainer {
             pointer-events: none;
           }
         }
-        .neuroglancer-state-editor-save-container {
+          .neuroglancer-state-editor-save-container {
           display: flex;
           align-items: center;
           gap: 0.5rem;
@@ -3322,8 +3320,7 @@ ul#statusContainer {
     }
   }
 
-  .primary-button,
-  .neuroglancer-state-editor-close-button {
+  .primary-button, .neuroglancer-state-editor-close-button {
     border: none;
     color: var(--white);
     background: var(--primary100);
@@ -3333,9 +3330,7 @@ ul#statusContainer {
     }
   }
 
-  .cancel-button,
-  .neuroglancer-shader-code-editor-dialog-close-button,
-  .neuroglancer-state-editor-apply-button {
+  .cancel-button, .neuroglancer-shader-code-editor-dialog-close-button, .neuroglancer-state-editor-apply-button {
     color: var(--white);
     border: 0.0938rem solid var(--dark80);
     background: transparent;
