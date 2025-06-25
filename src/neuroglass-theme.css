@@ -1319,7 +1319,7 @@ ul#statusContainer {
       .neuroglancer-code-editor-dialog-body {
         padding: 1.5rem;
         overflow: auto;
-        height: calc(80vh - (4rem + 4.5rem));
+        height: calc(80vh - 8.5rem);
 
         .CodeMirror {
           margin: 0;
@@ -1361,7 +1361,7 @@ ul#statusContainer {
             pointer-events: none;
           }
         }
-          .neuroglancer-state-editor-save-container {
+        .neuroglancer-state-editor-save-container {
           display: flex;
           align-items: center;
           gap: 0.5rem;
@@ -1376,6 +1376,12 @@ ul#statusContainer {
         }
       }
     }
+  }
+
+  .neuroglancer-shader-code-widget-top-row {
+    margin-bottom: 0.75rem;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.875rem;
   }
 
   .neuroglancer-multiline-autocomplete-dropdown {
@@ -3320,7 +3326,8 @@ ul#statusContainer {
     }
   }
 
-  .primary-button, .neuroglancer-state-editor-close-button {
+  .primary-button,
+  .neuroglancer-state-editor-close-button {
     border: none;
     color: var(--white);
     background: var(--primary100);
@@ -3330,7 +3337,9 @@ ul#statusContainer {
     }
   }
 
-  .cancel-button, .neuroglancer-shader-code-editor-dialog-close-button, .neuroglancer-state-editor-apply-button {
+  .cancel-button,
+  .neuroglancer-shader-code-editor-dialog-close-button,
+  .neuroglancer-state-editor-apply-button {
     color: var(--white);
     border: 0.0938rem solid var(--dark80);
     background: transparent;

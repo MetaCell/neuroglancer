@@ -15,7 +15,7 @@
  */
 
 import CodeMirror from "codemirror";
-import svgCode from "ikonate/icons/code-alt.svg?raw";
+import svgCode from "#src/ui/images/code.svg?raw";
 
 import "codemirror/addon/lint/lint.js";
 import "#src/widget/shader_code_widget.css";
