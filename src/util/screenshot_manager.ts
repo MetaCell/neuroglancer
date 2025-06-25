@@ -23,7 +23,10 @@ import type {
   StatisticsActionState,
   ScreenshotChunkStatistics,
 } from "#src/python_integration/screenshots.js";
-import { dispatchMessage, NEW_FIGURE } from "#src/services/events/outgoing_events.js";
+import {
+  dispatchMessage,
+  NEW_FIGURE,
+} from "#src/services/events/outgoing_events.js";
 import { SliceViewPanel } from "#src/sliceview/panel.js";
 import { StatusMessage } from "#src/status.js";
 import {
@@ -449,7 +452,9 @@ export class ScreenshotManager extends RefCounted {
 
       // Convert croppedImage Blob to Base64
       const croppedImageArrayBuffer = await croppedImage.arrayBuffer();
-      const croppedImageBase64 = await toBase64(new Uint8Array(croppedImageArrayBuffer));
+      const croppedImageBase64 = await toBase64(
+        new Uint8Array(croppedImageArrayBuffer),
+      );
 
       // Dispatch message on screenshot creation
       dispatchMessage(NEW_FIGURE, {
@@ -460,7 +465,7 @@ export class ScreenshotManager extends RefCounted {
           height: renderingPanelArea.bottom - renderingPanelArea.top,
           width: renderingPanelArea.right - renderingPanelArea.left,
         },
-        name: this.filename.replace(/\.[^/.]+$/, "")
+        name: this.filename.replace(/\.[^/.]+$/, ""),
       });
       // end @metacell
     } catch (error) {

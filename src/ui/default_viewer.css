@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-@import './fonts.css';
+@import "./fonts.css";
 
 html,
 body {
@@ -24,7 +24,7 @@ body {
   height: 100vh;
   background-color: black;
   color: white;
-  font-family: "Graphik"
+  font-family: "Graphik";
 }
 
 body {

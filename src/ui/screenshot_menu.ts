@@ -423,10 +423,13 @@ export class ScreenshotDialog extends Overlay {
 
     // @metacell
     const descriptionContainer = document.createElement("div");
-    descriptionContainer.classList.add("neuroglancer-screenshot-description-section");
+    descriptionContainer.classList.add(
+      "neuroglancer-screenshot-description-section",
+    );
 
     const description = document.createElement("p");
-    description.textContent = "A snapshot of your current state will be taken and this will create a figure. View your figures on the sidebar panel and the dashboard.";
+    description.textContent =
+      "A snapshot of your current state will be taken and this will create a figure. View your figures on the sidebar panel and the dashboard.";
     descriptionContainer.appendChild(description);
 
     // descriptionContainer.appendChild(document.createElement("hr"));
@@ -605,7 +608,7 @@ export class ScreenshotDialog extends Overlay {
       const isChecked = scale === this.screenshotManager.screenshotScale;
 
       const radioIcon = makeIcon({
-        svg: isChecked ? radio_checked : radio_unchecked
+        svg: isChecked ? radio_checked : radio_unchecked,
       });
       image.appendChild(radioIcon);
 
@@ -627,21 +630,26 @@ export class ScreenshotDialog extends Overlay {
         this.screenshotManager.screenshotScale = scale;
         this.handleScreenshotResize();
 
-        this.scaleRadioButtonsContainer.querySelectorAll('label').forEach(lbl => {
-          const radioInput = lbl.querySelector('input') as HTMLInputElement;
-          const spanEl = lbl.querySelector('span');
-          if (spanEl) {
-            while (spanEl.firstChild) {
-              spanEl.removeChild(spanEl.firstChild);
-            }
+        this.scaleRadioButtonsContainer
+          .querySelectorAll("label")
+          .forEach((lbl) => {
+            const radioInput = lbl.querySelector("input") as HTMLInputElement;
+            const spanEl = lbl.querySelector("span");
+            if (spanEl) {
+              while (spanEl.firstChild) {
+                spanEl.removeChild(spanEl.firstChild);
+              }
 
-            const newIcon = makeIcon({
-              svg: radioInput.checked ? radio_checked : radio_unchecked
-            });
-            spanEl.appendChild(newIcon);
-            spanEl.setAttribute("data-state", radioInput.checked ? "checked" : "unchecked");
-          }
-        });
+              const newIcon = makeIcon({
+                svg: radioInput.checked ? radio_checked : radio_unchecked,
+              });
+              spanEl.appendChild(newIcon);
+              spanEl.setAttribute(
+                "data-state",
+                radioInput.checked ? "checked" : "unchecked",
+              );
+            }
+          });
       });
     });
     this.handleScreenshotResize(); // just to update the buttons

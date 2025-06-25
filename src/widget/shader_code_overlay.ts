@@ -17,7 +17,10 @@
 import type { AnnotationUserLayer } from "#src/layer/annotation/index.ts";
 import type { ImageUserLayer } from "#src/layer/image/index.js";
 import { makeFooterBtnGroup } from "#src/layer/image/shader_overlay_footer.js";
-import type { SingleMeshUserLayer, VertexAttributeWidget } from "#src/layer/single_mesh/index.js";
+import type {
+  SingleMeshUserLayer,
+  VertexAttributeWidget,
+} from "#src/layer/single_mesh/index.js";
 import { Overlay } from "#src/overlay.js";
 import svg_close from "#src/ui/images/metacell/close.svg?raw";
 import { makeIcon } from "#src/widget/icon.js";
@@ -36,7 +39,12 @@ export class ShaderCodeOverlay extends Overlay {
   attributeWidget?: VertexAttributeWidget;
   footerActionsBtnContainer: HTMLDivElement;
   footerBtnsWrapper: HTMLDivElement;
-  constructor(public layer: UserLayer, makeShaderCodeWidget: (layer: UserLayer) => ShaderCodeWidget, options: ShaderCodeOverlayOptions = {}, makeVertexAttributeWidget?: (layer: UserLayer) => VertexAttributeWidget) {
+  constructor(
+    public layer: UserLayer,
+    makeShaderCodeWidget: (layer: UserLayer) => ShaderCodeWidget,
+    options: ShaderCodeOverlayOptions = {},
+    makeVertexAttributeWidget?: (layer: UserLayer) => VertexAttributeWidget,
+  ) {
     super();
     const { additionalClass = "", title = "Shader editor" } = options;
 
@@ -45,14 +53,21 @@ export class ShaderCodeOverlay extends Overlay {
     const titleText = document.createElement("p");
     titleText.textContent = title;
 
-    this.closeMenuButton = this.createButton(null, () => this.close(), "", svg_close);
+    this.closeMenuButton = this.createButton(
+      null,
+      () => this.close(),
+      "",
+      svg_close,
+    );
 
     this.codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
 
     if (makeVertexAttributeWidget) {
-      this.attributeWidget = this.registerDisposer(makeVertexAttributeWidget(this.layer));
+      this.attributeWidget = this.registerDisposer(
+        makeVertexAttributeWidget(this.layer),
+      );
     }
-    
+
     const closeAndHelpContainer = document.createElement("div");
     closeAndHelpContainer.classList.add("overlay-content-header");
 
@@ -63,7 +78,9 @@ export class ShaderCodeOverlay extends Overlay {
 
     const mainBody = document.createElement("div");
     mainBody.classList.add("overlay-content-body");
-    mainBody.appendChild(this.attributeWidget?.element ?? document.createDocumentFragment());
+    mainBody.appendChild(
+      this.attributeWidget?.element ?? document.createDocumentFragment(),
+    );
     mainBody.appendChild(this.codeWidget.element);
     this.content.appendChild(mainBody);
     this.codeWidget.textEditor.refresh();
@@ -76,7 +93,7 @@ export class ShaderCodeOverlay extends Overlay {
     this.content.appendChild(this.footerActionsBtnContainer);
     this.codeWidget.textEditor.refresh();
   }
-  
+
   private createButton(
     text: string | null,
     onClick: () => void,

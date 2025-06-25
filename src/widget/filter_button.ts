@@ -19,5 +19,5 @@ import type { MakeIconOptions } from "#src/widget/icon.js";
 import { makeIcon } from "#src/widget/icon.js";
 
 export function makeFilterButton(options: MakeIconOptions = {}) {
-  return makeIcon({ svg: svg_filter, ...options, className: "ikonate", });
+  return makeIcon({ svg: svg_filter, ...options, className: "ikonate" });
 }

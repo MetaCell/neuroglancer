@@ -722,7 +722,7 @@ export class AnnotationUserLayer extends Base {
     const { localAnnotationRelationships } = this;
     x[ANNOTATION_RELATIONSHIPS_JSON_KEY] =
       localAnnotationRelationships.length === 1 &&
-        localAnnotationRelationships[0] === "segments"
+      localAnnotationRelationships[0] === "segments"
         ? undefined
         : localAnnotationRelationships;
     x[IGNORE_NULL_SEGMENT_FILTER_JSON_KEY] =
@@ -788,7 +788,6 @@ class RenderingOptionsTab extends Tab {
         },
       ),
     ).element;
-
 
     layer.registerDisposer(
       new ElementVisibilityFromTrackableBoolean(

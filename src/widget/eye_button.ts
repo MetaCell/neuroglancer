@@ -21,7 +21,11 @@ import type { MakeIconOptions } from "#src/widget/icon.js";
 import { makeIcon } from "#src/widget/icon.js";
 
 export function makeEyeButton(options: MakeIconOptions = {}) {
-  const icon = makeIcon({ svg: svg_eye_crossed, ...options, className: "ikonate", });
+  const icon = makeIcon({
+    svg: svg_eye_crossed,
+    ...options,
+    className: "ikonate",
+  });
   icon.classList.add("neuroglancer-eye-icon");
   return icon;
 }

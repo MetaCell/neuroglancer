@@ -440,4 +440,3 @@ export class TabView extends RefCounted {
     super.disposed();
   }
 }
-

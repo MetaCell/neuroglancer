@@ -102,7 +102,7 @@ export class LayerVisibilityWidget extends RefCounted {
       showIcon.style.display = !visible ? "" : "none";
       hideIcon?.parentElement?.parentElement?.classList.toggle(
         "neuroglancer-layer-list-panel-item-not-visible",
-        !visible
+        !visible,
       );
     };
     updateView();
@@ -149,10 +149,12 @@ class LayerListItem extends RefCounted {
     super();
     const { element, numberElement } = this;
     element.classList.add("neuroglancer-layer-list-panel-item");
-    if(!layer?.visible) {
+    if (!layer?.visible) {
       element.classList.add("neuroglancer-layer-list-panel-item-not-visible");
     } else {
-      element.classList.remove("neuroglancer-layer-list-panel-item-not-visible");
+      element.classList.remove(
+        "neuroglancer-layer-list-panel-item-not-visible",
+      );
     }
     numberElement.classList.add("neuroglancer-layer-list-panel-item-number");
     const layerNameWidget = this.registerDisposer(new LayerNameWidget(layer));
@@ -328,7 +330,9 @@ export class LayerListPanel extends SidePanel {
     updateChildren(this.itemContainer, getItems());
     const title = "Layers";
     const titleParagraphElement = document.createElement("p");
-    titleParagraphElement.classList.add("metacell-neuroglancer-side-panel-title-paragraph");
+    titleParagraphElement.classList.add(
+      "metacell-neuroglancer-side-panel-title-paragraph",
+    );
     let subTitle = " ";
     if (numVisible || numHidden || numArchived) {
       let sep = "";

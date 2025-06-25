@@ -137,7 +137,6 @@ class ShaderCodeOverlay extends Overlay {
     mainBody.classList.add("overlay-content-body");
     mainBody.appendChild(this.codeWidget.element);
     this.content.appendChild(mainBody);
-    this.codeWidget.textEditor.refresh(); 
-
+    this.codeWidget.textEditor.refresh();
   }
 }

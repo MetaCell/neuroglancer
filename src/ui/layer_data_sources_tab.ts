@@ -54,6 +54,7 @@ import { MessageSeverity } from "#src/util/message_list.js";
 import type { ProgressListener } from "#src/util/progress_listener.js";
 import { makeAddButton } from "#src/widget/add_button.js";
 import { CoordinateSpaceTransformWidget } from "#src/widget/coordinate_transform.js";
+import { makeIcon } from "#src/widget/icon.js";
 import type {
   Completer,
   SyntaxHighlighter,
@@ -64,7 +65,6 @@ import {
 } from "#src/widget/multiline_autocomplete.js";
 import { ProgressListenerWidget } from "#src/widget/progress_listener.js";
 import { Tab } from "#src/widget/tab_view.js";
-import { makeIcon } from "#src/widget/icon.js";
 
 const dataSourceUrlSyntaxHighlighter: SyntaxHighlighter = {
   splitPattern: /\|?[^|:/_]*(?:[:/_]+)?/g,
@@ -404,10 +404,10 @@ export class DataSourceView extends RefCounted {
       loadedView = this.loadedView = new LoadedDataSourceView(loadState);
       this.element.appendChild(loadedView.element);
     }
-    if(this.source.messages.isEmpty()) {
-      this.urlInput.element.classList.remove("neuroglancer-state-error")
+    if (this.source.messages.isEmpty()) {
+      this.urlInput.element.classList.remove("neuroglancer-state-error");
     } else {
-      this.urlInput.element.classList.add("neuroglancer-state-error")
+      this.urlInput.element.classList.add("neuroglancer-state-error");
     }
   }
 

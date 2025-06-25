@@ -151,7 +151,6 @@ import {
 } from "#src/widget/position_widget.js";
 import { TrackableScaleBarOptions } from "#src/widget/scale_bar.js";
 
-
 declare let NEUROGLANCER_OVERRIDE_DEFAULT_VIEWER_OPTIONS: any;
 
 interface CreditLink {
@@ -463,7 +462,9 @@ export class Viewer extends RefCounted implements ViewerState {
   screenshotHandler: ScreenshotHandler;
   screenshotManager: ScreenshotManager;
 
-  incomingEventsHandler = this.registerDisposer(new IncomingEventsHandler(this))
+  incomingEventsHandler = this.registerDisposer(
+    new IncomingEventsHandler(this),
+  );
 
   get chunkManager() {
     return this.dataContext.chunkManager;
@@ -898,7 +899,7 @@ export class Viewer extends RefCounted implements ViewerState {
           backgroundScheme: "dark",
           enableTitle: "Show help panel",
           disableTitle: "Hide help panel",
-          svg: questionmark
+          svg: questionmark,
         }),
       );
       this.registerDisposer(

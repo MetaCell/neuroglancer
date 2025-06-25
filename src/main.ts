@@ -32,7 +32,6 @@ import "#src/neuroglass-theme.css";
 import { getCachedJson } from "#src/util/trackable.js";
 import type { Viewer } from "#src/viewer.js";
 
-
 // @metacell
 
 declare const window: any;
@@ -71,9 +70,8 @@ function watchViewerLoadState() {
 }
 
 async function dispatchUpdate(hashURLState: string) {
-
   if (hashURLState?.startsWith("#!")) {
-    const hash = hashURLState.slice(2)
+    const hash = hashURLState.slice(2);
 
     const payload: SessionUpdatePayload = {
       url: hash,

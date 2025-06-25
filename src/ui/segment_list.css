@@ -42,16 +42,16 @@
 }
 
 .neuroglancer-segment-query-errors .neuroglancer-icon {
-  color: #D33030;
+  color: #d33030;
 }
 
 .neuroglancer-segment-list-query-error-state {
-  border: 2px solid #D33030 !important;
+  border: 2px solid #d33030 !important;
 }
 
 .neuroglancer-segment-query-errors > li {
   display: block;
-  color: #D33030;
+  color: #d33030;
   font-size: 12px;
 }
 
@@ -106,7 +106,7 @@
 }
 
 .neuroglancer-segment-list-status .neuroglancer-eye-icon {
-  stroke: #999CA0;
+  stroke: #999ca0;
 }
 
 .neuroglancer-segment-list-entry-copy {
