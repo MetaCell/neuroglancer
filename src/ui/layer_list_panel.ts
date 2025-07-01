@@ -404,6 +404,7 @@ export class LayerListPanel extends SidePanel {
         }
         item.element.dataset.selected = (layer === selectedLayer).toString();
         item.element.dataset.archived = layer.archived.toString();
+        item.element.dataset.visible = layer.visible.toString();
         yield item.element;
       }
       for (const [userLayer, item] of items) {
