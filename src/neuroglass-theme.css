@@ -2515,7 +2515,7 @@ ul#statusContainer {
 
   .neuroglancer-position-widget {
     * {
-      font-family: var(--monospaced-font) !important;
+      font-family: var(--monospaced-font);
     }
 
     .neuroglancer-position-dimension + .neuroglancer-position-dimension {

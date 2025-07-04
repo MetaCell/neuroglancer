@@ -29,6 +29,7 @@ import {
   insertDimensionAt,
   makeCoordinateSpace,
 } from "#src/coordinate_transform.js";
+import { TrackableBooleanCheckbox } from "#src/trackable_boolean.js";
 import type { MouseSelectionState, UserLayer } from "#src/layer/index.js";
 import type { LayerGroupViewer } from "#src/layer_group_viewer.js";
 import type {
@@ -346,15 +347,21 @@ export class PositionWidget extends RefCounted {
       const header = document.createElement("div");
       header.classList.add("neuroglancer-position-dimension-playback-header");
       playbackElement.appendChild(header);
-      header.appendChild(
+      const playbackVisibilityCheckbox = document.createElement("div");
+      playbackVisibilityCheckbox.classList.add("neuroglancer-position-dimension-playback-checkbox")
+      playbackVisibilityCheckbox.appendChild(
         dropdownOwner.registerDisposer(
-          new CheckboxIcon(this.velocity!.playbackEnabled(widget.id), {
-            svg: svg_video,
-            enableTitle: "Enable playback/velocity",
-            disableTitle: "Disable playback/velocity",
-          }),
-        ).element,
+          new TrackableBooleanCheckbox(this.velocity!.playbackEnabled(widget.id),
+            {
+              enableTitle: "Enable playback/velocity",
+              disableTitle: "Disable playback/velocity",
+            }
+          )
+        ).element
       );
+
+      header.appendChild(playbackVisibilityCheckbox);
+
       header.appendChild(document.createTextNode("Playback"));
       dropdown.appendChild(playbackElement);
       const enabled = dropdownOwner.registerDisposer(
@@ -616,7 +623,7 @@ export class PositionWidget extends RefCounted {
             type: DIMENSION_TOOL_ID,
             dimension:
               self.position.coordinateSpace.value.names[
-                self.getDimensionIndex(id)
+              self.getDimensionIndex(id)
               ],
           };
         },
@@ -632,7 +639,7 @@ export class PositionWidget extends RefCounted {
           widget.container,
           "drag",
           "Drag to reorder dimensions, to an existing tool palette, or to the " +
-            "left/right/top/bottom of another panel to create a new tool palette",
+          "left/right/top/bottom of another panel to create a new tool palette",
         );
         if (toolDragSource !== undefined) {
           beginToolDrag(toolDragSource);

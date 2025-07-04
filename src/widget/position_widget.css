@@ -88,18 +88,26 @@ interferes with our click handling.  Setting `pointer-events: none;` avoids that
 .neuroglancer-position-dimension-coordinate-dropdown {
   position: absolute;
   min-width: calc(100% + 2px);
-  border: 1px solid #aaa;
+  border: 1px solid #2B2B2B;
   box-sizing: border-box;
-  padding: 2px;
   left: -1px;
   z-index: 100;
-  background-color: black;
+  width: 100%;
+  background-color: #0B0B0B;
+  border-top: none;
+  top: 22px;
 }
 
 .neuroglancer-position-dimension-coordinate-dropdown {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+}
+
+.neuroglancer-position-dimension-dropdown .neuroglancer-tool-button {
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem !important;
 }
 
 .neuroglancer-dimension-dropdown-coordinate-entry {
@@ -124,15 +132,22 @@ interferes with our click handling.  Setting `pointer-events: none;` avoids that
 
 .neuroglancer-position-dimension:focus-within,
 .neuroglancer-position-dimension[data-dropdown-visible="true"] {
-  border: 1px solid #aaa;
-  background-color: black;
+  border: 1px solid #2B2B2B;
+  background-color: #0B0B0B;
+  padding: 3px 4px 3px 8px;
 }
 
 .neuroglancer-position-dimension {
   border: 1px solid transparent;
   position: relative;
-  display: inline-block;
+  display: inline-flex;
   white-space: nowrap;
+  align-items: center;
+}
+
+.neuroglancer-position-dimension span {
+  display: inline-flex;
+  align-items: center;
 }
 
 .neuroglancer-position-dimension-name {
@@ -191,6 +206,8 @@ interferes with our click handling.  Setting `pointer-events: none;` avoids that
   font-size: 10pt;
   display: flex;
   flex-direction: column;
+  padding: 0px 12px 12px 12px;
+  margin-bottom: 4px;
 }
 
 .neuroglancer-position-dimension-playback .neuroglancer-number-input {
@@ -234,6 +251,8 @@ interferes with our click handling.  Setting `pointer-events: none;` avoids that
 .neuroglancer-position-dimension > .neuroglancer-icon svg {
   width: 1.25rem;
   height: 1.25rem;
+  padding: 2px;
+  stroke: none;
 }
 
 .neuroglancer-position-tool-in-palette {
@@ -265,4 +284,15 @@ interferes with our click handling.  Setting `pointer-events: none;` avoids that
   display: flex;
   flex-direction: row;
   align-items: center;
+
+  font-size: 0.75rem;
+  font-family: "Graphik" !important;
+}
+
+.neuroglancer-position-dimension-playback-checkbox {
+  padding: 0.25rem;
+}
+
+.neuroglancer-position-dimension-playback-checkbox input[type="checkbox"] {
+  margin: 0;
 }
