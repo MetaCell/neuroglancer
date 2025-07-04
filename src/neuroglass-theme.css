@@ -370,6 +370,10 @@ ul#statusContainer {
     &:hover svg {
       stroke: white;
     }
+    
+    &[data-checked="true"] svg {
+      stroke: white;
+    }
 
     svg {
       stroke: var(--content100);
