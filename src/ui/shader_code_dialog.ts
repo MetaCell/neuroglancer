@@ -17,8 +17,8 @@
 import "#src/ui/shader_code_dialog.css";
 import type { UserLayer } from "#src/layer/index.js";
 import type { VertexAttributeWidget } from "#src/layer/single_mesh/index.js";
-import type { ShaderCodeWidget } from "#src/widget/shader_code_widget.js";
 import { FramedDialog } from "#src/overlay.js";
+import type { ShaderCodeWidget } from "#src/widget/shader_code_widget.js";
 
 // Note search in css for code-editor-dialog to find all styles related to this dialog
 

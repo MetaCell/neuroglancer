@@ -22,6 +22,7 @@ import {
 } from "#src/util/keyboard_bindings.js";
 import "#src/overlay.css";
 import svg_close from "#src/ui/images/metacell/close.svg?raw";
+import { makeIcon } from "#src/widget/icon.js";
 
 export const overlayKeyboardHandlerPriority = 100;
 
@@ -30,8 +31,6 @@ export let overlaysOpen = 0;
 export const defaultEventMap = EventActionMap.fromObject({
   escape: { action: "close" },
 });
-
-import { makeIcon } from "#src/widget/icon.js";
 
 export class Overlay extends RefCounted {
   container: HTMLDivElement;

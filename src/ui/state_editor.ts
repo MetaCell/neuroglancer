@@ -28,9 +28,9 @@ import "codemirror/addon/lint/lint.css";
 import CodeMirror from "codemirror";
 import { debounce } from "lodash-es";
 import "#src/ui/state_editor.css";
+import { FramedDialog } from "#src/overlay.js";
 import { getCachedJson } from "#src/util/trackable.js";
 import type { Viewer } from "#src/viewer.js";
-import { FramedDialog } from "#src/overlay.js";
 
 const valueUpdateDelay = 100;
 
