@@ -1317,8 +1317,6 @@ ul#statusContainer {
       }
 
       .neuroglancer-framed-dialog-body {
-        padding: 1.5rem;
-        overflow: auto;
         height: calc(80vh - 8.5rem);
 
         .CodeMirror {
@@ -1327,9 +1325,11 @@ ul#statusContainer {
         }
       }
 
+      .neuroglancer-framed-dialog-body.neuroglancer-screenshot-body {
+        height: 100%;
+      }
+
       .neuroglancer-framed-dialog-footer {
-        display: flex;
-        align-items: center;
         justify-content: flex-end;
         border-top: 0.0625rem solid var(--dark80);
         padding: 0 1.5rem;
@@ -1343,7 +1343,6 @@ ul#statusContainer {
           border-radius: 0;
           box-sizing: border-box;
           text-align: left;
-          display: flex;
           padding: 0.75rem 1rem;
           transition: all ease-in-out 0.3s;
           cursor: pointer;
@@ -3327,7 +3326,7 @@ ul#statusContainer {
   }
 
   .cancel-button,
-  .neuroglancer-framed-dialog-close-button,
+  .neuroglancer-framed-dialog-primary-button,
   .neuroglancer-state-editor-apply-button {
     color: var(--white);
     border: 0.0938rem solid var(--dark80);
@@ -3338,8 +3337,8 @@ ul#statusContainer {
     }
   }
 
-  .primary-button,
-  .neuroglancer-state-editor-close-button {
+  .neuroglancer-screenshot-primary-button,
+  .neuroglancer-state-editor-primary-button {
     border: none;
     color: var(--white);
     background: var(--primary100);
@@ -3373,7 +3372,7 @@ ul#statusContainer {
     border-radius: 0;
   }
 
-  .neuroglancer-screenshot-close {
+  .neuroglancer-screenshot-header {
     border-bottom: 0.0625rem solid var(--dark80);
     padding: 0 1.5rem;
     height: 4rem;
@@ -3387,7 +3386,7 @@ ul#statusContainer {
       letter-spacing: -0.025rem;
     }
 
-    .neuroglancer-screenshot-close-button {
+    .neuroglancer-screenshot-header-icon {
       & .neuroglancer-icon {
         width: 1.5rem;
         height: 1.5rem;
@@ -3613,17 +3612,6 @@ ul#statusContainer {
       .neuroglancer-screenshot-statistics-table-data-value {
         color: var(--content100);
       }
-    }
-  }
-
-  .neuroglancer-screenshot-footer-container {
-    --border-color: #2b2b2b;
-
-    border-color: var(--border-color);
-
-    button {
-      padding: 12px 16px;
-      border-radius: 0;
     }
   }
 }

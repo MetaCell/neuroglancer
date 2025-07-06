@@ -39,9 +39,7 @@ export class StateEditorDialog extends FramedDialog {
   applyButton: HTMLButtonElement;
   downloadButton: HTMLButtonElement;
   constructor(public viewer: Viewer) {
-    super("State editor");
-
-    this.content.classList.add("neuroglancer-state-editor");
+    super("State editor", "Close", "neuroglancer-state-editor");
 
     const saveAndCloseWrapper = document.createElement("div");
     saveAndCloseWrapper.classList.add(
@@ -54,9 +52,8 @@ export class StateEditorDialog extends FramedDialog {
     applyButton.addEventListener("click", () => this.applyChanges());
     applyButton.disabled = true;
 
-    const closeButton = this.closeButton;
-    closeButton.classList.add("neuroglancer-state-editor-close-button");
-    closeButton.textContent = "Save & close";
+    const closeButton = this.primaryButton;
+    closeButton.textContent = "Save & close"; // @metacell
     saveAndCloseWrapper.appendChild(closeButton);
     closeButton.addEventListener("click", () => {
       this.applyChanges();

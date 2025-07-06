@@ -66,18 +66,14 @@
   margin-top: 1px;
 }
 
-.neuroglancer-framed-dialog-close-button {
+.neuroglancer-framed-dialog-primary-button {
   background-color: transparent;
   border: none;
   padding: 0;
 }
 
-.neuroglancer-framed-dialog-close-button:hover {
+.neuroglancer-framed-dialog-primary-button:hover {
   background: none;
-}
-
-.neuroglancer-framed-dialog-close-button svg {
-  stroke: rgba(20, 20, 21, 0.4);
 }
 
 .neuroglancer-framed-dialog-close-icon svg {

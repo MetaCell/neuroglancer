@@ -70,20 +70,21 @@ export class FramedDialog extends Overlay {
   header: HTMLDivElement;
   headerTitle: HTMLSpanElement;
   closeMenuIcon: HTMLElement;
-  closeButton: HTMLButtonElement;
+  primaryButton: HTMLButtonElement;
   body: HTMLDivElement;
   footer: HTMLDivElement;
   constructor(
     title: string = "Dialog",
-    closeText: string = "Close",
+    primaryButtonText: string = "Close",
     extraClassPrefix?: string,
+    shouldPrimaryButtonClose: boolean = true,
   ) {
     super();
     this.content.classList.add("neuroglancer-framed-dialog");
 
     const header = (this.header = document.createElement("div"));
     const closeMenuIcon = (this.closeMenuIcon = makeIcon({ svg: svg_close }));
-    closeMenuIcon.addEventListener("click", () => this.close());
+    this.registerEventListener(closeMenuIcon, "click", () => this.close());
     closeMenuIcon.classList.add("neuroglancer-framed-dialog-close-icon");
     const headerTitle = (this.headerTitle = document.createElement("span"));
     headerTitle.textContent = title;
@@ -99,12 +100,14 @@ export class FramedDialog extends Overlay {
 
     const footer = (this.footer = document.createElement("div"));
     footer.classList.add("neuroglancer-framed-dialog-footer");
-    const closeFooterButton = (this.closeButton =
+    const primaryButton = (this.primaryButton =
       document.createElement("button"));
-    closeFooterButton.textContent = closeText;
-    closeFooterButton.classList.add("neuroglancer-framed-dialog-close-button");
-    closeFooterButton.addEventListener("click", () => this.close());
-    footer.appendChild(closeFooterButton);
+    primaryButton.textContent = primaryButtonText;
+    if (shouldPrimaryButtonClose) {
+      this.registerEventListener(primaryButton, "click", () => this.close());
+    }
+    primaryButton.classList.add("neuroglancer-framed-dialog-primary-button");
+    footer.appendChild(primaryButton);
     this.content.appendChild(this.footer);
 
     if (extraClassPrefix !== undefined) {
@@ -114,7 +117,7 @@ export class FramedDialog extends Overlay {
       this.closeMenuIcon.classList.add(`${extraClassPrefix}-close-icon`);
       this.body.classList.add(`${extraClassPrefix}-body`);
       this.footer.classList.add(`${extraClassPrefix}-footer`);
-      this.closeButton.classList.add(`${extraClassPrefix}-close-button`);
+      this.primaryButton.classList.add(`${extraClassPrefix}-primary-button`);
     }
   }
 }
