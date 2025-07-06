@@ -1277,7 +1277,7 @@ ul#statusContainer {
         outline: none;
       }
 
-      .neuroglancer-code-editor-dialog-header {
+      .neuroglancer-framed-dialog-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -1285,7 +1285,7 @@ ul#statusContainer {
         padding: 0 1.5rem;
         height: 4rem;
 
-        p {
+        .neuroglancer-framed-dialog-title {
           color: var(--white);
           font-size: 1.25rem;
           font-style: normal;
@@ -1295,7 +1295,7 @@ ul#statusContainer {
           letter-spacing: -0.025rem;
         }
 
-        .neuroglancer-code-editor-dialog-close-icon {
+        .neuroglancer-framed-dialog-close-icon {
           background-repeat: no-repeat;
           background-position: center;
           background-size: 0.875rem;
@@ -1316,7 +1316,7 @@ ul#statusContainer {
         }
       }
 
-      .neuroglancer-code-editor-dialog-body {
+      .neuroglancer-framed-dialog-body {
         padding: 1.5rem;
         overflow: auto;
         height: calc(80vh - 8.5rem);
@@ -1327,7 +1327,7 @@ ul#statusContainer {
         }
       }
 
-      .neuroglancer-code-editor-dialog-footer {
+      .neuroglancer-framed-dialog-footer {
         display: flex;
         align-items: center;
         justify-content: flex-end;
@@ -3326,6 +3326,18 @@ ul#statusContainer {
     }
   }
 
+  .cancel-button,
+  .neuroglancer-framed-dialog-close-button,
+  .neuroglancer-state-editor-apply-button {
+    color: var(--white);
+    border: 0.0938rem solid var(--dark80);
+    background: transparent;
+
+    &:hover {
+      border-color: var(--stroke60);
+    }
+  }
+
   .primary-button,
   .neuroglancer-state-editor-close-button {
     border: none;
@@ -3334,18 +3346,6 @@ ul#statusContainer {
 
     &:hover {
       background: var(--primary120);
-    }
-  }
-
-  .cancel-button,
-  .neuroglancer-shader-code-editor-dialog-close-button,
-  .neuroglancer-state-editor-apply-button {
-    color: var(--white);
-    border: 0.0938rem solid var(--dark80);
-    background: transparent;
-
-    &:hover {
-      border-color: var(--stroke60);
     }
   }
 

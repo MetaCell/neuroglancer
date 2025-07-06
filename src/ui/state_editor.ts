@@ -27,18 +27,17 @@ import "codemirror/addon/fold/foldgutter.css";
 import "codemirror/addon/lint/lint.css";
 import CodeMirror from "codemirror";
 import { debounce } from "lodash-es";
-import { CodeEditorDialog } from "#src/ui/shader_code_dialog.js";
 import "#src/ui/state_editor.css";
 import { getCachedJson } from "#src/util/trackable.js";
 import type { Viewer } from "#src/viewer.js";
+import { FramedDialog } from "#src/overlay.js";
 
 const valueUpdateDelay = 100;
 
-export class StateEditorDialog extends CodeEditorDialog {
+export class StateEditorDialog extends FramedDialog {
   textEditor: CodeMirror.Editor;
   applyButton: HTMLButtonElement;
   downloadButton: HTMLButtonElement;
-  closeButton: HTMLButtonElement;
   constructor(public viewer: Viewer) {
     super("State editor");
 
@@ -55,7 +54,7 @@ export class StateEditorDialog extends CodeEditorDialog {
     applyButton.addEventListener("click", () => this.applyChanges());
     applyButton.disabled = true;
 
-    const closeButton = (this.closeButton = document.createElement("button"));
+    const closeButton = this.closeButton;
     closeButton.classList.add("neuroglancer-state-editor-close-button");
     closeButton.textContent = "Save & close";
     saveAndCloseWrapper.appendChild(closeButton);
