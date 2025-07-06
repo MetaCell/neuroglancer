@@ -3366,37 +3366,9 @@ ul#statusContainer {
   }
 
   /* Screenshot menu */
-  .neuroglancer-screenshot-dialog {
-    padding: 1.5rem;
+  .neuroglancer-screenshot {
     max-width: 1000px !important;
     border-radius: 0;
-  }
-
-  .neuroglancer-screenshot-header {
-    border-bottom: 0.0625rem solid var(--dark80);
-    padding: 0 1.5rem;
-    height: 4rem;
-
-    .neuroglancer-screenshot-title {
-      color: var(--white);
-      font-size: 1.25rem;
-      font-style: normal;
-      font-weight: 500;
-      line-height: 1.5rem;
-      letter-spacing: -0.025rem;
-    }
-
-    .neuroglancer-screenshot-header-icon {
-      & .neuroglancer-icon {
-        width: 1.5rem;
-        height: 1.5rem;
-
-        & svg {
-          width: 1.5rem;
-          height: 1.5rem;
-        }
-      }
-    }
   }
 
   .neuroglancer-screenshot-description-section {
