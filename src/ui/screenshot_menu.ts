@@ -417,8 +417,6 @@ export class ScreenshotDialog extends FramedDialog {
     this.content.insertBefore(descriptionContainer, this.body);
     // end @metacell
 
-    // TODO change css for main body (neuroglancer-screenshot-main-body-container)
-
     this.body.appendChild(this.filenameInputContainer);
     this.body.appendChild(this.createScaleRadioButtons());
 
