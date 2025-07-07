@@ -19,6 +19,7 @@
   overflow: hidden;
   position: relative;
   padding: 0px 24px 12px 12px;
+  justify-content: flex-end;
 }
 
 .neuroglancer-position-dimension-plot[data-orientation="column"] {

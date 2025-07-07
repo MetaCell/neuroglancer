@@ -58,6 +58,22 @@ interferes with our click handling.  Setting `pointer-events: none;` avoids that
   text-align: right;
 }
 
+.neuroglancer-position-dimension-play-button,
+.neuroglancer-position-dimension-pause-button {
+  border-radius: 2px;
+}
+
+.neuroglancer-position-dimension-play-button:hover,
+.neuroglancer-position-dimension-pause-button:hover {
+  background-color: #1F1F1F !important;
+  color: #fff !important;
+}
+
+.neuroglancer-position-dimension-pause-button-active {
+  background-color: #292929;
+  color: #fff !important;
+}
+
 .neuroglancer-position-widget input:invalid,
 .neuroglancer-position-widget input::placeholder,
 .neuroglancer-position-widget input[data-is-valid="false"] {
@@ -87,15 +103,14 @@ interferes with our click handling.  Setting `pointer-events: none;` avoids that
 .neuroglancer-position-dimension-dropdown,
 .neuroglancer-position-dimension-coordinate-dropdown {
   position: absolute;
-  min-width: calc(100% + 2px);
+  min-width: calc(100% + 1px);
   border: 1px solid #2B2B2B;
   box-sizing: border-box;
-  left: -1px;
+  left: -0.5px;
   z-index: 100;
-  width: 100%;
   background-color: #0B0B0B;
   border-top: none;
-  top: 22px;
+  top: 31px;
 }
 
 .neuroglancer-position-dimension-coordinate-dropdown {
@@ -143,6 +158,7 @@ interferes with our click handling.  Setting `pointer-events: none;` avoids that
   display: inline-flex;
   white-space: nowrap;
   align-items: center;
+  padding: 3px 0px 3px 8px;
 }
 
 .neuroglancer-position-dimension span {
@@ -210,29 +226,70 @@ interferes with our click handling.  Setting `pointer-events: none;` avoids that
   margin-bottom: 4px;
 }
 
+.neuroglancer-position-dimension-playback hr {
+  border: 1px solid #1F1F1F;
+  margin: 8px 0;
+}
+
 .neuroglancer-position-dimension-playback .neuroglancer-number-input {
   display: flex;
   flex-direction: row;
   align-items: center;
-  margin-bottom: 2px;
+  margin-bottom: 0.5rem;
+  gap: 0.5rem;
+}
+
+.neuroglancer-position-dimension-playback .neuroglancer-number-input span {
+  font-size: 0.875rem;
+  font-family: Graphik;
+  line-height: 1.25rem;
+  color: #999ca0;
 }
 
 .neuroglancer-position-dimension-playback input[type="text"] {
-  background-color: rgba(255, 255, 255, 0.3);
   color: #fff;
+  font-family: Graphik;
+  font-size: 12px;
+
   border: 0px;
-  font-family: monospace;
   width: 8ch;
   text-align: right;
+  padding: 8px 16px 8px 8px;
+  border: 1px solid #2B2B2B;
+  background-color: #1F1F1F;
+}
+
+.neuroglancer-position-dimension-playback input[type="text"]:hover {
+  border-color: var(--stroke60);
+}
+
+.neuroglancer-position-dimension-playback input[type="text"]:focus {
+  border-color: var(--primary100);
+  box-shadow: 0px 0px 0px 2px rgba(22, 82, 240, 0.20);
 }
 
 .neuroglancer-position-dimension-playback select {
-  margin-left: 1.5rem;
-  min-width: 8ch;
-  background-color: rgba(255, 255, 255, 0.3);
-  border: none;
+  padding: 0.5rem;
   color: white;
   width: fit-content;
+  border: 1px solid #2B2B2B;
+  background-color: #1F1F1F;
+  min-width: 100%;
+
+  font-family: Graphik !important;
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+.neuroglancer-position-dimension-playback select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("../../src/ui/images/arrow_dropdown.svg");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 20px;
+  padding-right: 8px;
 }
 
 .neuroglancer-position-dimension-playback select option {

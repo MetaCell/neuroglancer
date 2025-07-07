@@ -230,11 +230,11 @@ export class PositionPlot extends RefCounted {
         }
         return undefined;
       };
-      const positionOffset = drawPositionIndicator(curPosition, "#f66");
+      const positionOffset = drawPositionIndicator(curPosition, "#1652F0");
       const isDragging = this.dragging.value;
       let hoverOffset = isDragging
         ? positionOffset
-        : drawPositionIndicator(hoverPosition, "#66f");
+        : drawPositionIndicator(hoverPosition, "#5D89FF");
       if (hoverOffset !== undefined) {
         hoverElement.textContent = (
           isDragging ? Math.floor(curPosition) : hoverPosition!
@@ -375,13 +375,13 @@ export class PositionPlot extends RefCounted {
         : (x: number) => {
             ctx.fillRect(x, 0, 1, this.tickWidth);
           };
-    ctx.fillStyle = "#fff";
+    ctx.fillStyle = "#999CA0";
     for (const { lower, upper } of normalizedBounds) {
       drawTick(lower);
       drawTick(upper);
     }
     const length = normalizedBounds.length;
-    ctx.fillStyle = "#ccc";
+    ctx.fillStyle = "#333";
     for (let i = 0; i < length; ++i) {
       const { lower, upper } = normalizedBounds[i];
       const startX = Math.floor((i * this.barWidth) / length);

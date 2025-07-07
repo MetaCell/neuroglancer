@@ -47,6 +47,7 @@ import { popDragStatus, pushDragStatus } from "#src/ui/drag_and_drop.js";
 import svg_pause from "#src/ui/images/pause.svg?raw";
 import svg_play from "#src/ui/images/play.svg?raw";
 import svg_video from "#src/ui/images/playback.svg?raw";
+import svg_exposure from "#src/ui/images/exposure.svg?raw";
 import type { LocalToolBinder, ToolActivation } from "#src/ui/tool.js";
 import {
   makeToolActivationStatusMessage,
@@ -178,6 +179,7 @@ class DimensionWidget {
     container.title = "";
     container.classList.add("neuroglancer-position-dimension");
     const { allowFocus, showPlayback } = options;
+
     if (allowFocus) {
       container.draggable = true;
       container.tabIndex = -1;
@@ -205,7 +207,11 @@ class DimensionWidget {
 
     if (showPlayback) {
       playButton.classList.add("neuroglancer-icon");
+      playButton.classList.add("neuroglancer-position-dimension-play-button");
+      playButton.title = "Play";
       pauseButton.classList.add("neuroglancer-icon");
+      pauseButton.classList.add("neuroglancer-position-dimension-pause-button");
+      pauseButton.title = "Pause";
       playButton.innerHTML = svg_play;
       pauseButton.innerHTML = svg_pause;
       container.appendChild(playButton);
@@ -279,12 +285,13 @@ function updateCoordinateFieldWidth(widget: DimensionWidget, value: string) {
   if (curLength > widget.maxPositionWidthSeen) {
     widget.maxPositionWidthSeen = curLength;
   }
+  const calculatedWidth = Math.max(
+    Math.min(widget.maxPositionWidth, widget.maxPositionWidthSeen),
+    curLength,
+  );
   updateInputFieldWidth(
     widget.coordinate,
-    Math.max(
-      Math.min(widget.maxPositionWidth, widget.maxPositionWidthSeen),
-      curLength,
-    ),
+    calculatedWidth + 0.5
   );
 }
 
@@ -346,6 +353,7 @@ export class PositionWidget extends RefCounted {
       playbackElement.classList.add("neuroglancer-position-dimension-playback");
       const header = document.createElement("div");
       header.classList.add("neuroglancer-position-dimension-playback-header");
+      const hrElement = document.createElement("hr");
       playbackElement.appendChild(header);
       const playbackVisibilityCheckbox = document.createElement("div");
       playbackVisibilityCheckbox.classList.add("neuroglancer-position-dimension-playback-checkbox")
@@ -370,10 +378,13 @@ export class PositionWidget extends RefCounted {
           [watchableVelocity],
         ),
       );
+
       playbackElement.appendChild(
         dropdownOwner.registerDisposer(
           new DependentViewWidget(enabled, (enabledValue, parent, context) => {
             if (!enabledValue) return;
+
+            parent.appendChild(hrElement);
             const velocityModel = new WatchableValue<number>(0);
             velocityModel.changed.add(() => {
               const newValue = velocityModel.value;
@@ -383,7 +394,7 @@ export class PositionWidget extends RefCounted {
               watchableVelocity.value = { ...velocity, velocity: newValue };
             });
             const negateButton = makeIcon({
-              text: "±",
+              svg: svg_exposure,
               title: "Negate velocity",
               onClick: () => {
                 velocityModel.value = -velocityModel.value;
@@ -869,7 +880,10 @@ export class PositionWidget extends RefCounted {
         this.velocity?.togglePlayback(widget.id, paused);
       };
       widget.playButton.addEventListener("click", () => setPaused(false));
-      widget.pauseButton.addEventListener("click", () => setPaused(true));
+      widget.pauseButton.addEventListener("click", () => {
+        setPaused(true);
+      });
+      widget.pauseButton.classList.add("neuroglancer-position-dimension-pause-button-active");
     }
 
     return widget;

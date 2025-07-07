@@ -2506,11 +2506,22 @@ ul#statusContainer {
   .neuroglancer-position-dimension-coordinate {
     font-size: 0.75rem;
     font-weight: 400;
-    line-height: 0.8731rem;
     margin-left: 0.25rem;
-    padding: 0;
+    line-height: 1rem;
+    padding: 0.25rem;
     text-align: left;
     color: var(--white);
+    border: 1px solid transparent;
+  }
+
+  .neuroglancer-position-dimension-coordinate:hover {
+    border-color: var(--stroke60);
+    background-color: var(--background80);
+  }
+
+  .neuroglancer-position-dimension-coordinate:focus {
+    border-color: var(--primary100);
+    box-shadow: 0px 0px 0px 2px rgba(22, 82, 240, 0.20);
   }
 
   .neuroglancer-position-widget {
@@ -2519,7 +2530,7 @@ ul#statusContainer {
     }
 
     .neuroglancer-position-dimension + .neuroglancer-position-dimension {
-      margin-left: 0.5rem;
+      margin-left: 0.25rem;
     }
 
     .neuroglancer-icon {
