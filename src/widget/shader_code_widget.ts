@@ -23,15 +23,13 @@ import "codemirror/addon/lint/lint.css";
 
 import { debounce } from "lodash-es";
 import type { UserLayer } from "#src/layer/index.js";
-import type { Overlay } from "#src/overlay.js";
+import type { VertexAttributeWidget } from "#src/layer/single_mesh/index.js";
 import glslCodeMirror from "#src/third_party/codemirror-glsl.js";
-import {
-  ElementVisibilityFromTrackableBoolean,
-  type TrackableBoolean,
-} from "#src/trackable_boolean.js";
-
+import type { TrackableBoolean } from "#src/trackable_boolean.js";
+import { ElementVisibilityFromTrackableBoolean } from "#src/trackable_boolean.js";
 import type { WatchableValue } from "#src/trackable_value.js";
 import svgCode from "#src/ui/images/code.svg?raw";
+import { ShaderCodeEditorDialog } from "#src/ui/shader_code_dialog.js";
 import { RefCounted } from "#src/util/disposable.js";
 import { removeFromParent } from "#src/util/dom.js";
 import type { WatchableShaderError } from "#src/webgl/dynamic_shader.js";
@@ -55,6 +53,10 @@ glslCodeMirror(CodeMirror);
  * recompiled.
  */
 const SHADER_UPDATE_DELAY = 500;
+
+type UserLayerWithCodeEditor = UserLayer & {
+  codeVisible: TrackableBoolean;
+};
 
 interface ShaderCodeState {
   shaderError: WatchableShaderError;
@@ -204,37 +206,31 @@ export class ShaderCodeWidget extends RefCounted {
   }
 }
 
-type UserLayerWithCodeEditor = UserLayer & { codeVisible: TrackableBoolean };
-type ShaderCodeOverlayConstructor<T extends Overlay> = new (
+export function makeShaderCodeWidgetTopRow(
   layer: UserLayerWithCodeEditor,
-  makeShaderCodeWidget: (layer: UserLayer) => ShaderCodeWidget,
-  options: any,
-  makeVertexAttributeWidget?: any,
-) => T;
-
-export function makeShaderCodeWidgetTopRow<T extends Overlay>(
-  layer: UserLayerWithCodeEditor,
-  codeWidget: ShaderCodeWidget,
-  ShaderCodeOverlay: ShaderCodeOverlayConstructor<T>,
-  makeShaderCodeWidget: (layer: UserLayer) => ShaderCodeWidget,
+  codeWidgetElement: HTMLElement,
+  makeShaderCodeWidget: (layer: UserLayerWithCodeEditor) => ShaderCodeWidget,
   help: {
     title: string;
     href: string;
+    type: string;
   },
-  className: string,
+  makeVertexAttributeWidget?: (
+    layer: UserLayerWithCodeEditor,
+  ) => VertexAttributeWidget,
 ) {
   const spacer = document.createElement("div");
   spacer.style.flex = "1";
 
   const topRow = document.createElement("div");
-  topRow.className = className + " shader-top-row";
+  topRow.classList.add("neuroglancer-shader-code-widget-top-row");
   topRow.appendChild(document.createTextNode("Shader"));
   topRow.appendChild(spacer);
 
   layer.registerDisposer(
     new ElementVisibilityFromTrackableBoolean(
       layer.codeVisible,
-      codeWidget.element,
+      codeWidgetElement,
     ),
   );
 
@@ -250,9 +246,12 @@ export function makeShaderCodeWidgetTopRow<T extends Overlay>(
     makeMaximizeButton({
       title: "Show larger editor view",
       onClick: () => {
-        new ShaderCodeOverlay(layer, makeShaderCodeWidget, {
-          additionalClass: "neuroglancer-annotation-layer-shader-overlay",
-        });
+        new ShaderCodeEditorDialog(
+          layer,
+          makeShaderCodeWidget,
+          `${help.type} shader editor`,
+          makeVertexAttributeWidget,
+        );
       },
     }),
   );
