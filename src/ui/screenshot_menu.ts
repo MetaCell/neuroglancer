@@ -283,7 +283,9 @@ export class ScreenshotDialog extends FramedDialog {
       "Screenshot" /* Header title */,
       "Take screenshot" /* Primary button text */,
       "neuroglancer-screenshot" /* Extra class prefix */,
-      false /* shouldPrimaryButtonClose */,
+      () => {
+        this.screenshot();
+      } /* Primary button action */,
     );
 
     this.initializeUI();
@@ -374,9 +376,6 @@ export class ScreenshotDialog extends FramedDialog {
     );
     this.cancelScreenshotButton.classList.add("cancel-button"); // @metacell
     const takeScreenshotButton = this.primaryButton;
-    this.registerEventListener(takeScreenshotButton, "click", () => {
-      this.screenshot();
-    });
     takeScreenshotButton.classList.add("neuroglancer-screenshot-footer-button");
     takeScreenshotButton.textContent = "Create figure"; // @metacell
     this.forceScreenshotButton = this.createButton(

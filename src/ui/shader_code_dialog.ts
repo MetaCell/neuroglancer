@@ -20,8 +20,6 @@ import type { VertexAttributeWidget } from "#src/layer/single_mesh/index.js";
 import { FramedDialog } from "#src/overlay.js";
 import type { ShaderCodeWidget } from "#src/widget/shader_code_widget.js";
 
-// Note search in css for code-editor-dialog to find all styles related to this dialog
-
 export class ShaderCodeEditorDialog extends FramedDialog {
   constructor(
     public layer: UserLayer,

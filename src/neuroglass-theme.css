@@ -1250,7 +1250,6 @@ ul#statusContainer {
     }
   }
 
-  /* Shader code widget styling */
   .neuroglancer-overlay {
     background-color: var(--overlayBg);
     justify-content: center;

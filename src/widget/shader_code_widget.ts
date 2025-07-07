@@ -15,7 +15,6 @@
  */
 
 import CodeMirror from "codemirror";
-import svgCode from "#src/ui/images/code.svg?raw";
 
 import "codemirror/addon/lint/lint.js";
 import "#src/widget/shader_code_widget.css";
@@ -29,6 +28,7 @@ import glslCodeMirror from "#src/third_party/codemirror-glsl.js";
 import type { TrackableBoolean } from "#src/trackable_boolean.js";
 import { ElementVisibilityFromTrackableBoolean } from "#src/trackable_boolean.js";
 import type { WatchableValue } from "#src/trackable_value.js";
+import svgCode from "#src/ui/images/code.svg?raw";
 import { ShaderCodeEditorDialog } from "#src/ui/shader_code_dialog.js";
 import { RefCounted } from "#src/util/disposable.js";
 import { removeFromParent } from "#src/util/dom.js";

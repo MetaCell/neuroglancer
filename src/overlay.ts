@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import svg_close from "#src/ui/images/metacell/close.svg?raw";
 import { AutomaticallyFocusedElement } from "#src/util/automatic_focus.js";
 import { RefCounted } from "#src/util/disposable.js";
 import {
@@ -21,7 +22,6 @@ import {
   KeyboardEventBinder,
 } from "#src/util/keyboard_bindings.js";
 import "#src/overlay.css";
-import svg_close from "#src/ui/images/metacell/close.svg?raw";
 import { makeIcon } from "#src/widget/icon.js";
 
 export const overlayKeyboardHandlerPriority = 100;
@@ -65,6 +65,17 @@ export class Overlay extends RefCounted {
   }
 }
 
+/**
+ * A dialog that has a header, body, and footer.
+ * The header contains a title and a close icon.
+ * The footer contains a primary button.
+ * The body is where the main content goes.
+ * @param title - The title text to display in the header
+ * @param primaryButtonText - The text to display on the primary button
+ * @param extraClassPrefix - Optional CSS class prefix to add to all dialog elements
+ * @param onPrimaryButtonClick - Optional callback function to execute when primary button is clicked. Provide null to give no action.
+ */
+
 export class FramedDialog extends Overlay {
   header: HTMLDivElement;
   headerTitle: HTMLSpanElement;
@@ -76,7 +87,7 @@ export class FramedDialog extends Overlay {
     title: string = "Dialog",
     primaryButtonText: string = "Close",
     extraClassPrefix?: string,
-    shouldPrimaryButtonClose: boolean = true,
+    onPrimaryButtonClick?: () => void | null,
   ) {
     super();
 
@@ -96,8 +107,10 @@ export class FramedDialog extends Overlay {
     const primaryButton = (this.primaryButton =
       document.createElement("button"));
     primaryButton.textContent = primaryButtonText;
-    if (shouldPrimaryButtonClose) {
+    if (onPrimaryButtonClick === undefined) {
       this.registerEventListener(primaryButton, "click", () => this.close());
+    } else if (onPrimaryButtonClick !== null) {
+      this.registerEventListener(primaryButton, "click", onPrimaryButtonClick);
     }
     footer.appendChild(primaryButton);
     this.content.appendChild(this.footer);
