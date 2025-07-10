@@ -2594,6 +2594,7 @@ ul#statusContainer {
     .neuroglancer-position-dimension-play-button,
     .neuroglancer-position-dimension-pause-button {
       border-radius: 2px;
+      padding: 2px;
     }
 
     .neuroglancer-position-dimension-play-button svg,
@@ -2604,12 +2605,12 @@ ul#statusContainer {
     .neuroglancer-position-dimension-play-button:hover,
     .neuroglancer-position-dimension-pause-button:hover {
       background-color: var(--background80) !important;
-      color: var(--Dark-Stroke-100) !important;
+      color: var(--white) !important;
     }
 
     .neuroglancer-position-dimension-pause-button-active {
       background-color: var(--background60);
-      color: var(--Dark-Stroke-100) !important;
+      color: var(--white) !important;
     }
 
     .neuroglancer-position-dimension span {
@@ -2620,8 +2621,9 @@ ul#statusContainer {
     .neuroglancer-position-dimension-dropdown,
     .neuroglancer-position-dimension-coordinate-dropdown {
       min-width: calc(100% + 1px);
-      border: 1px solid var(--border-color);
+      border: 1px solid var(--dark80);
       left: -0.5px;
+      width: 100%;
       background-color: var(--background120);
       border-top: none;
       top: 31px;
@@ -2635,9 +2637,14 @@ ul#statusContainer {
 
     .neuroglancer-position-dimension:focus-within,
     .neuroglancer-position-dimension[data-dropdown-visible="true"] {
-      border: 1px solid var(--border-color);
+      border: 1px solid var(--dark80);
       background-color: var(--background120);
       padding: 3px 4px 3px 8px;
+      border-bottom: none;
+    }
+
+    .neuroglancer-position-dimension[data-dropdown-visible="true"]::after {
+      display: none;
     }
 
     .neuroglancer-position-dimension-playback {
@@ -2667,13 +2674,13 @@ ul#statusContainer {
       font-size: 12px;
 
       padding: 8px 16px 8px 8px;
-      border: 1px solid var(--border-color);
+      border: 1px solid var(--dark80);
       background-color: var(--background80);
     }
 
     .neuroglancer-position-dimension-playback select {
       padding: 0.5rem;
-      border: 1px solid var(--border-color);
+      border: 1px solid var(--dark80);
       background-color: var(--background80);
       min-width: 100%;
 
@@ -2696,8 +2703,12 @@ ul#statusContainer {
 
     .neuroglancer-position-dimension-playback-header > .neuroglancer-icon,
     .neuroglancer-position-dimension > .neuroglancer-icon svg {
-      padding: 2px;
       stroke: none;
+    }
+
+    .neuroglancer-position-dimension > .neuroglancer-icon svg {
+      width: 1rem;
+      height: 1rem;
     }
 
     .neuroglancer-position-dimension-playback-header {
@@ -2707,6 +2718,7 @@ ul#statusContainer {
 
     .neuroglancer-position-dimension-playback-checkbox {
       padding: 0.25rem;
+      margin-right: 0.25rem;
     }
 
     .neuroglancer-position-dimension-playback-checkbox input[type="checkbox"] {
@@ -2767,21 +2779,21 @@ ul#statusContainer {
     .neuroglancer-position-dimension-scale {
       font-size: 0.75rem;
       font-weight: 400;
-      line-height: 0.8731rem;
+      line-height: normal;
       color: var(--content100);
     }
 
     &::before {
       font-size: 0.75rem;
       font-weight: 400;
-      line-height: 0.8731rem;
+      line-height: normal;
       color: var(--content100);
     }
 
     &::after {
       font-size: 0.75rem;
       font-weight: 400;
-      line-height: 0.8731rem;
+      line-height: normal;
       color: var(--content100);
     }
   }
@@ -2791,7 +2803,7 @@ ul#statusContainer {
     font-size: 0.75rem;
     color: var(--caramel60);
     font-weight: 400;
-    line-height: 0.8731rem;
+    line-height: normal;
   }
 
   .neuroglancer-icon {
