@@ -18,8 +18,6 @@
   display: grid;
   overflow: hidden;
   position: relative;
-  padding: 0px 24px 12px 12px;
-  justify-content: flex-end;
 }
 
 .neuroglancer-position-dimension-plot[data-orientation="column"] {
@@ -41,18 +39,9 @@
 .neuroglancer-position-dimension-plot-upperbound,
 .neuroglancer-position-dimension-plot-hoverposition {
   grid-area: labels;
-  font-family: "Graphik" !important;
-  font-size: 12px;
+  font-family: monospace;
+  font-size: 13px;
   user-select: none;
-  color: #999ca0;
-}
-
-.neuroglancer-position-dimension-plot-lowerbound div {
-  font-family: "Graphik" !important;
-}
-
-.neuroglancer-position-dimension-plot-hoverposition {
-  color: #5D89FF
 }
 
 .neuroglancer-position-dimension-plot[data-orientation="column"]
@@ -80,5 +69,4 @@
 .neuroglancer-position-dimension-plot[data-orientation="column"] > canvas {
   margin-top: 0.5em;
   margin-bottom: 0.5em;
-  padding: 0px 8px;
 }

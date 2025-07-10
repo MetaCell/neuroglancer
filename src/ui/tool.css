@@ -15,29 +15,27 @@
  */
 
 .neuroglancer-tool-key-binding {
+  display: inline-block;
+  color: #0ff;
   font: 9pt monospace;
   white-space: pre;
+}
 
-  display: flex;
-  margin-right: 0.5rem;
-  width: 1.125rem;
-  justify-content: center;
-  align-items: center;
-  color: var(--primary100);
-  height: 1.125rem;
-  border: 1px solid var(--stroke60);
-  border-radius: 0.125rem;
+.neuroglancer-tool-key-binding:hover {
+  outline: 1px solid #fff;
+}
 
-  &:focus,
-  &:hover {
-    border-color: var(--primary100);
-    outline-color: var(--primary100);
-  }
+.neuroglancer-tool-key-binding::before {
+  content: "[";
+}
 
-  &::before,
-  &::after {
-    content: "";
-  }
+.neuroglancer-tool-key-binding::after {
+  content: "]";
+}
+
+.neuroglancer-tool-key-binding::before,
+.neuroglancer-tool-key-binding::after {
+  color: #999;
 }
 
 .neuroglancer-tool-button {

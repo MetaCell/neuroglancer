@@ -31,6 +31,13 @@ import { filterArrayInplace } from "#src/util/array.js";
 import { RefCounted } from "#src/util/disposable.js";
 import { startRelativeMouseDrag } from "#src/util/mouse_drag.js";
 
+// @metacell
+const neuroglancerDarkPrimary100Color = "#1652F0";
+const neuroglancerDarkContent100Color = "#999CA0";
+const neuroglancerLightPrimary80 = "#5D89FF";
+const neuroglancerDarkBackground40 = "#333333";
+// end @metacell
+
 interface NormalizedDimensionBounds {
   lowerBound: number;
   upperBound: number;
@@ -230,11 +237,11 @@ export class PositionPlot extends RefCounted {
         }
         return undefined;
       };
-      const positionOffset = drawPositionIndicator(curPosition, "#1652F0");
+      const positionOffset = drawPositionIndicator(curPosition, neuroglancerDarkPrimary100Color);
       const isDragging = this.dragging.value;
       let hoverOffset = isDragging
         ? positionOffset
-        : drawPositionIndicator(hoverPosition, "#5D89FF");
+        : drawPositionIndicator(hoverPosition, neuroglancerLightPrimary80);
       if (hoverOffset !== undefined) {
         hoverElement.textContent = (
           isDragging ? Math.floor(curPosition) : hoverPosition!
@@ -375,13 +382,13 @@ export class PositionPlot extends RefCounted {
         : (x: number) => {
             ctx.fillRect(x, 0, 1, this.tickWidth);
           };
-    ctx.fillStyle = "#999CA0";
+    ctx.fillStyle = neuroglancerDarkContent100Color;
     for (const { lower, upper } of normalizedBounds) {
       drawTick(lower);
       drawTick(upper);
     }
     const length = normalizedBounds.length;
-    ctx.fillStyle = "#333";
+    ctx.fillStyle = neuroglancerDarkBackground40;
     for (let i = 0; i < length; ++i) {
       const { lower, upper } = normalizedBounds[i];
       const startX = Math.floor((i * this.barWidth) / length);
