@@ -289,10 +289,7 @@ function updateCoordinateFieldWidth(widget: DimensionWidget, value: string) {
     Math.min(widget.maxPositionWidth, widget.maxPositionWidthSeen),
     curLength,
   );
-  updateInputFieldWidth(
-    widget.coordinate,
-    calculatedWidth + 0.5
-  );
+  updateInputFieldWidth(widget.coordinate, calculatedWidth + 0.5);
 }
 
 function updateScaleElementStyle(scaleElement: HTMLInputElement) {
@@ -356,16 +353,19 @@ export class PositionWidget extends RefCounted {
       const hrElement = document.createElement("hr");
       playbackElement.appendChild(header);
       const playbackVisibilityCheckbox = document.createElement("div");
-      playbackVisibilityCheckbox.classList.add("neuroglancer-position-dimension-playback-checkbox")
+      playbackVisibilityCheckbox.classList.add(
+        "neuroglancer-position-dimension-playback-checkbox",
+      );
       playbackVisibilityCheckbox.appendChild(
         dropdownOwner.registerDisposer(
-          new TrackableBooleanCheckbox(this.velocity!.playbackEnabled(widget.id),
+          new TrackableBooleanCheckbox(
+            this.velocity!.playbackEnabled(widget.id),
             {
               enableTitle: "Enable playback/velocity",
               disableTitle: "Disable playback/velocity",
-            }
-          )
-        ).element
+            },
+          ),
+        ).element,
       );
 
       header.appendChild(playbackVisibilityCheckbox);
@@ -634,7 +634,7 @@ export class PositionWidget extends RefCounted {
             type: DIMENSION_TOOL_ID,
             dimension:
               self.position.coordinateSpace.value.names[
-              self.getDimensionIndex(id)
+                self.getDimensionIndex(id)
               ],
           };
         },
@@ -650,7 +650,7 @@ export class PositionWidget extends RefCounted {
           widget.container,
           "drag",
           "Drag to reorder dimensions, to an existing tool palette, or to the " +
-          "left/right/top/bottom of another panel to create a new tool palette",
+            "left/right/top/bottom of another panel to create a new tool palette",
         );
         if (toolDragSource !== undefined) {
           beginToolDrag(toolDragSource);
@@ -883,7 +883,9 @@ export class PositionWidget extends RefCounted {
       widget.pauseButton.addEventListener("click", () => {
         setPaused(true);
       });
-      widget.pauseButton.classList.add("neuroglancer-position-dimension-pause-button-active");
+      widget.pauseButton.classList.add(
+        "neuroglancer-position-dimension-pause-button-active",
+      );
     }
 
     return widget;

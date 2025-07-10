@@ -237,7 +237,10 @@ export class PositionPlot extends RefCounted {
         }
         return undefined;
       };
-      const positionOffset = drawPositionIndicator(curPosition, neuroglancerDarkPrimary100Color);
+      const positionOffset = drawPositionIndicator(
+        curPosition,
+        neuroglancerDarkPrimary100Color,
+      );
       const isDragging = this.dragging.value;
       let hoverOffset = isDragging
         ? positionOffset
