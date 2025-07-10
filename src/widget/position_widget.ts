@@ -207,13 +207,15 @@ class DimensionWidget {
 
     if (showPlayback) {
       playButton.classList.add("neuroglancer-icon");
-      playButton.classList.add("neuroglancer-position-dimension-play-button");
       playButton.title = "Play";
       pauseButton.classList.add("neuroglancer-icon");
-      pauseButton.classList.add("neuroglancer-position-dimension-pause-button");
       pauseButton.title = "Pause";
       playButton.innerHTML = svg_play;
       pauseButton.innerHTML = svg_pause;
+      // @metacell
+      playButton.classList.add("neuroglancer-position-dimension-play-button");
+      pauseButton.classList.add("neuroglancer-position-dimension-pause-button");
+      // end @metacell
       container.appendChild(playButton);
       container.appendChild(pauseButton);
     }
@@ -352,6 +354,7 @@ export class PositionWidget extends RefCounted {
       header.classList.add("neuroglancer-position-dimension-playback-header");
       const hrElement = document.createElement("hr");
       playbackElement.appendChild(header);
+      // @metacell: Control visibility with checkbox instead of icon
       const playbackVisibilityCheckbox = document.createElement("div");
       playbackVisibilityCheckbox.classList.add(
         "neuroglancer-position-dimension-playback-checkbox",
@@ -369,6 +372,7 @@ export class PositionWidget extends RefCounted {
       );
 
       header.appendChild(playbackVisibilityCheckbox);
+      // end @metacell
 
       header.appendChild(document.createTextNode("Playback"));
       dropdown.appendChild(playbackElement);
@@ -883,9 +887,7 @@ export class PositionWidget extends RefCounted {
       widget.pauseButton.addEventListener("click", () => {
         setPaused(true);
       });
-      widget.pauseButton.classList.add(
-        "neuroglancer-position-dimension-pause-button-active",
-      );
+      widget.pauseButton.dataset.active = "true"
     }
 
     return widget;

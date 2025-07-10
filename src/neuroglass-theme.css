@@ -2608,7 +2608,7 @@ ul#statusContainer {
       color: var(--white) !important;
     }
 
-    .neuroglancer-position-dimension-pause-button-active {
+    .neuroglancer-position-dimension-pause-button[data-active="true"] {
       background-color: var(--background60);
       color: var(--white) !important;
     }
