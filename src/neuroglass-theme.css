@@ -1250,103 +1250,136 @@ ul#statusContainer {
     }
   }
 
-  .overlay-content {
-    border: 0.0625rem solid var(--background80);
-    background: var(--dark100);
-    outline: 0 !important;
-    padding-top: 0;
+  .neuroglancer-overlay {
+    background-color: var(--overlayBg);
+    justify-content: center;
+    align-items: center;
+    display: flex;
+    padding: 1.875rem 0;
+    z-index: 1300;
+    /* same as MUI modal */
 
-    .overlay-header {
-      display: flex;
-      align-items: center;
-      border-bottom: 0.0625rem solid var(--background80);
-      margin: 0 -0.75rem 0.75rem;
-      padding: 0 0.75rem;
+    .neuroglancer-overlay-content {
+      border: 0.0625rem solid var(--background80);
+      background: var(--dark100);
+      outline: 0 !important;
+      max-width: 100%;
+      padding: 0;
+      position: static;
+      transform: none;
+      margin: auto;
+      background-color: var(--background80);
+      z-index: 1300;
+      /* same as MUI modal */
 
-      p {
-        margin-right: auto;
-        color: var(--white);
-        font-size: 0.875rem;
-        font-style: normal;
-        font-weight: 500;
+      &:focus-visible {
+        outline: none;
       }
 
-      svg {
-        stroke: var(--content100);
-      }
+      .neuroglancer-framed-dialog-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 0.0625rem solid var(--dark80);
+        padding: 0 1.5rem;
+        height: 4rem;
 
-      .overlay-heading {
-        + .neuroglancer-icon {
+        .neuroglancer-framed-dialog-title {
+          color: var(--white);
+          font-size: 1.25rem;
+          font-style: normal;
+          font-weight: 500;
+          line-height: 1.5rem;
+          /* 120% */
+          letter-spacing: -0.025rem;
+        }
+
+        .neuroglancer-framed-dialog-close-icon {
           background-repeat: no-repeat;
           background-position: center;
           background-size: 0.875rem;
+          width: 1.3rem;
+          display: block;
+          height: 1.3rem;
+
+          border: none;
+          background-color: transparent;
+          display: block;
+          padding: 0;
+          border-radius: 0;
+
+          svg {
+            width: 1.3rem;
+            height: 1.3rem;
+          }
         }
       }
-    }
 
-    .button-group {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      border-top: 0.0625rem solid var(--background80);
-      margin: 0.75rem -0.75rem 0;
-      padding: 0.75rem 0.75rem 0;
+      .neuroglancer-framed-dialog-body {
+        height: calc(80vh - 8.5rem);
 
-      button {
-        font-size: 0.75rem;
-        padding: 0.5rem 0.75rem;
-        height: 2rem;
-        font-weight: 500;
-        border-radius: 0;
-        border: none;
-        box-sizing: border-box;
-        cursor: pointer;
-        line-height: 1;
-        letter-spacing: -0.01em;
-        text-align: left;
-
-        &:disabled {
-          opacity: 0.4;
-          pointer-events: none;
+        .CodeMirror {
+          margin: 0;
+          height: 100%;
         }
+      }
 
-        &.text-primary {
-          color: var(--primary80);
-          background-color: transparent;
-          border: none;
-        }
+      .neuroglancer-framed-dialog-body.neuroglancer-screenshot-body {
+        height: 100%;
+      }
 
-        &.contained-primary {
-          background-color: var(--primary100);
-          color: var(--white);
-        }
+      .neuroglancer-framed-dialog-footer {
+        justify-content: flex-end;
+        border-top: 0.0625rem solid var(--dark80);
+        padding: 0 1.5rem;
+        height: 4.5rem;
 
-        &.outlined-primary {
-          border: 0.0938rem solid var(--stroke60);
-          background-color: transparent;
-          color: var(--white);
-        }
-
-        &:first-of-type {
+        & > button:not(:only-child) {
           margin-right: auto;
         }
 
-        &:last-of-type {
-          margin-left: 0.5rem;
+        button {
+          border-radius: 0;
+          box-sizing: border-box;
+          text-align: left;
+          padding: 0.75rem 1rem;
+          transition: all ease-in-out 0.3s;
+          cursor: pointer;
+          justify-content: center;
+          align-items: center;
+          font-size: 0.875rem;
+          font-style: normal;
+          font-weight: 500;
+          line-height: 1.125rem;
+          /* 128.571% */
+          letter-spacing: -0.0088rem;
+
+          &:disabled {
+            opacity: 0.3;
+            pointer-events: none;
+          }
+        }
+        .neuroglancer-state-editor-save-container {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+      }
+
+      .CodeMirror {
+        .CodeMirror-gutter-elt {
+          .CodeMirror-guttermarker-subtle {
+            color: var(--content100);
+          }
         }
       }
     }
+  }
 
-    .CodeMirror {
-      margin-bottom: 0.5rem;
-      border-radius: 2px;
-
-      .CodeMirror-gutter-elt {
-        .CodeMirror-guttermarker-subtle {
-          color: var(--content100);
-        }
-      }
-    }
+  .neuroglancer-shader-code-widget-top-row {
+    margin-bottom: 0.75rem;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.875rem;
   }
 
   .neuroglancer-multiline-autocomplete-dropdown {
@@ -1711,31 +1744,6 @@ ul#statusContainer {
     }
   }
 
-  .shader {
-    margin: 0.5rem 0rem 0;
-    padding: 0.75rem;
-    background-color: var(--background80);
-
-    .neuroglancer-image-dropdown-top-row {
-      margin-bottom: 0.5rem;
-      font-size: 0.875rem;
-      font-weight: 400;
-      color: rgba(255, 255, 255, 0.8);
-    }
-
-    .neuroglancer-icon {
-      svg {
-        stroke: var(--content100) !important;
-      }
-
-      + .neuroglancer-icon {
-        color: var(--content100);
-        font-size: 1rem;
-        font-weight: normal;
-      }
-    }
-  }
-
   .neuroglancer-layer-type-indicator {
     font-weight: normal;
     padding: 2px 6px;
@@ -1744,7 +1752,6 @@ ul#statusContainer {
   }
 
   .CodeMirror {
-    width: 100%;
     box-sizing: border-box;
     border-radius: 2px;
     border: 0.0625rem solid var(--dark80);
@@ -3505,123 +3512,6 @@ ul#statusContainer {
     }
   }
 
-  .overlay {
-    background-color: var(--overlayBg);
-    justify-content: center;
-    align-items: center;
-    display: flex;
-    padding: 1.875rem 0;
-    z-index: 1300;
-    /* same as MUI modal */
-
-    & .overlay-content {
-      /* width: auto; */
-      max-width: 100%;
-      padding: 0;
-      position: static;
-      transform: none;
-      margin: auto;
-      background-color: var(--background80);
-      z-index: 1300;
-      /* same as MUI modal */
-
-      &:focus-visible {
-        outline: none;
-      }
-
-      & .overlay-content-header {
-        border-bottom: 0.0625rem solid var(--dark80);
-        padding: 0 1.5rem;
-        height: 4rem;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-
-        & p {
-          margin: 0;
-          color: var(--white);
-          font-size: 1.25rem;
-          font-style: normal;
-          font-weight: 500;
-          line-height: 1.5rem;
-          /* 120% */
-          letter-spacing: -0.025rem;
-        }
-
-        & button {
-          border: none;
-          background-color: transparent;
-          stroke: var(--content100);
-          display: block;
-          padding: 0;
-          border-radius: 0;
-        }
-
-        & .neuroglancer-icon {
-          width: 1.5rem;
-          display: block;
-          height: 1.5rem;
-
-          & svg {
-            width: 1.5rem;
-            height: 1.5rem;
-          }
-        }
-      }
-
-      & .overlay-content-body {
-        padding: 1.5rem;
-        overflow: auto;
-        height: calc(80vh - (4rem + 4.5rem));
-
-        .CodeMirror {
-          height: calc(100%);
-          margin: 0;
-          width: 80vw;
-        }
-      }
-
-      & .overlay-content-footer {
-        border-top: 0.0625rem solid var(--dark80);
-        padding: 0 1.5rem;
-        height: 4.5rem;
-        display: flex;
-        align-items: center;
-        justify-content: end;
-
-        & > button:not(:only-child) {
-          margin-right: auto;
-        }
-
-        button {
-          display: flex;
-          padding: 0.75rem 1rem;
-          transition: all ease-in-out 0.3s;
-          cursor: pointer;
-          justify-content: center;
-          align-items: center;
-          font-size: 0.875rem;
-          font-style: normal;
-          font-weight: 500;
-          line-height: 1.125rem;
-          /* 128.571% */
-          letter-spacing: -0.0088rem;
-
-          &:disabled {
-            opacity: 0.3;
-            pointer-events: none;
-          }
-        }
-
-        & .button-wrapper {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-        }
-      }
-    }
-  }
-
   .text-button {
     color: var(--primary80);
     border: none;
@@ -3642,23 +3532,26 @@ ul#statusContainer {
     }
   }
 
-  .primary-button {
-    border: none;
-    color: var(--white);
-    background: var(--primary100);
-
-    &:hover {
-      background: var(--primary120);
-    }
-  }
-
-  .cancel-button {
+  .cancel-button,
+  .neuroglancer-framed-dialog-primary-button,
+  .neuroglancer-state-editor-apply-button {
     color: var(--white);
     border: 0.0938rem solid var(--dark80);
     background: transparent;
 
     &:hover {
       border-color: var(--stroke60);
+    }
+  }
+
+  .neuroglancer-screenshot-primary-button,
+  .neuroglancer-state-editor-primary-button {
+    border: none;
+    color: var(--white);
+    background: var(--primary100);
+
+    &:hover {
+      background: var(--primary120);
     }
   }
 
@@ -3680,37 +3573,9 @@ ul#statusContainer {
   }
 
   /* Screenshot menu */
-  .neuroglancer-screenshot-dialog {
-    padding: 1.5rem;
+  .neuroglancer-screenshot {
     max-width: 1000px !important;
     border-radius: 0;
-  }
-
-  .neuroglancer-screenshot-close {
-    border-bottom: 0.0625rem solid var(--dark80);
-    padding: 0 1.5rem;
-    height: 4rem;
-
-    .neuroglancer-screenshot-title {
-      color: var(--white);
-      font-size: 1.25rem;
-      font-style: normal;
-      font-weight: 500;
-      line-height: 1.5rem;
-      letter-spacing: -0.025rem;
-    }
-
-    .neuroglancer-screenshot-close-button {
-      & .neuroglancer-icon {
-        width: 1.5rem;
-        height: 1.5rem;
-
-        & svg {
-          width: 1.5rem;
-          height: 1.5rem;
-        }
-      }
-    }
   }
 
   .neuroglancer-screenshot-description-section {
@@ -3926,17 +3791,6 @@ ul#statusContainer {
       .neuroglancer-screenshot-statistics-table-data-value {
         color: var(--content100);
       }
-    }
-  }
-
-  .neuroglancer-screenshot-footer-container {
-    --border-color: #2b2b2b;
-
-    border-color: var(--border-color);
-
-    button {
-      padding: 12px 16px;
-      border-radius: 0;
     }
   }
 }
