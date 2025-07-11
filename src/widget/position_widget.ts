@@ -291,7 +291,7 @@ function updateCoordinateFieldWidth(widget: DimensionWidget, value: string) {
     Math.min(widget.maxPositionWidth, widget.maxPositionWidthSeen),
     curLength,
   );
-  updateInputFieldWidth(widget.coordinate, calculatedWidth + 0.5);
+  updateInputFieldWidth(widget.coordinate, calculatedWidth);
 }
 
 function updateScaleElementStyle(scaleElement: HTMLInputElement) {

@@ -2513,12 +2513,13 @@ ul#statusContainer {
   .neuroglancer-position-dimension-coordinate {
     font-size: 0.75rem;
     font-weight: 400;
-    margin-left: 0.25rem;
-    line-height: 1rem;
+    font-family: Graphik !important;
+    margin-left: 2px;
     padding: 0.25rem;
     text-align: left;
     color: var(--white);
     border: 1px solid transparent;
+    min-height: 1.5rem;
   }
 
   .neuroglancer-position-dimension-coordinate:hover {
@@ -2596,6 +2597,7 @@ ul#statusContainer {
       display: inline-flex;
       align-items: center;
       padding: 3px 0px 3px 8px;
+      max-height: 1.875rem;
     }
 
     .neuroglancer-position-dimension-play-button,
@@ -2627,13 +2629,11 @@ ul#statusContainer {
 
     .neuroglancer-position-dimension-dropdown,
     .neuroglancer-position-dimension-coordinate-dropdown {
-      min-width: calc(100% + 1px);
       border: 1px solid var(--dark80);
-      left: -0.5px;
       width: 100%;
       background-color: var(--background120);
       border-top: none;
-      top: 31px;
+      top: 29px;
     }
 
     .neuroglancer-position-dimension-dropdown .neuroglancer-tool-button {
@@ -2786,21 +2786,22 @@ ul#statusContainer {
     .neuroglancer-position-dimension-scale {
       font-size: 0.75rem;
       font-weight: 400;
-      line-height: normal;
+      line-height: 0.875rem;
+      padding: 0;
       color: var(--content100);
     }
 
     &::before {
       font-size: 0.75rem;
       font-weight: 400;
-      line-height: normal;
+      line-height: 0.875rem;
       color: var(--content100);
     }
 
     &::after {
       font-size: 0.75rem;
       font-weight: 400;
-      line-height: normal;
+      line-height: 0.875rem;
       color: var(--content100);
     }
   }
@@ -2810,7 +2811,7 @@ ul#statusContainer {
     font-size: 0.75rem;
     color: var(--caramel60);
     font-weight: 400;
-    line-height: normal;
+    line-height: 0.875rem;
   }
 
   .neuroglancer-icon {
