@@ -1082,6 +1082,7 @@ ul#statusContainer {
 
     .neuroglancer-layer-side-panel-title {
       .neuroglancer-layer-side-panel-type {
+        position: relative;
         color: var(--content100);
         font-size: 0.75rem;
         font-weight: 500;
@@ -1107,6 +1108,33 @@ ul#statusContainer {
       .neuroglancer-layer-side-panel-type:focus,
       .neuroglancer-layer-side-panel-type:active {
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='13' viewBox='0 0 12 13' fill='none'%3E%3Cpath d='M3.70647 7.86446L5.99969 5.57268L8.29647 7.8609L9.00092 7.15535L5.99859 4.15768L3.00092 7.16L3.70647 7.86446Z' fill='%23999CA0'/%3E%3C/svg%3E");
+      }
+
+      .neuroglancer-layer-side-panel-type:focus {
+        outline: none;
+        border: none;
+        box-shadow: 0px 12px 12px -6px rgba(0, 0, 0, 0.52), 0px 0px 1px 0px rgba(0, 0, 0, 0.40);
+      }
+
+      .neuroglancer-layer-side-panel-type-options {
+        padding-top: 0.25rem;
+        padding-bottom: 0.25rem;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        border: none;
+        background-color: #1f1f1f;
+        z-index: 10;
+        display: block;
+      }
+
+      .neuroglancer-layer-side-panel-type option {
+        background-color: var(--background80);
+        padding: 0.5rem;
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+        font-family: Graphik;
       }
 
       .neuroglancer-layer-side-panel-name {
