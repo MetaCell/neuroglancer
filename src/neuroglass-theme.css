@@ -346,6 +346,14 @@ ul#statusContainer {
   }
 }
 
+#neuroglancer-container {
+  .neuroglancer-tool-status-content {
+    .neuroglancer-position-dimension-plot[data-orientation="row"] {
+      min-width: 12.5rem;
+    }
+  }
+}
+
 .neuroglass-theme {
   * {
     font-family: var(--text-font);
