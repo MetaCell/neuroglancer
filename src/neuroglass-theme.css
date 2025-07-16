@@ -1098,6 +1098,12 @@ ul#statusContainer {
         }
       }
     }
+
+    .neuroglancer-tool-palette-body {
+      .neuroglancer-tool-palette-items {
+        overflow-x: auto;
+      }
+    }
   }
 
   .CodeMirror.cm-s-default.neuroglancer-shader-code-widget
