@@ -98,6 +98,7 @@ export class LayerTypeWidget extends RefCounted {
     super();
     const { element, measureElement } = this;
     element.classList.add("neuroglancer-layer-side-panel-type");
+    element.name = "neuroglancer-layer-side-panel-type-select";
     measureElement.classList.add("neuroglancer-layer-side-panel-type-measure");
     element.title = "Change layer type";
     document.body.appendChild(measureElement);
