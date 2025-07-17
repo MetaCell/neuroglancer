@@ -2073,14 +2073,8 @@ ul#statusContainer {
     input {
       width: 1rem;
       height: 1rem;
-      margin: 0 0 0 auto;
+      margin: 0 0 0 auto !important;
       display: block;
-
-      &:checked {
-        width: 1rem;
-        height: 1rem;
-        margin: 0 0 0 auto;
-      }
 
       &:focus {
         outline: none;
