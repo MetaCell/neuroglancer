@@ -53,7 +53,7 @@ import {
 } from "#src/util/si_units.js";
 import type { NullarySignal } from "#src/util/signal.js";
 
-const dimensionColors = ["#f00", "#0f0", "#00f"];
+const dimensionColors = ["#f00", "#0f0", "#99f"];
 
 interface DimensionWidget {
   container: HTMLDivElement;
