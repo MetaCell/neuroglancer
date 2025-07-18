@@ -1097,7 +1097,7 @@ ul#statusContainer {
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='13' viewBox='0 0 12 13' fill='none'%3E%3Cpath d='M8.29353 5.13554L6.00031 7.42732L3.70353 5.1391L2.99908 5.84465L6.00141 8.84232L8.99908 5.84L8.29353 5.13554Z' fill='%23999CA0'/%3E%3C/svg%3E");
         background-repeat: no-repeat;
         background-position: right 4px center;
-        transition: background-image 0.2s;
+        transition: background-image 0.1s;
         padding-right: 16px;
       }
 
@@ -1105,9 +1105,8 @@ ul#statusContainer {
         border: 0;
       }
 
-      .neuroglancer-layer-side-panel-type:focus,
-      .neuroglancer-layer-side-panel-type:active {
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='13' viewBox='0 0 12 13' fill='none'%3E%3Cpath d='M3.70647 7.86446L5.99969 5.57268L8.29647 7.8609L9.00092 7.15535L5.99859 4.15768L3.00092 7.16L3.70647 7.86446Z' fill='%23999CA0'/%3E%3C/svg%3E");
+      .neuroglancer-layer-side-panel-type[data-expanded="true"] {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='13' viewBox='0 0 12 13' fill='none'%3E%3Cpath d='M3.70647 7.86446L5.99969 5.57268L8.29647 7.8609L9.00092 7.15535L5.99859 4.15768L3.00092 7.16L3.70647 7.86446Z' fill='%23999CA0'/%3E%3C/svg%3E"); 
       }
 
       .neuroglancer-layer-side-panel-type option {
