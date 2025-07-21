@@ -287,11 +287,13 @@ function updateCoordinateFieldWidth(widget: DimensionWidget, value: string) {
   if (curLength > widget.maxPositionWidthSeen) {
     widget.maxPositionWidthSeen = curLength;
   }
-  const calculatedWidth = Math.max(
-    Math.min(widget.maxPositionWidth, widget.maxPositionWidthSeen),
-    curLength,
+  updateInputFieldWidth(
+    widget.coordinate,
+    Math.max(
+      Math.min(widget.maxPositionWidth, widget.maxPositionWidthSeen),
+      curLength,
+    ),
   );
-  updateInputFieldWidth(widget.coordinate, calculatedWidth);
 }
 
 function updateScaleElementStyle(scaleElement: HTMLInputElement) {
@@ -887,7 +889,7 @@ export class PositionWidget extends RefCounted {
       widget.pauseButton.addEventListener("click", () => {
         setPaused(true);
       });
-      widget.pauseButton.dataset.active = "true"
+      widget.pauseButton.dataset.active = "true";
     }
 
     return widget;
