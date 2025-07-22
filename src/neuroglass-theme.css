@@ -2632,7 +2632,7 @@ ul#statusContainer {
 
     .neuroglancer-position-dimension {
       display: inline-flex;
-      align-items: center;
+      align-items: baseline;
       padding: 3px 4px;
       max-height: 1.875rem;
     }
@@ -2683,7 +2683,6 @@ ul#statusContainer {
     .neuroglancer-position-dimension[data-dropdown-visible="true"] {
       border: 1px solid var(--dark80);
       background-color: var(--background120);
-      padding: 3px 4px 3px 8px;
       border-bottom: none;
     }
 
@@ -2819,6 +2818,10 @@ ul#statusContainer {
   .neuroglancer-position-dimension-scale-container {
     margin-left: 0;
     margin-right: 0;
+
+    .neuroglancer-position-dimension-scale {
+      text-align: center;
+    }
   }
 
   .neuroglancer-position-dimension-scale-container[data-is-empty="false"] {
