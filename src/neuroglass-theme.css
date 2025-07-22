@@ -1133,10 +1133,10 @@ ul#statusContainer {
     .neuroglancer-tool-palette-body {
       .neuroglancer-tool-palette-items {
         overflow-x: auto;
-        padding: 0 12px;
 
-        .neuroglancer-tool-palette-tool-container > .neuroglancer-tool-palette-tool-content {
-          padding-right: 12px;
+        .neuroglancer-tool-palette-tool-container {
+          padding: 0 12px;
+          width: fit-content;
         }
       }
     }
