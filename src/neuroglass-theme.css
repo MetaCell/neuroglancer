@@ -2552,7 +2552,7 @@ ul#statusContainer {
     font-weight: 400;
     font-family: Graphik !important;
     margin-left: 2px;
-    padding: 0.25rem;
+    padding: 2px;
     text-align: left;
     color: var(--white);
     border: 1px solid transparent;
