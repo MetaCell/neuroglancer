@@ -102,7 +102,7 @@ import {
   registerLayerShaderControlsTool,
   ShaderControls,
 } from "#src/widget/shader_controls.js";
-import { Tab } from "#src/widget/tab_view.js";
+import { Accordion } from "#src/ui/accordion.js";
 
 const OPACITY_JSON_KEY = "opacity";
 const BLEND_JSON_KEY = "blend";
@@ -527,13 +527,13 @@ for (const control of LAYER_CONTROLS) {
   registerLayerControl(ImageUserLayer, control);
 }
 
-class RenderingOptionsTab extends Tab {
+class RenderingOptionsTab extends Accordion {
   codeWidget: ShaderCodeWidget;
   constructor(public layer: ImageUserLayer) {
     super();
-    const { element } = this;
+    const element = this;
     this.codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
-    element.classList.add("neuroglancer-image-dropdown");
+    this.element.classList.add("neuroglancer-image-dropdown");
 
     for (const control of LAYER_CONTROLS) {
       element.appendChild(
