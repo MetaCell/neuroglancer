@@ -98,9 +98,24 @@ export class LayerTypeWidget extends RefCounted {
     super();
     const { element, measureElement } = this;
     element.classList.add("neuroglancer-layer-side-panel-type");
+    element.name = "neuroglancer-layer-side-panel-type-select";
+    element.dataset.expanded = "false";
     measureElement.classList.add("neuroglancer-layer-side-panel-type-measure");
     element.title = "Change layer type";
     document.body.appendChild(measureElement);
+
+    element.addEventListener('mousedown', () => {
+      element.dataset.expanded = "true";
+    });
+
+    element.addEventListener('blur', () => {
+      element.dataset.expanded = "false";
+    });
+
+    element.addEventListener('change', () => {
+      element.dataset.expanded = "false";
+    });
+
     for (const [layerType, layerConstructor] of layerTypes) {
       if (layerConstructor.type !== layerType) continue;
       const option = document.createElement("option");
