@@ -2554,7 +2554,7 @@ ul#statusContainer {
     margin-bottom: 0;
     gap: var(--spacing1);
     height: 2.25rem;
-    padding: 0 0.5rem;
+    padding: 0 0.25rem;
     background-color: var(--dark100);
     border-bottom: 0.0625rem solid var(--dark80);
   }
@@ -2562,25 +2562,236 @@ ul#statusContainer {
   .neuroglancer-position-dimension-coordinate {
     font-size: 0.75rem;
     font-weight: 400;
-    line-height: 0.8731rem;
-    margin-left: 0.25rem;
-    padding: 0;
+    font-family: Graphik !important;
+    margin-left: 2px;
+    padding: 3px;
     text-align: left;
     color: var(--white);
+    border: 1px solid transparent;
+    min-height: 1.5rem;
+  }
+
+  .neuroglancer-position-dimension-coordinate:hover {
+    border-color: var(--stroke60);
+    background-color: var(--background80);
+  }
+
+  .neuroglancer-position-dimension-coordinate:focus {
+    border-color: var(--primary100);
+    box-shadow: 0px 0px 0px 2px rgba(22, 82, 240, 0.2);
   }
 
   .neuroglancer-position-widget {
     * {
-      font-family: var(--monospaced-font) !important;
+      font-family: var(--monospaced-font);
     }
 
     .neuroglancer-position-dimension + .neuroglancer-position-dimension {
-      margin-left: 0.5rem;
+      margin-left: 0;
     }
 
     .neuroglancer-icon {
       margin-left: 0.25rem;
     }
+
+    .neuroglancer-tool-key-binding {
+      display: flex;
+      margin-right: 0.5rem;
+      width: 1.125rem;
+      justify-content: center;
+      align-items: center;
+      color: var(--primary100);
+      height: 1.125rem;
+      border: 1px solid var(--stroke60);
+      border-radius: 0.125rem;
+
+      &:focus,
+      &:hover {
+        border-color: var(--primary100);
+        outline-color: var(--primary100);
+      }
+
+      &::before,
+      &::after {
+        content: "";
+      }
+    }
+
+    .neuroglancer-position-dimension-plot {
+      padding: 0px 24px 12px 12px;
+      justify-content: flex-end;
+    }
+
+    .neuroglancer-position-dimension-plot-lowerbound div {
+      font-family: "Graphik" !important;
+    }
+
+    .neuroglancer-position-dimension-plot-hoverposition {
+      color: var(--primary80);
+    }
+
+    .neuroglancer-position-dimension-plot-lowerbound,
+    .neuroglancer-position-dimension-plot-upperbound,
+    .neuroglancer-position-dimension-plot-hoverposition {
+      font-family: "Graphik" !important;
+      font-size: 12px !important;
+      color: var(--content100);
+    }
+
+    .neuroglancer-position-dimension-plot[data-orientation="column"] > canvas {
+      padding: 0px 8px;
+    }
+
+    .neuroglancer-position-dimension {
+      display: inline-flex;
+      align-items: baseline;
+      padding: 3px 4px;
+      max-height: 1.875rem;
+    }
+
+    .neuroglancer-position-dimension-play-button,
+    .neuroglancer-position-dimension-pause-button {
+      border-radius: 2px;
+      padding: 2px;
+    }
+
+    .neuroglancer-position-dimension-play-button svg,
+    .neuroglancer-position-dimension-pause-button svg {
+      stroke: none;
+    }
+
+    .neuroglancer-position-dimension-play-button:hover,
+    .neuroglancer-position-dimension-pause-button:hover {
+      background-color: var(--background80) !important;
+      color: var(--white) !important;
+    }
+
+    .neuroglancer-position-dimension-pause-button[data-active="true"] {
+      background-color: var(--background60);
+      color: var(--white) !important;
+    }
+
+    .neuroglancer-position-dimension span {
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .neuroglancer-position-dimension-dropdown,
+    .neuroglancer-position-dimension-coordinate-dropdown {
+      border: 1px solid var(--dark80);
+      width: 100%;
+      background-color: var(--background120);
+      border-top: none;
+      top: 29px;
+    }
+
+    .neuroglancer-position-dimension-dropdown .neuroglancer-tool-button {
+      padding: 0.5rem 0.75rem;
+      margin-top: 0.25rem;
+      margin-bottom: 0.25rem !important;
+    }
+
+    .neuroglancer-position-dimension:focus-within,
+    .neuroglancer-position-dimension[data-dropdown-visible="true"] {
+      border: 1px solid var(--dark80);
+      background-color: var(--background120);
+      border-bottom: none;
+    }
+
+    .neuroglancer-position-dimension[data-dropdown-visible="true"]::after {
+      display: none;
+    }
+
+    .neuroglancer-position-dimension-playback {
+      padding: 0px 12px 12px 12px;
+      margin-bottom: 4px;
+    }
+
+    .neuroglancer-position-dimension-playback hr {
+      border: 1px solid var(--background80);
+      margin: 8px 0;
+    }
+
+    .neuroglancer-position-dimension-playback .neuroglancer-number-input {
+      margin-bottom: 0.5rem;
+      gap: 0.5rem;
+    }
+
+    .neuroglancer-position-dimension-playback .neuroglancer-number-input span {
+      font-size: 0.875rem;
+      font-family: Graphik;
+      line-height: 1.25rem;
+      color: var(--content100);
+    }
+
+    .neuroglancer-position-dimension-playback input[type="text"] {
+      font-family: Graphik;
+      font-size: 12px;
+
+      padding: 8px 16px 8px 8px;
+      border: 1px solid var(--dark80);
+      background-color: var(--background80);
+    }
+
+    .neuroglancer-position-dimension-playback select {
+      padding: 0.5rem;
+      border: 1px solid var(--dark80);
+      background-color: var(--background80);
+      min-width: 100%;
+
+      font-family: Graphik !important;
+      font-size: 0.75rem;
+      line-height: 1rem;
+    }
+
+    .neuroglancer-position-dimension-playback select {
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      background-image: url("../src/ui/images/arrow_dropdown.svg");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
+      background-size: 20px;
+      padding-right: 8px;
+      margin: 0;
+    }
+
+    .neuroglancer-position-dimension-playback-header > .neuroglancer-icon,
+    .neuroglancer-position-dimension > .neuroglancer-icon svg {
+      stroke: none;
+    }
+
+    .neuroglancer-position-dimension > .neuroglancer-icon svg {
+      width: 1rem;
+      height: 1rem;
+    }
+
+    .neuroglancer-position-dimension-playback-header {
+      font-size: 0.75rem;
+      font-family: "Graphik" !important;
+    }
+
+    .neuroglancer-position-dimension-playback-checkbox {
+      padding: 0.25rem;
+      margin-right: 0.25rem;
+    }
+
+    .neuroglancer-position-dimension-playback-checkbox input[type="checkbox"] {
+      margin: 0;
+    }
+
+    .neuroglancer-position-dimension-playback input[type="text"]:hover {
+      border-color: var(--stroke60);
+    }
+
+    .neuroglancer-position-dimension-playback input[type="text"]:focus {
+      border-color: var(--primary100);
+      box-shadow: 0px 0px 0px 2px rgba(22, 82, 240, 0.2);
+    }
+  }
+
+  .neuroglancer-position-widget > div > .neuroglancer-position-dimension:first-of-type {
+    padding-left: 8px;
   }
 
   .neuroglancer-position-dimension-coordinate-label {
@@ -2619,6 +2830,10 @@ ul#statusContainer {
   .neuroglancer-position-dimension-scale-container {
     margin-left: 0;
     margin-right: 0;
+
+    .neuroglancer-position-dimension-scale {
+      text-align: center;
+    }
   }
 
   .neuroglancer-position-dimension-scale-container[data-is-empty="false"] {
@@ -2627,21 +2842,22 @@ ul#statusContainer {
     .neuroglancer-position-dimension-scale {
       font-size: 0.75rem;
       font-weight: 400;
-      line-height: 0.8731rem;
+      line-height: 0.875rem;
+      padding: 0;
       color: var(--content100);
     }
 
     &::before {
       font-size: 0.75rem;
       font-weight: 400;
-      line-height: 0.8731rem;
+      line-height: 0.875rem;
       color: var(--content100);
     }
 
     &::after {
       font-size: 0.75rem;
       font-weight: 400;
-      line-height: 0.8731rem;
+      line-height: 0.875rem;
       color: var(--content100);
     }
   }
@@ -2651,7 +2867,7 @@ ul#statusContainer {
     font-size: 0.75rem;
     color: var(--caramel60);
     font-weight: 400;
-    line-height: 0.8731rem;
+    line-height: 0.875rem;
   }
 
   .neuroglancer-icon {
