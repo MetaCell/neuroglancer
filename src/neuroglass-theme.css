@@ -1129,6 +1129,18 @@ ul#statusContainer {
         }
       }
     }
+
+    .neuroglancer-tool-palette-body {
+      .neuroglancer-tool-palette-items {
+        overflow-x: auto;
+
+        .neuroglancer-tool-palette-tool-container {
+          padding: 0 12px;
+          width: fit-content;
+          min-width: 100%;
+        }
+      }
+    }
   }
 
   .CodeMirror.cm-s-default.neuroglancer-shader-code-widget
