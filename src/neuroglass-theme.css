@@ -1106,7 +1106,7 @@ ul#statusContainer {
       }
 
       .neuroglancer-layer-side-panel-type[data-expanded="true"] {
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='13' viewBox='0 0 12 13' fill='none'%3E%3Cpath d='M3.70647 7.86446L5.99969 5.57268L8.29647 7.8609L9.00092 7.15535L5.99859 4.15768L3.00092 7.16L3.70647 7.86446Z' fill='%23999CA0'/%3E%3C/svg%3E"); 
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='13' viewBox='0 0 12 13' fill='none'%3E%3Cpath d='M3.70647 7.86446L5.99969 5.57268L8.29647 7.8609L9.00092 7.15535L5.99859 4.15768L3.00092 7.16L3.70647 7.86446Z' fill='%23999CA0'/%3E%3C/svg%3E");
       }
 
       .neuroglancer-layer-side-panel-type option {
@@ -1828,16 +1828,16 @@ ul#statusContainer {
     background-image: url("../src/ui/images/lint-marker-error.svg");
   }
 
-  .accordion {
+  .neuroglancer-accordion {
     background-color: var(--dark100);
     margin: 0 calc(var(--spacing1) * -1);
 
-    .accordion-item {
+    .neuroglancer-accordion-item {
       border-bottom: 1px solid var(--dark80);
       margin-bottom: 1em;
       position: relative;
 
-      .accordion-title {
+      .neuroglancer-accordion-header {
         padding: 2px var(--spacing1);
         line-height: 2rem;
 
@@ -1846,15 +1846,14 @@ ul#statusContainer {
         font-weight: 500;
       }
 
-      .accordion-content {
-        display: flex;
+      .neuroglancer-accordion-body {
         flex-direction: column;
         padding: var(--spacing1);
       }
 
-      &:not(.accordion-expanded) .accordion-title {
+      .neuroglancer-accordion-header {
         &:hover {
-          background: var(--background80);
+          background-color: var(--background80);
         }
       }
 

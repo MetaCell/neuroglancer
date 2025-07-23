@@ -105,7 +105,7 @@ import {
   registerLayerShaderControlsTool,
   ShaderControls,
 } from "#src/widget/shader_controls.js";
-import { Tab } from "#src/widget/tab_view.js";
+import { AccordionTab } from "#src/widget/accordion.js";
 
 export const OPACITY_JSON_KEY = "opacity";
 export const BLEND_JSON_KEY = "blend";
@@ -536,27 +536,28 @@ for (const control of LAYER_CONTROLS) {
   registerLayerControl(ImageUserLayer, control);
 }
 
-class RenderingOptionsTab extends Tab {
+class RenderingOptionsTab extends AccordionTab {
   codeWidget: ShaderCodeWidget;
   constructor(public layer: ImageUserLayer) {
-    super();
+    super("Shader controls");
     const { element } = this;
     this.codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
     element.classList.add("neuroglancer-image-dropdown");
 
     for (const control of LAYER_CONTROLS) {
-      element.appendChild(addLayerControlToOptionsTab(
-        this,
-        layer,
-        this.visibility,
-        control,
-      ));
+      const section = control.label.includes("(slice)")
+        ? "Slice 2D"
+        : "Volume Rendering";
+      this.appendChild(
+        addLayerControlToOptionsTab(this, layer, this.visibility, control),
+        section,
+      );
     }
 
     const spacer = document.createElement("div");
     spacer.style.flex = "1";
 
-    element.appendChild(
+    this.appendChild(
       makeShaderCodeWidgetTopRow(
         this.layer,
         this.codeWidget.element,
@@ -569,14 +570,14 @@ class RenderingOptionsTab extends Tab {
       ),
     );
 
-    element.appendChild(
+    this.appendChild(
       this.registerDisposer(
         new ChannelDimensionsWidget(layer.channelCoordinateSpaceCombiner),
       ).element,
     );
 
-    element.appendChild(this.codeWidget.element);
-    element.appendChild(
+    this.appendChild(this.codeWidget.element);
+    this.appendChild(
       this.registerDisposer(
         new ShaderControls(
           layer.shaderControlState,

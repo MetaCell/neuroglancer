@@ -1,32 +1,41 @@
-.accordion {
+.neuroglancer-accordion {
   /* border: 1px solid #ddd; */
   /* border-radius: 4px; */
   background-color: #141414;
 }
 
-.accordion-expanded {
-  display: flex;
-  flex-direction: column;
-  height: auto;
+.neuroglancer-accordion-item[data-expanded="true"] {
+  background-color: #1a1a1a;
 }
 
-.accordion-item {
+.neuroglancer-accordion-item {
   border-bottom: 1px solid #ddd;
 }
 
-.accordion-title {
+.neuroglancer-accordion-item[data-expanded="true"] .neuroglancer-accordion-body {
+  display: flex; /* Show when expanded */
+}
+
+.neuroglancer-accordion-item[data-expanded="false"] .neuroglancer-accordion-body {
+  display: none; /* Hide when collapsed */
+}
+
+.neuroglancer-accordion-item[data-expanded="false"] {
+  background-color: #141414;
+}
+
+.neuroglancer-accordion-header {
   padding: 10px;
   cursor: pointer;
   background-color: #141414;
 }
 
-.accordion-title:hover {
+.neuroglancer-accordion-header:hover {
   background-color: #141414;
 }
 
-.accordion-content {
+.neuroglancer-accordion-body {
   padding: 10px;
-  display: none; /* Hide by default */
   overflow-x: auto;
   overflow-y: auto;
 }
