@@ -674,7 +674,6 @@ export class AnnotationUserLayer extends Base {
         },
       ),
     );
-    renderScaleControls.element.id = PROJECTION_RENDER_SCALE_JSON_KEY;
     tab.element.insertBefore(
       renderScaleControls.element,
       tab.element.firstChild,
@@ -693,13 +692,11 @@ export class AnnotationUserLayer extends Base {
         "Display all annotations if filtering by related segments is enabled but no segments are selected";
       label.appendChild(checkbox.element);
       label.classList.add("neuroglass-ignore-label");
-      label.id = "segmentFilterLabel";
       tab.element.appendChild(label);
     }
     const linkedSegmentationLayersWidget = tab.registerDisposer(
       new LinkedSegmentationLayersWidget(this.linkedSegmentationLayers),
     );
-    linkedSegmentationLayersWidget.element.id = "segmentationLayersWidget";
     tab.element.appendChild(linkedSegmentationLayersWidget.element);
   }
 

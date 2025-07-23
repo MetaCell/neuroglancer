@@ -545,14 +545,12 @@ class RenderingOptionsTab extends Tab {
     element.classList.add("neuroglancer-image-dropdown");
 
     for (const control of LAYER_CONTROLS) {
-      const cntlElem = addLayerControlToOptionsTab(
+      element.appendChild(addLayerControlToOptionsTab(
         this,
         layer,
         this.visibility,
         control,
-      );
-      cntlElem.id = control.toolJson;
-      element.appendChild(cntlElem);
+      ));
     }
 
     const spacer = document.createElement("div");

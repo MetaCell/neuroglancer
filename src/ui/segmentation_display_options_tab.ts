@@ -49,7 +49,6 @@ export class DisplayOptionsTab extends Tab {
       );
       widget.label.textContent = "Linked to: ";
       widget.label.classList.add("neuroglancer-label-linkedto");
-      widget.element.id = "linkedSegmentationGroup";
       element.appendChild(widget.element);
     }
 
@@ -62,7 +61,6 @@ export class DisplayOptionsTab extends Tab {
       );
       widget.label.textContent = "Colors linked to: ";
       widget.label.classList.add("neuroglancer-label-linkedto");
-      widget.element.id = "linkedSegmentationColorGroup";
       element.appendChild(widget.element);
     }
 
@@ -116,7 +114,6 @@ export class DisplayOptionsTab extends Tab {
         this.visibility,
       ),
     );
-    skeletonControls.element.id = SKELETON_RENDERING_SHADER_CONTROL_TOOL_ID;
     element.appendChild(skeletonControls.element);
   }
 }

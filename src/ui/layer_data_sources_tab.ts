@@ -317,7 +317,6 @@ export class LoadedDataSourceView extends RefCounted {
         ),
       );
       this.element.appendChild(transformWidget.element);
-      transformWidget.element.id = "transformWidget";
     }
     this.registerDisposer(() => removeFromParent(this.element));
   }
@@ -373,7 +372,6 @@ export class DataSourceView extends RefCounted {
 
     const { element } = this;
     element.classList.add("neuroglancer-layer-data-source");
-    urlInput.element.id = "dataSourceUrlInputElement";
     element.appendChild(urlInput.element);
     element.appendChild(
       this.registerDisposer(new MessagesView(source.messages)).element,
