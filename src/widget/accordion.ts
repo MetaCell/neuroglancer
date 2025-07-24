@@ -1,21 +1,19 @@
 import { TrackableBoolean } from "#src/trackable_boolean.js";
 import { WatchableValueInterface } from "#src/trackable_value.js";
-import { Owned, RefCounted } from "#src/util/disposable.js";
+import { RefCounted } from "#src/util/disposable.js";
 import { parseArray } from "#src/util/json.js";
 import { NullarySignal } from "#src/util/signal.js";
 import "#src/widget/accordion.css";
-import { OptionSpecification, Tab } from "#src/widget/tab_view.js";
+import { Tab } from "#src/widget/tab_view.js";
 
 export const ACCORDION_JSON_KEY = "accordion";
 
-// TODO this is not so ideal
-const JSON_KEY_TRANSLATIONS = {
-  source: "Source",
-  imageSlice: "Slice",
-  imageVolume: "Volume Rendering",
-  shader: "Shader controls",
-  default: "Settings",
-};
+interface AccordionSectionOptions {
+  jsonKey: string;
+  displayName: string;
+  defaultExpanded?: boolean;
+  isDefaultKey?: boolean;
+}
 
 interface AccordionSection {
   name: string;
@@ -95,18 +93,12 @@ export class AccordionSectionStates extends RefCounted {
   }
 }
 
-export class AccordionSpecification extends OptionSpecification<{
-  label: string;
-  order?: number;
-  getter: () => Owned<AccordionTab>;
-  expanded?: WatchableValueInterface<boolean>;
-}> {}
-
 export class AccordionTab extends Tab {
   sections: AccordionSection[] = [];
+  defaultKey: string;
   constructor(
     protected accordionTabState: AccordionSectionStates,
-    private defaultKey: keyof typeof JSON_KEY_TRANSLATIONS = "default",
+    public options: AccordionSectionOptions[],
   ) {
     super();
     this.element.classList.add("neuroglancer-accordion");
@@ -115,6 +107,12 @@ export class AccordionTab extends Tab {
         this.updateSectionsExpanded(),
       ),
     );
+    options.forEach((option) => {
+      this.makeNewSection(option);
+    });
+    if (this.defaultKey === undefined) {
+      this.defaultKey = options[0].jsonKey;
+    }
     this.updateSectionsExpanded();
   }
 
@@ -124,7 +122,7 @@ export class AccordionTab extends Tab {
 
   private updateSectionsExpanded() {
     this.accordionTabState.sectionStates.forEach((state) => {
-      const section = this.makeOrGetSection(state.jsonKey);
+      const section = this.getSectionByKey(state.jsonKey);
       console.log(state.jsonKey, this.sections);
       if (section === undefined) {
         console.warn(
@@ -140,13 +138,12 @@ export class AccordionTab extends Tab {
     });
   }
 
-  private makeNewSection(jsonKey: string): AccordionSection | undefined {
-    if (!(jsonKey in JSON_KEY_TRANSLATIONS)) return undefined;
+  private makeNewSection(
+    option: AccordionSectionOptions,
+  ): AccordionSection | undefined {
     const newSection: AccordionSection = {
-      name: JSON_KEY_TRANSLATIONS[
-        jsonKey as keyof typeof JSON_KEY_TRANSLATIONS
-      ],
-      jsonKey,
+      name: option.displayName,
+      jsonKey: option.jsonKey,
       container: document.createElement("div"),
       header: document.createElement("div"),
       body: document.createElement("div"),
@@ -161,30 +158,26 @@ export class AccordionTab extends Tab {
     this.element.appendChild(container);
 
     newSection.header.textContent = newSection.name;
-    container.dataset.expanded = "false";
+    container.dataset.expanded = String(option.defaultExpanded ?? false);
+
+    if (option.isDefaultKey) {
+      this.defaultKey = option.jsonKey;
+    }
 
     this.registerEventListener(newSection.header, "click", () =>
-      this.setSectionExpanded(jsonKey),
+      this.setSectionExpanded(option.jsonKey),
     );
     return newSection;
-  }
-
-  makeOrGetSection(jsonKey: string): AccordionSection | undefined {
-    const section = this.sections.find((e) => e.jsonKey === jsonKey);
-    return section ?? this.makeNewSection(jsonKey);
   }
 
   getSectionByKey(jsonKey: string): AccordionSection | undefined {
     return this.sections.find((e) => e.jsonKey === jsonKey);
   }
 
-  appendChild(
-    content: HTMLElement,
-    jsonKey: keyof typeof JSON_KEY_TRANSLATIONS = this.defaultKey,
-  ) {
+  appendChild(content: HTMLElement, jsonKey?: string): void {
     const section =
-      this.makeOrGetSection(jsonKey ?? this.defaultKey) ??
-      this.makeOrGetSection(this.defaultKey);
+      this.getSectionByKey(jsonKey ?? this.defaultKey) ??
+      this.getSectionByKey(this.defaultKey);
     section!.body.appendChild(content);
   }
 }

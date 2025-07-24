@@ -107,17 +107,32 @@ import {
 } from "#src/widget/shader_controls.js";
 import { AccordionSectionStates, AccordionTab } from "#src/widget/accordion.js";
 
-export const OPACITY_JSON_KEY = "opacity";
-export const BLEND_JSON_KEY = "blend";
-export const SHADER_JSON_KEY = "shader";
-export const CODE_VISIBLE_KEY = "codeVisible";
+const OPACITY_JSON_KEY = "opacity";
+const BLEND_JSON_KEY = "blend";
+const SHADER_JSON_KEY = "shader";
+const CODE_VISIBLE_KEY = "codeVisible";
 const SHADER_CONTROLS_JSON_KEY = "shaderControls";
-export const CROSS_SECTION_RENDER_SCALE_JSON_KEY = "crossSectionRenderScale";
-export const CHANNEL_DIMENSIONS_JSON_KEY = "channelDimensions";
-export const VOLUME_RENDERING_JSON_KEY = "volumeRendering";
-export const VOLUME_RENDERING_GAIN_JSON_KEY = "volumeRenderingGain";
-export const VOLUME_RENDERING_DEPTH_SAMPLES_JSON_KEY =
-  "volumeRenderingDepthSamples";
+const CROSS_SECTION_RENDER_SCALE_JSON_KEY = "crossSectionRenderScale";
+const CHANNEL_DIMENSIONS_JSON_KEY = "channelDimensions";
+const VOLUME_RENDERING_JSON_KEY = "volumeRendering";
+const VOLUME_RENDERING_GAIN_JSON_KEY = "volumeRenderingGain";
+const VOLUME_RENDERING_DEPTH_SAMPLES_JSON_KEY = "volumeRenderingDepthSamples";
+const IMAGE_ACCORDIONS = [
+  {
+    jsonKey: "sliceControls",
+    displayName: "Slice 2D",
+  },
+  {
+    jsonKey: "volumeRenderingControls",
+    displayName: "Volume Rendering",
+  },
+  {
+    jsonKey: "shaderControls",
+    displayName: "Shader controls",
+    defaultExpanded: true,
+    isDefaultKey: true,
+  },
+];
 
 export interface ImageLayerSelectionState extends UserLayerSelectionState {
   value: any;
@@ -542,15 +557,16 @@ class RenderingOptionsTab extends AccordionTab {
     public layer: ImageUserLayer,
     protected accordionTabState: AccordionSectionStates,
   ) {
-    super(accordionTabState, "shader");
+    super(accordionTabState, IMAGE_ACCORDIONS);
     const { element } = this;
     this.codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
     element.classList.add("neuroglancer-image-dropdown");
 
+    // TODO how to make this cleanly more type safe on the strings
     for (const control of LAYER_CONTROLS) {
       const section = control.label.includes("(slice)")
-        ? "imageSlice"
-        : "imageVolume";
+        ? "sliceControls"
+        : "volumeRenderingControls";
       this.appendChild(
         addLayerControlToOptionsTab(this, layer, this.visibility, control),
         section,

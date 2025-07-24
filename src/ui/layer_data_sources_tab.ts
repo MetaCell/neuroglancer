@@ -68,6 +68,15 @@ import {
 import { ProgressListenerWidget } from "#src/widget/progress_listener.js";
 import { AccordionSectionStates, AccordionTab } from "#src/widget/accordion.js";
 
+const SOURCE_ACCORDION_OPTIONS = [
+  {
+    jsonKey: "dataSource",
+    displayName: "Data Source",
+    defaultExpanded: true,
+    isDefaultKey: true,
+  },
+];
+
 const dataSourceUrlSyntaxHighlighter: SyntaxHighlighter = {
   splitPattern: /\|?[^|:/_]*(?:[:/_]+)?/g,
   getSeparatorNode: (text: string) => {
@@ -448,7 +457,8 @@ export class LayerDataSourcesTab extends AccordionTab {
     public layer: Borrowed<UserLayer>,
     protected accordionTabState: AccordionSectionStates,
   ) {
-    super(accordionTabState, "source");
+    // TODO replace empty array with the actual accordion sections
+    super(accordionTabState, SOURCE_ACCORDION_OPTIONS);
     const { element, dataSourcesContainer } = this;
     element.classList.add("neuroglancer-layer-data-sources-tab");
     dataSourcesContainer.classList.add(
