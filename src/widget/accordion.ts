@@ -73,6 +73,20 @@ export class AccordionSectionStates extends RefCounted {
     this.specificationChanged.dispatch();
   }
 
+  registerSection(sectionOptions: AccordionSectionOptions) {
+    const existingSection = this.sectionStates.find(
+      (s) => s.jsonKey === sectionOptions.jsonKey,
+    );
+    // TODO need to figure out how to properly handle defaults
+    if (existingSection !== undefined) return;
+    const newSection = new AccordionSectionState(
+      this,
+      sectionOptions.jsonKey,
+      sectionOptions.defaultExpanded,
+    );
+    this.sectionStates.push(newSection);
+  }
+
   setSectionExpanded(jsonKey: string, expand?: boolean): void {
     let section = this.sectionStates.find((s) => s.jsonKey === jsonKey);
     if (section === undefined) {
@@ -118,6 +132,7 @@ export class AccordionTab extends Tab {
 
   private setSectionExpanded(jsonKey: string, expand?: boolean): void {
     this.accordionTabState.setSectionExpanded(jsonKey, expand);
+    console.log(this.accordionTabState);
   }
 
   private updateSectionsExpanded() {
@@ -167,6 +182,8 @@ export class AccordionTab extends Tab {
     this.registerEventListener(newSection.header, "click", () =>
       this.setSectionExpanded(option.jsonKey),
     );
+
+    this.accordionTabState.registerSection(option);
     return newSection;
   }
 

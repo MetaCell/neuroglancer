@@ -457,7 +457,6 @@ export class LayerDataSourcesTab extends AccordionTab {
     public layer: Borrowed<UserLayer>,
     protected accordionTabState: AccordionSectionStates,
   ) {
-    // TODO replace empty array with the actual accordion sections
     super(accordionTabState, SOURCE_ACCORDION_OPTIONS);
     const { element, dataSourcesContainer } = this;
     element.classList.add("neuroglancer-layer-data-sources-tab");
