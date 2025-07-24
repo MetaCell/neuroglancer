@@ -542,15 +542,15 @@ class RenderingOptionsTab extends AccordionTab {
     public layer: ImageUserLayer,
     protected accordionTabState: AccordionSectionStates,
   ) {
-    super(accordionTabState, "Shader controls");
+    super(accordionTabState, "shader");
     const { element } = this;
     this.codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
     element.classList.add("neuroglancer-image-dropdown");
 
     for (const control of LAYER_CONTROLS) {
       const section = control.label.includes("(slice)")
-        ? "Slice 2D"
-        : "Volume Rendering";
+        ? "imageSlice"
+        : "imageVolume";
       this.appendChild(
         addLayerControlToOptionsTab(this, layer, this.visibility, control),
         section,

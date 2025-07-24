@@ -8,6 +8,15 @@ import { OptionSpecification, Tab } from "#src/widget/tab_view.js";
 
 export const ACCORDION_JSON_KEY = "accordion";
 
+// TODO this is not so ideal
+const JSON_KEY_TRANSLATIONS = {
+  source: "Source",
+  imageSlice: "Slice",
+  imageVolume: "Volume Rendering",
+  shader: "Shader controls",
+  default: "Settings",
+};
+
 interface AccordionSection {
   name: string;
   jsonKey: string;
@@ -97,7 +106,7 @@ export class AccordionTab extends Tab {
   sections: AccordionSection[] = [];
   constructor(
     protected accordionTabState: AccordionSectionStates,
-    private defaultHeader = "Settings",
+    private defaultKey: keyof typeof JSON_KEY_TRANSLATIONS = "default",
   ) {
     super();
     this.element.classList.add("neuroglancer-accordion");
@@ -115,7 +124,7 @@ export class AccordionTab extends Tab {
 
   private updateSectionsExpanded() {
     this.accordionTabState.sectionStates.forEach((state) => {
-      const section = this.getSectionByKey(state.jsonKey);
+      const section = this.makeOrGetSection(state.jsonKey);
       console.log(state.jsonKey, this.sections);
       if (section === undefined) {
         console.warn(
@@ -131,14 +140,12 @@ export class AccordionTab extends Tab {
     });
   }
 
-  private nameToJsonKey(name: string): string {
-    return name.toLowerCase().replace(/\s+/g, "_");
-  }
-
-  private makeNewSection(name: string): AccordionSection {
-    const jsonKey = this.nameToJsonKey(name);
+  private makeNewSection(jsonKey: string): AccordionSection | undefined {
+    if (!(jsonKey in JSON_KEY_TRANSLATIONS)) return undefined;
     const newSection: AccordionSection = {
-      name,
+      name: JSON_KEY_TRANSLATIONS[
+        jsonKey as keyof typeof JSON_KEY_TRANSLATIONS
+      ],
       jsonKey,
       container: document.createElement("div"),
       header: document.createElement("div"),
@@ -153,7 +160,7 @@ export class AccordionTab extends Tab {
     container.appendChild(newSection.body);
     this.element.appendChild(container);
 
-    newSection.header.textContent = name;
+    newSection.header.textContent = newSection.name;
     container.dataset.expanded = "false";
 
     this.registerEventListener(newSection.header, "click", () =>
@@ -162,18 +169,22 @@ export class AccordionTab extends Tab {
     return newSection;
   }
 
-  makeOrGetSection(name: string): AccordionSection {
-    const section = this.sections.find((e) => e.name === name);
-    return section ?? this.makeNewSection(name);
+  makeOrGetSection(jsonKey: string): AccordionSection | undefined {
+    const section = this.sections.find((e) => e.jsonKey === jsonKey);
+    return section ?? this.makeNewSection(jsonKey);
   }
 
   getSectionByKey(jsonKey: string): AccordionSection | undefined {
     return this.sections.find((e) => e.jsonKey === jsonKey);
   }
 
-  appendChild(content: HTMLElement, header: string = this.defaultHeader) {
-    this.makeOrGetSection(header ?? this.defaultHeader).body.appendChild(
-      content,
-    );
+  appendChild(
+    content: HTMLElement,
+    jsonKey: keyof typeof JSON_KEY_TRANSLATIONS = this.defaultKey,
+  ) {
+    const section =
+      this.makeOrGetSection(jsonKey ?? this.defaultKey) ??
+      this.makeOrGetSection(this.defaultKey);
+    section!.body.appendChild(content);
   }
 }
