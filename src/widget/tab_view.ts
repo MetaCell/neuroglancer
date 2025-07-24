@@ -300,7 +300,6 @@ function updateTabLabelVisibilityStyle(
 export interface TabViewOptions {
   makeTab: (id: string) => Tab;
   selectedTab: WatchableValueInterface<string | undefined>;
-  accordionsExpanded: WatchableValueInterface<boolean>;
   tabs: WatchableValueChangeInterface<
     { id: string; label: string; hidden: boolean }[]
   >;

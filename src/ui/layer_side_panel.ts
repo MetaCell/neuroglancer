@@ -250,7 +250,6 @@ class LayerSidePanel extends SidePanel {
       {
         makeTab: (id) => layer.tabs.options.get(id)!.getter(),
         selectedTab: panelState.selectedTab,
-        accordionsExpanded: layer.accordionTabState.sections[0].expanded,
         tabs: this.registerDisposer(
           new CachedWatchableValue({
             get value() {

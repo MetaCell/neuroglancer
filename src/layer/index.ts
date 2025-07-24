@@ -351,7 +351,7 @@ export class UserLayer extends RefCounted {
   }
 
   tabs = this.registerDisposer(new TabSpecification());
-  accordionTabState = new AccordionSectionStates(this);
+  accordionTabState = new AccordionSectionStates();
   panels = new UserLayerSidePanelsState(this);
   tool = this.registerDisposer(new SelectedLegacyTool(this));
   toolBinder: LayerToolBinder<this>;
