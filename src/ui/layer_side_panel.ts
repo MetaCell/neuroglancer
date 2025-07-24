@@ -104,15 +104,15 @@ export class LayerTypeWidget extends RefCounted {
     element.title = "Change layer type";
     document.body.appendChild(measureElement);
 
-    element.addEventListener('mousedown', () => {
+    element.addEventListener("mousedown", () => {
       element.dataset.expanded = "true";
     });
 
-    element.addEventListener('blur', () => {
+    element.addEventListener("blur", () => {
       element.dataset.expanded = "false";
     });
 
-    element.addEventListener('change', () => {
+    element.addEventListener("change", () => {
       element.dataset.expanded = "false";
     });
 
@@ -250,6 +250,7 @@ class LayerSidePanel extends SidePanel {
       {
         makeTab: (id) => layer.tabs.options.get(id)!.getter(),
         selectedTab: panelState.selectedTab,
+        accordionsExpanded: layer.accordionTabState.sections[0].expanded,
         tabs: this.registerDisposer(
           new CachedWatchableValue({
             get value() {

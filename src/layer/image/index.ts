@@ -105,7 +105,11 @@ import {
   registerLayerShaderControlsTool,
   ShaderControls,
 } from "#src/widget/shader_controls.js";
-import { AccordionTab } from "#src/widget/accordion.js";
+import {
+  AccordionInfo,
+  AccordionSectionState,
+  AccordionTab,
+} from "#src/widget/accordion.js";
 
 export const OPACITY_JSON_KEY = "opacity";
 export const BLEND_JSON_KEY = "blend";
@@ -223,10 +227,30 @@ export class ImageUserLayer extends Base {
     this.volumeRenderingDepthSamplesTarget.changed.add(
       this.specificationChanged.dispatch,
     );
+    const onAccordionChange = (info: AccordionInfo) => {
+      console.log("Accordion changed", info);
+      // TODO might not need to specifically dispatch this
+      // might come for free fromt the watchable values
+      // TODO make this more efficient, fast for now coded
+      let changed = false;
+      this.accordionTabState.sections.forEach((state) => {
+        if (state.name === info.name) {
+          state.expanded.value = info.expanded;
+          changed = true;
+        }
+      });
+      if (!changed) {
+        const state = new AccordionSectionState(this.accordionTabState);
+        state.expanded.value = info.expanded;
+        state.name = info.name;
+        this.accordionTabState.sections.push(state);
+      }
+      this.specificationChanged.dispatch();
+    };
     this.tabs.add("rendering", {
       label: "Rendering",
       order: -100,
-      getter: () => new RenderingOptionsTab(this),
+      getter: () => new RenderingOptionsTab(this, onAccordionChange),
     });
     this.tabs.default = "rendering";
   }
@@ -538,8 +562,12 @@ for (const control of LAYER_CONTROLS) {
 
 class RenderingOptionsTab extends AccordionTab {
   codeWidget: ShaderCodeWidget;
-  constructor(public layer: ImageUserLayer) {
-    super("Shader controls");
+  // TODO make onAccordionChange non optional?
+  constructor(
+    public layer: ImageUserLayer,
+    onAccordionChange?: (info: AccordionInfo) => void,
+  ) {
+    super("Shader controls", onAccordionChange);
     const { element } = this;
     this.codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
     element.classList.add("neuroglancer-image-dropdown");

@@ -343,6 +343,7 @@ export class UserLayerSidePanelsState {
   toJSON() {
     const { panels } = this;
     const obj: any = {};
+    console.log(panels[0]);
     obj[TAB_JSON_KEY] = panels[0].selectedTab.value;
     if (panels.length > 1) {
       const panelsObj: any[] = [];

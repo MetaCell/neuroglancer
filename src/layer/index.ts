@@ -113,6 +113,10 @@ import type { DependentViewContext } from "#src/widget/dependent_view_widget.js"
 import type { Tab } from "#src/widget/tab_view.js";
 import { TabSpecification } from "#src/widget/tab_view.js";
 import type { RPC } from "#src/worker_rpc.js";
+import {
+  ACCORDION_JSON_KEY,
+  AccordionSectionStates,
+} from "#src/widget/accordion.js";
 
 const TOOL_JSON_KEY = "tool";
 const TOOL_BINDINGS_JSON_KEY = "toolBindings";
@@ -347,6 +351,7 @@ export class UserLayer extends RefCounted {
   }
 
   tabs = this.registerDisposer(new TabSpecification());
+  accordionTabState = new AccordionSectionStates(this);
   panels = new UserLayerSidePanelsState(this);
   tool = this.registerDisposer(new SelectedLegacyTool(this));
   toolBinder: LayerToolBinder<this>;
@@ -366,6 +371,10 @@ export class UserLayer extends RefCounted {
     this.localCoordinateSpaceCombiner.includeDimensionPredicate =
       isLocalOrChannelDimension;
     this.tabs.changed.add(this.specificationChanged.dispatch);
+    // TODO accordionTabState spec changed not setup yet
+    this.accordionTabState.specificationChanged.add(
+      this.specificationChanged.dispatch,
+    );
     this.panels.specificationChanged.add(this.specificationChanged.dispatch);
     this.tool.changed.add(this.specificationChanged.dispatch);
     this.toolBinder.changed.add(this.specificationChanged.dispatch);
@@ -375,6 +384,7 @@ export class UserLayer extends RefCounted {
     this.dataSourcesChanged.add(this.specificationChanged.dispatch);
     this.dataSourcesChanged.add(() => this.updateDataSubsourceActivations());
     this.messages.changed.add(this.layersChanged.dispatch);
+
     for (const tab of USER_LAYER_TABS) {
       this.tabs.add(tab.id, {
         label: tab.label,
@@ -516,6 +526,9 @@ export class UserLayer extends RefCounted {
 
   restoreState(specification: any) {
     this.tool.restoreState(specification[TOOL_JSON_KEY]);
+    // TODO accordion builds up "" entries and also isn't used right
+    // now to actually restore whether sections are expanded
+    this.accordionTabState.restoreState(specification[ACCORDION_JSON_KEY]);
     this.panels.restoreState(specification);
     this.localCoordinateSpace.restoreState(
       specification[LOCAL_COORDINATE_SPACE_JSON_KEY],
@@ -599,6 +612,7 @@ export class UserLayer extends RefCounted {
       [LOCAL_POSITION_JSON_KEY]: this.localPosition.toJSON(),
       [LOCAL_VELOCITY_JSON_KEY]: this.localVelocity.toJSON(),
       [PICK_JSON_KEY]: this.pick.toJSON(),
+      [ACCORDION_JSON_KEY]: this.accordionTabState.toJSON(),
       ...this.panels.toJSON(),
     };
   }

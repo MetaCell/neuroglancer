@@ -66,7 +66,7 @@ import {
   makeCompletionElementWithDescription,
 } from "#src/widget/multiline_autocomplete.js";
 import { ProgressListenerWidget } from "#src/widget/progress_listener.js";
-import { Tab } from "#src/widget/tab_view.js";
+import { AccordionTab } from "#src/widget/accordion.js";
 
 const dataSourceUrlSyntaxHighlighter: SyntaxHighlighter = {
   splitPattern: /\|?[^|:/_]*(?:[:/_]+)?/g,
@@ -432,7 +432,7 @@ function changeLayerTypeToDetected(userLayer: UserLayer) {
   return false;
 }
 
-export class LayerDataSourcesTab extends Tab {
+export class LayerDataSourcesTab extends AccordionTab {
   generation = -1;
   private sourceViews = new Map<LayerDataSource, DataSourceView>();
   private addDataSourceIcon = makeAddButton({
@@ -460,7 +460,7 @@ export class LayerDataSourcesTab extends Tab {
       if (view === undefined) return;
       view.urlInput.inputElement.focus();
     });
-    element.appendChild(this.dataSourcesContainer);
+    this.appendChild(this.dataSourcesContainer);
     if (layer instanceof NewUserLayer) {
       const { layerTypeDetection, layerTypeElement, multiChannelLayerCreate } =
         this;
