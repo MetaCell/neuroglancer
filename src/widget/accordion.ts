@@ -40,7 +40,11 @@ export class AccordionSectionStates {
   }
 
   restoreState(obj: unknown) {
+    if (obj === undefined) {
+      return;
+    }
     verifyOptionalObjectProperty(obj, ACCORDION_JSON_KEY, (accordion) => {
+      console.log("restoreState accordion", accordion);
       // TODO might be better to use keys established on the layer
       // For now, let's just assume we get an array of sections
       parseArray(accordion, (section) => {
@@ -78,15 +82,39 @@ export class AccordionSpecification extends OptionSpecification<{
 
 export class AccordionTab extends Tab {
   sections: Section[] = [];
-  // TODO make on accordion change non optional?
   constructor(
-    public defaultHeader = "Settings",
-    public onAccordionChange?: (info: AccordionInfo) => void,
+    protected accordionTabState: AccordionSectionStates,
+    private defaultHeader = "Settings",
   ) {
     super();
     this.element.classList.add("neuroglancer-accordion");
+    this.registerDisposer(
+      this.accordionTabState.specificationChanged.add(() =>
+        this.updateSections(),
+      ),
+    );
   }
-  makeSection(headerText: string): Section {
+  updateSections() {
+    this.accordionTabState.sections.forEach((state) => {
+      this.setSectionExpanded(state.name, state.expanded.value);
+    });
+  }
+  /**
+   * Set the section expanded state.
+   * If expand is undefined, toggle the current state.
+   * @param headerText The header text of the section to set.
+   * @param expand Optional boolean to set the expanded state.
+   */
+  setSectionExpanded(headerText: string, expand?: boolean): void {
+    const section = this.getSection(headerText);
+    if (expand === undefined) {
+      expand = section.container.dataset.expanded !== "true";
+    }
+    section.container.dataset.expanded = String(expand);
+    section.header.setAttribute("aria-expanded", String(expand));
+  }
+
+  getSection(headerText: string): Section {
     const { sections } = this;
     const section = sections.find((e) => e.headerText === headerText);
     if (section !== undefined) {
@@ -111,25 +139,16 @@ export class AccordionTab extends Tab {
     newSection.header.textContent = headerText;
     container.dataset.expanded = "false";
 
-    const toggleExpanded = () => {
-      const expanded = container.dataset.expanded === "true";
-      container.dataset.expanded = expanded ? "false" : "true";
-      newSection.header.setAttribute(
-        "aria-expanded",
-        !expanded ? "true" : "false",
-      );
-      this.onAccordionChange?.({
-        name: newSection.headerText,
-        expanded: !expanded,
-      });
-    };
-    newSection.header.addEventListener("click", toggleExpanded);
+    newSection.header.addEventListener(
+      "click",
+      this.setSectionExpanded.bind(this, headerText),
+    );
 
     return newSection;
   }
 
   appendChild(content: HTMLElement, header: string = this.defaultHeader) {
-    const section = this.makeSection(header);
+    const section = this.getSection(header);
     section.body.appendChild(content);
   }
 }

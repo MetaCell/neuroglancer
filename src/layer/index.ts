@@ -371,7 +371,6 @@ export class UserLayer extends RefCounted {
     this.localCoordinateSpaceCombiner.includeDimensionPredicate =
       isLocalOrChannelDimension;
     this.tabs.changed.add(this.specificationChanged.dispatch);
-    // TODO accordionTabState spec changed not setup yet
     this.accordionTabState.specificationChanged.add(
       this.specificationChanged.dispatch,
     );

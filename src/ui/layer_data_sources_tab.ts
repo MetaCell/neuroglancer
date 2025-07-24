@@ -66,7 +66,7 @@ import {
   makeCompletionElementWithDescription,
 } from "#src/widget/multiline_autocomplete.js";
 import { ProgressListenerWidget } from "#src/widget/progress_listener.js";
-import { AccordionTab } from "#src/widget/accordion.js";
+import { AccordionSectionStates, AccordionTab } from "#src/widget/accordion.js";
 
 const dataSourceUrlSyntaxHighlighter: SyntaxHighlighter = {
   splitPattern: /\|?[^|:/_]*(?:[:/_]+)?/g,
@@ -444,8 +444,11 @@ export class LayerDataSourcesTab extends AccordionTab {
   private dataSourcesContainer = document.createElement("div");
   private reRender: DebouncedFunction;
 
-  constructor(public layer: Borrowed<UserLayer>) {
-    super();
+  constructor(
+    public layer: Borrowed<UserLayer>,
+    protected accordionTabState: AccordionSectionStates,
+  ) {
+    super(accordionTabState, "Data");
     const { element, dataSourcesContainer } = this;
     element.classList.add("neuroglancer-layer-data-sources-tab");
     dataSourcesContainer.classList.add(
@@ -605,5 +608,5 @@ USER_LAYER_TABS.push({
   id: "source",
   label: "Source",
   order: -100,
-  getter: (layer) => new LayerDataSourcesTab(layer),
+  getter: (layer) => new LayerDataSourcesTab(layer, layer.accordionTabState),
 });
