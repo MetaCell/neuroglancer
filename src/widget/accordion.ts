@@ -1,20 +1,16 @@
 import { TrackableBoolean } from "#src/trackable_boolean.js";
 import { WatchableValueInterface } from "#src/trackable_value.js";
 import { Owned, RefCounted } from "#src/util/disposable.js";
-import { parseArray, verifyOptionalObjectProperty } from "#src/util/json.js";
+import { parseArray } from "#src/util/json.js";
 import { NullarySignal } from "#src/util/signal.js";
 import "#src/widget/accordion.css";
 import { OptionSpecification, Tab } from "#src/widget/tab_view.js";
 
 export const ACCORDION_JSON_KEY = "accordion";
 
-export interface AccordionInfo {
+interface AccordionSection {
   name: string;
-  expanded: boolean;
-}
-
-interface Section {
-  headerText: string;
+  jsonKey: string;
   container: HTMLElement;
   header: HTMLElement;
   body: HTMLElement;
@@ -24,84 +20,62 @@ interface Section {
 export class AccordionSectionState extends RefCounted {
   isExpanded: WatchableValueInterface<boolean>;
   constructor(
-    public sections: AccordionSectionStates,
-    public name: string = "",
+    public parentState: AccordionSectionStates,
+    public jsonKey: string,
     private defaultExpanded = false,
   ) {
     super();
     this.isExpanded = new TrackableBoolean(defaultExpanded, defaultExpanded);
-    sections.registerDisposer(this);
+    parentState.registerDisposer(this);
     this.registerDisposer(
       this.isExpanded.changed.add(() => {
-        sections.specificationChanged.dispatch();
+        parentState.specificationChanged.dispatch();
       }),
     );
-    sections.sections.push(this);
+    parentState.sectionStates.push(this);
   }
 
-  restoreState(obj: unknown) {
-    if (obj === undefined) {
-      return;
-    }
-    verifyOptionalObjectProperty(obj, "headerText", (headerText) => {
-      this.name = headerText;
-    });
-    verifyOptionalObjectProperty(obj, "expanded", (expanded) => {
-      if (typeof expanded === "boolean") {
-        this.isExpanded.value = expanded;
-      } else {
-        console.warn(
-          `AccordionSectionState: expected boolean for expanded, got ${expanded}`,
-        );
-      }
-    });
-  }
-
-  // TODO either provide friendly keys or process name for key
   toJSON() {
     if (this.isExpanded.value === this.defaultExpanded) {
       return undefined;
     }
-    return {
-      headerText: this.name,
-      expanded: this.isExpanded.value,
-    };
+    return { [this.jsonKey]: this.isExpanded.value };
   }
 }
 
 export class AccordionSectionStates extends RefCounted {
-  sections: AccordionSectionState[] = [];
+  sectionStates: AccordionSectionState[] = [];
   specificationChanged = new NullarySignal();
   constructor() {
     super();
-    this.sections = [];
+    this.sectionStates = [];
   }
 
   restoreState(obj: unknown) {
     if (obj === undefined) {
       return;
     }
-    verifyOptionalObjectProperty(obj, ACCORDION_JSON_KEY, (accordion) => {
-      console.log("restoreState accordion", accordion);
-      parseArray(accordion, (section) => {
-        new AccordionSectionState(this).restoreState(section);
-      });
-      this.specificationChanged.dispatch();
+    console.log("Restoring accordion state", obj);
+    parseArray(obj, (section) => {
+      const jsonKey = Object.keys(section)[0];
+      const isExpanded = section[jsonKey];
+      const newSection = new AccordionSectionState(this, jsonKey);
+      newSection.isExpanded.value = isExpanded;
     });
+    console.log("Restored accordion state", this.sectionStates);
+    this.specificationChanged.dispatch();
   }
 
-  setSectionExpanded(headerText: string, expand?: boolean): void {
-    let section = this.sections.find((s) => s.name === headerText);
+  setSectionExpanded(jsonKey: string, expand?: boolean): void {
+    let section = this.sectionStates.find((s) => s.jsonKey === jsonKey);
     if (section === undefined) {
-      section = new AccordionSectionState(this, headerText);
+      section = new AccordionSectionState(this, jsonKey);
     }
-    console.log(expand);
     section.isExpanded.value = expand ?? !section.isExpanded.value;
   }
 
   toJSON() {
-    // Don't return undefined sections.
-    const allSections = this.sections.map((section) => section.toJSON());
+    const allSections = this.sectionStates.map((section) => section.toJSON());
     const filteredSections = allSections.filter(
       (section) => section !== undefined,
     );
@@ -120,7 +94,7 @@ export class AccordionSpecification extends OptionSpecification<{
 }> {}
 
 export class AccordionTab extends Tab {
-  sections: Section[] = [];
+  sections: AccordionSection[] = [];
   constructor(
     protected accordionTabState: AccordionSectionStates,
     private defaultHeader = "Settings",
@@ -132,21 +106,23 @@ export class AccordionTab extends Tab {
         this.updateSectionsExpanded(),
       ),
     );
-  }
-  /**
-   * Set the section expanded state.
-   * If expand is undefined, toggle the current state.
-   * @param headerText The header text of the section to set.
-   * @param expand Optional boolean to set the expanded state.
-   */
-  setSectionExpanded(headerText: string, expand?: boolean): void {
-    this.accordionTabState.setSectionExpanded(headerText, expand);
-    console.log(this.accordionTabState);
+    this.updateSectionsExpanded();
   }
 
-  updateSectionsExpanded() {
-    this.accordionTabState.sections.forEach((state) => {
-      const section = this.getSection(state.name);
+  private setSectionExpanded(jsonKey: string, expand?: boolean): void {
+    this.accordionTabState.setSectionExpanded(jsonKey, expand);
+  }
+
+  private updateSectionsExpanded() {
+    this.accordionTabState.sectionStates.forEach((state) => {
+      const section = this.getSectionByKey(state.jsonKey);
+      console.log(state.jsonKey, this.sections);
+      if (section === undefined) {
+        console.warn(
+          `AccordionTab: No section found for key ${state.jsonKey}. This may be due to a mismatch in section names.`,
+        );
+        return;
+      }
       section.container.dataset.expanded = String(state.isExpanded.value);
       section.header.setAttribute(
         "aria-expanded",
@@ -155,20 +131,20 @@ export class AccordionTab extends Tab {
     });
   }
 
-  getSection(headerText: string): Section {
-    const { sections } = this;
-    const section = sections.find((e) => e.headerText === headerText);
-    if (section !== undefined) {
-      return section;
-    }
-    const newSection: Section = {
-      headerText: headerText,
+  private nameToJsonKey(name: string): string {
+    return name.toLowerCase().replace(/\s+/g, "_");
+  }
+
+  private makeNewSection(name: string): AccordionSection {
+    const jsonKey = this.nameToJsonKey(name);
+    const newSection: AccordionSection = {
+      name,
+      jsonKey,
       container: document.createElement("div"),
       header: document.createElement("div"),
       body: document.createElement("div"),
     };
-    sections.push(newSection);
-
+    this.sections.push(newSection);
     const { container, header, body } = newSection;
     container.classList.add("neuroglancer-accordion-item");
     body.classList.add("neuroglancer-accordion-body");
@@ -177,24 +153,27 @@ export class AccordionTab extends Tab {
     container.appendChild(newSection.body);
     this.element.appendChild(container);
 
-    newSection.header.textContent = headerText;
+    newSection.header.textContent = name;
     container.dataset.expanded = "false";
 
-    newSection.header.addEventListener(
-      "click",
-      () => this.setSectionExpanded(headerText)
+    this.registerEventListener(newSection.header, "click", () =>
+      this.setSectionExpanded(jsonKey),
     );
-
     return newSection;
   }
 
+  makeOrGetSection(name: string): AccordionSection {
+    const section = this.sections.find((e) => e.name === name);
+    return section ?? this.makeNewSection(name);
+  }
+
+  getSectionByKey(jsonKey: string): AccordionSection | undefined {
+    return this.sections.find((e) => e.jsonKey === jsonKey);
+  }
+
   appendChild(content: HTMLElement, header: string = this.defaultHeader) {
-    header = header.trim();
-    if (header === "") {
-      header = this.defaultHeader;
-    }
-    console.log("appendChild to accordion section", header);
-    const section = this.getSection(header);
-    section.body.appendChild(content);
+    this.makeOrGetSection(header ?? this.defaultHeader).body.appendChild(
+      content,
+    );
   }
 }
