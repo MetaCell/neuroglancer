@@ -174,7 +174,7 @@ export class ImageUserLayer extends Base {
         },
         {
           jsonKey: VOLUME_SECTION_JSON_KEY,
-          displayName: "Volume Rendering",
+          displayName: "Volume rendering",
         },
         {
           jsonKey: SHADER_SECTION_JSON_KEY,
@@ -515,6 +515,7 @@ const LAYER_CONTROLS: LayerControlDefinition<ImageUserLayer>[] = [
   {
     label: "Resolution (slice)",
     toolJson: CROSS_SECTION_RENDER_SCALE_JSON_KEY,
+    sectionKey: SLICE_SECTION_JSON_KEY,
     ...renderScaleLayerControl((layer) => ({
       histogram: layer.sliceViewRenderScaleHistogram,
       target: layer.sliceViewRenderScaleTarget,
@@ -523,21 +524,25 @@ const LAYER_CONTROLS: LayerControlDefinition<ImageUserLayer>[] = [
   {
     label: "Blending (slice)",
     toolJson: BLEND_JSON_KEY,
+    sectionKey: SLICE_SECTION_JSON_KEY,
     ...enumLayerControl((layer) => layer.blendMode),
   },
   {
     label: "Opacity (slice)",
     toolJson: OPACITY_JSON_KEY,
+    sectionKey: SLICE_SECTION_JSON_KEY,
     ...rangeLayerControl((layer) => ({ value: layer.opacity })),
   },
   {
     label: "Volume rendering (experimental)",
     toolJson: VOLUME_RENDERING_JSON_KEY,
+    sectionKey: VOLUME_SECTION_JSON_KEY,
     ...enumLayerControl((layer) => layer.volumeRenderingMode),
   },
   {
     label: "Gain (3D)",
     toolJson: VOLUME_RENDERING_GAIN_JSON_KEY,
+    sectionKey: VOLUME_SECTION_JSON_KEY,
     isValid: (layer) =>
       makeCachedDerivedWatchableValue(
         (volumeRenderingMode) =>
@@ -552,6 +557,7 @@ const LAYER_CONTROLS: LayerControlDefinition<ImageUserLayer>[] = [
   {
     label: "Resolution (3D)",
     toolJson: VOLUME_RENDERING_DEPTH_SAMPLES_JSON_KEY,
+    sectionKey: VOLUME_SECTION_JSON_KEY,
     isValid: (layer) =>
       makeCachedDerivedWatchableValue(
         (volumeRenderingMode) =>
@@ -583,14 +589,10 @@ class RenderingOptionsTab extends AccordionTab {
     this.codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
     element.classList.add("neuroglancer-image-dropdown");
 
-    // TODO how to make this cleanly more type safe on the strings
     for (const control of LAYER_CONTROLS) {
-      const section = control.label.includes("(slice)")
-        ? "sliceControls"
-        : "volumeRenderingControls";
       this.appendChild(
         addLayerControlToOptionsTab(this, layer, this.visibility, control),
-        section,
+        control.sectionKey,
       );
     }
 

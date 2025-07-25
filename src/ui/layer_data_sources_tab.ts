@@ -24,6 +24,7 @@ import type { UserLayer, UserLayerConstructor } from "#src/layer/index.js";
 import {
   changeLayerName,
   changeLayerType,
+  CREATE_SECTION_JSON_KEY,
   makeLayer,
   NewUserLayer,
   USER_LAYER_TABS,
@@ -474,7 +475,7 @@ export class LayerDataSourcesTab extends AccordionTab {
       layerTypeDetection.appendChild(document.createTextNode("Create as "));
       layerTypeDetection.appendChild(layerTypeElement);
       layerTypeDetection.appendChild(document.createTextNode(" layer"));
-      element.appendChild(layerTypeDetection);
+      this.appendChild(layerTypeDetection, CREATE_SECTION_JSON_KEY);
       layerTypeDetection.classList.add(
         "neuroglancer-layer-data-sources-tab-type-detection",
       );
@@ -507,7 +508,7 @@ export class LayerDataSourcesTab extends AccordionTab {
       });
       multiChannelLayerCreate.style.display = "none";
       multiChannelLayerCreate.style.marginTop = "0.5em";
-      element.appendChild(multiChannelLayerCreate);
+      this.appendChild(multiChannelLayerCreate, CREATE_SECTION_JSON_KEY);
     }
     const reRender = (this.reRender = animationFrameDebounce(() =>
       this.updateView(),

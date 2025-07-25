@@ -644,15 +644,15 @@ export class SegmentationUserLayer extends Base {
       },
       {
         jsonKey: SLICE_SECTION_JSON_KEY,
-        displayName: "Slice",
+        displayName: "Slice 2D",
       },
       {
         jsonKey: MESH_SECTION_JSON_KEY,
-        displayName: "Mesh",
+        displayName: "Mesh 3D",
       },
       {
         jsonKey: SKELETON_SECTION_JSON_KEY,
-        displayName: "Skeleton",
+        displayName: "Skeleton 3D",
       },
     ],
   });

@@ -125,8 +125,7 @@ const TRANSFORM_JSON_KEY = "transform";
 const PICK_JSON_KEY = "pick";
 const SOURCE_ACCORDION_JSON_KEY = "sourceAccordion";
 const DATA_SECTION_JSON_KEY = "dataSource";
-const COMPONENTS_SECTION_JSON_KEY = "enabledComponents";
-const AFFINE_SECTION_JSON_KEY = "affineTransform";
+export const CREATE_SECTION_JSON_KEY = "createSource";
 
 export interface UserLayerSelectionState {
   generation: number;
@@ -358,17 +357,14 @@ export class UserLayer extends RefCounted {
       sections: [
         {
           jsonKey: DATA_SECTION_JSON_KEY,
-          displayName: "Data Sources",
+          displayName: "Data sources",
           defaultExpanded: true,
           isDefaultKey: true,
         },
         {
-          jsonKey: COMPONENTS_SECTION_JSON_KEY,
-          displayName: "Enabled Components",
-        },
-        {
-          jsonKey: AFFINE_SECTION_JSON_KEY,
-          displayName: "Affine Transform",
+          jsonKey: CREATE_SECTION_JSON_KEY,
+          displayName: "Creation options",
+          defaultExpanded: true,
         },
       ],
     }),
