@@ -117,10 +117,10 @@ const CHANNEL_DIMENSIONS_JSON_KEY = "channelDimensions";
 const VOLUME_RENDERING_JSON_KEY = "volumeRendering";
 const VOLUME_RENDERING_GAIN_JSON_KEY = "volumeRenderingGain";
 const VOLUME_RENDERING_DEPTH_SAMPLES_JSON_KEY = "volumeRenderingDepthSamples";
-const RENDERING_ACCORDION_JSON_KEY = "renderingControls";
-const SLICE_SECTION_JSON_KEY = "sliceControls";
-const VOLUME_SECTION_JSON_KEY = "volumeRenderingControls";
-const SHADER_SECTION_JSON_KEY = "shaderControls";
+const RENDERING_ACCORDION_JSON_KEY = "renderingAccordion";
+const SLICE_SECTION_JSON_KEY = "sliceSection";
+const VOLUME_RENDERING_SECTION_JSON_KEY = "volumeRenderingSection";
+const SHADER_SECTION_JSON_KEY = "shaderSection";
 
 export interface ImageLayerSelectionState extends UserLayerSelectionState {
   value: any;
@@ -173,7 +173,7 @@ export class ImageUserLayer extends Base {
           displayName: "Slice 2D",
         },
         {
-          jsonKey: VOLUME_SECTION_JSON_KEY,
+          jsonKey: VOLUME_RENDERING_SECTION_JSON_KEY,
           displayName: "Volume rendering",
         },
         {
@@ -536,13 +536,13 @@ const LAYER_CONTROLS: LayerControlDefinition<ImageUserLayer>[] = [
   {
     label: "Volume rendering (experimental)",
     toolJson: VOLUME_RENDERING_JSON_KEY,
-    sectionKey: VOLUME_SECTION_JSON_KEY,
+    sectionKey: VOLUME_RENDERING_SECTION_JSON_KEY,
     ...enumLayerControl((layer) => layer.volumeRenderingMode),
   },
   {
     label: "Gain (3D)",
     toolJson: VOLUME_RENDERING_GAIN_JSON_KEY,
-    sectionKey: VOLUME_SECTION_JSON_KEY,
+    sectionKey: VOLUME_RENDERING_SECTION_JSON_KEY,
     isValid: (layer) =>
       makeCachedDerivedWatchableValue(
         (volumeRenderingMode) =>
@@ -557,7 +557,7 @@ const LAYER_CONTROLS: LayerControlDefinition<ImageUserLayer>[] = [
   {
     label: "Resolution (3D)",
     toolJson: VOLUME_RENDERING_DEPTH_SAMPLES_JSON_KEY,
-    sectionKey: VOLUME_SECTION_JSON_KEY,
+    sectionKey: VOLUME_RENDERING_SECTION_JSON_KEY,
     isValid: (layer) =>
       makeCachedDerivedWatchableValue(
         (volumeRenderingMode) =>

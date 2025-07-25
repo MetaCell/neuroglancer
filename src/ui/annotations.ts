@@ -1602,7 +1602,7 @@ const ANNOTATION_COLOR_JSON_KEY = "annotationColor";
 const ANNOTATION_ACCORDION_JSON_KEY = "annotationAccordion";
 export const ANNOTATION_SECTION_JSON_KEY = "annotationSection";
 export const RELATED_SEGMENT_SECTION_JSON_KEY = "relatedSegmentSection";
-export const SPACING_SECTION_JSON_KEY = "spacingControls";
+export const SPACING_SECTION_JSON_KEY = "spacingSection";
 export function UserLayerWithAnnotationsMixin<
   TBase extends { new (...args: any[]): UserLayer },
 >(Base: TBase) {

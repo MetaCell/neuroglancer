@@ -139,7 +139,7 @@ import { registerLayerShaderControlsTool } from "#src/widget/shader_controls.js"
 import { AccordionState } from "#src/widget/accordion.js";
 
 export const SEGMENTATION_RENDERING_ACCORDION_JSON_KEY = "renderingAccordion";
-export const SKELETON_SECTION_JSON_KEY = "skeletonRendering";
+export const SKELETON_SECTION_JSON_KEY = "skeletonSection";
 
 export class SegmentationUserLayerGroupState
   extends RefCounted
