@@ -1,7 +1,6 @@
 import { TrackableBoolean } from "#src/trackable_boolean.js";
 import { WatchableValueInterface } from "#src/trackable_value.js";
 import { RefCounted } from "#src/util/disposable.js";
-import { parseArray } from "#src/util/json.js";
 import { NullarySignal } from "#src/util/signal.js";
 import "#src/widget/accordion.css";
 import { Tab } from "#src/widget/tab_view.js";
@@ -55,32 +54,34 @@ export class AccordionSectionState extends RefCounted {
 export class AccordionState extends RefCounted {
   sectionStates: AccordionSectionState[] = [];
   specificationChanged = new NullarySignal();
-  constructor() {
+  constructor(public accordionOptions: AccordionOptions) {
     super();
-    this.sectionStates = [];
+    for (const sectionOptions of accordionOptions.sections) {
+      this.registerSection(sectionOptions);
+    }
   }
 
   restoreState(obj: unknown) {
+    if (obj === undefined || obj === null || typeof obj !== "object") {
+      return;
+    }
     console.log("AccordionState restoreState", obj);
-    parseArray(obj, (jsonSectionState) => {
-      const jsonKey = Object.keys(jsonSectionState)[0];
+    for (const [jsonKey, isExpanded] of Object.entries(obj)) {
       let existingSection = this.sectionStates.find(
         (s) => s.jsonKey === jsonKey,
       );
       if (existingSection === undefined) {
         existingSection = new AccordionSectionState(this, jsonKey);
       }
-      const isExpanded = jsonSectionState[jsonKey];
       existingSection.isExpanded.value = isExpanded;
-    });
-    this.specificationChanged.dispatch();
+      this.specificationChanged.dispatch();
+    }
   }
 
   registerSection(sectionOptions: AccordionSectionOptions) {
     const existingSection = this.sectionStates.find(
       (s) => s.jsonKey === sectionOptions.jsonKey,
     );
-    // TODO need to figure out how to properly handle defaults
     if (existingSection !== undefined) return;
     const newSection = new AccordionSectionState(
       this,
@@ -104,22 +105,20 @@ export class AccordionState extends RefCounted {
       (section) => section !== undefined,
     );
     if (filteredSections.length === 0) {
-      return undefined;
+      return {};
     }
-    console.log("AccordionState toJSON", filteredSections);
-    return filteredSections;
+    const mergedSections = Object.assign({}, ...filteredSections);
+    return mergedSections;
   }
 }
 
 export class AccordionTab extends Tab {
   sections: AccordionSection[] = [];
   defaultKey: string;
-  constructor(
-    protected accordionState: AccordionState,
-    protected options: AccordionOptions,
-  ) {
-    console.log("AccordionTab constructor", accordionState, options);
+  constructor(protected accordionState: AccordionState) {
+    console.log("AccordionTab constructor", accordionState);
     super();
+    const options = accordionState.accordionOptions;
     this.element.classList.add("neuroglancer-accordion");
     this.registerDisposer(
       this.accordionState.specificationChanged.add(() =>

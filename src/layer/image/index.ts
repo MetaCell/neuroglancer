@@ -105,11 +105,7 @@ import {
   registerLayerShaderControlsTool,
   ShaderControls,
 } from "#src/widget/shader_controls.js";
-import {
-  AccordionOptions,
-  AccordionState,
-  AccordionTab,
-} from "#src/widget/accordion.js";
+import { AccordionState, AccordionTab } from "#src/widget/accordion.js";
 
 const OPACITY_JSON_KEY = "opacity";
 const BLEND_JSON_KEY = "blend";
@@ -136,25 +132,6 @@ const [
   volumeRenderingDepthSamplesMaxLogScale,
 ] = getVolumeRenderingDepthSamplesBoundsLogScale();
 export class ImageUserLayer extends Base {
-  renderingAccordionOptions = {
-    accordionJsonKey: RENDERING_ACCORDION_JSON_KEY,
-    sections: [
-      {
-        jsonKey: SLICE_SECTION_JSON_KEY,
-        displayName: "Slice 2D",
-      },
-      {
-        jsonKey: VOLUME_SECTION_JSON_KEY,
-        displayName: "Volume Rendering",
-      },
-      {
-        jsonKey: SHADER_SECTION_JSON_KEY,
-        displayName: "Shader controls",
-        defaultExpanded: true,
-        isDefaultKey: true,
-      },
-    ],
-  };
   opacity = trackableAlphaValue(0.5);
   blendMode = trackableBlendModeValue();
   codeVisible = new TrackableBoolean(true);
@@ -187,7 +164,27 @@ export class ImageUserLayer extends Base {
   );
   volumeRenderingMode = trackableShaderModeValue();
 
-  renderingAccordionState = this.registerDisposer(new AccordionState());
+  renderingAccordionState = this.registerDisposer(
+    new AccordionState({
+      accordionJsonKey: RENDERING_ACCORDION_JSON_KEY,
+      sections: [
+        {
+          jsonKey: SLICE_SECTION_JSON_KEY,
+          displayName: "Slice 2D",
+        },
+        {
+          jsonKey: VOLUME_SECTION_JSON_KEY,
+          displayName: "Volume Rendering",
+        },
+        {
+          jsonKey: SHADER_SECTION_JSON_KEY,
+          displayName: "Shader controls",
+          defaultExpanded: true,
+          isDefaultKey: true,
+        },
+      ],
+    }),
+  );
 
   shaderControlState = this.registerDisposer(
     new ShaderControlState(
@@ -257,12 +254,7 @@ export class ImageUserLayer extends Base {
     this.tabs.add("rendering", {
       label: "Rendering",
       order: -100,
-      getter: () =>
-        new RenderingOptionsTab(
-          this,
-          this.renderingAccordionState,
-          this.renderingAccordionOptions,
-        ),
+      getter: () => new RenderingOptionsTab(this, this.renderingAccordionState),
     });
     this.tabs.default = "rendering";
   }
@@ -585,9 +577,8 @@ class RenderingOptionsTab extends AccordionTab {
   constructor(
     public layer: ImageUserLayer,
     protected accordionState: AccordionState,
-    protected options: AccordionOptions,
   ) {
-    super(accordionState, options);
+    super(accordionState);
     const { element } = this;
     this.codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
     element.classList.add("neuroglancer-image-dropdown");

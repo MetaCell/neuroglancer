@@ -350,22 +350,22 @@ export class UserLayer extends RefCounted {
   }
 
   tabs = this.registerDisposer(new TabSpecification());
-  sourceAccordionState = this.registerDisposer(new AccordionState());
+  sourceAccordionState = this.registerDisposer(
+    new AccordionState({
+      accordionJsonKey: SOURCE_ACCORDION_JSON_KEY,
+      sections: [
+        {
+          jsonKey: DATA_SECTION_JSON_KEY,
+          displayName: "Data Sources",
+          defaultExpanded: true,
+          isDefaultKey: true,
+        },
+      ],
+    }),
+  );
   panels = new UserLayerSidePanelsState(this);
   tool = this.registerDisposer(new SelectedLegacyTool(this));
   toolBinder: LayerToolBinder<this>;
-
-  sourceAccordionOptions = {
-    accordionJsonKey: SOURCE_ACCORDION_JSON_KEY,
-    sections: [
-      {
-        jsonKey: DATA_SECTION_JSON_KEY,
-        displayName: "Data Sources",
-        defaultExpanded: true,
-        isDefaultKey: true,
-      },
-    ],
-  };
 
   dataSourcesChanged = new NullarySignal();
   dataSources: LayerDataSource[] = [];
@@ -536,12 +536,8 @@ export class UserLayer extends RefCounted {
 
   restoreState(specification: any) {
     this.tool.restoreState(specification[TOOL_JSON_KEY]);
-    verifyOptionalObjectProperty(
-      specification,
-      SOURCE_ACCORDION_JSON_KEY,
-      (obj) => {
-        this.sourceAccordionState.restoreState(obj);
-      },
+    this.sourceAccordionState.restoreState(
+      specification[SOURCE_ACCORDION_JSON_KEY],
     );
     this.panels.restoreState(specification);
     this.localCoordinateSpace.restoreState(
