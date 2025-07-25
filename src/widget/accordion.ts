@@ -80,8 +80,10 @@ export class AccordionState extends RefCounted {
     if (obj === undefined || obj === null || typeof obj !== "object") {
       return;
     }
-    for (const [jsonKey, isExpanded] of Object.entries(obj)) {
-      this.setSectionExpanded(jsonKey, isExpanded as boolean);
+    for (let [jsonKey, isExpanded] of Object.entries(obj)) {
+      if (typeof isExpanded === "boolean") {
+        this.setSectionExpanded(jsonKey, isExpanded);
+      }
     }
   }
 
