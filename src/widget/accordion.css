@@ -4,10 +4,6 @@
   background-color: #141414;
 }
 
-.neuroglancer-accordion-item[data-expanded="true"] {
-  background-color: #1a1a1a;
-}
-
 .neuroglancer-accordion-item {
   border-bottom: 1px solid #ddd;
 }
