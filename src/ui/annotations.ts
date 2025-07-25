@@ -1645,6 +1645,9 @@ export function UserLayerWithAnnotationsMixin<
       this.annotationDisplayState.shaderControls.changed.add(
         this.specificationChanged.dispatch,
       );
+      this.annotationAccordionState.specificationChanged.add(
+        this.specificationChanged.dispatch,
+      );
       this.tabs.add("annotations", {
         label: "Annotations",
         order: 10,
@@ -1704,6 +1707,9 @@ export function UserLayerWithAnnotationsMixin<
       super.restoreState(specification);
       this.annotationDisplayState.color.restoreState(
         specification[ANNOTATION_COLOR_JSON_KEY],
+      );
+      this.annotationAccordionState.restoreState(
+        specification[ANNOTATION_ACCORDION_JSON_KEY],
       );
     }
 
@@ -2198,6 +2204,7 @@ export function UserLayerWithAnnotationsMixin<
     toJSON() {
       const x = super.toJSON();
       x[ANNOTATION_COLOR_JSON_KEY] = this.annotationDisplayState.color.toJSON();
+      x[ANNOTATION_ACCORDION_JSON_KEY] = this.annotationAccordionState.toJSON();
       return x;
     }
   }
