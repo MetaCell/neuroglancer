@@ -34,7 +34,6 @@ export class AccordionSectionState extends RefCounted {
   ) {
     super();
     this.isExpanded = new TrackableBoolean(defaultExpanded, defaultExpanded);
-    parentState.registerDisposer(this);
     this.registerDisposer(
       this.isExpanded.changed.add(() => {
         parentState.specificationChanged.dispatch();
@@ -65,7 +64,6 @@ export class AccordionState extends RefCounted {
     if (obj === undefined || obj === null || typeof obj !== "object") {
       return;
     }
-    console.log("AccordionState restoreState", obj);
     for (const [jsonKey, isExpanded] of Object.entries(obj)) {
       let existingSection = this.sectionStates.find(
         (s) => s.jsonKey === jsonKey,
@@ -83,10 +81,12 @@ export class AccordionState extends RefCounted {
       (s) => s.jsonKey === sectionOptions.jsonKey,
     );
     if (existingSection !== undefined) return;
-    const newSection = new AccordionSectionState(
-      this,
-      sectionOptions.jsonKey,
-      sectionOptions.defaultExpanded,
+    const newSection = this.registerDisposer(
+      new AccordionSectionState(
+        this,
+        sectionOptions.jsonKey,
+        sectionOptions.defaultExpanded,
+      ),
     );
     this.sectionStates.push(newSection);
   }
@@ -116,7 +116,6 @@ export class AccordionTab extends Tab {
   sections: AccordionSection[] = [];
   defaultKey: string;
   constructor(protected accordionState: AccordionState) {
-    console.log("AccordionTab constructor", accordionState);
     super();
     const options = accordionState.accordionOptions;
     this.element.classList.add("neuroglancer-accordion");
@@ -142,9 +141,7 @@ export class AccordionTab extends Tab {
     this.accordionState.sectionStates.forEach((state) => {
       const section = this.getSectionByKey(state.jsonKey);
       if (section === undefined) {
-        console.warn(
-          `AccordionTab: No section found for key ${state.jsonKey}. This may be due to a mismatch in section names.`,
-        );
+        console.warn(`AccordionTab: No section found for key ${state.jsonKey}`);
         return;
       }
       section.container.dataset.expanded = String(state.isExpanded.value);
@@ -175,6 +172,7 @@ export class AccordionTab extends Tab {
     this.element.appendChild(container);
 
     newSection.header.textContent = newSection.name;
+    container.style.display = "none";
     container.dataset.expanded = String(option.defaultExpanded ?? false);
 
     if (option.isDefaultKey) {
@@ -198,5 +196,6 @@ export class AccordionTab extends Tab {
       this.getSectionByKey(jsonKey ?? this.defaultKey) ??
       this.getSectionByKey(this.defaultKey);
     section!.body.appendChild(content);
+    section!.container.style.display = "block";
   }
 }
