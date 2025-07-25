@@ -105,7 +105,11 @@ import {
   registerLayerShaderControlsTool,
   ShaderControls,
 } from "#src/widget/shader_controls.js";
-import { AccordionSectionStates, AccordionTab } from "#src/widget/accordion.js";
+import {
+  AccordionOptions,
+  AccordionState,
+  AccordionTab,
+} from "#src/widget/accordion.js";
 
 const OPACITY_JSON_KEY = "opacity";
 const BLEND_JSON_KEY = "blend";
@@ -117,22 +121,10 @@ const CHANNEL_DIMENSIONS_JSON_KEY = "channelDimensions";
 const VOLUME_RENDERING_JSON_KEY = "volumeRendering";
 const VOLUME_RENDERING_GAIN_JSON_KEY = "volumeRenderingGain";
 const VOLUME_RENDERING_DEPTH_SAMPLES_JSON_KEY = "volumeRenderingDepthSamples";
-const IMAGE_ACCORDIONS = [
-  {
-    jsonKey: "sliceControls",
-    displayName: "Slice 2D",
-  },
-  {
-    jsonKey: "volumeRenderingControls",
-    displayName: "Volume Rendering",
-  },
-  {
-    jsonKey: "shaderControls",
-    displayName: "Shader controls",
-    defaultExpanded: true,
-    isDefaultKey: true,
-  },
-];
+const RENDERING_ACCORDION_JSON_KEY = "renderingControls";
+const SLICE_SECTION_JSON_KEY = "sliceControls";
+const VOLUME_SECTION_JSON_KEY = "volumeRenderingControls";
+const SHADER_SECTION_JSON_KEY = "shaderControls";
 
 export interface ImageLayerSelectionState extends UserLayerSelectionState {
   value: any;
@@ -144,6 +136,25 @@ const [
   volumeRenderingDepthSamplesMaxLogScale,
 ] = getVolumeRenderingDepthSamplesBoundsLogScale();
 export class ImageUserLayer extends Base {
+  renderingAccordionOptions = {
+    accordionJsonKey: RENDERING_ACCORDION_JSON_KEY,
+    sections: [
+      {
+        jsonKey: SLICE_SECTION_JSON_KEY,
+        displayName: "Slice 2D",
+      },
+      {
+        jsonKey: VOLUME_SECTION_JSON_KEY,
+        displayName: "Volume Rendering",
+      },
+      {
+        jsonKey: SHADER_SECTION_JSON_KEY,
+        displayName: "Shader controls",
+        defaultExpanded: true,
+        isDefaultKey: true,
+      },
+    ],
+  };
   opacity = trackableAlphaValue(0.5);
   blendMode = trackableBlendModeValue();
   codeVisible = new TrackableBoolean(true);
@@ -175,6 +186,8 @@ export class ImageUserLayer extends Base {
     ),
   );
   volumeRenderingMode = trackableShaderModeValue();
+
+  renderingAccordionState = this.registerDisposer(new AccordionState());
 
   shaderControlState = this.registerDisposer(
     new ShaderControlState(
@@ -238,10 +251,18 @@ export class ImageUserLayer extends Base {
     this.volumeRenderingDepthSamplesTarget.changed.add(
       this.specificationChanged.dispatch,
     );
+    this.renderingAccordionState.specificationChanged.add(
+      this.specificationChanged.dispatch,
+    );
     this.tabs.add("rendering", {
       label: "Rendering",
       order: -100,
-      getter: () => new RenderingOptionsTab(this, this.accordionTabState),
+      getter: () =>
+        new RenderingOptionsTab(
+          this,
+          this.renderingAccordionState,
+          this.renderingAccordionOptions,
+        ),
     });
     this.tabs.default = "rendering";
   }
@@ -358,6 +379,13 @@ export class ImageUserLayer extends Base {
           volumeRenderingDepthSamplesTarget,
         ),
     );
+    verifyOptionalObjectProperty(
+      specification,
+      RENDERING_ACCORDION_JSON_KEY,
+      (accordionState) => {
+        this.renderingAccordionState.restoreState(accordionState);
+      },
+    );
   }
   toJSON() {
     const x = super.toJSON();
@@ -373,6 +401,7 @@ export class ImageUserLayer extends Base {
     x[VOLUME_RENDERING_GAIN_JSON_KEY] = this.volumeRenderingGain.toJSON();
     x[VOLUME_RENDERING_DEPTH_SAMPLES_JSON_KEY] =
       this.volumeRenderingDepthSamplesTarget.toJSON();
+    x[RENDERING_ACCORDION_JSON_KEY] = this.renderingAccordionState.toJSON();
     return x;
   }
 
@@ -555,9 +584,10 @@ class RenderingOptionsTab extends AccordionTab {
   codeWidget: ShaderCodeWidget;
   constructor(
     public layer: ImageUserLayer,
-    protected accordionTabState: AccordionSectionStates,
+    protected accordionState: AccordionState,
+    protected options: AccordionOptions,
   ) {
-    super(accordionTabState, IMAGE_ACCORDIONS);
+    super(accordionState, options);
     const { element } = this;
     this.codeWidget = this.registerDisposer(makeShaderCodeWidget(this.layer));
     element.classList.add("neuroglancer-image-dropdown");

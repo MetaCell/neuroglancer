@@ -6,7 +6,10 @@ import { NullarySignal } from "#src/util/signal.js";
 import "#src/widget/accordion.css";
 import { Tab } from "#src/widget/tab_view.js";
 
-export const ACCORDION_JSON_KEY = "accordion";
+export interface AccordionOptions {
+  accordionJsonKey: string;
+  sections: AccordionSectionOptions[];
+}
 
 interface AccordionSectionOptions {
   jsonKey: string;
@@ -23,11 +26,10 @@ interface AccordionSection {
   body: HTMLElement;
 }
 
-// Modelled on the layer_side_panel_state.ts
 export class AccordionSectionState extends RefCounted {
   isExpanded: WatchableValueInterface<boolean>;
   constructor(
-    public parentState: AccordionSectionStates,
+    public parentState: AccordionState,
     public jsonKey: string,
     private defaultExpanded = false,
   ) {
@@ -50,7 +52,7 @@ export class AccordionSectionState extends RefCounted {
   }
 }
 
-export class AccordionSectionStates extends RefCounted {
+export class AccordionState extends RefCounted {
   sectionStates: AccordionSectionState[] = [];
   specificationChanged = new NullarySignal();
   constructor() {
@@ -59,17 +61,18 @@ export class AccordionSectionStates extends RefCounted {
   }
 
   restoreState(obj: unknown) {
-    if (obj === undefined) {
-      return;
-    }
-    console.log("Restoring accordion state", obj);
-    parseArray(obj, (section) => {
-      const jsonKey = Object.keys(section)[0];
-      const isExpanded = section[jsonKey];
-      const newSection = new AccordionSectionState(this, jsonKey);
-      newSection.isExpanded.value = isExpanded;
+    console.log("AccordionState restoreState", obj);
+    parseArray(obj, (jsonSectionState) => {
+      const jsonKey = Object.keys(jsonSectionState)[0];
+      let existingSection = this.sectionStates.find(
+        (s) => s.jsonKey === jsonKey,
+      );
+      if (existingSection === undefined) {
+        existingSection = new AccordionSectionState(this, jsonKey);
+      }
+      const isExpanded = jsonSectionState[jsonKey];
+      existingSection.isExpanded.value = isExpanded;
     });
-    console.log("Restored accordion state", this.sectionStates);
     this.specificationChanged.dispatch();
   }
 
@@ -103,6 +106,7 @@ export class AccordionSectionStates extends RefCounted {
     if (filteredSections.length === 0) {
       return undefined;
     }
+    console.log("AccordionState toJSON", filteredSections);
     return filteredSections;
   }
 }
@@ -111,34 +115,33 @@ export class AccordionTab extends Tab {
   sections: AccordionSection[] = [];
   defaultKey: string;
   constructor(
-    protected accordionTabState: AccordionSectionStates,
-    public options: AccordionSectionOptions[],
+    protected accordionState: AccordionState,
+    protected options: AccordionOptions,
   ) {
+    console.log("AccordionTab constructor", accordionState, options);
     super();
     this.element.classList.add("neuroglancer-accordion");
     this.registerDisposer(
-      this.accordionTabState.specificationChanged.add(() =>
+      this.accordionState.specificationChanged.add(() =>
         this.updateSectionsExpanded(),
       ),
     );
-    options.forEach((option) => {
+    options.sections.forEach((option) => {
       this.makeNewSection(option);
     });
-    if (this.defaultKey === undefined) {
-      this.defaultKey = options[0].jsonKey;
+    if (this.defaultKey === undefined && options.sections.length > 0) {
+      this.defaultKey = options.sections[0].jsonKey;
     }
     this.updateSectionsExpanded();
   }
 
   private setSectionExpanded(jsonKey: string, expand?: boolean): void {
-    this.accordionTabState.setSectionExpanded(jsonKey, expand);
-    console.log(this.accordionTabState);
+    this.accordionState.setSectionExpanded(jsonKey, expand);
   }
 
   private updateSectionsExpanded() {
-    this.accordionTabState.sectionStates.forEach((state) => {
+    this.accordionState.sectionStates.forEach((state) => {
       const section = this.getSectionByKey(state.jsonKey);
-      console.log(state.jsonKey, this.sections);
       if (section === undefined) {
         console.warn(
           `AccordionTab: No section found for key ${state.jsonKey}. This may be due to a mismatch in section names.`,
@@ -183,7 +186,7 @@ export class AccordionTab extends Tab {
       this.setSectionExpanded(option.jsonKey),
     );
 
-    this.accordionTabState.registerSection(option);
+    this.accordionState.registerSection(option);
     return newSection;
   }
 

@@ -113,10 +113,7 @@ import type { DependentViewContext } from "#src/widget/dependent_view_widget.js"
 import type { Tab } from "#src/widget/tab_view.js";
 import { TabSpecification } from "#src/widget/tab_view.js";
 import type { RPC } from "#src/worker_rpc.js";
-import {
-  ACCORDION_JSON_KEY,
-  AccordionSectionStates,
-} from "#src/widget/accordion.js";
+import { AccordionState } from "#src/widget/accordion.js";
 
 const TOOL_JSON_KEY = "tool";
 const TOOL_BINDINGS_JSON_KEY = "toolBindings";
@@ -126,6 +123,8 @@ const LOCAL_COORDINATE_SPACE_JSON_KEY = "localDimensions";
 const SOURCE_JSON_KEY = "source";
 const TRANSFORM_JSON_KEY = "transform";
 const PICK_JSON_KEY = "pick";
+const SOURCE_ACCORDION_JSON_KEY = "sourceAccordion";
+const DATA_SECTION_JSON_KEY = "dataSources";
 
 export interface UserLayerSelectionState {
   generation: number;
@@ -351,10 +350,22 @@ export class UserLayer extends RefCounted {
   }
 
   tabs = this.registerDisposer(new TabSpecification());
-  accordionTabState = new AccordionSectionStates();
+  sourceAccordionState = this.registerDisposer(new AccordionState());
   panels = new UserLayerSidePanelsState(this);
   tool = this.registerDisposer(new SelectedLegacyTool(this));
   toolBinder: LayerToolBinder<this>;
+
+  sourceAccordionOptions = {
+    accordionJsonKey: SOURCE_ACCORDION_JSON_KEY,
+    sections: [
+      {
+        jsonKey: DATA_SECTION_JSON_KEY,
+        displayName: "Data Sources",
+        defaultExpanded: true,
+        isDefaultKey: true,
+      },
+    ],
+  };
 
   dataSourcesChanged = new NullarySignal();
   dataSources: LayerDataSource[] = [];
@@ -371,7 +382,7 @@ export class UserLayer extends RefCounted {
     this.localCoordinateSpaceCombiner.includeDimensionPredicate =
       isLocalOrChannelDimension;
     this.tabs.changed.add(this.specificationChanged.dispatch);
-    this.accordionTabState.specificationChanged.add(
+    this.sourceAccordionState.specificationChanged.add(
       this.specificationChanged.dispatch,
     );
     this.panels.specificationChanged.add(this.specificationChanged.dispatch);
@@ -525,9 +536,13 @@ export class UserLayer extends RefCounted {
 
   restoreState(specification: any) {
     this.tool.restoreState(specification[TOOL_JSON_KEY]);
-    // TODO accordion builds up "" entries and also isn't used right
-    // now to actually restore whether sections are expanded
-    this.accordionTabState.restoreState(specification[ACCORDION_JSON_KEY]);
+    verifyOptionalObjectProperty(
+      specification,
+      SOURCE_ACCORDION_JSON_KEY,
+      (obj) => {
+        this.sourceAccordionState.restoreState(obj);
+      },
+    );
     this.panels.restoreState(specification);
     this.localCoordinateSpace.restoreState(
       specification[LOCAL_COORDINATE_SPACE_JSON_KEY],
@@ -611,7 +626,7 @@ export class UserLayer extends RefCounted {
       [LOCAL_POSITION_JSON_KEY]: this.localPosition.toJSON(),
       [LOCAL_VELOCITY_JSON_KEY]: this.localVelocity.toJSON(),
       [PICK_JSON_KEY]: this.pick.toJSON(),
-      [ACCORDION_JSON_KEY]: this.accordionTabState.toJSON(),
+      [SOURCE_ACCORDION_JSON_KEY]: this.sourceAccordionState.toJSON(),
       ...this.panels.toJSON(),
     };
   }
