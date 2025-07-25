@@ -4,6 +4,7 @@ import { RefCounted } from "#src/util/disposable.js";
 import { NullarySignal } from "#src/util/signal.js";
 import "#src/widget/accordion.css";
 import { Tab } from "#src/widget/tab_view.js";
+import svg_chevron_up from "ikonate/icons/chevron-up.svg?raw";
 
 export interface AccordionOptions {
   accordionJsonKey: string;
@@ -159,7 +160,15 @@ export class AccordionTab extends Tab {
     container.appendChild(newSection.body);
     this.element.appendChild(container);
 
-    newSection.header.textContent = newSection.name;
+    const chevron = document.createElement("span");
+    chevron.classList.add("neuroglancer-accordion-chevron");
+    chevron.innerHTML = svg_chevron_up;
+    const headerText = document.createElement("span");
+    headerText.classList.add("neuroglancer-accordion-header-text");
+    headerText.textContent = option.displayName;
+    header.appendChild(headerText);
+    header.appendChild(chevron);
+
     container.style.display = "none";
     container.dataset.expanded = String(option.defaultExpanded ?? false);
 
@@ -194,13 +203,13 @@ export class AccordionTab extends Tab {
   appendChild(content: HTMLElement, jsonKey?: string, hidden?: boolean): void {
     const section = this.getSectionWithFallback(jsonKey);
     section!.body.appendChild(content);
-    if (!hidden) section!.container.style.display = "block";
+    if (!hidden) section!.container.style.display = "";
   }
 
   setSectionHidden(jsonKey: string, hidden: boolean): void {
     const section = this.getSectionByKey(jsonKey);
     if (section !== undefined) {
-      section.container.style.display = hidden ? "none" : "block";
+      section.container.style.display = hidden ? "none" : "";
     }
   }
 

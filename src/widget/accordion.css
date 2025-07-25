@@ -12,22 +12,34 @@
   border-bottom: 1px solid #ddd;
 }
 
-.neuroglancer-accordion-item[data-expanded="true"] .neuroglancer-accordion-body {
+.neuroglancer-accordion-item[data-expanded="true"]
+  .neuroglancer-accordion-body {
   display: flex; /* Show when expanded */
 }
 
-.neuroglancer-accordion-item[data-expanded="false"] .neuroglancer-accordion-body {
-  display: none; /* Hide when collapsed */
+.neuroglancer-accordion-item[data-expanded="true"]
+  .neuroglancer-accordion-header
+  .neuroglancer-accordion-chevron
+  svg {
+  transform: rotate(180deg); /* Rotate chevron when expanded */
 }
 
-.neuroglancer-accordion-item[data-expanded="false"] {
-  background-color: #141414;
+.neuroglancer-accordion-chevron svg {
+  width: 16px;
+  height: 16px;
+  fill: #fff; /* Chevron color */
+}
+
+.neuroglancer-accordion-item[data-expanded="false"]
+  .neuroglancer-accordion-body {
+  display: none; /* Hide when collapsed */
 }
 
 .neuroglancer-accordion-header {
   padding: 10px;
   cursor: pointer;
-  background-color: #141414;
+  justify-content: space-between;
+  display: flex;
 }
 
 .neuroglancer-accordion-header:hover {
