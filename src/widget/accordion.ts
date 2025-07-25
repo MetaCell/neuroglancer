@@ -191,11 +191,18 @@ export class AccordionTab extends Tab {
     return this.sections.find((e) => e.jsonKey === jsonKey);
   }
 
-  appendChild(content: HTMLElement, jsonKey?: string): void {
+  appendChild(content: HTMLElement, jsonKey?: string, hidden?: boolean): void {
     const section =
       this.getSectionByKey(jsonKey ?? this.defaultKey) ??
       this.getSectionByKey(this.defaultKey);
     section!.body.appendChild(content);
-    section!.container.style.display = "block";
+    if (!hidden) section!.container.style.display = "block";
+  }
+
+  showSection(jsonKey: string): void {
+    const section = this.getSectionByKey(jsonKey);
+    if (section !== undefined) {
+      section.container.style.display = "block";
+    }
   }
 }

@@ -52,7 +52,11 @@ import type {
   AnnotationLayerView,
   MergedAnnotationStates,
 } from "#src/ui/annotations.js";
-import { UserLayerWithAnnotationsMixin } from "#src/ui/annotations.js";
+import {
+  RELATED_SEGMENT_SECTION_JSON_KEY,
+  SPACING_SECTION_JSON_KEY,
+  UserLayerWithAnnotationsMixin,
+} from "#src/ui/annotations.js";
 import { animationFrameDebounce } from "#src/util/animation_frame_debounce.js";
 import type { Borrowed, Owned } from "#src/util/disposable.js";
 import { RefCounted } from "#src/util/disposable.js";
@@ -671,12 +675,14 @@ export class AnnotationUserLayer extends Base {
             renderScaleWidget.label.textContent = "Projection";
             parent.appendChild(renderScaleWidget.element);
           }
+          tab.showSection(SPACING_SECTION_JSON_KEY);
         },
       ),
     );
-    tab.element.insertBefore(
+    tab.appendChild(
       renderScaleControls.element,
-      tab.element.firstChild,
+      SPACING_SECTION_JSON_KEY,
+      true /* hidden */,
     );
     {
       const checkbox = tab.registerDisposer(
@@ -692,12 +698,15 @@ export class AnnotationUserLayer extends Base {
         "Display all annotations if filtering by related segments is enabled but no segments are selected";
       label.appendChild(checkbox.element);
       label.classList.add("neuroglass-ignore-label");
-      tab.element.appendChild(label);
+      tab.appendChild(label, RELATED_SEGMENT_SECTION_JSON_KEY);
     }
     const linkedSegmentationLayersWidget = tab.registerDisposer(
       new LinkedSegmentationLayersWidget(this.linkedSegmentationLayers),
     );
-    tab.element.appendChild(linkedSegmentationLayersWidget.element);
+    tab.appendChild(
+      linkedSegmentationLayersWidget.element,
+      RELATED_SEGMENT_SECTION_JSON_KEY,
+    );
   }
 
   toJSON() {
