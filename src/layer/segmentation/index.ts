@@ -34,7 +34,13 @@ import {
 import type { LoadedDataSubsource } from "#src/layer/layer_data_source.js";
 import { layerDataSourceSpecificationFromJson } from "#src/layer/layer_data_source.js";
 import * as json_keys from "#src/layer/segmentation/json_keys.js";
-import { registerLayerControls } from "#src/layer/segmentation/layer_controls.js";
+import {
+  APPEARANCE_SECTION_JSON_KEY,
+  MESH_SECTION_JSON_KEY,
+  registerLayerControls,
+  SLICE_SECTION_JSON_KEY,
+  VISIBILITY_SECTION_JSON_KEY,
+} from "#src/layer/segmentation/layer_controls.js";
 import {
   MeshLayer,
   MeshSource,
@@ -130,6 +136,10 @@ import { Signal } from "#src/util/signal.js";
 import { makeWatchableShaderError } from "#src/webgl/dynamic_shader.js";
 import type { DependentViewContext } from "#src/widget/dependent_view_widget.js";
 import { registerLayerShaderControlsTool } from "#src/widget/shader_controls.js";
+import { AccordionState } from "#src/widget/accordion.js";
+
+export const SEGMENTATION_RENDERING_ACCORDION_JSON_KEY = "renderingAccordion";
+export const SKELETON_SECTION_JSON_KEY = "skeletonRendering";
 
 export class SegmentationUserLayerGroupState
   extends RefCounted
@@ -621,6 +631,32 @@ export class SegmentationUserLayer extends Base {
     x === undefined ? undefined : parseUint64(x),
   );
 
+  renderingAccordionState = new AccordionState({
+    accordionJsonKey: SEGMENTATION_RENDERING_ACCORDION_JSON_KEY,
+    sections: [
+      {
+        jsonKey: VISIBILITY_SECTION_JSON_KEY,
+        displayName: "Visibility",
+      },
+      {
+        jsonKey: APPEARANCE_SECTION_JSON_KEY,
+        displayName: "Appearance",
+      },
+      {
+        jsonKey: SLICE_SECTION_JSON_KEY,
+        displayName: "Slice",
+      },
+      {
+        jsonKey: MESH_SECTION_JSON_KEY,
+        displayName: "Mesh",
+      },
+      {
+        jsonKey: SKELETON_SECTION_JSON_KEY,
+        displayName: "Skeleton",
+      },
+    ],
+  });
+
   constructor(managedLayer: Borrowed<ManagedUserLayer>) {
     super(managedLayer);
     this.codeVisible.changed.add(this.specificationChanged.dispatch);
@@ -683,6 +719,9 @@ export class SegmentationUserLayer extends Base {
     );
     this.displayState.linkedSegmentationGroup.changed.add(() =>
       this.updateDataSubsourceActivations(),
+    );
+    this.renderingAccordionState.specificationChanged.add(
+      this.specificationChanged.dispatch,
     );
     this.tabs.add("rendering", {
       label: "Render",
@@ -1023,6 +1062,9 @@ export class SegmentationUserLayer extends Base {
     this.displayState.segmentationColorGroupState.value.restoreState(
       specification,
     );
+    this.renderingAccordionState.restoreState(
+      specification[SEGMENTATION_RENDERING_ACCORDION_JSON_KEY],
+    );
   }
 
   toJSON() {
@@ -1072,6 +1114,8 @@ export class SegmentationUserLayer extends Base {
         this.displayState.segmentationColorGroupState.value.toJSON(),
       );
     }
+    x[SEGMENTATION_RENDERING_ACCORDION_JSON_KEY] =
+      this.renderingAccordionState.toJSON();
     return x;
   }
 
