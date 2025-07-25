@@ -27,6 +27,7 @@ interface AccordionSection {
 
 export class AccordionSectionState extends RefCounted {
   isExpanded: WatchableValueInterface<boolean>;
+
   constructor(
     public parentState: AccordionState,
     public jsonKey: string,
@@ -43,9 +44,7 @@ export class AccordionSectionState extends RefCounted {
   }
 
   toJSON() {
-    if (this.isExpanded.value === this.defaultExpanded) {
-      return undefined;
-    }
+    if (this.isExpanded.value === this.defaultExpanded) return undefined;
     return { [this.jsonKey]: this.isExpanded.value };
   }
 }
@@ -53,11 +52,27 @@ export class AccordionSectionState extends RefCounted {
 export class AccordionState extends RefCounted {
   sectionStates: AccordionSectionState[] = [];
   specificationChanged = new NullarySignal();
+
   constructor(public accordionOptions: AccordionOptions) {
     super();
     for (const sectionOptions of accordionOptions.sections) {
-      this.registerSection(sectionOptions);
+      this.getOrCreateSectionState(sectionOptions);
     }
+  }
+
+  getOrCreateSectionState(sectionOptions: AccordionSectionOptions) {
+    const { jsonKey, defaultExpanded } = sectionOptions;
+    let sectionState = this.getSectionState(jsonKey);
+    if (sectionState === undefined) {
+      sectionState = this.registerDisposer(
+        new AccordionSectionState(this, jsonKey, defaultExpanded),
+      );
+    }
+    return sectionState;
+  }
+
+  getSectionState(jsonKey: string): AccordionSectionState | undefined {
+    return this.sectionStates.find((s) => s.jsonKey === jsonKey);
   }
 
   restoreState(obj: unknown) {
@@ -65,56 +80,32 @@ export class AccordionState extends RefCounted {
       return;
     }
     for (const [jsonKey, isExpanded] of Object.entries(obj)) {
-      let existingSection = this.sectionStates.find(
-        (s) => s.jsonKey === jsonKey,
-      );
-      if (existingSection === undefined) {
-        existingSection = new AccordionSectionState(this, jsonKey);
-      }
-      existingSection.isExpanded.value = isExpanded;
-      this.specificationChanged.dispatch();
+      this.setSectionExpanded(jsonKey, isExpanded as boolean);
     }
-  }
-
-  registerSection(sectionOptions: AccordionSectionOptions) {
-    const existingSection = this.sectionStates.find(
-      (s) => s.jsonKey === sectionOptions.jsonKey,
-    );
-    if (existingSection !== undefined) return;
-    const newSection = this.registerDisposer(
-      new AccordionSectionState(
-        this,
-        sectionOptions.jsonKey,
-        sectionOptions.defaultExpanded,
-      ),
-    );
-    this.sectionStates.push(newSection);
   }
 
   setSectionExpanded(jsonKey: string, expand?: boolean): void {
-    let section = this.sectionStates.find((s) => s.jsonKey === jsonKey);
-    if (section === undefined) {
-      section = new AccordionSectionState(this, jsonKey);
+    const section = this.getSectionState(jsonKey);
+    if (section !== undefined) {
+      section.isExpanded.value = expand ?? !section.isExpanded.value;
     }
-    section.isExpanded.value = expand ?? !section.isExpanded.value;
   }
 
   toJSON() {
-    const allSections = this.sectionStates.map((section) => section.toJSON());
-    const filteredSections = allSections.filter(
-      (section) => section !== undefined,
-    );
-    if (filteredSections.length === 0) {
-      return undefined;
-    }
-    const mergedSections = Object.assign({}, ...filteredSections);
-    return mergedSections;
+    const sectionsData = this.sectionStates
+      .map((section) => section.toJSON())
+      .filter((data) => data !== undefined);
+
+    return sectionsData.length === 0
+      ? undefined
+      : Object.assign({}, ...sectionsData);
   }
 }
 
 export class AccordionTab extends Tab {
   sections: AccordionSection[] = [];
   defaultKey: string;
+
   constructor(protected accordionState: AccordionState) {
     super();
     const options = accordionState.accordionOptions;
@@ -125,7 +116,7 @@ export class AccordionTab extends Tab {
       ),
     );
     options.sections.forEach((option) => {
-      this.makeNewSection(option);
+      this.createAccordionSection(option);
     });
     if (this.defaultKey === undefined && options.sections.length > 0) {
       this.defaultKey = options.sections[0].jsonKey;
@@ -140,10 +131,7 @@ export class AccordionTab extends Tab {
   private updateSectionsExpanded() {
     this.accordionState.sectionStates.forEach((state) => {
       const section = this.getSectionByKey(state.jsonKey);
-      if (section === undefined) {
-        console.warn(`AccordionTab: No section found for key ${state.jsonKey}`);
-        return;
-      }
+      if (section === undefined) return;
       section.container.dataset.expanded = String(state.isExpanded.value);
       section.header.setAttribute(
         "aria-expanded",
@@ -152,7 +140,7 @@ export class AccordionTab extends Tab {
     });
   }
 
-  private makeNewSection(
+  private createAccordionSection(
     option: AccordionSectionOptions,
   ): AccordionSection | undefined {
     const newSection: AccordionSection = {
@@ -183,18 +171,28 @@ export class AccordionTab extends Tab {
       this.setSectionExpanded(option.jsonKey),
     );
 
-    this.accordionState.registerSection(option);
+    // Usually, the state is pre-propulated with all the relevant sections.
+    // However, because appendChild is public and can be called with
+    // a jsonKey that is not in the initial accordionOptions, we need to
+    // add the section into the state if that happens
+    // This state wouldn't get properly restored if that occurs,
+    // but in case there is some unforeseen section added, at least
+    // the controls to expand/collapse it will still work because of this
+    this.accordionState.getOrCreateSectionState(option);
     return newSection;
   }
 
-  getSectionByKey(jsonKey: string): AccordionSection | undefined {
+  private getSectionByKey(jsonKey: string): AccordionSection | undefined {
     return this.sections.find((e) => e.jsonKey === jsonKey);
   }
 
+  private getSectionWithFallback(jsonKey?: string): AccordionSection {
+    return (this.getSectionByKey(jsonKey ?? this.defaultKey) ??
+      this.getSectionByKey(this.defaultKey))!;
+  }
+
   appendChild(content: HTMLElement, jsonKey?: string, hidden?: boolean): void {
-    const section =
-      this.getSectionByKey(jsonKey ?? this.defaultKey) ??
-      this.getSectionByKey(this.defaultKey);
+    const section = this.getSectionWithFallback(jsonKey);
     section!.body.appendChild(content);
     if (!hidden) section!.container.style.display = "block";
   }

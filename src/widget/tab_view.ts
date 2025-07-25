@@ -296,7 +296,6 @@ function updateTabLabelVisibilityStyle(
   }
 }
 
-// TODO allow per accordion, for now see if can store all expanded/not
 export interface TabViewOptions {
   makeTab: (id: string) => Tab;
   selectedTab: WatchableValueInterface<string | undefined>;
