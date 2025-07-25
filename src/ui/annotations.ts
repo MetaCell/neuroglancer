@@ -485,7 +485,7 @@ export class AnnotationLayerView extends AccordionTab {
     mutableControls.appendChild(helpIcon);
 
     toolbox.appendChild(mutableControls);
-    this.appendChild(toolbox, ANNOTATION_TOOL_SECTION_JSON_KEY);
+    this.appendChild(toolbox);
 
     this.appendChild(this.headerRow);
     const { virtualList } = this;
@@ -1603,7 +1603,6 @@ const ANNOTATION_ACCORDION_JSON_KEY = "annotationAccordion";
 export const ANNOTATION_SECTION_JSON_KEY = "annotationSection";
 export const RELATED_SEGMENT_SECTION_JSON_KEY = "relatedSegmentSection";
 export const SPACING_SECTION_JSON_KEY = "spacingControls";
-export const ANNOTATION_TOOL_SECTION_JSON_KEY = "annotationToolSection";
 export function UserLayerWithAnnotationsMixin<
   TBase extends { new (...args: any[]): UserLayer },
 >(Base: TBase) {
@@ -1620,10 +1619,6 @@ export function UserLayerWithAnnotationsMixin<
         {
           jsonKey: RELATED_SEGMENT_SECTION_JSON_KEY,
           displayName: "Related segments",
-        },
-        {
-          jsonKey: ANNOTATION_TOOL_SECTION_JSON_KEY,
-          displayName: "Tools",
         },
         {
           jsonKey: ANNOTATION_SECTION_JSON_KEY,

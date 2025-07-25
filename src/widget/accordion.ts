@@ -199,10 +199,18 @@ export class AccordionTab extends Tab {
     if (!hidden) section!.container.style.display = "block";
   }
 
-  showSection(jsonKey: string): void {
+  setSectionHidden(jsonKey: string, hidden: boolean): void {
     const section = this.getSectionByKey(jsonKey);
     if (section !== undefined) {
-      section.container.style.display = "block";
+      section.container.style.display = hidden ? "none" : "block";
     }
+  }
+
+  showSection(jsonKey: string): void {
+    this.setSectionHidden(jsonKey, false);
+  }
+
+  hideSection(jsonKey: string): void {
+    this.setSectionHidden(jsonKey, true);
   }
 }
