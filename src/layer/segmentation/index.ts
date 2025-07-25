@@ -652,7 +652,7 @@ export class SegmentationUserLayer extends Base {
       },
       {
         jsonKey: SKELETON_SECTION_JSON_KEY,
-        displayName: "Skeleton 3D",
+        displayName: "Skeletons",
       },
     ],
   });

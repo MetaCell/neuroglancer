@@ -14,7 +14,10 @@
  * limitations under the License.
  */
 
-import { type SegmentationUserLayer } from "#src/layer/segmentation/index.js";
+import {
+  SKELETON_SECTION_JSON_KEY,
+  type SegmentationUserLayer,
+} from "#src/layer/segmentation/index.js";
 import { SKELETON_RENDERING_SHADER_CONTROL_TOOL_ID } from "#src/layer/segmentation/json_keys.js";
 import {
   LAYER_CONTROLS,
@@ -117,6 +120,6 @@ export class DisplayOptionsTab extends AccordionTab {
         this.visibility,
       ),
     );
-    element.appendChild(skeletonControls.element);
+    this.appendChild(skeletonControls.element, SKELETON_SECTION_JSON_KEY);
   }
 }

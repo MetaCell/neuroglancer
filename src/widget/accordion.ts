@@ -105,7 +105,7 @@ export class AccordionState extends RefCounted {
       (section) => section !== undefined,
     );
     if (filteredSections.length === 0) {
-      return {};
+      return undefined;
     }
     const mergedSections = Object.assign({}, ...filteredSections);
     return mergedSections;
