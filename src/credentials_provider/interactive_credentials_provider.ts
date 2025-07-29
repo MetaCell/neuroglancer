@@ -44,15 +44,19 @@ export function getCredentialsWithStatus<Token>(
     }
     function writeLoginStatus(
       msg = `${options.description} ${requestDescription} required.`,
+      // msg = "The BrainMaps project requires user authentication to retrieve its data sources. To view this dataset in Neuroglancer, please ensure you are logged in with valid credentials.",
       linkMessage = `Request ${requestDescription}.`,
+      title = "Login Required"
     ) {
-      status.setText(msg + "  ");
-      const button = document.createElement("button");
-      button.textContent = linkMessage;
-      status.element.appendChild(button);
-      button.addEventListener("click", () => {
+      status.setTitle(title);
+      status.setContentText(msg);
+      const actionButton = document.createElement("button");
+      actionButton.textContent = linkMessage;
+      actionButton.addEventListener("click", () => {
         login(/*immediate=*/ false);
       });
+
+      status.addButtonToFooter(actionButton);
     }
     function login(immediate: boolean) {
       abortController?.abort();
