@@ -34,7 +34,7 @@
   outline: 0;
 }
 
-.neuroglancer-screenshot-dialog {
+.neuroglancer-screenshot {
   width: 48.75rem;
   padding: 0;
   margin: 1.25rem auto;
@@ -46,11 +46,13 @@
   font-family: sans-serif;
 }
 
-.neuroglancer-screenshot-main-body-container {
+.neuroglancer-screenshot-body {
   height: auto;
   max-height: calc(100vh - 300px);
   overflow-y: auto;
   overflow-x: hidden;
+  display: block;
+  padding: 0;
 }
 
 .neuroglancer-screenshot-title {
@@ -73,7 +75,7 @@
 }
 
 /* Div at the top which contains the close */
-.neuroglancer-screenshot-close {
+.neuroglancer-screenshot-header {
   border-bottom: 1px solid var(--gray50);
   display: flex;
   align-items: center;
@@ -185,7 +187,7 @@
   padding: 0;
 }
 
-.neuroglancer-screenshot-close-button {
+.neuroglancer-screenshot-close-icon {
   margin-left: auto;
   background-color: transparent;
   border: 0;

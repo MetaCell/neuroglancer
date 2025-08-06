@@ -36,7 +36,6 @@ import { WatchableValue } from "#src/trackable_value.js";
 import type { Borrowed } from "#src/util/disposable.js";
 import { RefCounted } from "#src/util/disposable.js";
 import { removeChildren, removeFromParent } from "#src/util/dom.js";
-import { ShaderCodeOverlay } from "#src/widget/shader_code_overlay.js";
 import {
   makeShaderCodeWidgetTopRow,
   ShaderCodeWidget,
@@ -219,14 +218,13 @@ class DisplayOptionsTab extends Tab {
     element.appendChild(
       makeShaderCodeWidgetTopRow(
         this.layer,
-        this.codeWidget,
-        ShaderCodeOverlay,
+        this.codeWidget.element,
         makeShaderCodeWidget,
         {
-          title: "Documentation on image layer rendering",
+          title: "Documentation on mesh rendering",
           href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
+          type: "Mesh",
         },
-        "neuroglancer-single-mesh-layer-shader-top-row",
       ),
     );
 

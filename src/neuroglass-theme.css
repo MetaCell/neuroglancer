@@ -346,6 +346,14 @@ ul#statusContainer {
   }
 }
 
+#neuroglancer-container {
+  .neuroglancer-tool-status-content {
+    .neuroglancer-position-dimension-plot[data-orientation="row"] {
+      min-width: 12.5rem;
+    }
+  }
+}
+
 .neuroglass-theme {
   * {
     font-family: var(--text-font);
@@ -1078,8 +1086,39 @@ ul#statusContainer {
 
     .neuroglancer-layer-side-panel-title {
       .neuroglancer-layer-side-panel-type {
+        position: relative;
         color: var(--content100);
-        width: 2.5rem !important;
+        font-size: 0.75rem;
+        font-weight: 500;
+        line-height: 1rem;
+        background-color: var(--background80);
+        padding: 2px 2px 2px 6px;
+        border-radius: 2px;
+        min-width: 3rem;
+        appearance: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='13' viewBox='0 0 12 13' fill='none'%3E%3Cpath d='M8.29353 5.13554L6.00031 7.42732L3.70353 5.1391L2.99908 5.84465L6.00141 8.84232L8.99908 5.84L8.29353 5.13554Z' fill='%23999CA0'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 4px center;
+        transition: background-image 0.1s;
+        padding-right: 16px;
+      }
+
+      .neuroglancer-layer-side-panel-type::-moz-focus-inner {
+        border: 0;
+      }
+
+      .neuroglancer-layer-side-panel-type[data-expanded="true"] {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='13' viewBox='0 0 12 13' fill='none'%3E%3Cpath d='M3.70647 7.86446L5.99969 5.57268L8.29647 7.8609L9.00092 7.15535L5.99859 4.15768L3.00092 7.16L3.70647 7.86446Z' fill='%23999CA0'/%3E%3C/svg%3E"); 
+      }
+
+      .neuroglancer-layer-side-panel-type option {
+        background-color: var(--background80);
+        padding: 0.5rem;
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+        font-family: Graphik;
       }
 
       .neuroglancer-layer-side-panel-name {
@@ -1091,6 +1130,18 @@ ul#statusContainer {
           svg {
             display: block;
           }
+        }
+      }
+    }
+
+    .neuroglancer-tool-palette-body {
+      .neuroglancer-tool-palette-items {
+        overflow-x: auto;
+
+        .neuroglancer-tool-palette-tool-container {
+          padding: 0 12px;
+          width: fit-content;
+          min-width: 100%;
         }
       }
     }
@@ -1254,103 +1305,136 @@ ul#statusContainer {
     }
   }
 
-  .overlay-content {
-    border: 0.0625rem solid var(--background80);
-    background: var(--dark100);
-    outline: 0 !important;
-    padding-top: 0;
+  .neuroglancer-overlay {
+    background-color: var(--overlayBg);
+    justify-content: center;
+    align-items: center;
+    display: flex;
+    padding: 1.875rem 0;
+    z-index: 1300;
+    /* same as MUI modal */
 
-    .overlay-header {
-      display: flex;
-      align-items: center;
-      border-bottom: 0.0625rem solid var(--background80);
-      margin: 0 -0.75rem 0.75rem;
-      padding: 0 0.75rem;
+    .neuroglancer-overlay-content {
+      border: 0.0625rem solid var(--background80);
+      background: var(--dark100);
+      outline: 0 !important;
+      max-width: 100%;
+      padding: 0;
+      position: static;
+      transform: none;
+      margin: auto;
+      background-color: var(--background80);
+      z-index: 1300;
+      /* same as MUI modal */
 
-      p {
-        margin-right: auto;
-        color: var(--white);
-        font-size: 0.875rem;
-        font-style: normal;
-        font-weight: 500;
+      &:focus-visible {
+        outline: none;
       }
 
-      svg {
-        stroke: var(--content100);
-      }
+      .neuroglancer-framed-dialog-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 0.0625rem solid var(--dark80);
+        padding: 0 1.5rem;
+        height: 4rem;
 
-      .overlay-heading {
-        + .neuroglancer-icon {
+        .neuroglancer-framed-dialog-title {
+          color: var(--white);
+          font-size: 1.25rem;
+          font-style: normal;
+          font-weight: 500;
+          line-height: 1.5rem;
+          /* 120% */
+          letter-spacing: -0.025rem;
+        }
+
+        .neuroglancer-framed-dialog-close-icon {
           background-repeat: no-repeat;
           background-position: center;
           background-size: 0.875rem;
+          width: 1.3rem;
+          display: block;
+          height: 1.3rem;
+
+          border: none;
+          background-color: transparent;
+          display: block;
+          padding: 0;
+          border-radius: 0;
+
+          svg {
+            width: 1.3rem;
+            height: 1.3rem;
+          }
         }
       }
-    }
 
-    .button-group {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      border-top: 0.0625rem solid var(--background80);
-      margin: 0.75rem -0.75rem 0;
-      padding: 0.75rem 0.75rem 0;
+      .neuroglancer-framed-dialog-body {
+        height: calc(80vh - 8.5rem);
 
-      button {
-        font-size: 0.75rem;
-        padding: 0.5rem 0.75rem;
-        height: 2rem;
-        font-weight: 500;
-        border-radius: 0;
-        border: none;
-        box-sizing: border-box;
-        cursor: pointer;
-        line-height: 1;
-        letter-spacing: -0.01em;
-        text-align: left;
-
-        &:disabled {
-          opacity: 0.4;
-          pointer-events: none;
+        .CodeMirror {
+          margin: 0;
+          height: 100%;
         }
+      }
 
-        &.text-primary {
-          color: var(--primary80);
-          background-color: transparent;
-          border: none;
-        }
+      .neuroglancer-framed-dialog-body.neuroglancer-screenshot-body {
+        height: 100%;
+      }
 
-        &.contained-primary {
-          background-color: var(--primary100);
-          color: var(--white);
-        }
+      .neuroglancer-framed-dialog-footer {
+        justify-content: flex-end;
+        border-top: 0.0625rem solid var(--dark80);
+        padding: 0 1.5rem;
+        height: 4.5rem;
 
-        &.outlined-primary {
-          border: 0.0938rem solid var(--stroke60);
-          background-color: transparent;
-          color: var(--white);
-        }
-
-        &:first-of-type {
+        & > button:not(:only-child) {
           margin-right: auto;
         }
 
-        &:last-of-type {
-          margin-left: 0.5rem;
+        button {
+          border-radius: 0;
+          box-sizing: border-box;
+          text-align: left;
+          padding: 0.75rem 1rem;
+          transition: all ease-in-out 0.3s;
+          cursor: pointer;
+          justify-content: center;
+          align-items: center;
+          font-size: 0.875rem;
+          font-style: normal;
+          font-weight: 500;
+          line-height: 1.125rem;
+          /* 128.571% */
+          letter-spacing: -0.0088rem;
+
+          &:disabled {
+            opacity: 0.3;
+            pointer-events: none;
+          }
+        }
+        .neuroglancer-state-editor-save-container {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+      }
+
+      .CodeMirror {
+        .CodeMirror-gutter-elt {
+          .CodeMirror-guttermarker-subtle {
+            color: var(--content100);
+          }
         }
       }
     }
+  }
 
-    .CodeMirror {
-      margin-bottom: 0.5rem;
-      border-radius: 2px;
-
-      .CodeMirror-gutter-elt {
-        .CodeMirror-guttermarker-subtle {
-          color: var(--content100);
-        }
-      }
-    }
+  .neuroglancer-shader-code-widget-top-row {
+    margin-bottom: 0.75rem;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.875rem;
   }
 
   .neuroglancer-multiline-autocomplete-dropdown {
@@ -1715,40 +1799,18 @@ ul#statusContainer {
     }
   }
 
-  .shader {
-    margin: 0.5rem 0rem 0;
-    padding: 0.75rem;
-    background-color: var(--background80);
-
-    .neuroglancer-image-dropdown-top-row {
-      margin-bottom: 0.5rem;
-      font-size: 0.875rem;
-      font-weight: 400;
-      color: rgba(255, 255, 255, 0.8);
-    }
-
-    .neuroglancer-icon {
-      svg {
-        stroke: var(--content100) !important;
-      }
-
-      + .neuroglancer-icon {
-        color: var(--content100);
-        font-size: 1rem;
-        font-weight: normal;
-      }
-    }
-  }
-
   .neuroglancer-layer-type-indicator {
-    font-weight: normal;
+    font-weight: 500;
     padding: 2px 6px;
     width: auto;
     line-height: 1rem;
+    border-radius: 2px;
+    background-color: var(--background80);
+    font-size: 0.75rem;
+    color: var(--content100);
   }
 
   .CodeMirror {
-    width: 100%;
     box-sizing: border-box;
     border-radius: 2px;
     border: 0.0625rem solid var(--dark80);
@@ -2062,14 +2124,8 @@ ul#statusContainer {
     input {
       width: 1rem;
       height: 1rem;
-      margin: 0 0 0 auto;
+      margin: 0 0 0 auto !important;
       display: block;
-
-      &:checked {
-        width: 1rem;
-        height: 1rem;
-        margin: 0 0 0 auto;
-      }
 
       &:focus {
         outline: none;
@@ -2502,7 +2558,7 @@ ul#statusContainer {
     margin-bottom: 0;
     gap: var(--spacing1);
     height: 2.25rem;
-    padding: 0 0.5rem;
+    padding: 0 0.25rem;
     background-color: var(--dark100);
     border-bottom: 0.0625rem solid var(--dark80);
   }
@@ -2510,25 +2566,236 @@ ul#statusContainer {
   .neuroglancer-position-dimension-coordinate {
     font-size: 0.75rem;
     font-weight: 400;
-    line-height: 0.8731rem;
-    margin-left: 0.25rem;
-    padding: 0;
+    font-family: Graphik !important;
+    margin-left: 2px;
+    padding: 3px;
     text-align: left;
     color: var(--white);
+    border: 1px solid transparent;
+    min-height: 1.5rem;
+  }
+
+  .neuroglancer-position-dimension-coordinate:hover {
+    border-color: var(--stroke60);
+    background-color: var(--background80);
+  }
+
+  .neuroglancer-position-dimension-coordinate:focus {
+    border-color: var(--primary100);
+    box-shadow: 0px 0px 0px 2px rgba(22, 82, 240, 0.2);
   }
 
   .neuroglancer-position-widget {
     * {
-      font-family: var(--monospaced-font) !important;
+      font-family: var(--monospaced-font);
     }
 
     .neuroglancer-position-dimension + .neuroglancer-position-dimension {
-      margin-left: 0.5rem;
+      margin-left: 0;
     }
 
     .neuroglancer-icon {
       margin-left: 0.25rem;
     }
+
+    .neuroglancer-tool-key-binding {
+      display: flex;
+      margin-right: 0.5rem;
+      width: 1.125rem;
+      justify-content: center;
+      align-items: center;
+      color: var(--primary100);
+      height: 1.125rem;
+      border: 1px solid var(--stroke60);
+      border-radius: 0.125rem;
+
+      &:focus,
+      &:hover {
+        border-color: var(--primary100);
+        outline-color: var(--primary100);
+      }
+
+      &::before,
+      &::after {
+        content: "";
+      }
+    }
+
+    .neuroglancer-position-dimension-plot {
+      padding: 0px 24px 12px 12px;
+      justify-content: flex-end;
+    }
+
+    .neuroglancer-position-dimension-plot-lowerbound div {
+      font-family: "Graphik" !important;
+    }
+
+    .neuroglancer-position-dimension-plot-hoverposition {
+      color: var(--primary80);
+    }
+
+    .neuroglancer-position-dimension-plot-lowerbound,
+    .neuroglancer-position-dimension-plot-upperbound,
+    .neuroglancer-position-dimension-plot-hoverposition {
+      font-family: "Graphik" !important;
+      font-size: 12px !important;
+      color: var(--content100);
+    }
+
+    .neuroglancer-position-dimension-plot[data-orientation="column"] > canvas {
+      padding: 0px 8px;
+    }
+
+    .neuroglancer-position-dimension {
+      display: inline-flex;
+      align-items: baseline;
+      padding: 3px 4px;
+      max-height: 1.875rem;
+    }
+
+    .neuroglancer-position-dimension-play-button,
+    .neuroglancer-position-dimension-pause-button {
+      border-radius: 2px;
+      padding: 2px;
+    }
+
+    .neuroglancer-position-dimension-play-button svg,
+    .neuroglancer-position-dimension-pause-button svg {
+      stroke: none;
+    }
+
+    .neuroglancer-position-dimension-play-button:hover,
+    .neuroglancer-position-dimension-pause-button:hover {
+      background-color: var(--background80) !important;
+      color: var(--white) !important;
+    }
+
+    .neuroglancer-position-dimension-pause-button[data-active="true"] {
+      background-color: var(--background60);
+      color: var(--white) !important;
+    }
+
+    .neuroglancer-position-dimension span {
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .neuroglancer-position-dimension-dropdown,
+    .neuroglancer-position-dimension-coordinate-dropdown {
+      border: 1px solid var(--dark80);
+      width: 100%;
+      background-color: var(--background120);
+      border-top: none;
+      top: 29px;
+    }
+
+    .neuroglancer-position-dimension-dropdown .neuroglancer-tool-button {
+      padding: 0.5rem 0.75rem;
+      margin-top: 0.25rem;
+      margin-bottom: 0.25rem !important;
+    }
+
+    .neuroglancer-position-dimension:focus-within,
+    .neuroglancer-position-dimension[data-dropdown-visible="true"] {
+      border: 1px solid var(--dark80);
+      background-color: var(--background120);
+      border-bottom: none;
+    }
+
+    .neuroglancer-position-dimension[data-dropdown-visible="true"]::after {
+      display: none;
+    }
+
+    .neuroglancer-position-dimension-playback {
+      padding: 0px 12px 12px 12px;
+      margin-bottom: 4px;
+    }
+
+    .neuroglancer-position-dimension-playback hr {
+      border: 1px solid var(--background80);
+      margin: 8px 0;
+    }
+
+    .neuroglancer-position-dimension-playback .neuroglancer-number-input {
+      margin-bottom: 0.5rem;
+      gap: 0.5rem;
+    }
+
+    .neuroglancer-position-dimension-playback .neuroglancer-number-input span {
+      font-size: 0.875rem;
+      font-family: Graphik;
+      line-height: 1.25rem;
+      color: var(--content100);
+    }
+
+    .neuroglancer-position-dimension-playback input[type="text"] {
+      font-family: Graphik;
+      font-size: 12px;
+
+      padding: 8px 16px 8px 8px;
+      border: 1px solid var(--dark80);
+      background-color: var(--background80);
+    }
+
+    .neuroglancer-position-dimension-playback select {
+      padding: 0.5rem;
+      border: 1px solid var(--dark80);
+      background-color: var(--background80);
+      min-width: 100%;
+
+      font-family: Graphik !important;
+      font-size: 0.75rem;
+      line-height: 1rem;
+    }
+
+    .neuroglancer-position-dimension-playback select {
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      background-image: url("../src/ui/images/arrow_dropdown.svg");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
+      background-size: 20px;
+      padding-right: 8px;
+      margin: 0;
+    }
+
+    .neuroglancer-position-dimension-playback-header > .neuroglancer-icon,
+    .neuroglancer-position-dimension > .neuroglancer-icon svg {
+      stroke: none;
+    }
+
+    .neuroglancer-position-dimension > .neuroglancer-icon svg {
+      width: 1rem;
+      height: 1rem;
+    }
+
+    .neuroglancer-position-dimension-playback-header {
+      font-size: 0.75rem;
+      font-family: "Graphik" !important;
+    }
+
+    .neuroglancer-position-dimension-playback-checkbox {
+      padding: 0.25rem;
+      margin-right: 0.25rem;
+    }
+
+    .neuroglancer-position-dimension-playback-checkbox input[type="checkbox"] {
+      margin: 0;
+    }
+
+    .neuroglancer-position-dimension-playback input[type="text"]:hover {
+      border-color: var(--stroke60);
+    }
+
+    .neuroglancer-position-dimension-playback input[type="text"]:focus {
+      border-color: var(--primary100);
+      box-shadow: 0px 0px 0px 2px rgba(22, 82, 240, 0.2);
+    }
+  }
+
+  .neuroglancer-position-widget > div > .neuroglancer-position-dimension:first-of-type {
+    padding-left: 8px;
   }
 
   .neuroglancer-position-dimension-coordinate-label {
@@ -2567,6 +2834,10 @@ ul#statusContainer {
   .neuroglancer-position-dimension-scale-container {
     margin-left: 0;
     margin-right: 0;
+
+    .neuroglancer-position-dimension-scale {
+      text-align: center;
+    }
   }
 
   .neuroglancer-position-dimension-scale-container[data-is-empty="false"] {
@@ -2575,21 +2846,22 @@ ul#statusContainer {
     .neuroglancer-position-dimension-scale {
       font-size: 0.75rem;
       font-weight: 400;
-      line-height: 0.8731rem;
+      line-height: 0.875rem;
+      padding: 0;
       color: var(--content100);
     }
 
     &::before {
       font-size: 0.75rem;
       font-weight: 400;
-      line-height: 0.8731rem;
+      line-height: 0.875rem;
       color: var(--content100);
     }
 
     &::after {
       font-size: 0.75rem;
       font-weight: 400;
-      line-height: 0.8731rem;
+      line-height: 0.875rem;
       color: var(--content100);
     }
   }
@@ -2599,7 +2871,7 @@ ul#statusContainer {
     font-size: 0.75rem;
     color: var(--caramel60);
     font-weight: 400;
-    line-height: 0.8731rem;
+    line-height: 0.875rem;
   }
 
   .neuroglancer-icon {
@@ -2802,6 +3074,10 @@ ul#statusContainer {
         .neuroglancer-layer-list-panel-item-controls svg {
           color: var(--white) !important;
         }
+
+        .neuroglancer-layer-type-indicator {
+          background-color: var(--background60);
+        }
       }
     }
 
@@ -2892,6 +3168,10 @@ ul#statusContainer {
         .neuroglancer-layer-list-panel-item-controls svg {
           color: var(--white) !important;
         }
+
+        .neuroglancer-layer-type-indicator {
+          background-color: var(--background60);
+        }
       }
     }
 
@@ -2918,6 +3198,10 @@ ul#statusContainer {
       display: flex;
       visibility: hidden;
     }
+  }
+
+  .neuroglancer-layer-list-panel-item:hover .neuroglancer-layer-type-indicator {
+    background-color: var(--background60);
   }
 
   .neuroglancer-layer-list-panel-item-number {
@@ -3301,123 +3585,6 @@ ul#statusContainer {
     }
   }
 
-  .overlay {
-    background-color: var(--overlayBg);
-    justify-content: center;
-    align-items: center;
-    display: flex;
-    padding: 1.875rem 0;
-    z-index: 1300;
-    /* same as MUI modal */
-
-    & .overlay-content {
-      /* width: auto; */
-      max-width: 100%;
-      padding: 0;
-      position: static;
-      transform: none;
-      margin: auto;
-      background-color: var(--background80);
-      z-index: 1300;
-      /* same as MUI modal */
-
-      &:focus-visible {
-        outline: none;
-      }
-
-      & .overlay-content-header {
-        border-bottom: 0.0625rem solid var(--dark80);
-        padding: 0 1.5rem;
-        height: 4rem;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-
-        & p {
-          margin: 0;
-          color: var(--white);
-          font-size: 1.25rem;
-          font-style: normal;
-          font-weight: 500;
-          line-height: 1.5rem;
-          /* 120% */
-          letter-spacing: -0.025rem;
-        }
-
-        & button {
-          border: none;
-          background-color: transparent;
-          stroke: var(--content100);
-          display: block;
-          padding: 0;
-          border-radius: 0;
-        }
-
-        & .neuroglancer-icon {
-          width: 1.5rem;
-          display: block;
-          height: 1.5rem;
-
-          & svg {
-            width: 1.5rem;
-            height: 1.5rem;
-          }
-        }
-      }
-
-      & .overlay-content-body {
-        padding: 1.5rem;
-        overflow: auto;
-        height: calc(80vh - (4rem + 4.5rem));
-
-        .CodeMirror {
-          height: calc(100%);
-          margin: 0;
-          width: 80vw;
-        }
-      }
-
-      & .overlay-content-footer {
-        border-top: 0.0625rem solid var(--dark80);
-        padding: 0 1.5rem;
-        height: 4.5rem;
-        display: flex;
-        align-items: center;
-        justify-content: end;
-
-        & > button:not(:only-child) {
-          margin-right: auto;
-        }
-
-        button {
-          display: flex;
-          padding: 0.75rem 1rem;
-          transition: all ease-in-out 0.3s;
-          cursor: pointer;
-          justify-content: center;
-          align-items: center;
-          font-size: 0.875rem;
-          font-style: normal;
-          font-weight: 500;
-          line-height: 1.125rem;
-          /* 128.571% */
-          letter-spacing: -0.0088rem;
-
-          &:disabled {
-            opacity: 0.3;
-            pointer-events: none;
-          }
-        }
-
-        & .button-wrapper {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-        }
-      }
-    }
-  }
-
   .text-button {
     color: var(--primary80);
     border: none;
@@ -3438,23 +3605,26 @@ ul#statusContainer {
     }
   }
 
-  .primary-button {
-    border: none;
-    color: var(--white);
-    background: var(--primary100);
-
-    &:hover {
-      background: var(--primary120);
-    }
-  }
-
-  .cancel-button {
+  .cancel-button,
+  .neuroglancer-framed-dialog-primary-button,
+  .neuroglancer-state-editor-apply-button {
     color: var(--white);
     border: 0.0938rem solid var(--dark80);
     background: transparent;
 
     &:hover {
       border-color: var(--stroke60);
+    }
+  }
+
+  .neuroglancer-screenshot-primary-button,
+  .neuroglancer-state-editor-primary-button {
+    border: none;
+    color: var(--white);
+    background: var(--primary100);
+
+    &:hover {
+      background: var(--primary120);
     }
   }
 
@@ -3476,37 +3646,9 @@ ul#statusContainer {
   }
 
   /* Screenshot menu */
-  .neuroglancer-screenshot-dialog {
-    padding: 1.5rem;
+  .neuroglancer-screenshot {
     max-width: 1000px !important;
     border-radius: 0;
-  }
-
-  .neuroglancer-screenshot-close {
-    border-bottom: 0.0625rem solid var(--dark80);
-    padding: 0 1.5rem;
-    height: 4rem;
-
-    .neuroglancer-screenshot-title {
-      color: var(--white);
-      font-size: 1.25rem;
-      font-style: normal;
-      font-weight: 500;
-      line-height: 1.5rem;
-      letter-spacing: -0.025rem;
-    }
-
-    .neuroglancer-screenshot-close-button {
-      & .neuroglancer-icon {
-        width: 1.5rem;
-        height: 1.5rem;
-
-        & svg {
-          width: 1.5rem;
-          height: 1.5rem;
-        }
-      }
-    }
   }
 
   .neuroglancer-screenshot-description-section {
@@ -3722,17 +3864,6 @@ ul#statusContainer {
       .neuroglancer-screenshot-statistics-table-data-value {
         color: var(--content100);
       }
-    }
-  }
-
-  .neuroglancer-screenshot-footer-container {
-    --border-color: #2b2b2b;
-
-    border-color: var(--border-color);
-
-    button {
-      padding: 12px 16px;
-      border-radius: 0;
     }
   }
 }

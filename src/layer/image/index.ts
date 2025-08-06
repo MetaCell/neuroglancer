@@ -95,7 +95,6 @@ import {
   renderScaleLayerControl,
   VolumeRenderingRenderScaleWidget,
 } from "#src/widget/render_scale_widget.js";
-import { ShaderCodeOverlay } from "#src/widget/shader_code_overlay.js";
 import {
   makeShaderCodeWidgetTopRow,
   ShaderCodeWidget,
@@ -562,14 +561,13 @@ class RenderingOptionsTab extends Tab {
     element.appendChild(
       makeShaderCodeWidgetTopRow(
         this.layer,
-        this.codeWidget,
-        ShaderCodeOverlay,
+        this.codeWidget.element,
         makeShaderCodeWidget,
         {
           title: "Documentation on image layer rendering",
           href: "https://github.com/google/neuroglancer/blob/master/src/sliceview/image_layer_rendering.md",
+          type: "Image",
         },
-        "neuroglancer-image-dropdown-top-row",
       ),
     );
 
