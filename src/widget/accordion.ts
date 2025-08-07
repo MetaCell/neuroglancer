@@ -80,7 +80,7 @@ export class AccordionState extends RefCounted {
     if (obj === undefined || obj === null || typeof obj !== "object") {
       return;
     }
-    for (let [jsonKey, isExpanded] of Object.entries(obj)) {
+    for (const [jsonKey, isExpanded] of Object.entries(obj)) {
       if (typeof isExpanded === "boolean") {
         this.setSectionExpanded(jsonKey, isExpanded);
       }
@@ -204,8 +204,8 @@ export class AccordionTab extends Tab {
 
   appendChild(content: HTMLElement, jsonKey?: string, hidden?: boolean): void {
     const section = this.getSectionWithFallback(jsonKey);
-    section!.body.appendChild(content);
-    if (!hidden) section!.container.style.display = "";
+    section.body.appendChild(content);
+    if (!hidden) section.container.style.display = "";
   }
 
   setSectionHidden(jsonKey: string, hidden: boolean): void {
