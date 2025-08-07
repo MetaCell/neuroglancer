@@ -363,7 +363,7 @@ export class UserLayer extends RefCounted {
         },
         {
           jsonKey: CREATE_SECTION_JSON_KEY,
-          displayName: "Creation settings",
+          displayName: "Initial settings",
           defaultExpanded: true,
         },
       ],

@@ -538,7 +538,7 @@ export class LayerDataSourcesTab extends AccordionTab {
       const { layerTypeElement } = this;
       layerTypeElement.textContent = layerConstructor.type;
       layerTypeDetection.title =
-        "Click here or press enter in the data source URL input box to create as " +
+        "Click here to create as " +
         `${layerConstructor.type} layer`;
       layerTypeDetection.style.display = "";
       multiChannelLayerCreate.style.display =
