@@ -367,16 +367,16 @@ ul#statusContainer {
       stroke-linecap: unset;
       stroke-linejoin: unset;
       pointer-events: unset;
-      color: var(--content100) !important;
+      color: var(--content100);
     }
 
     &:hover svg {
-      color: var(--content100) !important;
+      color: var(--content100);
       background-color: var(--background60);
     }
 
     &[data-checked="true"] svg {
-      color: white !important;
+      color: white;
       background-color: var(--background60);
     }
   }
@@ -580,7 +580,7 @@ ul#statusContainer {
   .neuroglancer-segment-list-entry-star {
     &[title="Star segment"] {
       svg {
-        stroke: var(--content100) !important;
+        stroke: var(--content100);
       }
     }
   }
@@ -3250,14 +3250,14 @@ ul#statusContainer {
 
       &:hover {
         svg {
-          color: var(--content100) !important;
+          color: var(--content100);
           background-color: var(--background60);
         }
       }
 
       &[data-checked="true"] {
         svg {
-          color: var(--white) !important;
+          color: var(--white);
           background-color: var(--background60);
         }
       }
