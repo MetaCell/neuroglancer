@@ -1331,7 +1331,7 @@ ul#statusContainer {
       margin-left: 0.125rem;
 
       svg {
-        color: var(--white);
+        color: var(--content100);
       }
     }
   }
