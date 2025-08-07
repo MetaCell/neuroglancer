@@ -13,11 +13,11 @@
   display: flex; /* Show when expanded */
 }
 
-.neuroglancer-accordion-item[data-expanded="false"]
+.neuroglancer-accordion-item[data-expanded="true"]
   .neuroglancer-accordion-header
   .neuroglancer-accordion-chevron
   svg {
-  transform: rotate(180deg); /* Rotate chevron when not expanded */
+  transform: rotate(180deg); /* Rotate chevron when expanded */
 }
 
 .neuroglancer-accordion-chevron {
