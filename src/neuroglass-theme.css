@@ -2635,6 +2635,10 @@ ul#statusContainer {
     .neuroglancer-position-dimension-plot-hoverposition {
       font-family: "Graphik" !important;
       font-size: 12px !important;
+    }
+
+    .neuroglancer-position-dimension-plot-lowerbound,
+    .neuroglancer-position-dimension-plot-upperbound {
       color: var(--content100);
     }
 
