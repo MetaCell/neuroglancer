@@ -13,16 +13,20 @@
   display: flex; /* Show when expanded */
 }
 
-.neuroglancer-accordion-item[data-expanded="true"]
+.neuroglancer-accordion-item[data-expanded="false"]
   .neuroglancer-accordion-header
   .neuroglancer-accordion-chevron
   svg {
-  transform: rotate(180deg); /* Rotate chevron when expanded */
+  transform: rotate(180deg); /* Rotate chevron when not expanded */
+}
+
+.neuroglancer-accordion-chevron {
+  margin-top: 4px;
 }
 
 .neuroglancer-accordion-chevron svg {
-  width: 16px;
-  height: 16px;
+  width: 24px;
+  height: 24px;
   fill: #fff; /* Chevron color */
 }
 

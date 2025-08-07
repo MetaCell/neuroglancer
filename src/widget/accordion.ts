@@ -4,7 +4,7 @@ import { RefCounted } from "#src/util/disposable.js";
 import { NullarySignal } from "#src/util/signal.js";
 import "#src/widget/accordion.css";
 import { Tab } from "#src/widget/tab_view.js";
-import svg_chevron_up from "ikonate/icons/chevron-up.svg?raw";
+import svg_chevron_down from "#src/ui/images/chevron_down.svg?raw";
 
 export interface AccordionOptions {
   accordionJsonKey: string;
@@ -164,7 +164,7 @@ export class AccordionTab extends Tab {
 
     const chevron = document.createElement("span");
     chevron.classList.add("neuroglancer-accordion-chevron");
-    chevron.innerHTML = svg_chevron_up;
+    chevron.innerHTML = svg_chevron_down;
     const headerText = document.createElement("span");
     headerText.classList.add("neuroglancer-accordion-header-text");
     headerText.textContent = option.displayName;
