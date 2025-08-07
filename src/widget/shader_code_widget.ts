@@ -86,7 +86,7 @@ export class ShaderCodeWidget extends RefCounted {
       value: this.state.fragmentMain.value,
       mode: "glsl",
       gutters: ["CodeMirror-lint-markers"],
-      lineNumbers: true
+      lineNumbers: true,
     });
     this.textEditor.on("change", () => {
       this.setValidState(undefined);

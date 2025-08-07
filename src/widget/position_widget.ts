@@ -29,6 +29,7 @@ import {
   insertDimensionAt,
   makeCoordinateSpace,
 } from "#src/coordinate_transform.js";
+import { TrackableBooleanCheckbox } from "#src/trackable_boolean.js";
 import type { MouseSelectionState, UserLayer } from "#src/layer/index.js";
 import type { LayerGroupViewer } from "#src/layer_group_viewer.js";
 import type {
@@ -46,6 +47,7 @@ import { popDragStatus, pushDragStatus } from "#src/ui/drag_and_drop.js";
 import svg_pause from "#src/ui/images/pause.svg?raw";
 import svg_play from "#src/ui/images/play.svg?raw";
 import svg_video from "#src/ui/images/playback.svg?raw";
+import svg_exposure from "#src/ui/images/exposure.svg?raw";
 import type { LocalToolBinder, ToolActivation } from "#src/ui/tool.js";
 import {
   makeToolActivationStatusMessage,
@@ -177,6 +179,7 @@ class DimensionWidget {
     container.title = "";
     container.classList.add("neuroglancer-position-dimension");
     const { allowFocus, showPlayback } = options;
+
     if (allowFocus) {
       container.draggable = true;
       container.tabIndex = -1;
@@ -204,9 +207,15 @@ class DimensionWidget {
 
     if (showPlayback) {
       playButton.classList.add("neuroglancer-icon");
+      playButton.title = "Play";
       pauseButton.classList.add("neuroglancer-icon");
+      pauseButton.title = "Pause";
       playButton.innerHTML = svg_play;
       pauseButton.innerHTML = svg_pause;
+      // @metacell
+      playButton.classList.add("neuroglancer-position-dimension-play-button");
+      pauseButton.classList.add("neuroglancer-position-dimension-pause-button");
+      // end @metacell
       container.appendChild(playButton);
       container.appendChild(pauseButton);
     }
@@ -345,16 +354,28 @@ export class PositionWidget extends RefCounted {
       playbackElement.classList.add("neuroglancer-position-dimension-playback");
       const header = document.createElement("div");
       header.classList.add("neuroglancer-position-dimension-playback-header");
+      const hrElement = document.createElement("hr");
       playbackElement.appendChild(header);
-      header.appendChild(
+      // @metacell: Control visibility with checkbox instead of icon
+      const playbackVisibilityCheckbox = document.createElement("div");
+      playbackVisibilityCheckbox.classList.add(
+        "neuroglancer-position-dimension-playback-checkbox",
+      );
+      playbackVisibilityCheckbox.appendChild(
         dropdownOwner.registerDisposer(
-          new CheckboxIcon(this.velocity!.playbackEnabled(widget.id), {
-            svg: svg_video,
-            enableTitle: "Enable playback/velocity",
-            disableTitle: "Disable playback/velocity",
-          }),
+          new TrackableBooleanCheckbox(
+            this.velocity!.playbackEnabled(widget.id),
+            {
+              enableTitle: "Disable playback/velocity",
+              disableTitle: "Enable playback/velocity",
+            },
+          ),
         ).element,
       );
+
+      header.appendChild(playbackVisibilityCheckbox);
+      // end @metacell
+
       header.appendChild(document.createTextNode("Playback"));
       dropdown.appendChild(playbackElement);
       const enabled = dropdownOwner.registerDisposer(
@@ -363,10 +384,13 @@ export class PositionWidget extends RefCounted {
           [watchableVelocity],
         ),
       );
+
       playbackElement.appendChild(
         dropdownOwner.registerDisposer(
           new DependentViewWidget(enabled, (enabledValue, parent, context) => {
             if (!enabledValue) return;
+
+            parent.appendChild(hrElement);
             const velocityModel = new WatchableValue<number>(0);
             velocityModel.changed.add(() => {
               const newValue = velocityModel.value;
@@ -376,7 +400,7 @@ export class PositionWidget extends RefCounted {
               watchableVelocity.value = { ...velocity, velocity: newValue };
             });
             const negateButton = makeIcon({
-              text: "±",
+              svg: svg_exposure,
               title: "Negate velocity",
               onClick: () => {
                 velocityModel.value = -velocityModel.value;
@@ -862,7 +886,10 @@ export class PositionWidget extends RefCounted {
         this.velocity?.togglePlayback(widget.id, paused);
       };
       widget.playButton.addEventListener("click", () => setPaused(false));
-      widget.pauseButton.addEventListener("click", () => setPaused(true));
+      widget.pauseButton.addEventListener("click", () => {
+        setPaused(true);
+      });
+      widget.pauseButton.dataset.active = "true";
     }
 
     return widget;
