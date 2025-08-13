@@ -2067,12 +2067,12 @@ export function UserLayerWithAnnotationsMixin<
                           const optionElement =
                             document.createElement("option");
                           optionElement.value = String(option.value);
-                          optionElement.textContent = `${option.label} (${numberToStringFixed(option.value, 2)})`;
+                          optionElement.textContent = `${option.label} (${numberToStringFixed(Number(option.value), 4)})`;
                           select.appendChild(optionElement);
                         }
                         select.value = String(value);
                         select.addEventListener("change", () => {
-                          changeFunction(select.value);
+                          changeFunction(Number(select.value));
                         });
                         valueElement = select;
                       } else {
