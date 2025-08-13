@@ -1010,7 +1010,10 @@ export class AnnotationSchemaView extends Tab {
 
   private updateAnnotationText() {
     const setOrViewText = this.readonly.value ? "View read-only" : "Set";
-    this.schemaViewTextElement.textContent = `${setOrViewText} annotation property (metadata) schema for this layer which applies to all annotations in this layer.`;
+    const setExplainText = this.readonly.value
+      ? ""
+      : " Changing the default value of a property will not change existing annotations, but will apply to new annotations.";
+    this.schemaViewTextElement.textContent = `${setOrViewText} the annotation property (metadata) schema for this layer which applies to all annotations in this layer.${setExplainText}`;
   }
 
   private updateElementVisibility() {
@@ -1201,7 +1204,7 @@ export class AnnotationSchemaView extends Tab {
     const tableTitles = [
       "Hover a name to see the property description",
       "The type of the property",
-      "For enums, these are the available options, first entry is the default value.",
+      "For enums, these are the available options and the first entry is the default value.",
     ];
 
     const addButtonField = document.createElement("div");
