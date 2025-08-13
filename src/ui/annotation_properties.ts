@@ -118,7 +118,11 @@ export function isBooleanType(enumLabels?: string[]): boolean {
 }
 
 export function isEnumType(enumLabels?: string[]): boolean {
-  return (enumLabels && enumLabels.length > 0) || false;
+  // Currently, enumLabels stays in the state even when an empty list.
+  // This means we can use this to keep track of whether the property is an enum type
+  // by only checking if enumLabels is defined.
+  // If this logic ever changes, this should also check if enumLabels is not empty.
+  return enumLabels !== undefined;
 }
 
 export function makeBoolCheckbox(
