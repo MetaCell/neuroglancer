@@ -28,6 +28,15 @@ export interface NumberDisplayConfig {
   step?: number;
 }
 
+/** Create an input element that allows for bounded number input.
+ * If the config specifies a dataType, it will set min, max, and step based
+ * on the dataType. Float32 dataType does not have bounds of
+ * +-3.4e^38 automatically set, and are left undefined.
+ * Other dataTypes will have bounds set based on the defaultDataTypeRange.
+ * If the config specifies min, max, or step, those will override the dataType
+ * bounds.
+ * For consistency, the input is allowed to be readonly
+ */
 export function createBoundedNumberInputElement(
   inputValue: number,
   config: NumberDisplayConfig,

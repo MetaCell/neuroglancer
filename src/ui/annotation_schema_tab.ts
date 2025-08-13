@@ -333,6 +333,7 @@ class AnnotationUIProperty extends RefCounted {
     bounds: [number, number],
     startingValue = 0,
     direction: "up" | "down" = "up",
+    indexToIgnore: number | null = null,
   ) => {
     let suggestedEnumValue = startingValue;
     if (
@@ -343,7 +344,14 @@ class AnnotationUIProperty extends RefCounted {
       suggestedEnumValue = 0;
     }
     let wrapped = false;
-    while (inputValues.includes(suggestedEnumValue)) {
+    // To stop changes to the current value from being considered
+    // (e.g. when going outside the bounds and so resetting back to the current value)
+    // we can use the indexToIgnore parameter
+    let enumValues = inputValues;
+    if (indexToIgnore !== null) {
+      enumValues = inputValues.filter((_, index) => index !== indexToIgnore);
+    }
+    while (enumValues.includes(suggestedEnumValue)) {
       const increment = direction === "up" ? 1 : -1;
       suggestedEnumValue += increment;
       if (suggestedEnumValue > bounds[1]) {
@@ -740,6 +748,7 @@ class AnnotationUIProperty extends RefCounted {
         bounds,
         newValue,
         direction,
+        enumIndex,
       );
 
       lastValue = newValue;
