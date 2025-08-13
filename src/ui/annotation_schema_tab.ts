@@ -1113,60 +1113,66 @@ export class AnnotationSchemaView extends Tab {
     this.createAnnotationSchemaDropdown();
   }
 
+  /**
+   * The annotation schema view assumes no control over the actual schema state.
+   * This function is designed to compare the local schema representation
+   * with the actual schema from the layer and update the local representation
+   * and the UI accordingly.
+   * This allows for the view to be updated without needing to
+   * re-initialize the entire view, which is important for performance.
+   * @returns True if the schema updates caused the UI to need a new HTML element.
+   */
   private updateSchemaRepresentation(): boolean {
-    // Check to see if the new IDs match the old keys
+    // First the UI representation for any redundant old keys
     const oldKeys = Array.from(this.annotationUIProperties.keys());
     const newKeys = this.schema.map((property) => property.identifier);
-    // All the old keys that are not in the new keys need to be removed
     let needsUpdate = !arraysEqual(oldKeys, newKeys);
     for (const oldKey of oldKeys) {
       if (!newKeys.includes(oldKey)) {
         this.annotationUIProperties.delete(oldKey);
       }
     }
+
+    // Check the schema for each property to see if new or updated
     for (const propertySchema of this.schema) {
       const annotationUIProperty = this.annotationUIProperties.get(
         propertySchema.identifier,
       );
+      // Create a new AnnotationUIProperty and add it to the map if it doesn't exist
       if (annotationUIProperty === undefined) {
-        // Create a new AnnotationUIProperty and add it to the map
         this.annotationUIProperties.set(
           propertySchema.identifier,
           new AnnotationUIProperty(propertySchema, this),
         );
-      } else {
-        // For existing properties, we need to check if the schema has changed
+      }
+      // For existing properties, we need to check if the schema has changed
+      else {
         const oldPropertySchema = annotationUIProperty.spec;
-        const comparedProperties = compareAnnotationSpecProperties(
+        const propertySchemaComparison = compareAnnotationSpecProperties(
           oldPropertySchema,
           propertySchema,
         );
-        // If the property is the same, we can skip updating it
-        if (!comparedProperties.same) {
-          // If only the default value changed, we can update that
-          let allSameExceptDefault = true;
-          const sameValues = comparedProperties.sameValues;
-          for (const key in sameValues) {
-            if (key === "default") continue; // Skip default value
-            if (!sameValues[key as keyof typeof sameValues]) {
-              allSameExceptDefault = false;
-              break;
-            }
-          }
-          if (
-            (allSameExceptDefault && !sameValues.default) ||
-            (sameValues.enumLength && !sameValues.enumValues)
-          ) {
-            // Only the default changed, just update that
-            if (!sameValues.default) {
-              annotationUIProperty.updateDefaultValue(propertySchema.default);
-            }
+        // If the property is the exact same, we can skip updating it
+        if (!propertySchemaComparison.same) {
+          const { sameValues } = propertySchemaComparison;
+          const allSameExceptDefault = Object.entries(sameValues).every(
+            ([key, value]) => (key === "default" && !value) || value,
+          );
+          const allSameExceptEnumValues = Object.entries(sameValues).every(
+            ([key, value]) => (key === "enumValues" && !value) || value,
+          );
+          // Only the default or enum value changed, just update that
+          if (allSameExceptDefault || allSameExceptEnumValues) {
             if (sameValues.enumLength && !sameValues.enumValues) {
               annotationUIProperty.updateEnumValues(
                 (propertySchema as AnnotationNumericPropertySpec).enumValues!,
               );
+            } else {
+              annotationUIProperty.updateDefaultValue(propertySchema.default);
             }
-          } else {
+          }
+          // Significant update, rebuild UI property to avoid any issues
+          else {
             this.annotationUIProperties.set(
               propertySchema.identifier,
               new AnnotationUIProperty(propertySchema, this),
