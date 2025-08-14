@@ -420,16 +420,28 @@ ul#statusContainer {
       stroke-linecap: unset;
       stroke-linejoin: unset;
       pointer-events: unset;
+      color: var(--content100);
     }
 
     &:hover svg {
+      color: var(--content100);
+      background-color: var(--background60);
+    }
+
+    &[data-checked="true"] svg {
       color: white;
+      background-color: var(--background60);
     }
   }
 
   .neuroglancer-icon.ikonate {
     &:hover svg {
+      background-color: var(--background60);
+    }
+    
+    &[data-checked="true"] svg {
       stroke: white;
+      background-color: var(--background60);
     }
 
     svg {
@@ -616,6 +628,14 @@ ul#statusContainer {
     color: var(--white) !important;
     width: auto;
     padding: 0.063rem 0.125rem;
+  }
+
+  .neuroglancer-segment-list-entry-star {
+    &[title="Star segment"] {
+      svg {
+        stroke: var(--content100);
+      }
+    }
   }
 
   .neuroglancer-layer-list-panel-item-delete {
@@ -1176,6 +1196,21 @@ ul#statusContainer {
         + .neuroglancer-checkbox-icon {
           background: none;
 
+          &[title="Spatial object selection: enabled"] {
+            background-color: var(--background60);
+            color: var(--content100);
+            margin-right: 0.125rem;
+          }
+
+          &[title="Spatial object selection: disabled"] {
+            color: var(--content100);
+            margin-right: 0.125rem;
+
+            &:hover {
+              background-color: var(--background60);
+            }
+          }
+
           svg {
             display: block;
           }
@@ -1346,10 +1381,10 @@ ul#statusContainer {
 
   .neuroglancer-icon {
     &[title="Close panel"] {
-      margin-left: 0.25rem;
+      margin-left: 0.125rem;
 
       svg {
-        color: var(--white);
+        color: var(--content100);
       }
     }
   }
@@ -1484,6 +1519,12 @@ ul#statusContainer {
     margin-bottom: 0.75rem;
     color: rgba(255, 255, 255, 0.8);
     font-size: 0.875rem;
+
+    .neuroglancer-icon {
+      &[title="Hide code"] {
+        margin-right: 0.125rem;
+      }
+    }
   }
 
   .neuroglancer-multiline-autocomplete-dropdown {
@@ -2688,6 +2729,10 @@ ul#statusContainer {
     .neuroglancer-position-dimension-plot-hoverposition {
       font-family: "Graphik" !important;
       font-size: 12px !important;
+    }
+
+    .neuroglancer-position-dimension-plot-lowerbound,
+    .neuroglancer-position-dimension-plot-upperbound {
       color: var(--content100);
     }
 
@@ -2932,6 +2977,14 @@ ul#statusContainer {
     margin: 0;
     color: var(--content100);
 
+    &[data-checked="true"] {
+      background-color: var(--background60);
+
+      svg {
+        color: var(--white);
+      }
+    }
+
     &.dark-background[data-checked="true"] {
       background-color: var(--background60);
 
@@ -2942,12 +2995,16 @@ ul#statusContainer {
 
     &.light-background[data-checked="false"] {
       svg {
-        color: var(--white);
+        color: var(--content100);
       }
     }
+    
 
     &:hover {
-      background-color: transparent;
+      background-color: var(--background60);
+      svg {
+        color: var(--content100);
+      }
     }
   }
 
@@ -2984,34 +3041,47 @@ ul#statusContainer {
     background-color: transparent !important;
 
     .neuroglancer-selection-details-pin {
-      background-image: url("../src/ui/images/push_pin.svg");
+      background-image: url("../src/ui/images/push_pin-content100.svg");
       background-repeat: no-repeat;
       background-position: center center;
       text-indent: -62.4375rem;
       position: relative;
       margin: 0;
 
+
+
       &[data-checked="true"] {
+        background-image: url("../src/ui/images/push_pin.svg");
         background-color: transparent;
+        color: var(--content100) !important;
+        background-color: var(--background60);
 
         &:hover {
-          background-color: var(--background80);
+          background-color: var(--background60);
         }
       }
     }
 
     .neuroglancer-icon {
       &[title="Delete layer"] {
-        background-image: url("../src/ui/images/delete-white.svg");
+        background-image: url("../src/ui/images/delete-content100.svg");
         background-repeat: no-repeat;
         position: relative;
         background-position: center center;
 
         margin: 0;
+        margin-left: 0.125rem;
 
         svg {
           display: none;
         }
+      }
+    }
+
+    .neuroglancer-icon {
+      &[title="Delete tool palette"] {
+        margin: 0;
+        margin-left: 0.125rem;
       }
     }
 
@@ -3214,9 +3284,13 @@ ul#statusContainer {
           visibility: visible;
         }
 
-        .neuroglancer-layer-list-panel-item-controls svg {
-          color: var(--white) !important;
+
+        &[data-checked="true"] {
+          .neuroglancer-layer-list-panel-item-controls svg {
+            color: var(--white) !important;
+          }
         }
+        
 
         .neuroglancer-layer-type-indicator {
           background-color: var(--background60);
@@ -3233,7 +3307,15 @@ ul#statusContainer {
 
       &:hover {
         svg {
-          color: var(--white) !important;
+          color: var(--content100);
+          background-color: var(--background60);
+        }
+      }
+
+      &[data-checked="true"] {
+        svg {
+          color: var(--white);
+          background-color: var(--background60);
         }
       }
     }
@@ -3545,10 +3627,14 @@ ul#statusContainer {
 
     div {
       &[title="Move to position"] {
-        background-image: url("../src/ui/images/arrow_outward.svg");
+        background-image: url("../src/ui/images/arrow_outward-content100.svg");
         background-repeat: no-repeat;
         text-indent: -999px;
         background-position: center center;
+
+        &[data-checked="true"] {
+          background-image: url("../src/ui/images/arrow_outward.svg");
+        }
       }
     }
   }
