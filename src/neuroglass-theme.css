@@ -155,7 +155,7 @@ ul#statusContainer {
       padding: 0;
 
       .neuroglancer-render-scale-widget-legend {
-        width: auto;
+        width: auto !important;
 
         div {
           height: auto;
@@ -350,6 +350,14 @@ ul#statusContainer {
   .neuroglancer-tool-status-content {
     .neuroglancer-position-dimension-plot[data-orientation="row"] {
       min-width: 12.5rem;
+    }
+  }
+
+  .neuroglancer-tool-status {
+    .neuroglancer-tool-status-content {
+      .neuroglancer-render-scale-widget-legend {
+        width: auto;
+      }
     }
   }
 }
