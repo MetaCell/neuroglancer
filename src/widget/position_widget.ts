@@ -37,7 +37,6 @@ import type {
   Position,
 } from "#src/navigation_state.js";
 import { VelocityBoundaryBehavior } from "#src/navigation_state.js";
-import { StatusMessage } from "#src/status.js";
 import type { WatchableValueInterface } from "#src/trackable_value.js";
 import {
   makeCachedDerivedWatchableValue,
@@ -1098,12 +1097,7 @@ export class PositionWidget extends RefCounted {
       const copyButton = makeCopyButton({
         title: "Copy position to clipboard",
         onClick: () => {
-          const result = setClipboard(this.getPositionText());
-          StatusMessage.showTemporaryMessage(
-            result
-              ? "Position copied to clipboard"
-              : "Failed to copy position to clipboard",
-          );
+          setClipboard(this.getPositionText(), "position");
         },
       });
       copyButton.addEventListener("dragstart", (event) => {

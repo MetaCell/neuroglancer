@@ -65,7 +65,6 @@ import {
   registerCallbackWhenSegmentationDisplayStateChanged,
   SegmentWidgetFactory,
 } from "#src/segmentation_display_state/frontend.js";
-import { StatusMessage } from "#src/status.js";
 import { ElementVisibilityFromTrackableBoolean } from "#src/trackable_boolean.js";
 import type { WatchableValueInterface } from "#src/trackable_value.js";
 import {
@@ -1419,7 +1418,10 @@ function makeRelatedSegmentList(
       const copyButton = makeCopyButton({
         title: "Copy segment IDs",
         onClick: () => {
-          setClipboard(Array.from(segments, (x) => x.toString()).join(", "));
+          setClipboard(
+            Array.from(segments, (x) => x.toString()).join(", "),
+            "segment IDs",
+          );
         },
       });
       headerRow.appendChild(copyButton);
@@ -1816,13 +1818,9 @@ export function UserLayerWithAnnotationsMixin<
                       const copyButton = makeCopyButton({
                         title: "Copy position",
                         onClick: () => {
-                          const result = setClipboard(
+                          setClipboard(
                             layerPosition.map((x) => Math.floor(x)).join(", "),
-                          );
-                          StatusMessage.showTemporaryMessage(
-                            result
-                              ? "Position copied to clipboard"
-                              : "Failed to copy position to clipboard",
+                            "position",
                           );
                         },
                       });

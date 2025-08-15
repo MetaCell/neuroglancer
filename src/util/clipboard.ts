@@ -14,9 +14,18 @@
  * limitations under the License.
  */
 
+import { StatusMessage } from "#src/status.js";
 import { registerEventListener } from "#src/util/disposable.js";
 
-export function setClipboard(data: string, format = "text/plain") {
+function capitalizeFirstLetter(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+export function setClipboard(
+  data: string,
+  messageName: string | undefined = "value", // Undefined means no message
+  format = "text/plain",
+) {
   let success = false;
   const cleanup = registerEventListener(
     document,
@@ -36,6 +45,13 @@ export function setClipboard(data: string, format = "text/plain") {
     document.execCommand("copy");
   } finally {
     cleanup();
+  }
+  if (messageName !== undefined) {
+    StatusMessage.showTemporaryMessage(
+      success
+        ? `${capitalizeFirstLetter(messageName)} copied to clipboard`
+        : `Failed to copy ${messageName} to clipboard`,
+    );
   }
   return success;
 }
