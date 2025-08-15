@@ -1,5 +1,5 @@
 import { TrackableBoolean } from "#src/trackable_boolean.js";
-import { WatchableValueInterface } from "#src/trackable_value.js";
+import type { WatchableValueInterface } from "#src/trackable_value.js";
 import { RefCounted } from "#src/util/disposable.js";
 import { NullarySignal } from "#src/util/signal.js";
 import "#src/widget/accordion.css";

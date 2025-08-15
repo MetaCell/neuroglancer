@@ -2793,7 +2793,9 @@ ul#statusContainer {
     }
   }
 
-  .neuroglancer-position-widget > div > .neuroglancer-position-dimension:first-of-type {
+  .neuroglancer-position-widget
+    > div
+    > .neuroglancer-position-dimension:first-of-type {
     padding-left: 8px;
   }
 

@@ -67,7 +67,8 @@ import {
   makeCompletionElementWithDescription,
 } from "#src/widget/multiline_autocomplete.js";
 import { ProgressListenerWidget } from "#src/widget/progress_listener.js";
-import { AccordionState, AccordionTab } from "#src/widget/accordion.js";
+import type { AccordionState } from "#src/widget/accordion.js";
+import { AccordionTab } from "#src/widget/accordion.js";
 
 const dataSourceUrlSyntaxHighlighter: SyntaxHighlighter = {
   splitPattern: /\|?[^|:/_]*(?:[:/_]+)?/g,
@@ -538,8 +539,7 @@ export class LayerDataSourcesTab extends AccordionTab {
       const { layerTypeElement } = this;
       layerTypeElement.textContent = layerConstructor.type;
       layerTypeDetection.title =
-        "Click here to create as " +
-        `${layerConstructor.type} layer`;
+        "Click here to create as " + `${layerConstructor.type} layer`;
       layerTypeDetection.style.display = "";
       multiChannelLayerCreate.style.display =
         layerConstructor.type === "image" ? "" : "none";
