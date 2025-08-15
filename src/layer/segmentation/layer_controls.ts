@@ -11,11 +11,11 @@ import {
   fixedColorLayerControl,
 } from "#src/widget/segmentation_color_mode.js";
 
-export const VISIBILITY_SECTION_JSON_KEY = "visibility";
-export const APPEARANCE_SECTION_JSON_KEY = "appearance";
-export const SLICE_SECTION_JSON_KEY = "sliceRendering";
-export const MESH_SECTION_JSON_KEY = "meshRendering";
-export const SKELETON_SECTION_JSON_KEY = "skeletonSection";
+export const VISIBILITY_SECTION_JSON_KEY = "visibilityExpanded";
+export const APPEARANCE_SECTION_JSON_KEY = "appearanceExpanded";
+export const SLICE_SECTION_JSON_KEY = "sliceRenderingExpanded";
+export const MESH_SECTION_JSON_KEY = "meshRenderingExpanded";
+export const SKELETON_SECTION_JSON_KEY = "skeletonsExpanded";
 
 export const LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
   {

@@ -124,8 +124,8 @@ const SOURCE_JSON_KEY = "source";
 const TRANSFORM_JSON_KEY = "transform";
 const PICK_JSON_KEY = "pick";
 const SOURCE_ACCORDION_JSON_KEY = "sourceAccordion";
-const DATA_SECTION_JSON_KEY = "sourceSection";
-export const CREATE_SECTION_JSON_KEY = "createSection";
+const DATA_SECTION_JSON_KEY = "sourceExpanded";
+export const CREATE_SECTION_JSON_KEY = "createExpanded";
 
 export interface UserLayerSelectionState {
   generation: number;

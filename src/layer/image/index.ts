@@ -118,9 +118,9 @@ const VOLUME_RENDERING_JSON_KEY = "volumeRendering";
 const VOLUME_RENDERING_GAIN_JSON_KEY = "volumeRenderingGain";
 const VOLUME_RENDERING_DEPTH_SAMPLES_JSON_KEY = "volumeRenderingDepthSamples";
 const RENDERING_ACCORDION_JSON_KEY = "renderingAccordion";
-const SLICE_SECTION_JSON_KEY = "sliceSection";
-const VOLUME_RENDERING_SECTION_JSON_KEY = "volumeRenderingSection";
-const SHADER_SECTION_JSON_KEY = "shaderSection";
+const SLICE_SECTION_JSON_KEY = "sliceExpanded";
+const VOLUME_RENDERING_SECTION_JSON_KEY = "volumeRenderingExpanded";
+const SHADER_SECTION_JSON_KEY = "shaderExpanded";
 
 export interface ImageLayerSelectionState extends UserLayerSelectionState {
   value: any;
