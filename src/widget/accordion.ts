@@ -107,7 +107,7 @@ export class AccordionState extends RefCounted {
 
 export class AccordionTab extends Tab {
   sections: AccordionSection[] = [];
-  defaultKey: string;
+  defaultKey: string | undefined;
 
   constructor(protected accordionState: AccordionState) {
     super();
@@ -193,13 +193,22 @@ export class AccordionTab extends Tab {
     return newSection;
   }
 
-  private getSectionByKey(jsonKey: string): AccordionSection | undefined {
+  private getSectionByKey(
+    jsonKey: string | undefined,
+  ): AccordionSection | undefined {
     return this.sections.find((e) => e.jsonKey === jsonKey);
   }
 
   private getSectionWithFallback(jsonKey?: string): AccordionSection {
-    return (this.getSectionByKey(jsonKey ?? this.defaultKey) ??
-      this.getSectionByKey(this.defaultKey))!;
+    const section =
+      this.getSectionByKey(jsonKey ?? this.defaultKey) ??
+      this.getSectionByKey(this.defaultKey);
+    if (section === undefined) {
+      throw new Error(
+        `Accordion section with key "${jsonKey ?? this.defaultKey}" not found.`,
+      );
+    }
+    return section;
   }
 
   appendChild(content: HTMLElement, jsonKey?: string, hidden?: boolean): void {
