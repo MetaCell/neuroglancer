@@ -6,6 +6,8 @@ import "#src/widget/accordion.css";
 import { Tab } from "#src/widget/tab_view.js";
 import svg_chevron_down from "#src/ui/images/chevron_down.svg?raw";
 
+const ENABLE_ACCORDIONS = true;
+
 export interface AccordionOptions {
   accordionJsonKey: string;
   sections: AccordionSectionOptions[];
@@ -95,6 +97,7 @@ export class AccordionState extends RefCounted {
   }
 
   toJSON() {
+    if (!ENABLE_ACCORDIONS) return undefined;
     const sectionsData = this.sectionStates
       .map((section) => section.toJSON())
       .filter((data) => data !== undefined);
@@ -125,6 +128,9 @@ export class AccordionTab extends Tab {
       this.defaultKey = options.sections[0].jsonKey;
     }
     this.updateSectionsExpanded();
+    if (!ENABLE_ACCORDIONS) {
+      this.setAccordionHeadersHidden(true);
+    }
   }
 
   private setSectionExpanded(jsonKey: string, expand?: boolean): void {
@@ -217,6 +223,10 @@ export class AccordionTab extends Tab {
     if (!hidden) section.container.style.display = "";
   }
 
+  /**
+   * Set the visibility of the section with the given jsonKey.
+   * This is different to expanding/collapsing the section.
+   */
   setSectionHidden(jsonKey: string, hidden: boolean): void {
     const section = this.getSectionByKey(jsonKey);
     if (section !== undefined) {
@@ -224,11 +234,28 @@ export class AccordionTab extends Tab {
     }
   }
 
+  /**
+   * Show the section with the given jsonKey.
+   * This is different to expanding the section, it is only about visibility.
+   */
   showSection(jsonKey: string): void {
     this.setSectionHidden(jsonKey, false);
   }
 
+  /**
+   * Hide the section with the given jsonKey.
+   * This is different to collapsing the section, it is only about visibility.
+   */
   hideSection(jsonKey: string): void {
     this.setSectionHidden(jsonKey, true);
+  }
+
+  setAccordionHeadersHidden(hidden: boolean): void {
+    this.sections.forEach((section) => {
+      section.header.style.display = hidden ? "none" : "";
+      if (hidden) {
+        this.setSectionExpanded(section.jsonKey, true);
+      }
+    });
   }
 }

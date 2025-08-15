@@ -119,7 +119,6 @@ export class DisplayOptionsTab extends AccordionTab {
         this.visibility,
       ),
     );
-    console.log(this.layer.hasSkeletonsLayer);
     this.appendChild(
       skeletonControls.element,
       SKELETON_SECTION_JSON_KEY,
