@@ -32,18 +32,13 @@ export class AccordionSectionState extends RefCounted {
   isExpanded: WatchableValueInterface<boolean>;
 
   constructor(
-    public parentState: AccordionState,
     public jsonKey: string,
     private defaultExpanded = false,
+    onChangeCallback: () => void,
   ) {
     super();
     this.isExpanded = new TrackableBoolean(defaultExpanded, defaultExpanded);
-    this.registerDisposer(
-      this.isExpanded.changed.add(() => {
-        parentState.specificationChanged.dispatch();
-      }),
-    );
-    parentState.sectionStates.push(this);
+    this.registerDisposer(this.isExpanded.changed.add(onChangeCallback));
   }
 
   toJSON() {
@@ -68,14 +63,26 @@ export class AccordionState extends RefCounted {
     let sectionState = this.getSectionState(jsonKey);
     if (sectionState === undefined) {
       sectionState = this.registerDisposer(
-        new AccordionSectionState(this, jsonKey, defaultExpanded),
+        new AccordionSectionState(
+          jsonKey,
+          defaultExpanded,
+          this.specificationChanged.dispatch,
+        ),
       );
+      this.sectionStates.push(sectionState);
     }
     return sectionState;
   }
 
   getSectionState(jsonKey: string): AccordionSectionState | undefined {
     return this.sectionStates.find((s) => s.jsonKey === jsonKey);
+  }
+
+  setSectionExpanded(jsonKey: string, expand?: boolean): void {
+    const section = this.getSectionState(jsonKey);
+    if (section !== undefined) {
+      section.isExpanded.value = expand ?? !section.isExpanded.value;
+    }
   }
 
   restoreState(obj: unknown) {
@@ -86,13 +93,6 @@ export class AccordionState extends RefCounted {
       if (typeof isExpanded === "boolean") {
         this.setSectionExpanded(jsonKey, isExpanded);
       }
-    }
-  }
-
-  setSectionExpanded(jsonKey: string, expand?: boolean): void {
-    const section = this.getSectionState(jsonKey);
-    if (section !== undefined) {
-      section.isExpanded.value = expand ?? !section.isExpanded.value;
     }
   }
 
