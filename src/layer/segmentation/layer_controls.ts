@@ -15,6 +15,7 @@ export const VISIBILITY_SECTION_JSON_KEY = "visibility";
 export const APPEARANCE_SECTION_JSON_KEY = "appearance";
 export const SLICE_SECTION_JSON_KEY = "sliceRendering";
 export const MESH_SECTION_JSON_KEY = "meshRendering";
+export const SKELETON_SECTION_JSON_KEY = "skeletonSection";
 
 export const LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
   {

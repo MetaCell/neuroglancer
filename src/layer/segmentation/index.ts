@@ -38,6 +38,7 @@ import {
   APPEARANCE_SECTION_JSON_KEY,
   MESH_SECTION_JSON_KEY,
   registerLayerControls,
+  SKELETON_SECTION_JSON_KEY,
   SLICE_SECTION_JSON_KEY,
   VISIBILITY_SECTION_JSON_KEY,
 } from "#src/layer/segmentation/layer_controls.js";
@@ -139,7 +140,6 @@ import { registerLayerShaderControlsTool } from "#src/widget/shader_controls.js"
 import { AccordionState } from "#src/widget/accordion.js";
 
 export const SEGMENTATION_RENDERING_ACCORDION_JSON_KEY = "renderingAccordion";
-export const SKELETON_SECTION_JSON_KEY = "skeletonSection";
 
 export class SegmentationUserLayerGroupState
   extends RefCounted

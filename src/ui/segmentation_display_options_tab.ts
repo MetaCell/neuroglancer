@@ -14,14 +14,13 @@
  * limitations under the License.
  */
 
-import {
-  SKELETON_SECTION_JSON_KEY,
-  type SegmentationUserLayer,
-} from "#src/layer/segmentation/index.js";
+import { type SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import { SKELETON_RENDERING_SHADER_CONTROL_TOOL_ID } from "#src/layer/segmentation/json_keys.js";
 import {
+  APPEARANCE_SECTION_JSON_KEY,
   LAYER_CONTROLS,
   VISIBILITY_SECTION_JSON_KEY,
+  SKELETON_SECTION_JSON_KEY,
 } from "#src/layer/segmentation/layer_controls.js";
 import { AccordionTab } from "#src/widget/accordion.js";
 import { DependentViewWidget } from "#src/widget/dependent_view_widget.js";
@@ -67,7 +66,7 @@ export class DisplayOptionsTab extends AccordionTab {
       );
       widget.label.textContent = "Colors linked to: ";
       widget.label.classList.add("neuroglancer-label-linkedto");
-      this.appendChild(widget.element, VISIBILITY_SECTION_JSON_KEY);
+      this.appendChild(widget.element, APPEARANCE_SECTION_JSON_KEY);
     }
 
     for (const control of LAYER_CONTROLS) {
@@ -120,6 +119,19 @@ export class DisplayOptionsTab extends AccordionTab {
         this.visibility,
       ),
     );
-    this.appendChild(skeletonControls.element, SKELETON_SECTION_JSON_KEY);
+    console.log(this.layer.hasSkeletonsLayer);
+    this.appendChild(
+      skeletonControls.element,
+      SKELETON_SECTION_JSON_KEY,
+      !this.layer.hasSkeletonsLayer.value,
+    );
+    this.registerDisposer(
+      this.layer.hasSkeletonsLayer.changed.add(() => {
+        this.setSectionHidden(
+          SKELETON_SECTION_JSON_KEY,
+          !this.layer.hasSkeletonsLayer.value,
+        );
+      }),
+    );
   }
 }
