@@ -428,6 +428,10 @@ class Layer(JsonObjectWrapper):
     )
     tool = wrapped_property("tool", optional(Tool))
 
+    annotations_accordion = annotationsAccordion = wrapped_property(
+        "annotationsAccordion", typed_map(str, bool))
+    source_accordion = sourceAccordion = wrapped_property(
+        "sourceAccordion", typed_map(str, bool))
     @staticmethod
     def interpolate(a, b, t):
         c = copy.deepcopy(a)
@@ -609,6 +613,8 @@ class ImageLayer(Layer, _AnnotationLayerOptions):
     cross_section_render_scale = crossSectionRenderScale = wrapped_property(
         "crossSectionRenderScale", optional(float, 1)
     )
+    rendering_accordion = renderingAccordion = wrapped_property(
+        "renderingAccordion", typed_map(str, bool))
 
     @staticmethod
     def interpolate(a, b, t):
@@ -945,6 +951,9 @@ class SegmentationLayer(Layer, _AnnotationLayerOptions):
     )
     skeleton_rendering = skeletonRendering = wrapped_property(
         "skeletonRendering", SkeletonRenderingOptions
+    )
+    rendering_accordion = renderingAccordion = wrapped_property(
+        "renderingAccordion", typed_map(str, bool)
     )
 
     @property
