@@ -26,10 +26,11 @@ if __name__ == "__main__":
     viewer = neuroglancer.Viewer()
     with viewer.txn() as s:
         add_example_layers(s)
-        s.layers[0].annotations_accordion["annotationsExpanded"] = False
-        s.layers[0].annotations_accordion["relatedSegmentExpanded"] = True
-        s.layers[0].rendering_accordion["sliceExpanded"] = True       
-        s.layers[0].rendering_accordion["shaderExpanded"] = False       
-        s.layers[0].source_accordion["sourceExpanded"] = False      
+        # Using the new typed accordion properties with autocomplete and validation
+        s.layers[0].annotations_accordion.annotations_expanded = False
+        s.layers[0].annotations_accordion.related_segments_expanded = True
+        s.layers[0].rendering_accordion.slice_expanded = True       
+        s.layers[0].rendering_accordion.shader_expanded = False       
+        s.layers[0].source_accordion.source_expanded = False      
 
     print(viewer)
