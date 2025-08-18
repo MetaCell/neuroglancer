@@ -397,9 +397,15 @@ ul#statusContainer {
     font-weight: 500;
     color: var(--white);
   }
+  .neuroglancer-status-modal-footer button:hover {
+    background-color: var(--primary120);
+  }
   .neuroglancer-status-modal-cancel-button {
     border: 1.5px solid var(--stroke60);
     background-color: transparent;
+  }
+  .neuroglancer-status-modal-cancel-button:hover {
+    background-color: transparent !important;
   }
   .neuroglancer-status-modal-action-button {
     background-color: var(--primary100);

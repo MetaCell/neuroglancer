@@ -259,6 +259,9 @@ export class StatusMessage {
 
   addButtonToFooter(button: HTMLButtonElement, cancelHandler?: () => void) {
     if (this.modalFooter) {
+
+      this.modalFooter.innerHTML = '';
+
       // Create cancel button
       const cancelButton = document.createElement("button");
       cancelButton.textContent = "Cancel";

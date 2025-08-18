@@ -26,7 +26,7 @@ export function getCredentialsWithStatus<Token>(
   },
   signal: AbortSignal,
 ): Promise<Token> {
-  const { requestDescription = "login" } = options;
+  const { requestDescription = "To view this dataset in Neuroglancer, please ensure you are logged in with valid credentials." } = options;
   const status = new StatusMessage(/*delay=*/ true);
   let abortController: AbortController | undefined;
   return new Promise<Token>((resolve, reject) => {
@@ -43,9 +43,8 @@ export function getCredentialsWithStatus<Token>(
       disposeAbortCallback?.[Symbol.dispose]();
     }
     function writeLoginStatus(
-      msg = `${options.description} ${requestDescription} required.`,
-      // msg = "The BrainMaps project requires user authentication to retrieve its data sources. To view this dataset in Neuroglancer, please ensure you are logged in with valid credentials.",
-      linkMessage = `Request ${requestDescription}.`,
+      msg = `${options.description} ${requestDescription}`,
+      linkMessage = `Go to login`,
       title = "Login Required"
     ) {
       status.setTitle(title);
