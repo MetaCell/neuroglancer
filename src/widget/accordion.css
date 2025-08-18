@@ -1,32 +1,53 @@
-.accordion {
+.neuroglancer-accordion {
   /* border: 1px solid #ddd; */
   /* border-radius: 4px; */
   background-color: #141414;
 }
 
-.accordion-expanded {
-  display: flex;
-  flex-direction: column;
-  height: auto;
-}
-
-.accordion-item {
+.neuroglancer-accordion-item {
   border-bottom: 1px solid #ddd;
 }
 
-.accordion-title {
+.neuroglancer-accordion-item[data-expanded="true"]
+  .neuroglancer-accordion-body {
+  display: flex; /* Show when expanded */
+}
+
+.neuroglancer-accordion-item[data-expanded="true"]
+  .neuroglancer-accordion-header
+  .neuroglancer-accordion-chevron
+  svg {
+  transform: rotate(180deg); /* Rotate chevron when expanded */
+}
+
+.neuroglancer-accordion-chevron {
+  margin-top: 4px;
+}
+
+.neuroglancer-accordion-chevron svg {
+  width: 24px;
+  height: 24px;
+  fill: #fff; /* Chevron color */
+}
+
+.neuroglancer-accordion-item[data-expanded="false"]
+  .neuroglancer-accordion-body {
+  display: none; /* Hide when collapsed */
+}
+
+.neuroglancer-accordion-header {
   padding: 10px;
   cursor: pointer;
+  justify-content: space-between;
+  display: flex;
+}
+
+.neuroglancer-accordion-header:hover {
   background-color: #141414;
 }
 
-.accordion-title:hover {
-  background-color: #141414;
-}
-
-.accordion-content {
+.neuroglancer-accordion-body {
   padding: 10px;
-  display: none; /* Hide by default */
   overflow-x: auto;
   overflow-y: auto;
 }

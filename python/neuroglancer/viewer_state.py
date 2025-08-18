@@ -407,6 +407,47 @@ class DimensionPlaybackVelocity(JsonObjectWrapper):
 
 
 @export
+class SourceAccordion(JsonObjectWrapper):
+    """Accordion state for layer data source controls."""
+    __slots__ = ()
+
+    source_expanded = sourceExpanded = wrapped_property("sourceExpanded", optional(bool))
+    create_expanded = createExpanded = wrapped_property("createExpanded", optional(bool))
+
+
+@export
+class AnnotationsAccordion(JsonObjectWrapper):
+    """Accordion state for layer annotation controls."""
+    __slots__ = ()
+
+    spacing_expanded = spacingExpanded = wrapped_property("spacingExpanded", optional(bool))
+    related_segments_expanded = relatedSegmentsExpanded = wrapped_property("relatedSegmentsExpanded", optional(bool))
+    annotations_expanded = annotationsExpanded = wrapped_property("annotationsExpanded", optional(bool))
+
+
+@export
+class ImageRenderingAccordion(JsonObjectWrapper):
+    """Accordion state for image layer rendering controls."""
+    __slots__ = ()
+
+    slice_expanded = sliceExpanded = wrapped_property("sliceExpanded", optional(bool))
+    volume_rendering_expanded = volumeRenderingExpanded = wrapped_property("volumeRenderingExpanded", optional(bool))
+    shader_expanded = shaderExpanded = wrapped_property("shaderExpanded", optional(bool))
+
+
+@export
+class SegmentationRenderingAccordion(JsonObjectWrapper):
+    """Accordion state for segmentation layer rendering controls."""
+    __slots__ = ()
+
+    visibility_expanded = visibilityExpanded = wrapped_property("visibilityExpanded", optional(bool))
+    appearance_expanded = appearanceExpanded = wrapped_property("appearanceExpanded", optional(bool))
+    slice_rendering_expanded = sliceRenderingExpanded = wrapped_property("sliceRenderingExpanded", optional(bool))
+    mesh_rendering_expanded = meshRenderingExpanded = wrapped_property("meshRenderingExpanded", optional(bool))
+    skeletons_expanded = skeletonsExpanded = wrapped_property("skeletonsExpanded", optional(bool))
+
+
+@export
 class Layer(JsonObjectWrapper):
     __slots__ = ()
     type = wrapped_property("type", optional(str))
@@ -428,6 +469,10 @@ class Layer(JsonObjectWrapper):
     )
     tool = wrapped_property("tool", optional(Tool))
 
+    annotations_accordion = annotationsAccordion = wrapped_property(
+        "annotationsAccordion", AnnotationsAccordion)
+    source_accordion = sourceAccordion = wrapped_property(
+        "sourceAccordion", SourceAccordion)
     @staticmethod
     def interpolate(a, b, t):
         c = copy.deepcopy(a)
@@ -609,6 +654,8 @@ class ImageLayer(Layer, _AnnotationLayerOptions):
     cross_section_render_scale = crossSectionRenderScale = wrapped_property(
         "crossSectionRenderScale", optional(float, 1)
     )
+    rendering_accordion = renderingAccordion = wrapped_property(
+        "renderingAccordion", ImageRenderingAccordion)
 
     @staticmethod
     def interpolate(a, b, t):
@@ -945,6 +992,9 @@ class SegmentationLayer(Layer, _AnnotationLayerOptions):
     )
     skeleton_rendering = skeletonRendering = wrapped_property(
         "skeletonRendering", SkeletonRenderingOptions
+    )
+    rendering_accordion = renderingAccordion = wrapped_property(
+        "renderingAccordion", SegmentationRenderingAccordion
     )
 
     @property

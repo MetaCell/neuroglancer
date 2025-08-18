@@ -108,7 +108,7 @@ export class LayerTypeWidget extends RefCounted {
       element.dataset.expanded = "true";
     });
 
-    element.addEventListener('blur', () => {
+    element.addEventListener("blur", () => {
       element.dataset.expanded = "false";
     });
 

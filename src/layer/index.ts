@@ -113,6 +113,7 @@ import type { DependentViewContext } from "#src/widget/dependent_view_widget.js"
 import type { Tab } from "#src/widget/tab_view.js";
 import { TabSpecification } from "#src/widget/tab_view.js";
 import type { RPC } from "#src/worker_rpc.js";
+import { AccordionState } from "#src/widget/accordion.js";
 
 const TOOL_JSON_KEY = "tool";
 const TOOL_BINDINGS_JSON_KEY = "toolBindings";
@@ -122,6 +123,9 @@ const LOCAL_COORDINATE_SPACE_JSON_KEY = "localDimensions";
 const SOURCE_JSON_KEY = "source";
 const TRANSFORM_JSON_KEY = "transform";
 const PICK_JSON_KEY = "pick";
+const SOURCE_ACCORDION_JSON_KEY = "sourceAccordion";
+const DATA_SECTION_JSON_KEY = "sourceExpanded";
+export const CREATE_SECTION_JSON_KEY = "createExpanded";
 
 export interface UserLayerSelectionState {
   generation: number;
@@ -347,6 +351,24 @@ export class UserLayer extends RefCounted {
   }
 
   tabs = this.registerDisposer(new TabSpecification());
+  sourceAccordionState = this.registerDisposer(
+    new AccordionState({
+      accordionJsonKey: SOURCE_ACCORDION_JSON_KEY,
+      sections: [
+        {
+          jsonKey: DATA_SECTION_JSON_KEY,
+          displayName: "Data sources",
+          defaultExpanded: true,
+          isDefaultKey: true,
+        },
+        {
+          jsonKey: CREATE_SECTION_JSON_KEY,
+          displayName: "Initial settings",
+          defaultExpanded: true,
+        },
+      ],
+    }),
+  );
   panels = new UserLayerSidePanelsState(this);
   tool = this.registerDisposer(new SelectedLegacyTool(this));
   toolBinder: LayerToolBinder<this>;
@@ -366,6 +388,9 @@ export class UserLayer extends RefCounted {
     this.localCoordinateSpaceCombiner.includeDimensionPredicate =
       isLocalOrChannelDimension;
     this.tabs.changed.add(this.specificationChanged.dispatch);
+    this.sourceAccordionState.specificationChanged.add(
+      this.specificationChanged.dispatch,
+    );
     this.panels.specificationChanged.add(this.specificationChanged.dispatch);
     this.tool.changed.add(this.specificationChanged.dispatch);
     this.toolBinder.changed.add(this.specificationChanged.dispatch);
@@ -375,6 +400,7 @@ export class UserLayer extends RefCounted {
     this.dataSourcesChanged.add(this.specificationChanged.dispatch);
     this.dataSourcesChanged.add(() => this.updateDataSubsourceActivations());
     this.messages.changed.add(this.layersChanged.dispatch);
+
     for (const tab of USER_LAYER_TABS) {
       this.tabs.add(tab.id, {
         label: tab.label,
@@ -516,6 +542,9 @@ export class UserLayer extends RefCounted {
 
   restoreState(specification: any) {
     this.tool.restoreState(specification[TOOL_JSON_KEY]);
+    this.sourceAccordionState.restoreState(
+      specification[SOURCE_ACCORDION_JSON_KEY],
+    );
     this.panels.restoreState(specification);
     this.localCoordinateSpace.restoreState(
       specification[LOCAL_COORDINATE_SPACE_JSON_KEY],
@@ -599,6 +628,7 @@ export class UserLayer extends RefCounted {
       [LOCAL_POSITION_JSON_KEY]: this.localPosition.toJSON(),
       [LOCAL_VELOCITY_JSON_KEY]: this.localVelocity.toJSON(),
       [PICK_JSON_KEY]: this.pick.toJSON(),
+      [SOURCE_ACCORDION_JSON_KEY]: this.sourceAccordionState.toJSON(),
       ...this.panels.toJSON(),
     };
   }
