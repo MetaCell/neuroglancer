@@ -15,9 +15,9 @@
  */
 
 .neuroglancer-checkbox-icon.light-background[data-checked="true"] {
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: transparent;
 }
 
 .neuroglancer-checkbox-icon.dark-background[data-checked="true"] {
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: transparent;
 }
