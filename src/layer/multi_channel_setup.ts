@@ -20,10 +20,9 @@ import {
   permuteCoordinateSpace,
 } from "#src/coordinate_transform.js";
 import type { SingleChannelMetadata } from "#src/datasource/index.js";
+import type { DisplayContext } from "#src/display_context.js";
 import type { ImageUserLayer } from "#src/layer/image/index.js";
 import {
-  changeLayerName,
-  TopLevelLayerListSpecification,
   type LayerListSpecification,
   type ManagedUserLayer,
   type UserLayer,
@@ -32,8 +31,25 @@ import { BLEND_MODES } from "#src/trackable_blend.js";
 import { arraysEqual } from "#src/util/array.js";
 import type { Borrowed } from "#src/util/disposable.js";
 import type { vec3 } from "#src/util/geom.js";
-import type { ShaderImageInvlerpControl } from "#src/webgl/shader_ui_controls.js";
 import { dataTypeIntervalEqual, defaultDataTypeRange } from "#src/util/lerp.js";
+import type { ShaderImageInvlerpControl } from "#src/webgl/shader_ui_controls.js";
+
+function isTopLevelLayerListManager(
+  x: LayerListSpecification,
+): x is LayerListSpecification & { display: DisplayContext } {
+  const display = (x as any).display as DisplayContext | undefined;
+
+  return (
+    !!display &&
+    typeof (display as any).multiChannelSetupFinished?.dispatch === "function"
+  );
+}
+
+function changeLayerName(managedLayer: ManagedUserLayer, newName: string) {
+  newName = managedLayer.manager.root.layerManager.getUniqueLayerName(newName);
+  managedLayer.name = newName;
+  managedLayer.layerChanged.dispatch();
+}
 
 type MakeLayerFn = (
   manager: LayerListSpecification,
@@ -394,7 +410,7 @@ export function createImageLayerAsMultiChannel(
       ignoreInputMetadata,
     );
   }
-  if (managedLayer.manager instanceof TopLevelLayerListSpecification) {
+  if (isTopLevelLayerListManager(managedLayer.manager)) {
     managedLayer.manager.display.multiChannelSetupFinished.dispatch();
   }
   postCreationSetupFunctions.forEach((fn) => fn());
