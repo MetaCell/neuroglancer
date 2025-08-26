@@ -510,6 +510,9 @@ export class LayerDataSourcesTab extends AccordionTab {
       multiChannelLayerCreate.style.display = "none";
       multiChannelLayerCreate.style.marginTop = "0.5em";
       this.appendChild(multiChannelLayerCreate, CREATE_SECTION_JSON_KEY);
+      
+      // Initially hide the section since both buttons start hidden
+      this.setSectionHidden(CREATE_SECTION_JSON_KEY, true);
     }
     const reRender = (this.reRender = animationFrameDebounce(() =>
       this.updateView(),
@@ -543,10 +546,15 @@ export class LayerDataSourcesTab extends AccordionTab {
       layerTypeDetection.style.display = "";
       multiChannelLayerCreate.style.display =
         layerConstructor.type === "image" ? "" : "none";
+      // Show the section when at least one button is visible
+      this.setSectionHidden(CREATE_SECTION_JSON_KEY, false);
     } else {
       layerTypeDetection.style.display = "none";
       multiChannelLayerCreate.style.display = "none";
     }
+    // Hide the CREATE_SECTION if both buttons are hidden
+    const shouldHideSection = layerTypeDetection.style.display === "none" && multiChannelLayerCreate.style.display === "none";
+    this.setSectionHidden(CREATE_SECTION_JSON_KEY, shouldHideSection);
   }
 
   disposed() {
