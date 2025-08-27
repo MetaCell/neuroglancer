@@ -366,8 +366,8 @@ export class PositionWidget extends RefCounted {
           new TrackableBooleanCheckbox(
             this.velocity!.playbackEnabled(widget.id),
             {
-              enableTitle: "Disable playback/velocity",
-              disableTitle: "Enable playback/velocity",
+              enabledTitle: "Disable playback/velocity",
+              disabledTitle: "Enable playback/velocity",
             },
           ),
         ).element,
