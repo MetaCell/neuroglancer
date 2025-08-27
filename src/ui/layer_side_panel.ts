@@ -114,7 +114,7 @@ export class LayerTypeWidget extends RefCounted {
 
     element.addEventListener("pointerleave", () => {
       element.dataset.expanded = "false";
-    })
+    });
 
     for (const [layerType, layerConstructor] of layerTypes) {
       if (layerConstructor.type !== layerType) continue;
