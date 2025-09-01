@@ -393,7 +393,7 @@ ul#statusContainer {
     &:hover svg {
       background-color: var(--background60);
     }
-    
+
     &[data-checked="true"] svg {
       stroke: white;
       background-color: var(--background60);
@@ -1210,11 +1210,8 @@ ul#statusContainer {
 
   .neuroglancer-tab-view {
     .neuroglancer-tab-content {
-      padding: calc(var(--spacing1) * 1.5);
-
-      .neuroglancer-tab-content {
-        padding: 0;
-      }
+      padding: 0;
+      margin: 0;
     }
 
     overflow: auto;
@@ -1899,12 +1896,15 @@ ul#statusContainer {
       position: relative;
 
       .neuroglancer-accordion-header {
-        padding: 2px var(--spacing1);
+        padding: 12px;
         line-height: 2rem;
 
         cursor: pointer;
         font-size: 0.875rem;
         font-weight: 500;
+
+        display: flex;
+        align-items: center;
       }
 
       .neuroglancer-accordion-body {
@@ -2017,6 +2017,11 @@ ul#statusContainer {
           }
         }
       }
+    }
+
+    .neuroglancer-accordion-item[data-expanded="true"]
+      .neuroglancer-accordion-header {
+      padding-bottom: 4px;
     }
 
     .skeleton-container {
@@ -2954,7 +2959,6 @@ ul#statusContainer {
         color: var(--content100);
       }
     }
-    
 
     &:hover {
       background-color: var(--background60);
@@ -3003,8 +3007,6 @@ ul#statusContainer {
       text-indent: -62.4375rem;
       position: relative;
       margin: 0;
-
-
 
       &[data-checked="true"] {
         background-image: url("../src/ui/images/push_pin.svg");
@@ -3240,13 +3242,11 @@ ul#statusContainer {
           visibility: visible;
         }
 
-
         &[data-checked="true"] {
           .neuroglancer-layer-list-panel-item-controls svg {
             color: var(--white) !important;
           }
         }
-        
 
         .neuroglancer-layer-type-indicator {
           background-color: var(--background60);

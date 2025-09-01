@@ -22,12 +22,17 @@
 
 .neuroglancer-accordion-chevron {
   margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
 }
 
 .neuroglancer-accordion-chevron svg {
-  width: 24px;
-  height: 24px;
-  fill: #fff; /* Chevron color */
+  width: 20px;
+  height: 20px;
+}
+
+.neuroglancer-accordion-chevron svg path {
+  fill: rgb(153, 156, 160); /* Chevron color */
 }
 
 .neuroglancer-accordion-item[data-expanded="false"]
