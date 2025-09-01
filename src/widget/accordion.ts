@@ -1,10 +1,10 @@
 import { TrackableBoolean } from "#src/trackable_boolean.js";
 import type { WatchableValueInterface } from "#src/trackable_value.js";
+import svg_chevron_down from "#src/ui/images/chevron_down.svg?raw";
 import { RefCounted } from "#src/util/disposable.js";
 import { NullarySignal } from "#src/util/signal.js";
 import "#src/widget/accordion.css";
 import { Tab } from "#src/widget/tab_view.js";
-import svg_chevron_down from "#src/ui/images/chevron_down.svg?raw";
 
 const ENABLE_ACCORDIONS = true;
 
