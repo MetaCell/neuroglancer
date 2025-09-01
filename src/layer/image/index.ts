@@ -79,6 +79,7 @@ import {
   setControlsInShader,
   ShaderControlState,
 } from "#src/webgl/shader_ui_controls.js";
+import { AccordionState, AccordionTab } from "#src/widget/accordion.js";
 import { ChannelDimensionsWidget } from "#src/widget/channel_dimensions_widget.js";
 import { makeCopyButton } from "#src/widget/copy_button.js";
 import type { DependentViewContext } from "#src/widget/dependent_view_widget.js";
@@ -105,7 +106,6 @@ import {
   registerLayerShaderControlsTool,
   ShaderControls,
 } from "#src/widget/shader_controls.js";
-import { AccordionState, AccordionTab } from "#src/widget/accordion.js";
 
 const OPACITY_JSON_KEY = "opacity";
 const BLEND_JSON_KEY = "blend";

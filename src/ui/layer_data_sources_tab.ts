@@ -55,6 +55,8 @@ import {
 import type { MessageList } from "#src/util/message_list.js";
 import { MessageSeverity } from "#src/util/message_list.js";
 import type { ProgressListener } from "#src/util/progress_listener.js";
+import type { AccordionState } from "#src/widget/accordion.js";
+import { AccordionTab } from "#src/widget/accordion.js";
 import { makeAddButton } from "#src/widget/add_button.js";
 import { CoordinateSpaceTransformWidget } from "#src/widget/coordinate_transform.js";
 import { makeIcon } from "#src/widget/icon.js";
@@ -67,8 +69,6 @@ import {
   makeCompletionElementWithDescription,
 } from "#src/widget/multiline_autocomplete.js";
 import { ProgressListenerWidget } from "#src/widget/progress_listener.js";
-import type { AccordionState } from "#src/widget/accordion.js";
-import { AccordionTab } from "#src/widget/accordion.js";
 
 const dataSourceUrlSyntaxHighlighter: SyntaxHighlighter = {
   splitPattern: /\|?[^|:/_]*(?:[:/_]+)?/g,
@@ -510,6 +510,9 @@ export class LayerDataSourcesTab extends AccordionTab {
       multiChannelLayerCreate.style.display = "none";
       multiChannelLayerCreate.style.marginTop = "0.5em";
       this.appendChild(multiChannelLayerCreate, CREATE_SECTION_JSON_KEY);
+
+      // Initially hide the section since both buttons start hidden
+      this.hideSection(CREATE_SECTION_JSON_KEY);
     }
     const reRender = (this.reRender = animationFrameDebounce(() =>
       this.updateView(),
@@ -543,9 +546,11 @@ export class LayerDataSourcesTab extends AccordionTab {
       layerTypeDetection.style.display = "";
       multiChannelLayerCreate.style.display =
         layerConstructor.type === "image" ? "" : "none";
+      this.showSection(CREATE_SECTION_JSON_KEY);
     } else {
       layerTypeDetection.style.display = "none";
       multiChannelLayerCreate.style.display = "none";
+      this.hideSection(CREATE_SECTION_JSON_KEY);
     }
   }
 

@@ -109,11 +109,11 @@ import {
 import type { Trackable } from "#src/util/trackable.js";
 import { kEmptyFloat32Vec } from "#src/util/vector.js";
 import type { WatchableVisibilityPriority } from "#src/visibility_priority/frontend.js";
+import { AccordionState } from "#src/widget/accordion.js";
 import type { DependentViewContext } from "#src/widget/dependent_view_widget.js";
 import type { Tab } from "#src/widget/tab_view.js";
 import { TabSpecification } from "#src/widget/tab_view.js";
 import type { RPC } from "#src/worker_rpc.js";
-import { AccordionState } from "#src/widget/accordion.js";
 
 const TOOL_JSON_KEY = "tool";
 const TOOL_BINDINGS_JSON_KEY = "toolBindings";

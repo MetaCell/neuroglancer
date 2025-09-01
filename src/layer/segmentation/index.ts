@@ -137,9 +137,9 @@ import {
 } from "#src/util/json.js";
 import { Signal } from "#src/util/signal.js";
 import { makeWatchableShaderError } from "#src/webgl/dynamic_shader.js";
+import { AccordionState } from "#src/widget/accordion.js";
 import type { DependentViewContext } from "#src/widget/dependent_view_widget.js";
 import { registerLayerShaderControlsTool } from "#src/widget/shader_controls.js";
-import { AccordionState } from "#src/widget/accordion.js";
 
 export const SEGMENTATION_RENDERING_ACCORDION_JSON_KEY = "renderingAccordion";
 
