@@ -272,7 +272,6 @@ export class LoadedDataSourceView extends RefCounted {
     const { element } = this;
     element.classList.add("neuroglancer-layer-data-source-div");
     const enableDefaultSubsourcesLabel = document.createElement("label");
-    enableDefaultSubsourcesLabel.id = "enableDefaultSubsourcesLabel";
     enableDefaultSubsourcesLabel.classList.add(
       "neuroglancer-layer-data-sources-source-default",
     );

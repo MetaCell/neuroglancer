@@ -100,7 +100,7 @@ const ANNOTATIONS_JSON_KEY = "annotations";
 const ANNOTATION_PROPERTIES_JSON_KEY = "annotationProperties";
 const ANNOTATION_RELATIONSHIPS_JSON_KEY = "annotationRelationships";
 const CROSS_SECTION_RENDER_SCALE_JSON_KEY = "crossSectionAnnotationSpacing";
-export const PROJECTION_RENDER_SCALE_JSON_KEY = "projectionAnnotationSpacing";
+const PROJECTION_RENDER_SCALE_JSON_KEY = "projectionAnnotationSpacing";
 const SHADER_JSON_KEY = "shader";
 const SHADER_CONTROLS_JSON_KEY = "shaderControls";
 const ANNOTATION_COLOR_JSON_KEY = "annotationColor";
@@ -775,7 +775,7 @@ export class AnnotationUserLayer extends Base {
   static supportsLayerBarColorSyncOption = true;
 }
 
-export function makeShaderCodeWidget(layer: AnnotationUserLayer) {
+function makeShaderCodeWidget(layer: AnnotationUserLayer) {
   return new ShaderCodeWidget({
     shaderError: layer.annotationDisplayState.shaderError,
     fragmentMain: layer.annotationDisplayState.shader,
