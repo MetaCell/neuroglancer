@@ -104,15 +104,15 @@ export class LayerTypeWidget extends RefCounted {
     element.title = "Change layer type";
     document.body.appendChild(measureElement);
 
-    element.addEventListener('mousedown', () => {
+    element.addEventListener("pointerdown", () => {
       element.dataset.expanded = "true";
     });
 
-    element.addEventListener('blur', () => {
+    element.addEventListener("blur", () => {
       element.dataset.expanded = "false";
     });
 
-    element.addEventListener('change', () => {
+    element.addEventListener("pointerleave", () => {
       element.dataset.expanded = "false";
     });
 
@@ -124,6 +124,7 @@ export class LayerTypeWidget extends RefCounted {
       element.appendChild(option);
     }
     element.addEventListener("change", () => {
+      element.dataset.expanded = "false";
       const newType = element.value;
       const layerConstructor = layerTypes.get(newType)!;
       changeLayerType(this.layer.managedLayer, layerConstructor);

@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import type { TrackableTabAccordionState } from "#src/accordion_state.js";
 import type {
   LayerManager,
   MouseSelectionState,
@@ -37,5 +36,4 @@ export interface ViewerState extends VisibilityPrioritySpecification {
   layerManager: LayerManager;
   selectedLayer: SelectedLayerState;
   selectionDetailsState: TrackableDataSelectionState;
-  tabAccordionState?: TrackableTabAccordionState;
 }

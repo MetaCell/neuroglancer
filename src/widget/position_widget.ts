@@ -29,7 +29,6 @@ import {
   insertDimensionAt,
   makeCoordinateSpace,
 } from "#src/coordinate_transform.js";
-import { TrackableBooleanCheckbox } from "#src/trackable_boolean.js";
 import type { MouseSelectionState, UserLayer } from "#src/layer/index.js";
 import type { LayerGroupViewer } from "#src/layer_group_viewer.js";
 import type {
@@ -37,16 +36,17 @@ import type {
   Position,
 } from "#src/navigation_state.js";
 import { VelocityBoundaryBehavior } from "#src/navigation_state.js";
+import { TrackableBooleanCheckbox } from "#src/trackable_boolean.js";
 import type { WatchableValueInterface } from "#src/trackable_value.js";
 import {
   makeCachedDerivedWatchableValue,
   WatchableValue,
 } from "#src/trackable_value.js";
 import { popDragStatus, pushDragStatus } from "#src/ui/drag_and_drop.js";
+import svg_exposure from "#src/ui/images/exposure.svg?raw";
 import svg_pause from "#src/ui/images/pause.svg?raw";
 import svg_play from "#src/ui/images/play.svg?raw";
 import svg_video from "#src/ui/images/playback.svg?raw";
-import svg_exposure from "#src/ui/images/exposure.svg?raw";
 import type { LocalToolBinder, ToolActivation } from "#src/ui/tool.js";
 import {
   makeToolActivationStatusMessage,
@@ -365,8 +365,8 @@ export class PositionWidget extends RefCounted {
           new TrackableBooleanCheckbox(
             this.velocity!.playbackEnabled(widget.id),
             {
-              enableTitle: "Disable playback/velocity",
-              disableTitle: "Enable playback/velocity",
+              enabledTitle: "Disable playback/velocity",
+              disabledTitle: "Enable playback/velocity",
             },
           ),
         ).element,
@@ -1536,7 +1536,6 @@ class DimensionTool<Viewer extends object> extends Tool<Viewer> {
           const velocityInputWidget = context.registerDisposer(
             new NumberInputWidget(velocityModel),
           );
-          velocityInputWidget.inputElement.disabled = true;
           velocityInputWidget.element.insertBefore(
             negateButton,
             velocityInputWidget.element.firstChild,

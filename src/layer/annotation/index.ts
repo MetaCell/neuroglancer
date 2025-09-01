@@ -47,12 +47,19 @@ import {
   TrackableBoolean,
   TrackableBooleanCheckbox,
 } from "#src/trackable_boolean.js";
-import { makeCachedLazyDerivedWatchableValue } from "#src/trackable_value.js";
+import {
+  makeCachedLazyDerivedWatchableValue,
+  observeWatchable,
+} from "#src/trackable_value.js";
 import type {
   AnnotationLayerView,
   MergedAnnotationStates,
 } from "#src/ui/annotations.js";
-import { UserLayerWithAnnotationsMixin } from "#src/ui/annotations.js";
+import {
+  RELATED_SEGMENT_SECTION_JSON_KEY,
+  SPACING_SECTION_JSON_KEY,
+  UserLayerWithAnnotationsMixin,
+} from "#src/ui/annotations.js";
 import { animationFrameDebounce } from "#src/util/animation_frame_debounce.js";
 import type { Borrowed, Owned } from "#src/util/disposable.js";
 import { RefCounted } from "#src/util/disposable.js";
@@ -671,13 +678,14 @@ export class AnnotationUserLayer extends Base {
             renderScaleWidget.label.textContent = "Projection";
             parent.appendChild(renderScaleWidget.element);
           }
+          tab.showSection(SPACING_SECTION_JSON_KEY);
         },
       ),
     );
-    renderScaleControls.element.id = PROJECTION_RENDER_SCALE_JSON_KEY;
-    tab.element.insertBefore(
+    tab.appendChild(
       renderScaleControls.element,
-      tab.element.firstChild,
+      SPACING_SECTION_JSON_KEY,
+      true /* hidden */,
     );
     {
       const checkbox = tab.registerDisposer(
@@ -693,14 +701,15 @@ export class AnnotationUserLayer extends Base {
         "Display all annotations if filtering by related segments is enabled but no segments are selected";
       label.appendChild(checkbox.element);
       label.classList.add("neuroglass-ignore-label");
-      label.id = "segmentFilterLabel";
-      tab.element.appendChild(label);
+      tab.appendChild(label, RELATED_SEGMENT_SECTION_JSON_KEY);
     }
     const linkedSegmentationLayersWidget = tab.registerDisposer(
       new LinkedSegmentationLayersWidget(this.linkedSegmentationLayers),
     );
-    linkedSegmentationLayersWidget.element.id = "segmentationLayersWidget";
-    tab.element.appendChild(linkedSegmentationLayersWidget.element);
+    tab.appendChild(
+      linkedSegmentationLayersWidget.element,
+      RELATED_SEGMENT_SECTION_JSON_KEY,
+    );
   }
 
   toJSON() {
@@ -733,8 +742,37 @@ export class AnnotationUserLayer extends Base {
     return x;
   }
 
+  observeLayerColor(callback: () => void) {
+    const disposer = super.observeLayerColor(callback);
+    const subDisposer = observeWatchable(
+      callback,
+      this.annotationDisplayState.color,
+    );
+    const shaderDisposer = observeWatchable(
+      callback,
+      this.annotationDisplayState.shader,
+    );
+    return () => {
+      disposer();
+      subDisposer();
+      shaderDisposer();
+    };
+  }
+
+  get automaticLayerBarColors() {
+    const shaderHasDefaultColor =
+      this.annotationDisplayState.shader.value.includes("defaultColor");
+    if (shaderHasDefaultColor && this.annotationDisplayState.color.value) {
+      const [r, g, b] = this.annotationDisplayState.color.value;
+      return [`rgb(${r * 255}, ${g * 255}, ${b * 255})`];
+    }
+
+    return undefined;
+  }
+
   static type = "annotation";
   static typeAbbreviation = "ann";
+  static supportsLayerBarColorSyncOption = true;
 }
 
 export function makeShaderCodeWidget(layer: AnnotationUserLayer) {
