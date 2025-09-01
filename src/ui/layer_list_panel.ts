@@ -296,7 +296,6 @@ class LayerListItem extends RefCounted {
     visibilityIcon.element.classList.add(
       "neuroglancer-layer-list-panel-item-visibility",
     );
-    element.appendChild(visibilityIcon.element);
     const deleteButton = makeDeleteButton({
       title: "Delete layer",
       onClick: () => {
@@ -305,9 +304,7 @@ class LayerListItem extends RefCounted {
     });
     deleteButton.classList.add("neuroglancer-layer-list-panel-item-delete");
     element.appendChild(deleteButton);
-    element.appendChild(
-      this.registerDisposer(new LayerVisibilityWidget(layer)).element,
-    );
+    element.appendChild(visibilityIcon.element);
     registerLayerDragHandlers(panel, element, layer, {
       isLayerListPanel: true,
       getLayoutSpec: () => undefined,
