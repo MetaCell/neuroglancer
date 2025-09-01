@@ -366,8 +366,8 @@ export class PositionWidget extends RefCounted {
           new TrackableBooleanCheckbox(
             this.velocity!.playbackEnabled(widget.id),
             {
-              enableTitle: "Disable playback/velocity",
-              disableTitle: "Enable playback/velocity",
+              enabledTitle: "Disable playback/velocity",
+              disabledTitle: "Enable playback/velocity",
             },
           ),
         ).element,
@@ -1542,7 +1542,6 @@ class DimensionTool<Viewer extends object> extends Tool<Viewer> {
           const velocityInputWidget = context.registerDisposer(
             new NumberInputWidget(velocityModel),
           );
-          velocityInputWidget.inputElement.disabled = true;
           velocityInputWidget.element.insertBefore(
             negateButton,
             velocityInputWidget.element.firstChild,
