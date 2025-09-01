@@ -4,6 +4,7 @@ import neuroglancer
 import neuroglancer.cli
 import numpy as np
 
+
 def add_example_layers(state):
     state.dimensions = neuroglancer.CoordinateSpace(
         names=["x", "y", "z"], units="nm", scales=[10, 10, 10]
@@ -28,8 +29,8 @@ if __name__ == "__main__":
         add_example_layers(s)
         s.layers[0].annotations_accordion.annotations_expanded = False
         s.layers[0].annotations_accordion.related_segments_expanded = True
-        s.layers[0].rendering_accordion.slice_expanded = True       
-        s.layers[0].rendering_accordion.shader_expanded = False       
-        s.layers[0].source_accordion.source_expanded = False      
+        s.layers[0].rendering_accordion.slice_expanded = True
+        s.layers[0].rendering_accordion.shader_expanded = False
+        s.layers[0].source_accordion.source_expanded = False
 
     print(viewer)
