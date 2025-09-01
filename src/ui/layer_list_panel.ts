@@ -279,9 +279,6 @@ class LayerListItem extends RefCounted {
       ).element,
     );
     element.appendChild(numberElement);
-    // element.appendChild(
-    //   this.registerDisposer(new LayerVisibilityWidget(layer)).element,
-    // );
     const colorIndicator = new LayerColorWidget(panel, layer, () => {
       this.layer.setVisible(!this.layer.visible);
     });
