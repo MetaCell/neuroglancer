@@ -576,6 +576,38 @@ ul#statusContainer {
     fill: var(--content100);
   }
 
+  .neuroglancer-segment-query-errors {
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    margin-top: 4px;
+    gap: 4px;
+    margin: 0px;
+    list-style-type: none;
+    background-color: transparent;
+
+    .neuroglancer-icon {
+      svg {
+        path {
+          fill: #d33030;
+        }
+      }
+    }
+
+    > li {
+      color: #d33030;
+      font-size: 12px;
+    }
+  }
+
+  .neuroglancer-segment-list-query-error-state {
+    border: 2px solid #d33030 !important;
+  }
+
+  .neuroglancer-segment-list-entry-name {
+    font-family: monospace !important;
+  }
+
   .neuroglancer-segment-list-entry {
     background: transparent;
 
@@ -882,6 +914,11 @@ ul#statusContainer {
     .neuroglancer-segment-list-status {
       margin: 0.5rem 0;
       background: transparent;
+      gap: 0.25rem;
+
+      .neuroglancer-eye-icon {
+        stroke: #999ca0;
+      }
     }
 
     .neuroglancer-tool-button {
