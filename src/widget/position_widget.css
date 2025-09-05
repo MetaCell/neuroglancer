@@ -188,6 +188,7 @@ interferes with our click handling.  Setting `pointer-events: none;` avoids that
 }
 
 .neuroglancer-position-dimension-playback {
+  font-family: sans-serif;
   font-size: 10pt;
   display: flex;
   flex-direction: column;
@@ -207,20 +208,6 @@ interferes with our click handling.  Setting `pointer-events: none;` avoids that
   font-family: monospace;
   width: 8ch;
   text-align: right;
-}
-
-.neuroglancer-position-dimension-playback select {
-  margin-left: 1.5rem;
-  min-width: 8ch;
-  background-color: rgba(255, 255, 255, 0.3);
-  border: none;
-  color: white;
-  width: fit-content;
-}
-
-.neuroglancer-position-dimension-playback select option {
-  background-color: #000;
-  color: white;
 }
 
 .neuroglancer-position-dimension > .neuroglancer-icon {

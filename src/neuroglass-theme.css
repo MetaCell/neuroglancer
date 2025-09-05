@@ -2845,8 +2845,23 @@ input[type="checkbox"]:checked {
     }
 
     .neuroglancer-position-dimension-playback {
+      font-family: none;
       padding: 0px 12px 12px 12px;
       margin-bottom: 4px;
+
+      select {
+        margin-left: 1.5rem;
+        min-width: 8ch;
+        background-color: rgba(255, 255, 255, 0.3);
+        border: none;
+        color: white;
+        width: fit-content;
+      }
+
+      option {
+        background-color: #000;
+        color: white;
+      }
     }
 
     .neuroglancer-position-dimension-playback hr {
