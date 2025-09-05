@@ -422,6 +422,24 @@ ul#statusContainer {
     }
   }
 
+  #neuroglancer-status-container {
+    bottom: 20px;
+    z-index: 1400;
+    left: 50%;
+    transform: translateX(-50%);
+
+    li {
+      width: 100%;
+      max-height: none;
+      border: 1px solid #383838;
+      border-radius: 2px;
+      display: flex;
+      background: #282828;
+      gap: 1rem;
+      padding: 0.5rem 1rem;
+    }
+  }
+
   .neuroglancer-invlerp-widget,
   .neuroglancer-transfer-function-widget {
     display: flex;
@@ -764,6 +782,10 @@ ul#statusContainer {
         }
       }
     }
+
+    .neuroglancer-icon {
+      color: #999;
+    }
   }
 
   .neuroglancer-annotation-rendering-tab {
@@ -807,6 +829,10 @@ ul#statusContainer {
         height: auto;
         font-weight: 400;
       }
+    }
+
+    .neuroglancer-icon {
+      color: #999;
     }
   }
 
