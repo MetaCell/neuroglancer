@@ -50,6 +50,7 @@
   .neuroglancer-icon
   svg {
   color: #999;
+  stroke: #999;
 }
 
 .neuroglancer-layer-list-panel-item[data-visible="false"] {
@@ -88,7 +89,6 @@
 }
 
 .neuroglancer-layer-list-panel-item-number {
-  background-color: var(--layer-number-color);
   font-family: sans-serif;
   font-weight: bold;
   display: inline-block;
