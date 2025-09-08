@@ -453,11 +453,9 @@ export class ScreenshotDialog extends FramedDialog {
     const screenshotCopyButton = makeCopyButton({
       title: "Copy table to clipboard",
       onClick: () => {
-        const result = setClipboard(this.generateScreenshotMetadataJson());
-        StatusMessage.showTemporaryMessage(
-          result
-            ? "Resolution metadata JSON copied to clipboard"
-            : "Failed to copy resolution JSON to clipboard",
+        setClipboard(
+          this.generateScreenshotMetadataJson(),
+          "resolution metadata JSON",
         );
       },
     });

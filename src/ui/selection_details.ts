@@ -23,7 +23,6 @@ import type {
   TopLevelLayerListSpecification,
   TrackableDataSelectionState,
 } from "#src/layer/index.js";
-import { StatusMessage } from "#src/status.js";
 import { getDefaultSelectBindings } from "#src/ui/default_input_event_bindings.js";
 import type { SidePanelManager } from "#src/ui/side_panel.js";
 import { SidePanel } from "#src/ui/side_panel.js";
@@ -111,13 +110,9 @@ export class SelectionDetailsPanel extends SidePanel {
             const copyButton = makeCopyButton({
               title: "Copy position",
               onClick: () => {
-                const result = setClipboard(
+                setClipboard(
                   position!.map((x) => Math.floor(x)).join(", "),
-                );
-                StatusMessage.showTemporaryMessage(
-                  result
-                    ? "Position copied to clipboard"
-                    : "Failed to copy position to clipboard",
+                  "position",
                 );
               },
             });

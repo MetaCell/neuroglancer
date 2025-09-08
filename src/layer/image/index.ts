@@ -46,7 +46,6 @@ import {
   getTrackableFragmentMain,
   ImageRenderLayer,
 } from "#src/sliceview/volume/image_renderlayer.js";
-import { StatusMessage } from "#src/status.js";
 import { trackableAlphaValue } from "#src/trackable_alpha.js";
 import { trackableBlendModeValue } from "#src/trackable_blend.js";
 import { TrackableBoolean } from "#src/trackable_boolean.js";
@@ -425,12 +424,7 @@ export class ImageUserLayer extends Base {
       const copyButton = makeCopyButton({
         title: "Copy value",
         onClick: () => {
-          const result = setClipboard(valueString);
-          StatusMessage.showTemporaryMessage(
-            result
-              ? "Value copied to clipboard"
-              : "Failed to copy value to clipboard",
-          );
+          setClipboard(valueString);
         },
       });
       grid.appendChild(copyButton);
