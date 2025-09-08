@@ -18,12 +18,23 @@ import { StatusMessage } from "#src/status.js";
 import { registerEventListener } from "#src/util/disposable.js";
 
 function capitalizeFirstLetter(str: string): string {
-  return str.charAt(0).toUpperCase() + str.slice(1);
+  return str ? str.charAt(0).toUpperCase() + str.slice(1) : str;
 }
 
+/**
+ * Sets the given data to the clipboard, and shows a temporary message
+ * that `messageName` was copied to the clipboard or `messageName` failed to be
+ * copied to the clipboard.
+ * @param data The data to set to the clipboard.
+ * @param messageName The name of the data to show in the temporary message.
+ * If undefined or null explicitly passed, no message will be shown.
+ * @param format The format of the data to set to the clipboard.
+ * Defaults to `text/plain`.
+ * @returns Whether the data was successfully set to the clipboard.
+ */
 export function setClipboard(
   data: string,
-  messageName: string | undefined = "value", // Undefined means no message
+  messageName: string | null | undefined = "value", // Null/undefined means no message
   format = "text/plain",
 ) {
   let success = false;
@@ -46,7 +57,7 @@ export function setClipboard(
   } finally {
     cleanup();
   }
-  if (messageName !== undefined) {
+  if (messageName != null) {
     StatusMessage.showTemporaryMessage(
       success
         ? `${capitalizeFirstLetter(messageName)} copied to clipboard`
