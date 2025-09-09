@@ -34,7 +34,14 @@ import {
 import type { LoadedDataSubsource } from "#src/layer/layer_data_source.js";
 import { layerDataSourceSpecificationFromJson } from "#src/layer/layer_data_source.js";
 import * as json_keys from "#src/layer/segmentation/json_keys.js";
-import { registerLayerControls } from "#src/layer/segmentation/layer_controls.js";
+import {
+  APPEARANCE_SECTION_JSON_KEY,
+  MESH_SECTION_JSON_KEY,
+  registerLayerControls,
+  SKELETON_SECTION_JSON_KEY,
+  SLICE_SECTION_JSON_KEY,
+  VISIBILITY_SECTION_JSON_KEY,
+} from "#src/layer/segmentation/layer_controls.js";
 import {
   MeshLayer,
   MeshSource,
@@ -45,7 +52,7 @@ import {
   RenderScaleHistogram,
   trackableRenderScaleTarget,
 } from "#src/render_scale_statistics.js";
-import { SegmentColorHash } from "#src/segment_color.js";
+import { getCssColor, SegmentColorHash } from "#src/segment_color.js";
 import type {
   SegmentationColorGroupState,
   SegmentationDisplayState,
@@ -54,6 +61,7 @@ import type {
 import {
   augmentSegmentId,
   bindSegmentListWidth,
+  getBaseObjectColor,
   makeSegmentWidget,
   maybeAugmentSegmentId,
   registerCallbackWhenSegmentationDisplayStateChanged,
@@ -95,6 +103,7 @@ import {
   IndirectWatchableValue,
   makeCachedDerivedWatchableValue,
   makeCachedLazyDerivedWatchableValue,
+  observeWatchable,
   registerNestedSync,
   TrackableValue,
   WatchableValue,
@@ -128,8 +137,13 @@ import {
 } from "#src/util/json.js";
 import { Signal } from "#src/util/signal.js";
 import { makeWatchableShaderError } from "#src/webgl/dynamic_shader.js";
+import { AccordionState } from "#src/widget/accordion.js";
 import type { DependentViewContext } from "#src/widget/dependent_view_widget.js";
 import { registerLayerShaderControlsTool } from "#src/widget/shader_controls.js";
+
+export const SEGMENTATION_RENDERING_ACCORDION_JSON_KEY = "renderingAccordion";
+
+const MAX_LAYER_BAR_UI_INDICATOR_COLORS = 6;
 
 export class SegmentationUserLayerGroupState
   extends RefCounted
@@ -539,6 +553,7 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
   baseSegmentColoring = new TrackableBoolean(false, false);
   baseSegmentHighlighting = new TrackableBoolean(false, false);
   useTempSegmentStatedColors2d: SharedWatchableValue<boolean>;
+  hasVolume = new TrackableBoolean(false, false);
 
   filterBySegmentLabel: (id: bigint) => void;
 
@@ -621,6 +636,32 @@ export class SegmentationUserLayer extends Base {
     x === undefined ? undefined : parseUint64(x),
   );
 
+  renderingAccordionState = new AccordionState({
+    accordionJsonKey: SEGMENTATION_RENDERING_ACCORDION_JSON_KEY,
+    sections: [
+      {
+        jsonKey: VISIBILITY_SECTION_JSON_KEY,
+        displayName: "Visibility",
+      },
+      {
+        jsonKey: APPEARANCE_SECTION_JSON_KEY,
+        displayName: "Appearance",
+      },
+      {
+        jsonKey: SLICE_SECTION_JSON_KEY,
+        displayName: "Slice 2D",
+      },
+      {
+        jsonKey: MESH_SECTION_JSON_KEY,
+        displayName: "Mesh 3D",
+      },
+      {
+        jsonKey: SKELETON_SECTION_JSON_KEY,
+        displayName: "Skeletons",
+      },
+    ],
+  });
+
   constructor(managedLayer: Borrowed<ManagedUserLayer>) {
     super(managedLayer);
     this.codeVisible.changed.add(this.specificationChanged.dispatch);
@@ -684,6 +725,9 @@ export class SegmentationUserLayer extends Base {
     this.displayState.linkedSegmentationGroup.changed.add(() =>
       this.updateDataSubsourceActivations(),
     );
+    this.renderingAccordionState.specificationChanged.add(
+      this.specificationChanged.dispatch,
+    );
     this.tabs.add("rendering", {
       label: "Render",
       order: -100,
@@ -746,6 +790,7 @@ export class SegmentationUserLayer extends Base {
     const isGroupRoot =
       this.displayState.linkedSegmentationGroup.root.value === this;
     let updatedGraph: SegmentationGraphSource | undefined;
+    let hasVolume = false;
     for (const loadedSubsource of subsources) {
       if (this.addStaticAnnotations(loadedSubsource)) continue;
       const { volume, mesh, segmentPropertyMap, segmentationGraph, local } =
@@ -758,6 +803,7 @@ export class SegmentationUserLayer extends Base {
             );
             continue;
         }
+        hasVolume = true;
         loadedSubsource.activate(
           () =>
             loadedSubsource.addRenderLayer(
@@ -880,6 +926,7 @@ export class SegmentationUserLayer extends Base {
         updatedSegmentPropertyMaps,
       );
     this.displayState.originalSegmentationGroupState.graph.value = updatedGraph;
+    this.displayState.hasVolume.value = hasVolume;
   }
 
   getLegacyDataSourceSpecifications(
@@ -1023,6 +1070,9 @@ export class SegmentationUserLayer extends Base {
     this.displayState.segmentationColorGroupState.value.restoreState(
       specification,
     );
+    this.renderingAccordionState.restoreState(
+      specification[SEGMENTATION_RENDERING_ACCORDION_JSON_KEY],
+    );
   }
 
   toJSON() {
@@ -1072,6 +1122,8 @@ export class SegmentationUserLayer extends Base {
         this.displayState.segmentationColorGroupState.value.toJSON(),
       );
     }
+    x[SEGMENTATION_RENDERING_ACCORDION_JSON_KEY] =
+      this.renderingAccordionState.toJSON();
     return x;
   }
 
@@ -1287,9 +1339,90 @@ export class SegmentationUserLayer extends Base {
     );
   }
 
+  observeLayerColor(callback: () => void) {
+    const disposer = super.observeLayerColor(callback);
+    const defaultColorDisposer = observeWatchable(
+      callback,
+      this.displayState.segmentDefaultColor,
+    );
+    const visibleSegmentDisposer =
+      this.displayState.segmentationGroupState.value.visibleSegments.changed.add(
+        callback,
+      );
+    const colorHashChangeDisposer =
+      this.displayState.segmentationColorGroupState.value.segmentColorHash.changed.add(
+        callback,
+      );
+    const showAllByDefaultDisposer =
+      this.displayState.ignoreNullVisibleSet.changed.add(callback);
+    const hasVolumeDisposer = this.displayState.hasVolume.changed.add(callback);
+    return () => {
+      disposer();
+      defaultColorDisposer();
+      visibleSegmentDisposer();
+      colorHashChangeDisposer();
+      showAllByDefaultDisposer();
+      hasVolumeDisposer();
+    };
+  }
+
+  get automaticLayerBarColors() {
+    const { displayState } = this;
+    const visibleSegmentsSet =
+      displayState.segmentationGroupState.value.visibleSegments;
+    const fixedColor = displayState.segmentDefaultColor.value;
+
+    const noVisibleSegments = visibleSegmentsSet.size === 0;
+    const tooManyVisibleSegments =
+      visibleSegmentsSet.size > MAX_LAYER_BAR_UI_INDICATOR_COLORS;
+    const hasMappedColors =
+      displayState.segmentationColorGroupState.value.segmentStatedColors.size >
+      0;
+    const isFixedColorOnly = fixedColor !== undefined && !hasMappedColors;
+    const showAllByDefault = displayState.ignoreNullVisibleSet.value;
+    const hasVolume = displayState.hasVolume.value;
+
+    if (noVisibleSegments) {
+      if (!showAllByDefault || !hasVolume) return []; // No segments visible
+      if (isFixedColorOnly) return [getCssColor(fixedColor)];
+      return undefined; // Rainbow colors
+    }
+    if (isFixedColorOnly) {
+      return [getCssColor(fixedColor)]; // All segments show as one color
+    }
+
+    // Because manually mapped colors are not guaranteed to be unique,
+    // we need to actually check all the visible segments if
+    // manually mapped colors are used
+    if (!hasMappedColors && tooManyVisibleSegments) {
+      return undefined; // Too many segments to show
+    }
+
+    const visibleSegments = [...visibleSegmentsSet];
+    const colors = visibleSegments.map((id) => {
+      const color = getCssColor(getBaseObjectColor(displayState, id));
+      return { color, id };
+    });
+
+    // Sort the colors by their segment ID
+    // Otherwise, the order is random which is a bit confusing in the UI
+    colors.sort((a, b) => {
+      const aId = a.id;
+      const bId = b.id;
+      return aId < bId ? -1 : aId > bId ? 1 : 0;
+    });
+
+    const uniqueColors = [...new Set(colors.map((color) => color.color))];
+    if (uniqueColors.length > MAX_LAYER_BAR_UI_INDICATOR_COLORS) {
+      return undefined; // Too many colors to show
+    }
+    return uniqueColors;
+  }
+
   static type = "segmentation";
   static typeAbbreviation = "seg";
   static supportsPickOption = true;
+  static supportsLayerBarColorSyncOption = true;
 }
 
 registerLayerControls(SegmentationUserLayer);

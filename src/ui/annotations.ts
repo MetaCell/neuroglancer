@@ -65,7 +65,6 @@ import {
   registerCallbackWhenSegmentationDisplayStateChanged,
   SegmentWidgetFactory,
 } from "#src/segmentation_display_state/frontend.js";
-import { StatusMessage } from "#src/status.js";
 import { ElementVisibilityFromTrackableBoolean } from "#src/trackable_boolean.js";
 import type { WatchableValueInterface } from "#src/trackable_value.js";
 import {
@@ -102,6 +101,7 @@ import { MouseEventBinder } from "#src/util/mouse_bindings.js";
 import { formatScaleWithUnitAsString } from "#src/util/si_units.js";
 import { NullarySignal, Signal } from "#src/util/signal.js";
 import * as vector from "#src/util/vector.js";
+import { AccordionState, AccordionTab } from "#src/widget/accordion.js";
 import { makeAddButton } from "#src/widget/add_button.js";
 import { ColorWidget } from "#src/widget/color.js";
 import { makeCopyButton } from "#src/widget/copy_button.js";
@@ -232,7 +232,7 @@ interface AnnotationLayerViewAttachedState {
   listOffset: number;
 }
 
-export class AnnotationLayerView extends Tab {
+export class AnnotationLayerView extends AccordionTab {
   private previousSelectedState:
     | {
         annotationId: string;
@@ -376,8 +376,9 @@ export class AnnotationLayerView extends Tab {
   constructor(
     public layer: Borrowed<UserLayerWithAnnotations>,
     public displayState: AnnotationDisplayState,
+    public annotationAccordionState: AccordionState,
   ) {
-    super();
+    super(annotationAccordionState);
     this.element.classList.add("neuroglancer-annotation-layer-view");
     this.selectedAnnotationState = makeCachedLazyDerivedWatchableValue(
       (selectionState, pin) => {
@@ -483,12 +484,12 @@ export class AnnotationLayerView extends Tab {
     mutableControls.appendChild(helpIcon);
 
     toolbox.appendChild(mutableControls);
-    this.element.appendChild(toolbox);
+    this.appendChild(toolbox);
 
-    this.element.appendChild(this.headerRow);
+    this.appendChild(this.headerRow);
     const { virtualList } = this;
     virtualList.element.classList.add("neuroglancer-annotation-list");
-    this.element.appendChild(virtualList.element);
+    this.appendChild(virtualList.element);
     this.virtualList.element.addEventListener("mouseleave", () => {
       this.displayState.hoverState.value = undefined;
     });
@@ -988,7 +989,11 @@ export class AnnotationTab extends Tab {
   constructor(public layer: Borrowed<UserLayerWithAnnotations>) {
     super();
     this.layerView = this.registerDisposer(
-      new AnnotationLayerView(layer, layer.annotationDisplayState),
+      new AnnotationLayerView(
+        layer,
+        layer.annotationDisplayState,
+        layer.annotationAccordionState,
+      ),
     );
 
     const { element } = this;
@@ -1419,7 +1424,10 @@ function makeRelatedSegmentList(
       const copyButton = makeCopyButton({
         title: "Copy segment IDs",
         onClick: () => {
-          setClipboard(Array.from(segments, (x) => x.toString()).join(", "));
+          setClipboard(
+            Array.from(segments, (x) => x.toString()).join(", "),
+            "segment IDs",
+          );
         },
       });
       headerRow.appendChild(copyButton);
@@ -1593,12 +1601,35 @@ function makeRelatedSegmentList(
 }
 
 const ANNOTATION_COLOR_JSON_KEY = "annotationColor";
+const ANNOTATION_ACCORDION_JSON_KEY = "annotationsAccordion";
+export const ANNOTATION_SECTION_JSON_KEY = "annotationsExpanded";
+export const RELATED_SEGMENT_SECTION_JSON_KEY = "relatedSegmentsExpanded";
+export const SPACING_SECTION_JSON_KEY = "spacingExpanded";
 export function UserLayerWithAnnotationsMixin<
   TBase extends { new (...args: any[]): UserLayer },
 >(Base: TBase) {
   abstract class C extends Base implements UserLayerWithAnnotations {
     annotationStates = this.registerDisposer(new MergedAnnotationStates());
     annotationDisplayState = new AnnotationDisplayState();
+    annotationAccordionState = new AccordionState({
+      accordionJsonKey: ANNOTATION_ACCORDION_JSON_KEY,
+      sections: [
+        {
+          jsonKey: SPACING_SECTION_JSON_KEY,
+          displayName: "Spacing",
+        },
+        {
+          jsonKey: RELATED_SEGMENT_SECTION_JSON_KEY,
+          displayName: "Related segments",
+        },
+        {
+          jsonKey: ANNOTATION_SECTION_JSON_KEY,
+          displayName: "Annotations",
+          defaultExpanded: true,
+          isDefaultKey: true,
+        },
+      ],
+    });
     annotationCrossSectionRenderScaleHistogram = new RenderScaleHistogram();
     annotationCrossSectionRenderScaleTarget = trackableRenderScaleTarget(8);
     annotationProjectionRenderScaleHistogram = new RenderScaleHistogram();
@@ -1614,6 +1645,9 @@ export function UserLayerWithAnnotationsMixin<
         this.specificationChanged.dispatch,
       );
       this.annotationDisplayState.shaderControls.changed.add(
+        this.specificationChanged.dispatch,
+      );
+      this.annotationAccordionState.specificationChanged.add(
         this.specificationChanged.dispatch,
       );
       this.tabs.add("annotations", {
@@ -1675,6 +1709,9 @@ export function UserLayerWithAnnotationsMixin<
       super.restoreState(specification);
       this.annotationDisplayState.color.restoreState(
         specification[ANNOTATION_COLOR_JSON_KEY],
+      );
+      this.annotationAccordionState.restoreState(
+        specification[ANNOTATION_ACCORDION_JSON_KEY],
       );
     }
 
@@ -1816,13 +1853,9 @@ export function UserLayerWithAnnotationsMixin<
                       const copyButton = makeCopyButton({
                         title: "Copy position",
                         onClick: () => {
-                          const result = setClipboard(
+                          setClipboard(
                             layerPosition.map((x) => Math.floor(x)).join(", "),
-                          );
-                          StatusMessage.showTemporaryMessage(
-                            result
-                              ? "Position copied to clipboard"
-                              : "Failed to copy position to clipboard",
+                            "position",
                           );
                         },
                       });
@@ -2169,6 +2202,7 @@ export function UserLayerWithAnnotationsMixin<
     toJSON() {
       const x = super.toJSON();
       x[ANNOTATION_COLOR_JSON_KEY] = this.annotationDisplayState.color.toJSON();
+      x[ANNOTATION_ACCORDION_JSON_KEY] = this.annotationAccordionState.toJSON();
       return x;
     }
   }

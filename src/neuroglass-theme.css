@@ -67,257 +67,307 @@ input[type="checkbox"]:checked {
   border-radius: 10px;
 }
 
-ul#statusContainer {
-  right: 0;
-  left: 0;
-  margin: 0 auto;
-  display: block;
-  bottom: 1.5rem;
-  text-align: center;
-  background: transparent;
-
-  .neuroglancer-transfer-function-widget {
-    display: grid;
-    grid-template-columns: auto auto;
-    grid-template-rows: auto auto;
+.neuroglass-theme {
+  * {
+    font-family: var(--text-font);
+    box-sizing: border-box;
   }
 
-  .neuroglancer-transfer-function-window-bounds,
-  .neuroglancer-invlerp-widget-bounds {
-    grid-column: 1;
-    grid-row: 2;
-    display: flex;
-    align-items: center;
-    margin-top: 0.5rem;
-
-    input[type="text"] {
-      width: 2.375rem !important;
-    }
-  }
-
-  .neuroglancer-transfer-function-panel {
-    grid-column: 1;
-    grid-row: 1;
-    height: 3.125rem;
-    width: 11.875rem;
-    margin-right: 0.5rem;
-    margin-top: 0;
-
-    canvas {
-      width: 100% !important;
-      height: 100% !important;
-    }
-  }
-
-  li {
-    width: auto !important;
+  ul#neuroglancer-status-container {
+    right: 0;
+    left: 0;
     margin: 0 auto;
-    border-radius: 0.125rem;
-    background: var(--background60);
-    border-color: var(--stroke60);
-    color: var(--content100);
-    display: inline-flex !important;
-    font-size: 0.875rem;
-    align-items: center;
-    padding: 0.5rem;
+    display: block;
+    bottom: 1.5rem;
+    text-align: center;
+    background: transparent;
 
-    canvas {
-      width: 12.5rem !important;
-      flex: none;
-    }
-  }
-
-  .neuroglancer-transfer-function-color-picker {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-  }
-
-  .neuroglancer-tool-status {
-    justify-content: space-between;
-
-    .neuroglancer-layer-control-control {
-      /* max-width: 100%; */
-      /* margin: 0; */
+    .neuroglancer-transfer-function-widget {
+      display: grid;
+      grid-template-columns: auto auto;
+      grid-template-rows: auto auto;
     }
 
-    .neuroglancer-layer-control-label-container {
-      /* display: flex; */
-      .neuroglancer-position-widget {
-        .neuroglancer-position-dimension-coordinate {
-          width: 3rem !important;
-          text-align: left;
+    .neuroglancer-transfer-function-window-bounds,
+    .neuroglancer-invlerp-widget-bounds {
+      grid-column: 1;
+      grid-row: 2;
+      display: flex;
+      align-items: center;
+      margin-top: 0.5rem;
+
+      input[type="text"] {
+        width: 2.375rem !important;
+      }
+    }
+
+    .neuroglancer-transfer-function-panel {
+      grid-column: 1;
+      grid-row: 1;
+      height: 3.125rem;
+      width: 11.875rem;
+      margin-right: 0.5rem;
+      margin-top: 0;
+
+      canvas {
+        width: 100% !important;
+        height: 100% !important;
+      }
+    }
+
+    li {
+      width: auto !important;
+      margin: 0 auto;
+      border-radius: 0.125rem;
+      background: var(--background60);
+      border-color: var(--stroke60);
+      color: var(--content100);
+      display: inline-flex !important;
+      font-size: 0.875rem;
+      align-items: center;
+      padding: 0.5rem;
+
+      canvas {
+        width: 12.5rem !important;
+        flex: none;
+      }
+    }
+
+    .neuroglancer-transfer-function-color-picker {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+    }
+
+    .neuroglancer-tool-status {
+      justify-content: space-between;
+
+      .neuroglancer-layer-control-control {
+        /* max-width: 100%; */
+        /* margin: 0; */
+      }
+
+      .neuroglancer-layer-control-label-container {
+        /* display: flex; */
+        .neuroglancer-position-widget {
+          .neuroglancer-position-dimension-coordinate {
+            width: 3rem !important;
+            text-align: left;
+          }
+        }
+      }
+
+      .neuroglancer-tool-status-body {
+        flex: 1;
+        padding: 0;
+        background-color: #292929;
+
+        .neuroglancer-render-scale-widget-legend {
+          width: auto !important;
+
+          div {
+            height: auto;
+
+            &:empty {
+              display: none;
+            }
+          }
+        }
+      }
+
+      .neuroglancer-tool-status-bindings {
+        background-color: #282828;
+        background: transparent;
+        font-size: 0.875rem;
+        font-style: normal;
+        margin-left: auto;
+        padding: 0 0 0 0.25rem;
+        display: inline-block;
+        font-weight: 400;
+        color: #999ca0;
+        display: flex;
+        align-items: center;
+        text-align: end;
+        width: max-content;
+      }
+
+      .neuroglancer-tool-status-header-container {
+        background: transparent;
+        padding: 0;
+        font-size: 0.875rem;
+        color: var(--content100);
+        background-color: #292929;
+      }
+
+      input[type="number"] {
+        height: 1.5rem;
+        background: var(--background80);
+        padding: 0.5rem 0 0.5rem 0.5rem;
+        color: var(--content100);
+        font-size: 0.875rem;
+        outline: 0;
+        border: 0.0625rem solid var(--dark80);
+
+        &:focus {
+          border-color: var(--primary120);
+        }
+      }
+
+      input[type="range"] {
+        width: 10ch;
+        margin: 0;
+        outline: 0;
+        -webkit-appearance: none;
+        height: 0.25rem;
+        background: var(--background80);
+        outline: none;
+        opacity: 0.7;
+        -webkit-transition: 0.2s;
+        transition: opacity 0.2s;
+
+        &::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 0.625rem;
+          height: 0.75rem;
+          background: var(--primary100);
+          cursor: pointer;
         }
       }
     }
 
-    .neuroglancer-tool-status-body {
-      flex: 1;
-      padding: 0;
+    .neuroglancer-tool-status-content {
+      gap: 1rem;
+      margin-right: 0.25rem;
 
-      .neuroglancer-render-scale-widget-legend {
-        width: auto;
+      select {
+        margin-left: 0;
+        border: 0.0625rem solid var(--dark80);
+        padding: 0.25rem 0.5rem;
+        box-sizing: border-box;
+        color: var(--content100);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        background-color: var(--background80) !important;
+        overflow: hidden;
+        font-size: 0.875rem;
+        font-weight: 400;
 
-        div {
-          height: auto;
+        &:focus {
+          outline: none;
+        }
+      }
 
-          &:empty {
-            display: none;
+      input[type="text"] {
+        margin-right: 0.5rem;
+        border: 0.0625rem solid var(--dark80);
+        padding: 0.25rem 0.5rem;
+        box-sizing: border-box;
+        color: var(--content100);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        background-color: var(--background80) !important;
+        overflow: hidden;
+        font-size: 0.875rem;
+        font-weight: 400;
+        line-height: 1.25rem;
+        min-width: 3.5rem !important;
+
+        &:focus {
+          outline: none;
+        }
+      }
+
+      input[type="radio"] {
+        display: none;
+      }
+
+      input[type="color"] {
+        border: var(--dark80) 0.094rem solid;
+        -webkit-appearance: none;
+        padding: 0;
+        height: 1.5rem;
+      }
+
+      input[type="color"]::-webkit-color-swatch-wrapper {
+        padding: 0;
+        border: 0;
+      }
+
+      input[type="color"]::-webkit-color-swatch {
+        border: none;
+      }
+
+      input[type="checkbox"] {
+        width: 1rem;
+        height: 1rem;
+        margin: 0;
+        margin-right: 0.5rem;
+
+        &:checked {
+          width: 1rem;
+          height: 1rem;
+        }
+
+        &:focus {
+          outline: none;
+        }
+
+        &:focus:checked {
+          background-color: rgba(22, 82, 240, 0.15);
+          box-shadow: 0 0 0 4px rgba(22, 82, 240, 0.15);
+        }
+      }
+    }
+
+    .neuroglancer-invlerp-widget {
+      input[type="text"] {
+        margin-right: 0;
+      }
+
+      .neuroglancer-invlerp-widget-range-spacer {
+        .neuroglancer-icon {
+          svg {
+            stroke-width: 1;
+            stroke: var(--content100);
           }
         }
       }
     }
 
-    .neuroglancer-tool-status-bindings {
-      background: transparent;
-      font-size: 0.875rem;
-      color: var(--content100);
-      font-style: normal;
-      text-align: right !important;
-      margin-left: auto;
-      width: 31rem;
-      padding: 0 0 0 0.25rem;
-      display: inline-block;
-      font-weight: 400;
-    }
+    .neuroglancer-invlerp-legend-panel {
+      margin: 0.5rem 0;
+      height: 0.938rem;
+      width: 11.875rem;
 
-    .neuroglancer-tool-status-header-container {
-      background: transparent;
-      padding: 0;
-      font-size: 0.875rem;
-      color: var(--content100);
-    }
-
-    input[type="number"] {
-      height: 1.5rem;
-      background: var(--background80);
-      padding: 0.5rem 0 0.5rem 0.5rem;
-      color: var(--content100);
-      font-size: 0.875rem;
-      outline: 0;
-      border: 0.0625rem solid var(--dark80);
-
-      &:focus {
-        border-color: var(--primary120);
+      canvas {
+        width: 100% !important;
+        height: 100% !important;
       }
     }
 
-    input[type="range"] {
-      width: 10ch;
-      margin: 0;
-      outline: 0;
-      -webkit-appearance: none;
-      height: 0.25rem;
-      background: var(--background80);
-      outline: none;
-      opacity: 0.7;
-      -webkit-transition: 0.2s;
-      transition: opacity 0.2s;
+    .neuroglancer-invlerp-cdfpanel {
+      margin: 0.5rem 0;
+      height: 3.125rem;
+      width: 11.875rem;
 
-      &::-webkit-slider-thumb {
-        -webkit-appearance: none;
-        appearance: none;
-        width: 0.625rem;
-        height: 0.75rem;
-        background: var(--primary100);
-        cursor: pointer;
+      canvas {
+        width: 100% !important;
+        height: 100% !important;
       }
     }
   }
 
-  .neuroglancer-tool-status-content {
-    gap: 1rem;
-    margin-right: 0.25rem;
-
-    select {
-      margin-left: 0;
-      border: 0.0625rem solid var(--dark80);
-      padding: 0.25rem 0.5rem;
-      box-sizing: border-box;
-      color: var(--content100);
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      background-color: var(--background80) !important;
-      overflow: hidden;
-      font-size: 0.875rem;
-      font-weight: 400;
-
-      &:focus {
-        outline: none;
+  #neuroglancer-container {
+    .neuroglancer-tool-status-content {
+      .neuroglancer-position-dimension-plot[data-orientation="row"] {
+        min-width: 12.5rem;
       }
     }
 
-    input[type="text"] {
-      margin-right: 0.5rem;
-      border: 0.0625rem solid var(--dark80);
-      padding: 0.25rem 0.5rem;
-      box-sizing: border-box;
-      color: var(--content100);
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      background-color: var(--background80) !important;
-      overflow: hidden;
-      font-size: 0.875rem;
-      font-weight: 400;
-      line-height: 1.25rem;
-      min-width: 3.5rem !important;
-
-      &:focus {
-        outline: none;
-      }
-    }
-
-    input[type="radio"] {
-      display: none;
-    }
-
-    input[type="color"] {
-      border: var(--dark80) 0.094rem solid;
-      -webkit-appearance: none;
-      padding: 0;
-      height: 1.5rem;
-    }
-
-    input[type="color"]::-webkit-color-swatch-wrapper {
-      padding: 0;
-      border: 0;
-    }
-
-    input[type="color"]::-webkit-color-swatch {
-      border: none;
-    }
-
-    input[type="checkbox"] {
-      width: 1rem;
-      height: 1rem;
-      margin: 0;
-      margin-right: 0.5rem;
-
-      &:checked {
-        width: 1rem;
-        height: 1rem;
-      }
-
-      &:focus {
-        outline: none;
-      }
-
-      &:focus:checked {
-        background-color: rgba(22, 82, 240, 0.15);
-        box-shadow: 0 0 0 4px rgba(22, 82, 240, 0.15);
-      }
-    }
-  }
-
-  .neuroglancer-invlerp-widget {
-    input[type="text"] {
-      margin-right: 0;
-    }
-
-    .neuroglancer-invlerp-widget-range-spacer {
-      .neuroglancer-icon {
-        svg {
-          stroke-width: 1;
-          stroke: var(--content100);
+    .neuroglancer-tool-status {
+      .neuroglancer-tool-status-content {
+        .neuroglancer-render-scale-widget-legend {
+          width: auto;
         }
       }
     }
@@ -444,7 +494,7 @@ ul#statusContainer {
     &:hover svg {
       background-color: var(--background60);
     }
-    
+
     &[data-checked="true"] svg {
       stroke: white;
       background-color: var(--background60);
@@ -470,6 +520,23 @@ ul#statusContainer {
     .neuroglancer-tool-palette-dropdown-separator {
       padding: 0;
       background-color: var(--dark80);
+    }
+  }
+
+  #neuroglancer-status-container {
+    bottom: 20px;
+    z-index: 1400;
+    left: 50%;
+
+    li {
+      width: 100%;
+      max-height: none;
+      border: 1px solid #383838;
+      border-radius: 2px;
+      display: flex;
+      background: #282828;
+      gap: 1rem;
+      padding: 0.5rem 1rem;
     }
   }
 
@@ -607,6 +674,38 @@ ul#statusContainer {
 
   .neuroglancer-star-icon.neuroglancer-starred > svg {
     fill: var(--content100);
+  }
+
+  .neuroglancer-segment-query-errors {
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    margin-top: 4px;
+    gap: 4px;
+    margin: 0px;
+    list-style-type: none;
+    background-color: transparent;
+
+    .neuroglancer-icon {
+      svg {
+        path {
+          fill: #d33030;
+        }
+      }
+    }
+
+    > li {
+      color: #d33030;
+      font-size: 12px;
+    }
+  }
+
+  .neuroglancer-segment-list-query-error-state {
+    border: 2px solid #d33030 !important;
+  }
+
+  .neuroglancer-segment-list-entry-name {
+    font-family: monospace !important;
   }
 
   .neuroglancer-segment-list-entry {
@@ -815,6 +914,10 @@ ul#statusContainer {
         }
       }
     }
+
+    .neuroglancer-icon {
+      color: #999;
+    }
   }
 
   .neuroglancer-annotation-rendering-tab {
@@ -858,6 +961,10 @@ ul#statusContainer {
         height: auto;
         font-weight: 400;
       }
+    }
+
+    .neuroglancer-icon {
+      color: #999;
     }
   }
 
@@ -907,6 +1014,11 @@ ul#statusContainer {
     .neuroglancer-segment-list-status {
       margin: 0.5rem 0;
       background: transparent;
+      gap: 0.25rem;
+
+      .neuroglancer-eye-icon {
+        stroke: #999ca0;
+      }
     }
 
     .neuroglancer-tool-button {
@@ -1185,7 +1297,7 @@ ul#statusContainer {
       }
 
       .neuroglancer-layer-side-panel-type[data-expanded="true"] {
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='13' viewBox='0 0 12 13' fill='none'%3E%3Cpath d='M3.70647 7.86446L5.99969 5.57268L8.29647 7.8609L9.00092 7.15535L5.99859 4.15768L3.00092 7.16L3.70647 7.86446Z' fill='%23999CA0'/%3E%3C/svg%3E"); 
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='13' viewBox='0 0 12 13' fill='none'%3E%3Cpath d='M3.70647 7.86446L5.99969 5.57268L8.29647 7.8609L9.00092 7.15535L5.99859 4.15768L3.00092 7.16L3.70647 7.86446Z' fill='%23999CA0'/%3E%3C/svg%3E");
       }
 
       .neuroglancer-layer-side-panel-type option {
@@ -1261,11 +1373,8 @@ ul#statusContainer {
 
   .neuroglancer-tab-view {
     .neuroglancer-tab-content {
-      padding: calc(var(--spacing1) * 1.5);
-
-      .neuroglancer-tab-content {
-        padding: 0;
-      }
+      padding: 0;
+      margin: 0;
     }
 
     overflow: auto;
@@ -1940,33 +2049,35 @@ ul#statusContainer {
     background-image: url("../src/ui/images/lint-marker-error.svg");
   }
 
-  .accordion {
+  .neuroglancer-accordion {
     background-color: var(--dark100);
     margin: 0 calc(var(--spacing1) * -1);
 
-    .accordion-item {
+    .neuroglancer-accordion-item {
       border-bottom: 1px solid var(--dark80);
       margin-bottom: 1em;
       position: relative;
 
-      .accordion-title {
-        padding: 2px var(--spacing1);
+      .neuroglancer-accordion-header {
+        padding: 12px;
         line-height: 2rem;
 
         cursor: pointer;
         font-size: 0.875rem;
         font-weight: 500;
+
+        display: flex;
+        align-items: center;
       }
 
-      .accordion-content {
-        display: flex;
+      .neuroglancer-accordion-body {
         flex-direction: column;
         padding: var(--spacing1);
       }
 
-      &:not(.accordion-expanded) .accordion-title {
+      .neuroglancer-accordion-header {
         &:hover {
-          background: var(--background80);
+          background-color: var(--background80);
         }
       }
 
@@ -2069,6 +2180,11 @@ ul#statusContainer {
           }
         }
       }
+    }
+
+    .neuroglancer-accordion-item[data-expanded="true"]
+      .neuroglancer-accordion-header {
+      padding-bottom: 4px;
     }
 
     .skeleton-container {
@@ -2534,8 +2650,26 @@ ul#statusContainer {
     }
   }
 
+  .neuroglancer-layer-data-source-url-input.neuroglancer-state-error {
+    border: 2px solid #d33030 !important;
+  }
+
   .neuroglancer-layer-data-sources-source-messages {
     margin: 0;
+    margin-top: 4px !important;
+    list-style: none;
+    padding: 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+
+    .neuroglancer-icon {
+      svg {
+        color: #d33030;
+        width: 1rem !important;
+        height: 1rem !important;
+      }
+    }
   }
 
   .neuroglancer-multiline-autocomplete-dropdown {
@@ -2809,6 +2943,20 @@ ul#statusContainer {
     .neuroglancer-position-dimension-playback {
       padding: 0px 12px 12px 12px;
       margin-bottom: 4px;
+
+      select {
+        margin-left: 1.5rem;
+        min-width: 8ch;
+        background-color: rgba(255, 255, 255, 0.3);
+        border: none;
+        color: white;
+        width: fit-content;
+      }
+
+      option {
+        background-color: #000;
+        color: white;
+      }
     }
 
     .neuroglancer-position-dimension-playback hr {
@@ -2894,7 +3042,9 @@ ul#statusContainer {
     }
   }
 
-  .neuroglancer-position-widget > div > .neuroglancer-position-dimension:first-of-type {
+  .neuroglancer-position-widget
+    > div
+    > .neuroglancer-position-dimension:first-of-type {
     padding-left: 8px;
   }
 
@@ -3004,7 +3154,6 @@ ul#statusContainer {
         color: var(--content100);
       }
     }
-    
 
     &:hover {
       background-color: var(--background60);
@@ -3053,8 +3202,6 @@ ul#statusContainer {
       text-indent: -62.4375rem;
       position: relative;
       margin: 0;
-
-
 
       &[data-checked="true"] {
         background-image: url("../src/ui/images/push_pin.svg");
@@ -3290,13 +3437,11 @@ ul#statusContainer {
           visibility: visible;
         }
 
-
         &[data-checked="true"] {
           .neuroglancer-layer-list-panel-item-controls svg {
             color: var(--white) !important;
           }
         }
-        
 
         .neuroglancer-layer-type-indicator {
           background-color: var(--background60);

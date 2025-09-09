@@ -109,6 +109,7 @@ import {
 import type { Trackable } from "#src/util/trackable.js";
 import { kEmptyFloat32Vec } from "#src/util/vector.js";
 import type { WatchableVisibilityPriority } from "#src/visibility_priority/frontend.js";
+import { AccordionState } from "#src/widget/accordion.js";
 import type { DependentViewContext } from "#src/widget/dependent_view_widget.js";
 import type { Tab } from "#src/widget/tab_view.js";
 import { TabSpecification } from "#src/widget/tab_view.js";
@@ -122,6 +123,9 @@ const LOCAL_COORDINATE_SPACE_JSON_KEY = "localDimensions";
 const SOURCE_JSON_KEY = "source";
 const TRANSFORM_JSON_KEY = "transform";
 const PICK_JSON_KEY = "pick";
+const SOURCE_ACCORDION_JSON_KEY = "sourceAccordion";
+const DATA_SECTION_JSON_KEY = "sourceExpanded";
+export const CREATE_SECTION_JSON_KEY = "createExpanded";
 
 export interface UserLayerSelectionState {
   generation: number;
@@ -185,12 +189,25 @@ export class UserLayer extends RefCounted {
   }
 
   static supportsPickOption = false;
+  static supportsLayerBarColorSyncOption = false;
 
   pick = new TrackableBoolean(true, true);
 
   selectionState: UserLayerSelectionState;
 
   messages = new MessageList();
+
+  observeLayerColor(_: () => void): () => void {
+    return () => {};
+  }
+
+  get automaticLayerBarColors(): string[] | undefined {
+    return [];
+  }
+
+  get layerBarColors(): string[] | undefined {
+    return this.automaticLayerBarColors;
+  }
 
   initializeSelectionState(state: this["selectionState"]) {
     state.generation = -1;
@@ -347,6 +364,24 @@ export class UserLayer extends RefCounted {
   }
 
   tabs = this.registerDisposer(new TabSpecification());
+  sourceAccordionState = this.registerDisposer(
+    new AccordionState({
+      accordionJsonKey: SOURCE_ACCORDION_JSON_KEY,
+      sections: [
+        {
+          jsonKey: DATA_SECTION_JSON_KEY,
+          displayName: "Data sources",
+          defaultExpanded: true,
+          isDefaultKey: true,
+        },
+        {
+          jsonKey: CREATE_SECTION_JSON_KEY,
+          displayName: "Initial settings",
+          defaultExpanded: true,
+        },
+      ],
+    }),
+  );
   panels = new UserLayerSidePanelsState(this);
   tool = this.registerDisposer(new SelectedLegacyTool(this));
   toolBinder: LayerToolBinder<this>;
@@ -366,6 +401,9 @@ export class UserLayer extends RefCounted {
     this.localCoordinateSpaceCombiner.includeDimensionPredicate =
       isLocalOrChannelDimension;
     this.tabs.changed.add(this.specificationChanged.dispatch);
+    this.sourceAccordionState.specificationChanged.add(
+      this.specificationChanged.dispatch,
+    );
     this.panels.specificationChanged.add(this.specificationChanged.dispatch);
     this.tool.changed.add(this.specificationChanged.dispatch);
     this.toolBinder.changed.add(this.specificationChanged.dispatch);
@@ -375,6 +413,7 @@ export class UserLayer extends RefCounted {
     this.dataSourcesChanged.add(this.specificationChanged.dispatch);
     this.dataSourcesChanged.add(() => this.updateDataSubsourceActivations());
     this.messages.changed.add(this.layersChanged.dispatch);
+
     for (const tab of USER_LAYER_TABS) {
       this.tabs.add(tab.id, {
         label: tab.label,
@@ -516,6 +555,9 @@ export class UserLayer extends RefCounted {
 
   restoreState(specification: any) {
     this.tool.restoreState(specification[TOOL_JSON_KEY]);
+    this.sourceAccordionState.restoreState(
+      specification[SOURCE_ACCORDION_JSON_KEY],
+    );
     this.panels.restoreState(specification);
     this.localCoordinateSpace.restoreState(
       specification[LOCAL_COORDINATE_SPACE_JSON_KEY],
@@ -599,6 +641,7 @@ export class UserLayer extends RefCounted {
       [LOCAL_POSITION_JSON_KEY]: this.localPosition.toJSON(),
       [LOCAL_VELOCITY_JSON_KEY]: this.localVelocity.toJSON(),
       [PICK_JSON_KEY]: this.pick.toJSON(),
+      [SOURCE_ACCORDION_JSON_KEY]: this.sourceAccordionState.toJSON(),
       ...this.panels.toJSON(),
     };
   }
@@ -738,6 +781,28 @@ export class ManagedUserLayer extends RefCounted {
     ) {
       userLayer.pick.value = value;
     }
+  }
+
+  get layerBarColors(): string[] | undefined {
+    const userLayer = this.layer;
+    return userLayer?.layerBarColors;
+  }
+
+  observeLayerColor(callback: () => void): () => void {
+    const userLayer = this.layer;
+    if (userLayer !== null) {
+      return userLayer.observeLayerColor(callback);
+    }
+    return () => {};
+  }
+
+  get supportsLayerBarColorSyncOption() {
+    const userLayer = this.layer;
+    return (
+      userLayer !== null &&
+      (userLayer.constructor as typeof UserLayer)
+        .supportsLayerBarColorSyncOption
+    );
   }
 
   /**

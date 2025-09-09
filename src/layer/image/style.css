@@ -55,7 +55,3 @@
   grid-column: value;
   user-select: text;
 }
-
-.neuroglancer-image-dropdown .neuroglancer-icon {
-  color: #999;
-}

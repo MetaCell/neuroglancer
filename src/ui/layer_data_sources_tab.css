@@ -36,10 +36,6 @@
   color: #aaa;
 }
 
-.neuroglancer-layer-data-source-url-input.neuroglancer-state-error {
-  border: 2px solid #d33030 !important;
-}
-
 .neuroglancer-layer-data-source-url-input .autocomplete-dropdown {
   background-color: #333;
 }
@@ -69,19 +65,7 @@
 }
 
 .neuroglancer-layer-data-sources-source-messages {
-  margin: 0;
-  margin-top: 4px !important;
   list-style: none;
-  padding: 0 8px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.neuroglancer-layer-data-sources-source-messages .neuroglancer-icon svg {
-  color: #d33030;
-  width: 1rem !important;
-  height: 1rem !important;
 }
 
 li.neuroglancer-message {

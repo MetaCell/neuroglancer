@@ -47,7 +47,6 @@ import {
   unparseSegmentQuery,
   updatePropertyHistograms,
 } from "#src/segmentation_display_state/property_map.js";
-import { StatusMessage } from "#src/status.js";
 import type { WatchableValueInterface } from "#src/trackable_value.js";
 import { observeWatchable, WatchableValue } from "#src/trackable_value.js";
 import { getDefaultSelectBindings } from "#src/ui/default_input_event_bindings.js";
@@ -1113,7 +1112,8 @@ abstract class SegmentListGroupBase extends RefCounted {
       ids = ids.filter((segment) => this.group.visibleSegments.has(segment));
     }
     ids.sort(bigintCompare);
-    setClipboard(ids.join(", "));
+    const messageStart = onlyVisible ? "visible" : "starred";
+    setClipboard(ids.join(", "), `${messageStart} segment IDs`);
   }
 
   constructor(
@@ -1148,18 +1148,12 @@ abstract class SegmentListGroupBase extends RefCounted {
       title: "Copy all segment IDs",
       onClick: () => {
         this.copySegments(false);
-        StatusMessage.showTemporaryMessage(
-          "All segment IDs copied to clipboard",
-        );
       },
     });
     this.copyVisibleSegmentsButton = makeCopyButton({
       title: "Copy visible segment IDs",
       onClick: () => {
         this.copySegments(true);
-        StatusMessage.showTemporaryMessage(
-          "Visible segment IDs copied to clipboard",
-        );
       },
     });
     this.visibilityToggleAllButton = makeEyeButton({
