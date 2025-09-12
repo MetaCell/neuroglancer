@@ -15,7 +15,7 @@
  */
 
 import { type SegmentationUserLayer } from "#src/layer/segmentation/index.js";
-import { SKELETON_RENDERING_SHADER_CONTROL_TOOL_ID } from "#src/layer/segmentation/json_keys.js";
+import { SKELETON_RENDERING_SHADER_CONTROL_TOOL_ID, COLOR_SEED_JSON_KEY, SEGMENT_DEFAULT_COLOR_JSON_KEY } from "#src/layer/segmentation/json_keys.js";
 import {
   APPEARANCE_SECTION_JSON_KEY,
   LAYER_CONTROLS,
@@ -31,6 +31,8 @@ import {
   ShaderCodeWidget,
 } from "#src/widget/shader_code_widget.js";
 import { ShaderControls } from "#src/widget/shader_controls.js";
+import svg_gradient from "#src/ui/images/gradient.svg?raw";
+import svg_format_color_fill from "#src/ui/images/format_color_fill.svg?raw";
 
 function makeSkeletonShaderCodeWidget(layer: SegmentationUserLayer) {
   return new ShaderCodeWidget({
@@ -69,7 +71,71 @@ export class DisplayOptionsTab extends AccordionTab {
       this.appendChild(widget.element, APPEARANCE_SECTION_JSON_KEY);
     }
 
-    for (const control of LAYER_CONTROLS) {
+    const colorTab = document.createElement("div");
+    colorTab.classList.add("neuroglancer-segmentation-color-tab");
+    this.appendChild(colorTab, APPEARANCE_SECTION_JSON_KEY);
+
+    const colorText = document.createElement("span");
+    colorText.textContent = "Colours";
+    colorTab.appendChild(colorText);
+
+    const buttonContainer = document.createElement("div");
+    buttonContainer.classList.add("neuroglancer-segmentation-color-tab-buttons");
+    colorTab.appendChild(buttonContainer);
+
+    const colorControlsContainer = document.createElement("div");
+    colorControlsContainer.classList.add("neuroglancer-segmentation-color-controls");
+    this.appendChild(colorControlsContainer, APPEARANCE_SECTION_JSON_KEY);
+
+    const randomColorButton = document.createElement("button");
+    randomColorButton.classList.add("neuroglancer-segmentation-color-tab-button");
+    randomColorButton.classList.add("active");
+    randomColorButton.innerHTML = svg_gradient;
+    randomColorButton.title = "Seeded random colours";
+    buttonContainer.appendChild(randomColorButton);
+
+    const fixedColorButton = document.createElement("button");
+    fixedColorButton.classList.add("neuroglancer-segmentation-color-tab-button");
+    fixedColorButton.innerHTML = svg_format_color_fill;
+    fixedColorButton.title = "Fixed color";
+    buttonContainer.appendChild(fixedColorButton);
+
+    const showControls = (isRandomColor: boolean) => {
+      randomColorButton.classList.toggle("active", isRandomColor);
+      fixedColorButton.classList.toggle("active", !isRandomColor);
+
+      colorControlsContainer.innerHTML = "";
+
+      const visibleControls = LAYER_CONTROLS.filter(control => {
+        if (isRandomColor) {
+          return control.toolJson === COLOR_SEED_JSON_KEY;
+        } else {
+          return control.toolJson === SEGMENT_DEFAULT_COLOR_JSON_KEY;
+        }
+      });
+
+      for (const control of visibleControls) {
+        const e = addLayerControlToOptionsTab(
+          this,
+          layer,
+          this.visibility,
+          control,
+        );
+        colorControlsContainer.appendChild(e);
+      }
+    };
+
+    randomColorButton.addEventListener("click", () => showControls(true));
+    fixedColorButton.addEventListener("click", () => showControls(false));
+
+    showControls(true);
+
+    const filteredControls = LAYER_CONTROLS.filter(control =>
+      control.toolJson !== COLOR_SEED_JSON_KEY &&
+      control.toolJson !== SEGMENT_DEFAULT_COLOR_JSON_KEY
+    );
+
+    for (const control of filteredControls) {
       const e = addLayerControlToOptionsTab(
         this,
         layer,

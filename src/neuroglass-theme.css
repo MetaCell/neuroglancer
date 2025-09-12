@@ -2171,6 +2171,52 @@ input[type="checkbox"]:checked {
         }
       }
     }
+
+    .neuroglancer-segmentation-color-tab {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.25rem 0;
+    }
+
+    .neuroglancer-segmentation-color-tab-buttons {
+      display: flex;
+      background-color: var(--background80);
+    }
+
+    .neuroglancer-segmentation-color-tab-button {
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 2rem;
+      height: 2rem;
+      border-radius: 0.125rem;
+      transition: all 0.2s ease;
+      background-color: transparent;
+      border: 1px solid transparent;
+    }
+
+    .neuroglancer-segmentation-color-tab-button.active {
+      background-color: var(--background60);
+    }
+
+    .neuroglancer-segmentation-color-tab-button svg {
+      color: var(--content100);
+    }
+
+    .neuroglancer-segmentation-color-tab-button.active svg {
+      color: var(--white);
+    }
+
+    .neuroglancer-segmentation-color-controls {
+      padding-left: 1.5rem;
+    }
+
+    .neuroglancer-segmentation-color-controls .neuroglancer-layer-control-label {
+      padding-left: 0.75rem;
+      border-left: 1px solid var(--Dark-Stroke-100);
+    }
   }
 
   .neuroglancer-coordinate-space-transform-scale-container {

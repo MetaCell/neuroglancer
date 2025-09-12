@@ -39,13 +39,7 @@ export function colorSeedLayerControl(): LayerControlFactory<SegmentationUserLay
     layer.displayState.segmentationColorGroupState.value.segmentColorHash.randomize();
   };
   return {
-    makeControl: (layer, context, { labelTextContainer }) => {
-      const checkbox = document.createElement("input");
-      checkbox.type = "radio";
-      checkbox.addEventListener("change", () => {
-        chooseColorMode(layer, !checkbox.checked);
-      });
-      labelTextContainer.prepend(checkbox);
+    makeControl: (layer, context) => {
       const controlElement = document.createElement("div");
       controlElement.classList.add(
         "neuroglancer-segmentation-color-seed-control",
@@ -62,10 +56,8 @@ export function colorSeedLayerControl(): LayerControlFactory<SegmentationUserLay
       });
       controlElement.appendChild(randomizeButton);
       context.registerDisposer(
-        observeWatchable((value) => {
-          const isVisible = value === undefined;
-          controlElement.style.visibility = isVisible ? "" : "hidden";
-          checkbox.checked = isVisible;
+        observeWatchable(() => {
+          controlElement.style.visibility = "visible";
         }, layer.displayState.segmentDefaultColor),
       );
       return { controlElement, control: widget };
@@ -90,20 +82,9 @@ export function fixedColorLayerControl(): LayerControlFactory<
     makeControl: (layer, context, labelElements) => {
       const result = options.makeControl(layer, context, labelElements);
       const { controlElement } = result;
-      const checkbox = document.createElement("input");
-      checkbox.type = "radio";
-      checkbox.addEventListener("change", () => {
-        chooseColorMode(layer, checkbox.checked);
-        if (checkbox.checked) {
-          controlElement.click();
-        }
-      });
-      labelElements.labelTextContainer.prepend(checkbox);
       context.registerDisposer(
-        observeWatchable((value) => {
-          const isVisible = value !== undefined;
-          controlElement.style.visibility = isVisible ? "" : "hidden";
-          checkbox.checked = isVisible;
+        observeWatchable(() => {
+          controlElement.style.visibility = "visible";
         }, layer.displayState.segmentDefaultColor),
       );
       return result;
