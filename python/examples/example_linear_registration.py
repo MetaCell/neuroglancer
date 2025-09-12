@@ -2,6 +2,9 @@ import argparse
 import webbrowser
 from time import time
 
+import scipy.ndimage
+import numpy as np
+
 import neuroglancer
 import neuroglancer.cli
 
@@ -56,19 +59,24 @@ class LinearRegistrationWorkflow:
         self.viewer = viewer = neuroglancer.Viewer()
         source_layer = self.create_source_image()
         template_layer = self.create_template_image()
+        registered_layer = self.create_registered_image()
 
         with viewer.txn() as s:
             s.layers["template"] = template_layer
             s.layers["source"] = source_layer
-            s.layers["registered"] = source_layer
+            s.layers["registered"] = registered_layer
             s.layers["registered"].visible = False
             s.layers["markers"] = neuroglancer.LocalAnnotationLayer(
                 dimensions=create_dimensions(),
                 annotation_color="#00FF00",
             )
+            # TODO set these to be in 3D layout
+            # TODO unlink any controls that should be unlinked
             s.layout = neuroglancer.row_layout(
                 [
-                    neuroglancer.LayerGroupViewer(layers=["template", "markers"]),
+                    neuroglancer.LayerGroupViewer(
+                        layers=["template", "registered", "markers"]
+                    ),
                     neuroglancer.LayerGroupViewer(
                         layers=["source", "registered", "markers"]
                     ),
@@ -110,27 +118,47 @@ class LinearRegistrationWorkflow:
         else:
             return neuroglancer.ImageLayer(source=self.template_url)
 
-    def create_source_image(self):
+    # TODO probably need to be a little more careful about the size of the T matrix
+    # based on the number of input dims
+    def create_source_image(self, registration_matrix=None):
+        if registration_matrix is None:
+            registration_matrix = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]]
         if self.source_url is None:
-            import scipy.ndimage
-
+            # TODO might be helpful to randomize this and check how close after registration
+            desired_output_matrix_homogenous = [
+                [0.8, 0, 0, 0],
+                [0, 0.2, 0, 0],
+                [0, 0, 0.9, 0],
+                [0, 0, 0, 1],
+            ]
+            inverse_matrix = np.linalg.inv(desired_output_matrix_homogenous)
             transformed = scipy.ndimage.affine_transform(
                 self.demo_data,
-                matrix=[[1, 0, 0], [0, 1, 0], [0.2, 0, 1]],
-                offset=1.0,
-                order=1,
+                matrix=inverse_matrix,
             )
             return neuroglancer.ImageLayer(
                 source=[
                     neuroglancer.LayerDataSource(
                         neuroglancer.LocalVolume(
                             transformed, dimensions=create_dimensions()
-                        )
+                        ),
+                        transform=neuroglancer.CoordinateSpaceTransform(
+                            output_dimensions=create_dimensions(),
+                            matrix=registration_matrix,
+                        ),
                     )
                 ]
             )
         else:
-            return neuroglancer.ImageLayer(source=self.source_url)
+            return neuroglancer.ImageLayer(
+                source=self.source_url,
+                transform=neuroglancer.CoordinateSpaceTransform(
+                    matrix=registration_matrix
+                ),
+            )
+
+    def create_registered_image(self, registration_matrix=None):
+        return self.create_source_image(registration_matrix=registration_matrix)
 
     def estimate_affine(self, s):
         annotations = s.layers["markers"].annotations
@@ -141,6 +169,9 @@ class LinearRegistrationWorkflow:
         if len(annotations) < 2:
             return False
 
+        # TODO allow a different way to group, such as by description
+        # TODO color points differently based on whether template or source
+        # in the shader
         print(len(annotations) // 2, self.last_run_points)
         if len(annotations) // 2 == self.last_run_points:
             return False
@@ -172,7 +203,9 @@ class LinearRegistrationWorkflow:
         # to find our transformation matrix A
         A, res, rank, sd = np.linalg.lstsq(X, Y)
         # Zero out really small values on A
-        A[np.abs(A) < 1e-8] = 0
+        A[np.abs(A) < 1e-4] = 0
+        # Round all other values to 4 decimal places
+        A = np.round(A, 4)
 
         transform = lambda x: unpad(np.dot(pad(x), A))
 
@@ -180,16 +213,14 @@ class LinearRegistrationWorkflow:
         print(f"Transformed points: {transformed}")
 
         # Set the transformation on the layer that is being registered
-        print(A.T[:3])
-        # s.layers["registered"].source.transform = neuroglancer.CoordinateSpaceTransform(
-        #     matrix=A.T[:3],
-        # )
-        s.layers["registered"].source.transform = (
-            neuroglancer.CoordinateSpaceTransform(
-                output_dimensions=create_dimensions(),
-                matrix=[[1, 0, 0, 0], [1, 1, 0, 0], [0, 0, 1, 0]],
-            ),
-        )
+        # Something seems to go wrong with the state updates once this happens
+        # s.layers["registered"].source[0].transform.matrix = A.T[:3]
+        # Because of this, trying to replace the whole layer to see if that helps
+        # TODO in theory should be able to just update the matrix,
+        # but if cannot, can replace whole layer and restore settings
+        old_visible = s.layers["registered"].visible
+        s.layers["registered"] = self.create_registered_image(A[:3])
+        s.layers["registered"].visible = old_visible
 
         self._set_status_message(
             ("info"), f"Estimated affine transform with {n} point pairs"
