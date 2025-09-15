@@ -11,6 +11,20 @@ MESSAGE_DURATION = 5  # seconds
 # TODO maybe can avoid this being a param or const
 NUM_DIMS = 3
 
+MARKERS_SHADER = """
+#uicontrol vec3 templatePointColor color(default="#00FF00")
+#uicontrol vec3 sourcePointColor color(default="#0000FF")
+#uicontrol float pointSize slider(min=1, max=16, default=6)
+void main() {
+    if (int(prop_index()) % 2 == 0) {
+        setColor(templatePointColor);
+    } else {
+        setColor(sourcePointColor);
+    }
+    setPointMarkerSize(pointSize);
+}
+"""
+
 
 def create_demo_data(size=(64, 64, 64), radius=20):
     import numpy as np
@@ -95,7 +109,26 @@ class LinearRegistrationWorkflow:
             s.layers["registered"].visible = False
             s.layers["markers"] = neuroglancer.LocalAnnotationLayer(
                 dimensions=create_dimensions(),
-                annotation_color="#00FF00",
+                annotation_properties=[
+                    neuroglancer.AnnotationPropertySpec(
+                        id="label",
+                        type="uint32",
+                        default=0,
+                    ),
+                    neuroglancer.AnnotationPropertySpec(
+                        id="group",
+                        type="uint8",
+                        default=0,
+                        enum_labels=["template", "source"],
+                        enum_values=[0, 1],
+                    ),
+                    neuroglancer.AnnotationPropertySpec(
+                        id="index",
+                        type="uint32",
+                        default=0,
+                    ),
+                ],
+                shader=MARKERS_SHADER,
             )
             s.layout = neuroglancer.row_layout(
                 [
@@ -136,6 +169,12 @@ class LinearRegistrationWorkflow:
         self.viewer.defer_callback(self.update)
 
     def update(self):
+        # TODO would either remove or throttle this
+        # It could be useful to keep it with a throttle
+        # because sometimes the state updates can get killed
+        # and this would help for seeing that to the user
+        # since it might be hard for us to catch all cases
+        print("State updated, handling")
         with self.viewer.txn() as s:
             self.estimate_affine(s)
         self._clear_status_messages()
@@ -210,6 +249,7 @@ class LinearRegistrationWorkflow:
 
     def estimate_affine(self, s):
         # TODO do we need to throttle this update or make it manually triggered?
+        # While updating by moving a point, this can break right now
         annotations = s.layers["markers"].annotations
         if len(annotations) < 2:
             return False
@@ -226,9 +266,10 @@ class LinearRegistrationWorkflow:
                 np.isclose(self.stored_points[1], source_points)
             ):
                 return False
+        else:
+            for i, a in enumerate(s.layers["markers"].annotations):
+                a.props = [i // 2, i % 2, i]
 
-        # TODO color points differently based on whether template or source
-        # in the shader
         template_points, source_points = self.split_points_into_pairs(annotations)
 
         # Estimate affine transform using least squares, for now using
@@ -260,7 +301,7 @@ class LinearRegistrationWorkflow:
         s.layers["registered"].visible = old_visible
 
         self._set_status_message(
-            ("info"), f"Estimated affine transform with {n} point pairs"
+            "info", f"Estimated affine transform with {n} point pairs"
         )
         self.stored_points = [template_points, source_points]
         return True
