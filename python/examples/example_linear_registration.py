@@ -62,6 +62,7 @@ class LinearRegistrationWorkflow:
             self.demo_data = create_demo_data()
 
         self.setup_viewer()
+        self.last_updated_print = -1
 
     def __str__(self):
         with self.viewer.txn() as s:
@@ -82,7 +83,7 @@ class LinearRegistrationWorkflow:
             s.status_messages[key] = message
         self.status_timers[key] = time()
 
-    def transform_template_points(self, template_points : np.ndarray):
+    def transform_template_points(self, template_points: np.ndarray):
         # Apply the current affine transform to the template points
         n = template_points.shape[0]
         pad = lambda x: np.hstack([x, np.ones((x.shape[0], 1))])
@@ -169,12 +170,11 @@ class LinearRegistrationWorkflow:
         self.viewer.defer_callback(self.update)
 
     def update(self):
-        # TODO would either remove or throttle this
-        # It could be useful to keep it with a throttle
-        # because sometimes the state updates can get killed
-        # and this would help for seeing that to the user
-        # since it might be hard for us to catch all cases
-        print("State updated, handling")
+        current_time = time()
+        if current_time - self.last_updated_print > 1:
+            # TODO format the time nicely in the print
+            print(f"Viewer states are successfully syncing at {current_time}")
+            self.last_updated_print = current_time
         with self.viewer.txn() as s:
             self.estimate_affine(s)
         self._clear_status_messages()
@@ -193,14 +193,13 @@ class LinearRegistrationWorkflow:
         else:
             return neuroglancer.ImageLayer(source=self.template_url)
 
-    def create_source_image(self, registration_matrix : list | np.ndarray | None = None):
+    def create_source_image(self, registration_matrix: list | np.ndarray | None = None):
         registration_matrix = (
             list(create_identity_matrix())
             if registration_matrix is None
             else registration_matrix
         )
         if self.source_url is None:
-            # TODO might be helpful to randomize this and check how close after registration
             desired_output_matrix_homogenous = [
                 [0.8, 0, 0, 0],
                 [0, 0.2, 0, 0],
@@ -237,7 +236,12 @@ class LinearRegistrationWorkflow:
         return self.create_source_image(registration_matrix=self.affine)
 
     def split_points_into_pairs(self, annotations):
-        # TODO allow a different way to group, such as by description
+        # TODO allow a different way to group. Right now the order informs
+        # the properties
+        # But ideally we'd like to allow the other way around as well
+        # This needs to be reworked just a bit to allow that
+        # As a first step for that, this should inspect the properties
+        # and group based on that instead of this grouping
         template_points = []
         source_points = []
         for i, a in enumerate(annotations):
@@ -247,7 +251,7 @@ class LinearRegistrationWorkflow:
                 source_points.append(a.point)
         return np.array(template_points), np.array(source_points)
 
-    def estimate_affine(self, s : neuroglancer.ViewerState):
+    def estimate_affine(self, s: neuroglancer.ViewerState):
         # TODO do we need to throttle this update or make it manually triggered?
         # While updating by moving a point, this can break right now
         annotations = s.layers["markers"].annotations
@@ -267,6 +271,8 @@ class LinearRegistrationWorkflow:
             ):
                 return False
         else:
+            # TODO instead of directly doing the update, debounce it and only do
+            # it after a short delay if no other updates
             for i, a in enumerate(s.layers["markers"].annotations):
                 a.props = [i // 2, i % 2, i]
 
