@@ -2,11 +2,14 @@ import argparse
 import webbrowser
 from time import time
 
-import scipy.ndimage
-import numpy as np
-
 import neuroglancer
 import neuroglancer.cli
+import numpy as np
+import scipy.ndimage
+
+MESSAGE_DURATION = 5  # seconds
+# TODO maybe can avoid this being a param or const
+NUM_DIMS = 3
 
 
 def create_demo_data(size=(64, 64, 64), radius=20):
@@ -28,22 +31,32 @@ def create_dimensions():
     )
 
 
+def create_identity_matrix():
+    id_list = [[int(i == j) for j in range(NUM_DIMS + 1)] for i in range(NUM_DIMS)]
+    return np.array(id_list)
+
+
 class LinearRegistrationWorkflow:
     def __init__(self, template_url, source_url):
         self.template_url = template_url
         self.source_url = source_url
+        self.status_timers = {}
+        self.stored_points = [[], []]
+        self.affine = create_identity_matrix()
 
         if template_url is None or source_url is None:
             self.demo_data = create_demo_data()
 
-        self.status_timers = {}
         self.setup_viewer()
-        self.last_run_points = 0
+
+    def __str__(self):
+        with self.viewer.txn() as s:
+            return str(s)
 
     def _clear_status_messages(self):
         to_pop = []
         for k, v in self.status_timers.items():
-            if time() - v > 5:
+            if time() - v > MESSAGE_DURATION:
                 to_pop.append(k)
         for k in to_pop:
             with self.viewer.config_state.txn() as s:
@@ -54,6 +67,20 @@ class LinearRegistrationWorkflow:
         with self.viewer.config_state.txn() as s:
             s.status_messages[key] = message
         self.status_timers[key] = time()
+
+    def transform_template_points(self, template_points):
+        # Apply the current affine transform to the template points
+        n = template_points.shape[0]
+        pad = lambda x: np.hstack([x, np.ones((x.shape[0], 1))])
+        unpad = lambda x: x[:, :-1]
+        X = pad(template_points)
+        transformed = X @ self.affine.T
+        return unpad(transformed)
+
+    def toggle_registered_visibility(self, _):
+        with self.viewer.txn() as s:
+            s.layers["registered"].visible = not s.layers["registered"].visible
+            s.layers["template"].visible = not s.layers["registered"].visible
 
     def setup_viewer(self):
         self.viewer = viewer = neuroglancer.Viewer()
@@ -70,25 +97,35 @@ class LinearRegistrationWorkflow:
                 dimensions=create_dimensions(),
                 annotation_color="#00FF00",
             )
-            # TODO set these to be in 3D layout
-            # TODO unlink any controls that should be unlinked
             s.layout = neuroglancer.row_layout(
                 [
                     neuroglancer.LayerGroupViewer(
-                        layers=["template", "registered", "markers"]
+                        layers=["template", "registered", "markers"], layout="xy-3d"
                     ),
                     neuroglancer.LayerGroupViewer(
-                        layers=["source", "registered", "markers"]
+                        layers=["source", "markers"], layout="xy-3d"
                     ),
                 ]
             )
+            s.layout.children[1].position.link = "unlinked"
+            s.layout.children[1].crossSectionOrientation.link = "unlinked"
+            s.layout.children[1].crossSectionScale.link = "unlinked"
+            s.layout.children[1].projectionOrientation.link = "unlinked"
+            s.layout.children[1].projectionScale.link = "unlinked"
             s.layers["markers"].tool = "annotatePoint"
             s.selected_layer.layer = "markers"
             s.selected_layer.visible = True
 
+        viewer.actions.add(
+            "toggle-registered-visibility", self.toggle_registered_visibility
+        )
+
+        with viewer.config_state.txn() as s:
+            s.input_event_bindings.viewer["keyt"] = "toggle-registered-visibility"
+
         self._set_status_message(
             "help",
-            "Place markers in pairs, starting with the template, and then the source. The registered layer will automatically update as you add markers.",
+            "Place markers in pairs, starting with the template, and then the source. The registered layer will automatically update as you add markers. Press 't' to toggle between viewing the template and registered layers.",
         )
 
         self.viewer.shared_state.add_changed_callback(
@@ -99,7 +136,6 @@ class LinearRegistrationWorkflow:
         self.viewer.defer_callback(self.update)
 
     def update(self):
-        print("Updating")
         with self.viewer.txn() as s:
             self.estimate_affine(s)
         self._clear_status_messages()
@@ -118,11 +154,12 @@ class LinearRegistrationWorkflow:
         else:
             return neuroglancer.ImageLayer(source=self.template_url)
 
-    # TODO probably need to be a little more careful about the size of the T matrix
-    # based on the number of input dims
     def create_source_image(self, registration_matrix=None):
-        if registration_matrix is None:
-            registration_matrix = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]]
+        registration_matrix = (
+            list(create_identity_matrix())
+            if registration_matrix is None
+            else registration_matrix
+        )
         if self.source_url is None:
             # TODO might be helpful to randomize this and check how close after registration
             desired_output_matrix_homogenous = [
@@ -157,25 +194,11 @@ class LinearRegistrationWorkflow:
                 ),
             )
 
-    def create_registered_image(self, registration_matrix=None):
-        return self.create_source_image(registration_matrix=registration_matrix)
+    def create_registered_image(self):
+        return self.create_source_image(registration_matrix=self.affine)
 
-    def estimate_affine(self, s):
-        annotations = s.layers["markers"].annotations
-        # TODO expand this to estimate different types of transforms
-        # Depending on the number of points
-        # For now, just ignore non pairs
-        annotations = annotations[: (len(annotations) // 2) * 2]
-        if len(annotations) < 2:
-            return False
-
+    def split_points_into_pairs(self, annotations):
         # TODO allow a different way to group, such as by description
-        # TODO color points differently based on whether template or source
-        # in the shader
-        print(len(annotations) // 2, self.last_run_points)
-        if len(annotations) // 2 == self.last_run_points:
-            return False
-
         template_points = []
         source_points = []
         for i, a in enumerate(annotations):
@@ -183,11 +206,30 @@ class LinearRegistrationWorkflow:
                 template_points.append(a.point)
             else:
                 source_points.append(a.point)
+        return np.array(template_points), np.array(source_points)
 
-        import numpy as np
+    def estimate_affine(self, s):
+        # TODO do we need to throttle this update or make it manually triggered?
+        annotations = s.layers["markers"].annotations
+        if len(annotations) < 2:
+            return False
+        # TODO expand this to estimate different types of transforms
+        # Depending on the number of points
 
-        template_points = np.array(template_points)
-        source_points = np.array(source_points)
+        # Ignore annotations not part of a pair
+        annotations = annotations[: (len(annotations) // 2) * 2]
+        template_points, source_points = self.split_points_into_pairs(annotations)
+        if len(self.stored_points[0]) == len(template_points) and len(
+            self.stored_points[1]
+        ) == len(source_points):
+            if np.all(np.isclose(self.stored_points[0], template_points)) and np.all(
+                np.isclose(self.stored_points[1], source_points)
+            ):
+                return False
+
+        # TODO color points differently based on whether template or source
+        # in the shader
+        template_points, source_points = self.split_points_into_pairs(annotations)
 
         # Estimate affine transform using least squares, for now using
         # https://stackoverflow.com/questions/20546182/how-to-perform-coordinates-affine-transformation-using-python-part-2
@@ -195,7 +237,6 @@ class LinearRegistrationWorkflow:
 
         n = template_points.shape[0]
         pad = lambda x: np.hstack([x, np.ones((x.shape[0], 1))])
-        unpad = lambda x: x[:, :-1]
         X = pad(template_points)
         Y = pad(source_points)
 
@@ -206,11 +247,7 @@ class LinearRegistrationWorkflow:
         A[np.abs(A) < 1e-4] = 0
         # Round all other values to 4 decimal places
         A = np.round(A, 4)
-
-        transform = lambda x: unpad(np.dot(pad(x), A))
-
-        transformed = transform(source_points)
-        print(f"Transformed points: {transformed}")
+        self.affine = A[:NUM_DIMS]
 
         # Set the transformation on the layer that is being registered
         # Something seems to go wrong with the state updates once this happens
@@ -219,16 +256,33 @@ class LinearRegistrationWorkflow:
         # TODO in theory should be able to just update the matrix,
         # but if cannot, can replace whole layer and restore settings
         old_visible = s.layers["registered"].visible
-        s.layers["registered"] = self.create_registered_image(A[:3])
+        s.layers["registered"] = self.create_registered_image()
         s.layers["registered"].visible = old_visible
 
         self._set_status_message(
             ("info"), f"Estimated affine transform with {n} point pairs"
         )
-        # TODO actually want to check if the number of points or the points
-        # themselves have changed
-        self.last_run_points = n
+        self.stored_points = [template_points, source_points]
         return True
+
+    def get_registration_info(self):
+        info = {}
+        with self.viewer.txn() as s:
+            annotations = s.layers["markers"].annotations
+            template_points, source_points = self.split_points_into_pairs(annotations)
+            # transformed_points = self.transform_template_points(template_points)
+            info["template"] = template_points.tolist()
+            info["source"] = source_points.tolist()
+            # info["transformed_template"] = transformed_points.tolist()
+            info["transform"] = self.affine.tolist()
+        return info
+
+    def dump_info(self, path: str):
+        import json
+
+        info = self.get_registration_info()
+        with open(path, "w") as f:
+            json.dump(info, f, indent=4)
 
 
 def handle_args():
@@ -249,7 +303,7 @@ def handle_args():
     return args
 
 
-def main():
+if __name__ == "__main__":
     args = handle_args()
 
     demo = LinearRegistrationWorkflow(
@@ -258,7 +312,3 @@ def main():
     )
 
     webbrowser.open_new(demo.viewer.get_viewer_url())
-
-
-if __name__ == "__main__":
-    main()
