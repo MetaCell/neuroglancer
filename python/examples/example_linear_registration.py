@@ -26,7 +26,7 @@ void main() {
 """
 
 
-def create_demo_data(size=(64, 64, 64), radius=20):
+def create_demo_data(size: tuple[int, int, int] = (64, 64, 64), radius: float = 20):
     import numpy as np
 
     data = np.zeros(size, dtype=np.uint8)
@@ -51,7 +51,7 @@ def create_identity_matrix():
 
 
 class LinearRegistrationWorkflow:
-    def __init__(self, template_url, source_url):
+    def __init__(self, template_url: str, source_url: str):
         self.template_url = template_url
         self.source_url = source_url
         self.status_timers = {}
@@ -77,12 +77,12 @@ class LinearRegistrationWorkflow:
                 s.status_messages.pop(k, None)
             self.status_timers.pop(k)
 
-    def _set_status_message(self, key, message):
+    def _set_status_message(self, key: str, message: str):
         with self.viewer.config_state.txn() as s:
             s.status_messages[key] = message
         self.status_timers[key] = time()
 
-    def transform_template_points(self, template_points):
+    def transform_template_points(self, template_points : np.ndarray):
         # Apply the current affine transform to the template points
         n = template_points.shape[0]
         pad = lambda x: np.hstack([x, np.ones((x.shape[0], 1))])
@@ -193,7 +193,7 @@ class LinearRegistrationWorkflow:
         else:
             return neuroglancer.ImageLayer(source=self.template_url)
 
-    def create_source_image(self, registration_matrix=None):
+    def create_source_image(self, registration_matrix : list | np.ndarray | None = None):
         registration_matrix = (
             list(create_identity_matrix())
             if registration_matrix is None
@@ -247,7 +247,7 @@ class LinearRegistrationWorkflow:
                 source_points.append(a.point)
         return np.array(template_points), np.array(source_points)
 
-    def estimate_affine(self, s):
+    def estimate_affine(self, s : neuroglancer.ViewerState):
         # TODO do we need to throttle this update or make it manually triggered?
         # While updating by moving a point, this can break right now
         annotations = s.layers["markers"].annotations
