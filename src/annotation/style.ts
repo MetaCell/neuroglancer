@@ -28,6 +28,6 @@ export function addAnnotationClassToIcon(
       icon.classList.add("annotation-line");
       break;
     default:
-      icon.classList.add("annotation-point");
+      console.error("Unknown annotation type:", annotationType);
   }
 }
