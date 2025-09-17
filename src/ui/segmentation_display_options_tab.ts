@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-import { type SegmentationUserLayer } from "#src/layer/segmentation/index.js";
+import { buildShaderPropertyList } from "#src/layer/annotation/index.js";
+import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import { SKELETON_RENDERING_SHADER_CONTROL_TOOL_ID } from "#src/layer/segmentation/json_keys.js";
 import {
   APPEARANCE_SECTION_JSON_KEY,
@@ -138,6 +139,18 @@ export class DisplayOptionsTab extends AccordionTab {
         layer.hasSkeletonsLayer,
         (hasSkeletonsLayer, parent, refCounted) => {
           if (!hasSkeletonsLayer) return;
+          const skeletonLayer = layer.getSkeletonLayer()!;
+          if (skeletonLayer.vertexAttributes.length > 1) {
+            buildShaderPropertyList(
+              skeletonLayer.vertexAttributes.slice(1).map((x) => {
+                return {
+                  type: x.glslDataType,
+                  identifier: x.name,
+                };
+              }),
+              parent,
+            );
+          }
           const codeWidget = refCounted.registerDisposer(
             makeSkeletonShaderCodeWidget(this.layer),
           );
