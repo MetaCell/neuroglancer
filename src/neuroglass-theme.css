@@ -117,6 +117,7 @@ input[type="checkbox"]:checked {
     font-size: 0.75rem;
     font-weight: 500;
     color: var(--white);
+    cursor: pointer;
   }
   .neuroglancer-status-modal-footer button:hover {
     background-color: var(--primary120);
