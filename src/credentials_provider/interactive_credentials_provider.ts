@@ -26,7 +26,9 @@ export function getCredentialsWithStatus<Token>(
   },
   signal: AbortSignal,
 ): Promise<Token> {
-  const { requestDescription = "To view this dataset in Neuroglancer, please ensure you are logged in with valid credentials." } = options;
+  const {
+    requestDescription = "to view this dataset in Neuroglancer, please ensure you are logged in with valid credentials.",
+  } = options;
   const status = new StatusMessage(/*delay=*/ true);
   let abortController: AbortController | undefined;
   return new Promise<Token>((resolve, reject) => {
@@ -45,7 +47,7 @@ export function getCredentialsWithStatus<Token>(
     function writeLoginStatus(
       msg = `${options.description} ${requestDescription}`,
       linkMessage = `Go to login`,
-      title = "Login Required"
+      title = "Login Required",
     ) {
       status.setTitle(title);
       status.setContentText(msg);

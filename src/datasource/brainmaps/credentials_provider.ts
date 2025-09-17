@@ -31,7 +31,7 @@ export class BrainmapsCredentialsProvider extends GoogleOAuth2CredentialsProvide
     super({
       clientId: clientId,
       scopes: [BRAINMAPS_SCOPE, OPENID_SCOPE, EMAIL_SCOPE],
-      description: "The BrainMaps project requires user authentication to retrieve its data sources.",
+      description: "Brain Maps",
     });
   }
 }
