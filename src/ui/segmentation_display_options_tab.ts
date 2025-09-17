@@ -15,7 +15,7 @@
  */
 
 import { type SegmentationUserLayer } from "#src/layer/segmentation/index.js";
-import { SKELETON_RENDERING_SHADER_CONTROL_TOOL_ID, COLOR_SEED_JSON_KEY, SEGMENT_DEFAULT_COLOR_JSON_KEY } from "#src/layer/segmentation/json_keys.js";
+import { SKELETON_RENDERING_SHADER_CONTROL_TOOL_ID } from "#src/layer/segmentation/json_keys.js";
 import {
   APPEARANCE_SECTION_JSON_KEY,
   LAYER_CONTROLS,
@@ -100,42 +100,29 @@ export class DisplayOptionsTab extends AccordionTab {
     fixedColorButton.title = "Fixed color";
     buttonContainer.appendChild(fixedColorButton);
 
-    const showControls = (isRandomColor: boolean) => {
-      randomColorButton.classList.toggle("active", isRandomColor);
-      fixedColorButton.classList.toggle("active", !isRandomColor);
+    // const showControls = (isRandomColor: boolean) => {
+    //   randomColorButton.classList.toggle("active", isRandomColor);
+    //   fixedColorButton.classList.toggle("active", !isRandomColor);
 
-      colorControlsContainer.innerHTML = "";
+    //   colorControlsContainer.innerHTML = "";
 
-      const visibleControls = LAYER_CONTROLS.filter(control => {
-        if (isRandomColor) {
-          return control.toolJson === COLOR_SEED_JSON_KEY;
-        } else {
-          return control.toolJson === SEGMENT_DEFAULT_COLOR_JSON_KEY;
-        }
-      });
+    //   for (const control of LAYER_CONTROLS) {
+    //     const e = addLayerControlToOptionsTab(
+    //       this,
+    //       layer,
+    //       this.visibility,
+    //       control,
+    //     );
+    //     colorControlsContainer.appendChild(e);
+    //   }
+    // };
 
-      for (const control of visibleControls) {
-        const e = addLayerControlToOptionsTab(
-          this,
-          layer,
-          this.visibility,
-          control,
-        );
-        colorControlsContainer.appendChild(e);
-      }
-    };
+    // randomColorButton.addEventListener("click", () => showControls(true));
+    // fixedColorButton.addEventListener("click", () => showControls(false));
 
-    randomColorButton.addEventListener("click", () => showControls(true));
-    fixedColorButton.addEventListener("click", () => showControls(false));
+    // showControls(true);
 
-    showControls(true);
-
-    const filteredControls = LAYER_CONTROLS.filter(control =>
-      control.toolJson !== COLOR_SEED_JSON_KEY &&
-      control.toolJson !== SEGMENT_DEFAULT_COLOR_JSON_KEY
-    );
-
-    for (const control of filteredControls) {
+    for (const control of LAYER_CONTROLS) {
       const e = addLayerControlToOptionsTab(
         this,
         layer,
