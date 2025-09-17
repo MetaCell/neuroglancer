@@ -127,7 +127,7 @@ export class StatusMessage {
   }
   private setupModal() {
     if (this.modalElementWrapper !== undefined) {
-      return; // Already set up
+      return;
     }
 
     const modalElementWrapper = document.createElement("div");
