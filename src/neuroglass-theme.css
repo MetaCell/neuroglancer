@@ -1161,6 +1161,16 @@ input[type="checkbox"]:checked {
             background-image: url("../src/ui/images/filter_tilt_shift-white.svg");
           }
         }
+
+        /* TODO replace this with the real polyline icon */
+        &:nth-child(5) {
+          background-image: url("../src/ui/images/linear_scale.svg");
+
+          &:hover,
+          &.active {
+            background-image: url("../src/ui/images/linear_scale-white.svg");
+          }
+        }
       }
     }
 

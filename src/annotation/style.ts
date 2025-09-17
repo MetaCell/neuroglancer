@@ -23,6 +23,10 @@ export function addAnnotationClassToIcon(
     case AnnotationType.ELLIPSOID:
       icon.classList.add("annotation-ellipsoid");
       break;
+    /* TODO add to neuroglass theme handling for annotation-polyline and change this */
+    case AnnotationType.POLYLINE:
+      icon.classList.add("annotation-line");
+      break;
     default:
       console.error("Unknown annotation type:", annotationType);
   }
