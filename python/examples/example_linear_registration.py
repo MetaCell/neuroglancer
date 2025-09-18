@@ -8,8 +8,6 @@ import numpy as np
 import scipy.ndimage
 
 MESSAGE_DURATION = 5  # seconds
-# TODO maybe can avoid this being a param or const
-NUM_DIMS = 3
 
 MARKERS_SHADER = """
 #uicontrol vec3 templatePointColor color(default="#00FF00")
@@ -45,8 +43,8 @@ def create_dimensions():
     )
 
 
-def create_identity_matrix():
-    id_list = [[int(i == j) for j in range(NUM_DIMS + 1)] for i in range(NUM_DIMS)]
+def create_identity_matrix(num_dims: int):
+    id_list = [[int(i == j) for j in range(num_dims + 1)] for i in range(num_dims)]
     return np.array(id_list)
 
 
@@ -56,7 +54,7 @@ class LinearRegistrationWorkflow:
         self.source_url = source_url
         self.status_timers = {}
         self.stored_points = [[], []]
-        self.affine = create_identity_matrix()
+        self.affine = []
 
         if template_url is None or source_url is None:
             self.demo_data = create_demo_data()
@@ -194,11 +192,9 @@ class LinearRegistrationWorkflow:
             return neuroglancer.ImageLayer(source=self.template_url)
 
     def create_source_image(self, registration_matrix: list | np.ndarray | None = None):
-        registration_matrix = (
-            list(create_identity_matrix())
-            if registration_matrix is None
-            else registration_matrix
-        )
+        transform_kwargs = {}
+        if registration_matrix is not None:
+            transform_kwargs["matrix"] = registration_matrix
         if self.source_url is None:
             desired_output_matrix_homogenous = [
                 [0.8, 0, 0, 0],
@@ -219,7 +215,7 @@ class LinearRegistrationWorkflow:
                         ),
                         transform=neuroglancer.CoordinateSpaceTransform(
                             output_dimensions=create_dimensions(),
-                            matrix=registration_matrix,
+                            **transform_kwargs,
                         ),
                     )
                 ]
@@ -227,9 +223,7 @@ class LinearRegistrationWorkflow:
         else:
             return neuroglancer.ImageLayer(
                 source=self.source_url,
-                transform=neuroglancer.CoordinateSpaceTransform(
-                    matrix=registration_matrix
-                ),
+                transform=neuroglancer.CoordinateSpaceTransform(**transform_kwargs),
             )
 
     def create_registered_image(self):
@@ -294,7 +288,8 @@ class LinearRegistrationWorkflow:
         A[np.abs(A) < 1e-4] = 0
         # Round all other values to 4 decimal places
         A = np.round(A, 4)
-        self.affine = A[:NUM_DIMS]
+        num_dims = X.shape[1] - 1
+        self.affine = A[:num_dims]
 
         # Set the transformation on the layer that is being registered
         # Something seems to go wrong with the state updates once this happens
