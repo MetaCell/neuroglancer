@@ -8,6 +8,7 @@ import numpy as np
 import scipy.ndimage
 
 MESSAGE_DURATION = 5  # seconds
+NUM_DEMO_DIMS = 2  # Currently can be 2D or 3D
 
 MARKERS_SHADER = """
 #uicontrol vec3 templatePointColor color(default="#00FF00")
@@ -24,10 +25,57 @@ void main() {
 """
 
 
-def create_demo_data(size: tuple[int, int, int] = (64, 64, 64), radius: float = 20):
+def affine_fit(template_points: np.ndarray, target_points: np.ndarray):
+    # Source points and target points are NxD arrays
+    assert template_points.shape == target_points.shape
+    N = template_points.shape[0]
+    D = template_points.shape[1]
+    T = template_points
+
+    # Target values (B) is a D * N array
+    # Input values (A) is a D * N, (D * (D + 1)) array
+    # Output estimation is a (D * (D + 1)) array
+    A = np.zeros(((D * N), D * (D + 1)))
+    for i in range(N):
+        for j in range(D):
+            start_index = j * D
+            end_index = (j + 1) * D
+            A[D * i + j, start_index:end_index] = T[i]
+            A[D * i + j, D * D + j] = 1
+    B = target_points.T.flatten()
+
+    print(A.shape, B.shape)
+    print(A, B)
+    # The estimated affine transform params will be flattened
+    # and there will be D * (D + 1) of them
+    # Format is x1, x2, ..., b1, b2, ...
+    tvec, res, rank, sd = np.linalg.lstsq(A, B)
+    print(A, target_points, tvec)
+    # Put the flattened version back into the matrix
+    affine = np.zeros((D, D + 1))
+    for i in range(D):
+        start_index = i * D
+        end_index = start_index + D
+        affine[i, :D] = tvec[start_index:end_index]
+        affine[i, -1] = tvec[D * D + i]
+
+    # Round to close decimal
+    affine = np.round(affine, decimals=2)
+    print(affine)
+    return affine
+
+
+def create_demo_data(size: int | tuple = 60, radius: float = 20):
     import numpy as np
 
-    data = np.zeros(size, dtype=np.uint8)
+    data_size = (size,) * NUM_DEMO_DIMS if isinstance(size, int) else size
+    data = np.zeros(data_size, dtype=np.uint8)
+    if NUM_DEMO_DIMS == 2:
+        yy, xx = np.indices(data.shape)
+        center = np.array(data.shape) / 2
+        circle_mask = (xx - center[1]) ** 2 + (yy - center[0]) ** 2 < radius**2
+        data[circle_mask] = 255
+        return data
     zz, yy, xx = np.indices(data.shape)
     center = np.array(data.shape) / 2
     sphere_mask = (xx - center[2]) ** 2 + (yy - center[1]) ** 2 + (
@@ -38,6 +86,8 @@ def create_demo_data(size: tuple[int, int, int] = (64, 64, 64), radius: float = 
 
 
 def create_dimensions():
+    if NUM_DEMO_DIMS == 2:
+        return neuroglancer.CoordinateSpace(names=["x", "y"], units="nm", scales=[1, 1])
     return neuroglancer.CoordinateSpace(
         names=["x", "y", "z"], units="nm", scales=[1, 1, 1]
     )
@@ -54,7 +104,8 @@ class LinearRegistrationWorkflow:
         self.source_url = source_url
         self.status_timers = {}
         self.stored_points = [[], []]
-        self.affine = []
+        # Will be an Nx(N+1) matrix for N input dimensions
+        self.affine = None
 
         if template_url is None or source_url is None:
             self.demo_data = create_demo_data()
@@ -81,14 +132,13 @@ class LinearRegistrationWorkflow:
             s.status_messages[key] = message
         self.status_timers[key] = time()
 
-    def transform_template_points(self, template_points: np.ndarray):
-        # Apply the current affine transform to the template points
-        n = template_points.shape[0]
-        pad = lambda x: np.hstack([x, np.ones((x.shape[0], 1))])
-        unpad = lambda x: x[:, :-1]
-        X = pad(template_points)
-        transformed = X @ self.affine.T
-        return unpad(transformed)
+    def transform_points(self, points: np.ndarray):
+        # Apply the current affine transform to the points
+        transformed = np.zeros_like(points)
+        padded = np.pad(points, ((0, 0), (0, 1)), constant_values=1)
+        for i in range(len(points)):
+            transformed[i] = self.affine @ padded[i]
+        return transformed
 
     def toggle_registered_visibility(self, _):
         with self.viewer.txn() as s:
@@ -196,17 +246,25 @@ class LinearRegistrationWorkflow:
         if registration_matrix is not None:
             transform_kwargs["matrix"] = registration_matrix
         if self.source_url is None:
-            desired_output_matrix_homogenous = [
-                [0.8, 0, 0, 0],
-                [0, 0.2, 0, 0],
-                [0, 0, 0.9, 0],
-                [0, 0, 0, 1],
-            ]
+            if NUM_DEMO_DIMS == 2:
+                desired_output_matrix_homogenous = [
+                    [0.8, 0, 0],
+                    [0, 0.2, 0],
+                    [0, 0, 1],
+                ]
+            else:
+                desired_output_matrix_homogenous = [
+                    [0.8, 0, 0, 0],
+                    [0, 0.2, 0, 0],
+                    [0, 0, 0.9, 0],
+                    [0, 0, 0, 1],
+                ]
             inverse_matrix = np.linalg.inv(desired_output_matrix_homogenous)
             transformed = scipy.ndimage.affine_transform(
                 self.demo_data,
                 matrix=inverse_matrix,
             )
+            print(inverse_matrix)
             return neuroglancer.ImageLayer(
                 source=[
                     neuroglancer.LayerDataSource(
@@ -272,24 +330,8 @@ class LinearRegistrationWorkflow:
 
         template_points, source_points = self.split_points_into_pairs(annotations)
 
-        # Estimate affine transform using least squares, for now using
-        # https://stackoverflow.com/questions/20546182/how-to-perform-coordinates-affine-transformation-using-python-part-2
-        # but can replace later
-
-        n = template_points.shape[0]
-        pad = lambda x: np.hstack([x, np.ones((x.shape[0], 1))])
-        X = pad(template_points)
-        Y = pad(source_points)
-
-        # Solve the least squares problem X * A = Y
-        # to find our transformation matrix A
-        A, res, rank, sd = np.linalg.lstsq(X, Y)
-        # Zero out really small values on A
-        A[np.abs(A) < 1e-4] = 0
-        # Round all other values to 4 decimal places
-        A = np.round(A, 4)
-        num_dims = X.shape[1] - 1
-        self.affine = A[:num_dims]
+        # Estimate transform
+        self.affine = affine_fit(template_points, source_points)
 
         # Set the transformation on the layer that is being registered
         # Something seems to go wrong with the state updates once this happens
@@ -302,8 +344,11 @@ class LinearRegistrationWorkflow:
         s.layers["registered"].visible = old_visible
 
         self._set_status_message(
-            "info", f"Estimated affine transform with {n} point pairs"
+            "info",
+            f"Estimated affine transform with {len(annotations) // 2} point pairs",
         )
+        print("Estimated points are", self.transform_points(source_points))
+        print("Original points are", template_points)
         self.stored_points = [template_points, source_points]
         return True
 
