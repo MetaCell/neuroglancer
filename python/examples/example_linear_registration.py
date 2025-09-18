@@ -1,6 +1,6 @@
 import argparse
 import webbrowser
-from time import time
+from time import time, ctime
 
 import neuroglancer
 import neuroglancer.cli
@@ -11,26 +11,26 @@ MESSAGE_DURATION = 5  # seconds
 NUM_DEMO_DIMS = 2  # Currently can be 2D or 3D
 
 MARKERS_SHADER = """
-#uicontrol vec3 templatePointColor color(default="#00FF00")
-#uicontrol vec3 sourcePointColor color(default="#0000FF")
+#uicontrol vec3 fixedPointColor color(default="#00FF00")
+#uicontrol vec3 movingPointColor color(default="#0000FF")
 #uicontrol float pointSize slider(min=1, max=16, default=6)
 void main() {
-    if (int(prop_index()) % 2 == 0) {
-        setColor(templatePointColor);
+    if (int(prop_group()) == 0) {
+        setColor(fixedPointColor);
     } else {
-        setColor(sourcePointColor);
+        setColor(movingPointColor);
     }
     setPointMarkerSize(pointSize);
 }
 """
 
 
-def affine_fit(template_points: np.ndarray, target_points: np.ndarray):
-    # Source points and target points are NxD arrays
-    assert template_points.shape == target_points.shape
-    N = template_points.shape[0]
-    D = template_points.shape[1]
-    T = template_points
+def affine_fit(fixed_points: np.ndarray, moving_points: np.ndarray):
+    # Points are NxD arrays
+    assert fixed_points.shape == moving_points.shape
+    N = fixed_points.shape[0]
+    D = fixed_points.shape[1]
+    T = fixed_points
 
     # Target values (B) is a D * N array
     # Input values (A) is a D * N, (D * (D + 1)) array
@@ -42,13 +42,13 @@ def affine_fit(template_points: np.ndarray, target_points: np.ndarray):
             end_index = (j + 1) * D
             A[D * i + j, start_index:end_index] = T[i]
             A[D * i + j, D * D + j] = 1
-    B = target_points.flatten()
+    B = moving_points.flatten()
 
     # The estimated affine transform params will be flattened
     # and there will be D * (D + 1) of them
     # Format is x1, x2, ..., b1, b2, ...
     tvec, res, rank, sd = np.linalg.lstsq(A, B)
-    print(A, target_points, tvec)
+
     # Put the flattened version back into the matrix
     affine = np.zeros((D, D + 1))
     for i in range(D):
@@ -57,10 +57,8 @@ def affine_fit(template_points: np.ndarray, target_points: np.ndarray):
         affine[i, :D] = tvec[start_index:end_index]
         affine[i, -1] = tvec[D * D + i]
 
-    # Round to close decimal
-    affine = np.round(affine, decimals=2)
-    print(affine)
-    print(transform_points(affine, template_points))
+    # Round to close decimals
+    affine = np.round(affine, decimals=3)
     return affine
 
 
@@ -74,8 +72,6 @@ def transform_points(affine: np.ndarray, points: np.ndarray):
 
 
 def create_demo_data(size: int | tuple = 60, radius: float = 20):
-    import numpy as np
-
     data_size = (size,) * NUM_DEMO_DIMS if isinstance(size, int) else size
     data = np.zeros(data_size, dtype=np.uint8)
     if NUM_DEMO_DIMS == 2:
@@ -93,6 +89,7 @@ def create_demo_data(size: int | tuple = 60, radius: float = 20):
     return data
 
 
+# TODO can we avoid calling this at all? Can the layers just be created and dims inferred?
 def create_dimensions():
     if NUM_DEMO_DIMS == 2:
         return neuroglancer.CoordinateSpace(names=["x", "y"], units="nm", scales=[1, 1])
@@ -101,21 +98,15 @@ def create_dimensions():
     )
 
 
-def create_identity_matrix(num_dims: int):
-    id_list = [[int(i == j) for j in range(num_dims + 1)] for i in range(num_dims)]
-    return np.array(id_list)
-
-
 class LinearRegistrationWorkflow:
-    def __init__(self, template_url: str, source_url: str):
-        self.template_url = template_url
-        self.source_url = source_url
+    def __init__(self, fixed_url: str, moving_url: str):
+        self.fixed_url = fixed_url
+        self.moving_url = moving_url
         self.status_timers = {}
         self.stored_points = [[], []]
-        # Will be an Nx(N+1) matrix for N input dimensions
         self.affine = None
 
-        if template_url is None or source_url is None:
+        if fixed_url is None or moving_url is None:
             self.demo_data = create_demo_data()
 
         self.setup_viewer()
@@ -140,28 +131,26 @@ class LinearRegistrationWorkflow:
             s.status_messages[key] = message
         self.status_timers[key] = time()
 
-    def transform_points(self, points: np.ndarray):
-        # Apply the current affine transform to the points
-        transformed = np.zeros_like(points)
-        padded = np.pad(points, ((0, 0), (0, 1)), constant_values=1)
-        for i in range(len(points)):
-            transformed[i] = self.affine @ padded[i]
-        return transformed
+    def transform_points_with_affine(self, points: np.ndarray):
+        if self.affine is not None:
+            return transform_points(self.affine, points)
 
     def toggle_registered_visibility(self, _):
         with self.viewer.txn() as s:
             s.layers["registered"].visible = not s.layers["registered"].visible
-            s.layers["template"].visible = not s.layers["registered"].visible
+            s.layers["fixed"].visible = not s.layers["registered"].visible
+            s.layers["markers"].visible = not s.layers["registered"].visible
+            s.layers["mappedMarkers"].visible = s.layers["registered"].visible
 
     def setup_viewer(self):
         self.viewer = viewer = neuroglancer.Viewer()
-        source_layer = self.create_source_image()
-        template_layer = self.create_template_image()
+        fixed_layer = self.create_fixed_image()
+        moving_layer = self.create_moving_image()
         registered_layer = self.create_registered_image()
 
         with viewer.txn() as s:
-            s.layers["template"] = template_layer
-            s.layers["source"] = source_layer
+            s.layers["fixed"] = fixed_layer
+            s.layers["moving"] = moving_layer
             s.layers["registered"] = registered_layer
             s.layers["registered"].visible = False
             s.layers["markers"] = neuroglancer.LocalAnnotationLayer(
@@ -176,7 +165,7 @@ class LinearRegistrationWorkflow:
                         id="group",
                         type="uint8",
                         default=0,
-                        enum_labels=["template", "source"],
+                        enum_labels=["fixed", "moving"],
                         enum_values=[0, 1],
                     ),
                     neuroglancer.AnnotationPropertySpec(
@@ -190,10 +179,10 @@ class LinearRegistrationWorkflow:
             s.layout = neuroglancer.row_layout(
                 [
                     neuroglancer.LayerGroupViewer(
-                        layers=["template", "registered", "markers"], layout="xy-3d"
+                        layers=["fixed", "registered", "markers"], layout="xy-3d"
                     ),
                     neuroglancer.LayerGroupViewer(
-                        layers=["source", "markers"], layout="xy-3d"
+                        layers=["moving", "markers"], layout="xy-3d"
                     ),
                 ]
             )
@@ -215,7 +204,7 @@ class LinearRegistrationWorkflow:
 
         self._set_status_message(
             "help",
-            "Place markers in pairs, starting with the template, and then the source. The registered layer will automatically update as you add markers. Press 't' to toggle between viewing the template and registered layers.",
+            "Place markers in pairs, starting with the fixed, and then the moving. The registered layer will automatically update as you add markers. Press 't' to toggle between viewing the fixed and registered layers.",
         )
 
         self.viewer.shared_state.add_changed_callback(
@@ -227,16 +216,15 @@ class LinearRegistrationWorkflow:
 
     def update(self):
         current_time = time()
-        if current_time - self.last_updated_print > 1:
-            # TODO format the time nicely in the print
-            print(f"Viewer states are successfully syncing at {current_time}")
+        if current_time - self.last_updated_print > 5:
+            print(f"Viewer states are successfully syncing at {ctime()}")
             self.last_updated_print = current_time
         with self.viewer.txn() as s:
             self.estimate_affine(s)
         self._clear_status_messages()
 
-    def create_template_image(self):
-        if self.template_url is None:
+    def create_fixed_image(self):
+        if self.fixed_url is None:
             return neuroglancer.ImageLayer(
                 source=[
                     neuroglancer.LayerDataSource(
@@ -247,13 +235,13 @@ class LinearRegistrationWorkflow:
                 ]
             )
         else:
-            return neuroglancer.ImageLayer(source=self.template_url)
+            return neuroglancer.ImageLayer(source=self.fixed_url)
 
-    def create_source_image(self, registration_matrix: list | np.ndarray | None = None):
+    def create_moving_image(self, registration_matrix: list | np.ndarray | None = None):
         transform_kwargs = {}
         if registration_matrix is not None:
             transform_kwargs["matrix"] = registration_matrix
-        if self.source_url is None:
+        if self.moving_url is None:
             if NUM_DEMO_DIMS == 2:
                 desired_output_matrix_homogenous = [
                     [0.8, 0, 0],
@@ -288,12 +276,12 @@ class LinearRegistrationWorkflow:
             )
         else:
             return neuroglancer.ImageLayer(
-                source=self.source_url,
+                source=self.moving_url,
                 transform=neuroglancer.CoordinateSpaceTransform(**transform_kwargs),
             )
 
     def create_registered_image(self):
-        return self.create_source_image(registration_matrix=self.affine)
+        return self.create_moving_image(registration_matrix=self.affine)
 
     def split_points_into_pairs(self, annotations):
         # TODO allow a different way to group. Right now the order informs
@@ -302,14 +290,14 @@ class LinearRegistrationWorkflow:
         # This needs to be reworked just a bit to allow that
         # As a first step for that, this should inspect the properties
         # and group based on that instead of this grouping
-        template_points = []
-        source_points = []
+        fixed_points = []
+        moving_points = []
         for i, a in enumerate(annotations):
             if i % 2 == 0:
-                template_points.append(a.point)
+                fixed_points.append(a.point)
             else:
-                source_points.append(a.point)
-        return np.array(template_points), np.array(source_points)
+                moving_points.append(a.point)
+        return np.array(fixed_points), np.array(moving_points)
 
     def estimate_affine(self, s: neuroglancer.ViewerState):
         # TODO do we need to throttle this update or make it manually triggered?
@@ -322,12 +310,12 @@ class LinearRegistrationWorkflow:
 
         # Ignore annotations not part of a pair
         annotations = annotations[: (len(annotations) // 2) * 2]
-        template_points, source_points = self.split_points_into_pairs(annotations)
-        if len(self.stored_points[0]) == len(template_points) and len(
+        fixed_points, moving_points = self.split_points_into_pairs(annotations)
+        if len(self.stored_points[0]) == len(fixed_points) and len(
             self.stored_points[1]
-        ) == len(source_points):
-            if np.all(np.isclose(self.stored_points[0], template_points)) and np.all(
-                np.isclose(self.stored_points[1], source_points)
+        ) == len(moving_points):
+            if np.all(np.isclose(self.stored_points[0], fixed_points)) and np.all(
+                np.isclose(self.stored_points[1], moving_points)
             ):
                 return False
         else:
@@ -336,10 +324,8 @@ class LinearRegistrationWorkflow:
             for i, a in enumerate(s.layers["markers"].annotations):
                 a.props = [i // 2, i % 2, i]
 
-        template_points, source_points = self.split_points_into_pairs(annotations)
-
-        # Estimate transform
-        self.affine = affine_fit(source_points, template_points)
+        fixed_points, moving_points = self.split_points_into_pairs(annotations)
+        self.affine = affine_fit(moving_points, fixed_points)
 
         # Set the transformation on the layer that is being registered
         # Something seems to go wrong with the state updates once this happens
@@ -355,21 +341,20 @@ class LinearRegistrationWorkflow:
             "info",
             f"Estimated affine transform with {len(annotations) // 2} point pairs",
         )
-        print("Estimated points are", self.transform_points(source_points))
-        print("Original points are", template_points)
-        self.stored_points = [template_points, source_points]
+        self.stored_points = [fixed_points, moving_points]
         return True
 
     def get_registration_info(self):
         info = {}
         with self.viewer.txn() as s:
             annotations = s.layers["markers"].annotations
-            template_points, source_points = self.split_points_into_pairs(annotations)
-            # transformed_points = self.transform_template_points(template_points)
-            info["template"] = template_points.tolist()
-            info["source"] = source_points.tolist()
-            # info["transformed_template"] = transformed_points.tolist()
-            info["transform"] = self.affine.tolist()
+            fixed_points, moving_points = self.split_points_into_pairs(annotations)
+            transformed_points = self.transform_points_with_affine(moving_points)
+            info["fixedPoints"] = fixed_points.tolist()
+            info["movingPoints"] = moving_points.tolist()
+            if self.affine is not None and transformed_points is not None:
+                info["transformedPoints"] = transformed_points.tolist()
+                info["affineTransform"] = self.affine.tolist()
         return info
 
     def dump_info(self, path: str):
@@ -384,12 +369,14 @@ def handle_args():
     ap = argparse.ArgumentParser()
     neuroglancer.cli.add_server_arguments(ap)
     ap.add_argument(
-        "--template",
+        "--fixed",
+        "-f",
         type=str,
-        help="Source URL for the template image",
+        help="Source URL for the fixed image",
     )
     ap.add_argument(
-        "--source",
+        "--moving",
+        "-m",
         type=str,
         help="Source URL for the image to be registered",
     )
@@ -402,8 +389,8 @@ if __name__ == "__main__":
     args = handle_args()
 
     demo = LinearRegistrationWorkflow(
-        template_url=args.template,
-        source_url=args.source,
+        fixed_url=args.fixed,
+        moving_url=args.moving,
     )
 
     webbrowser.open_new(demo.viewer.get_viewer_url())
