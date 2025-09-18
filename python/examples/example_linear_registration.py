@@ -42,10 +42,8 @@ def affine_fit(template_points: np.ndarray, target_points: np.ndarray):
             end_index = (j + 1) * D
             A[D * i + j, start_index:end_index] = T[i]
             A[D * i + j, D * D + j] = 1
-    B = target_points.T.flatten()
+    B = target_points.flatten()
 
-    print(A.shape, B.shape)
-    print(A, B)
     # The estimated affine transform params will be flattened
     # and there will be D * (D + 1) of them
     # Format is x1, x2, ..., b1, b2, ...
@@ -62,7 +60,17 @@ def affine_fit(template_points: np.ndarray, target_points: np.ndarray):
     # Round to close decimal
     affine = np.round(affine, decimals=2)
     print(affine)
+    print(transform_points(affine, template_points))
     return affine
+
+
+def transform_points(affine: np.ndarray, points: np.ndarray):
+    # Apply the current affine transform to the points
+    transformed = np.zeros_like(points)
+    padded = np.pad(points, ((0, 0), (0, 1)), constant_values=1)
+    for i in range(len(points)):
+        transformed[i] = affine @ padded[i]
+    return transformed
 
 
 def create_demo_data(size: int | tuple = 60, radius: float = 20):
@@ -331,7 +339,7 @@ class LinearRegistrationWorkflow:
         template_points, source_points = self.split_points_into_pairs(annotations)
 
         # Estimate transform
-        self.affine = affine_fit(template_points, source_points)
+        self.affine = affine_fit(source_points, template_points)
 
         # Set the transformation on the layer that is being registered
         # Something seems to go wrong with the state updates once this happens
