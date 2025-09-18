@@ -1,6 +1,8 @@
 import argparse
+import threading
 import webbrowser
-from time import time, ctime
+from time import ctime, time
+from typing import Optional
 
 import neuroglancer
 import neuroglancer.cli
@@ -23,6 +25,24 @@ void main() {
     setPointMarkerSize(pointSize);
 }
 """
+
+
+def debounce(wait: float):
+    def decorator(fn):
+        timer = None
+
+        def debounced(*args, **kwargs):
+            nonlocal timer
+
+            if timer is not None:
+                timer.cancel()
+
+            timer = threading.Timer(wait, lambda: fn(*args, **kwargs))
+            timer.start()
+
+        return debounced
+
+    return decorator
 
 
 def affine_fit(fixed_points: np.ndarray, moving_points: np.ndarray):
@@ -104,6 +124,7 @@ class LinearRegistrationWorkflow:
         self.moving_url = moving_url
         self.status_timers = {}
         self.stored_points = [[], []]
+        self.stored_group_number = -1
         self.affine = None
 
         if fixed_url is None or moving_url is None:
@@ -168,11 +189,6 @@ class LinearRegistrationWorkflow:
                         enum_labels=["fixed", "moving"],
                         enum_values=[0, 1],
                     ),
-                    neuroglancer.AnnotationPropertySpec(
-                        id="index",
-                        type="uint32",
-                        default=0,
-                    ),
                 ],
                 shader=MARKERS_SHADER,
             )
@@ -219,9 +235,17 @@ class LinearRegistrationWorkflow:
         if current_time - self.last_updated_print > 5:
             print(f"Viewer states are successfully syncing at {ctime()}")
             self.last_updated_print = current_time
+        # with self.viewer.txn() as s:
+        # self.automatically_group_markers(s)
+        # self.estimate_affine(s)
+        self._clear_status_messages()
+        # TODO for some reason I need to keep the layer change for states
+        self.update_affine()
+
+    @debounce(1.0)
+    def update_affine(self):
         with self.viewer.txn() as s:
             self.estimate_affine(s)
-        self._clear_status_messages()
 
     def create_fixed_image(self):
         if self.fixed_url is None:
@@ -260,7 +284,7 @@ class LinearRegistrationWorkflow:
                 self.demo_data,
                 matrix=inverse_matrix,
             )
-            print(inverse_matrix)
+            print("target demo affine", inverse_matrix)
             return neuroglancer.ImageLayer(
                 source=[
                     neuroglancer.LayerDataSource(
@@ -284,29 +308,42 @@ class LinearRegistrationWorkflow:
         return self.create_moving_image(registration_matrix=self.affine)
 
     def split_points_into_pairs(self, annotations):
-        # TODO allow a different way to group. Right now the order informs
-        # the properties
-        # But ideally we'd like to allow the other way around as well
-        # This needs to be reworked just a bit to allow that
-        # As a first step for that, this should inspect the properties
-        # and group based on that instead of this grouping
         fixed_points = []
         moving_points = []
         for i, a in enumerate(annotations):
-            if i % 2 == 0:
+            props = a.props
+            if props[1] == 0:
                 fixed_points.append(a.point)
             else:
                 moving_points.append(a.point)
+        # If the moving points is not evenly split, instead split differently
+        if len(moving_points) != len(fixed_points):
+            fixed_points = []
+            moving_points = []
+            for i, a in enumerate(annotations):
+                if i % 2 == 0:
+                    fixed_points.append(a.point)
+                else:
+                    moving_points.append(a.point)
         return np.array(fixed_points), np.array(moving_points)
 
-    def estimate_affine(self, s: neuroglancer.ViewerState):
-        # TODO do we need to throttle this update or make it manually triggered?
-        # While updating by moving a point, this can break right now
+    def automatically_group_markers(self, s: neuroglancer.ViewerState):
         annotations = s.layers["markers"].annotations
         if len(annotations) < 2:
             return False
-        # TODO expand this to estimate different types of transforms
-        # Depending on the number of points
+        if len(annotations) == self.stored_group_number:
+            return False
+        print("Updating marker groups")
+        for i, a in enumerate(s.layers["markers"].annotations):
+            a.props = [i // 2, i % 2]
+            print(a.props, i // 2, i % 2)
+        self.stored_group_number = len(annotations)
+        return True
+
+    def estimate_affine(self, s: neuroglancer.ViewerState):
+        annotations = s.layers["markers"].annotations
+        if len(annotations) < 2:
+            return False
 
         # Ignore annotations not part of a pair
         annotations = annotations[: (len(annotations) // 2) * 2]
@@ -322,9 +359,7 @@ class LinearRegistrationWorkflow:
             # TODO instead of directly doing the update, debounce it and only do
             # it after a short delay if no other updates
             for i, a in enumerate(s.layers["markers"].annotations):
-                a.props = [i // 2, i % 2, i]
-
-        fixed_points, moving_points = self.split_points_into_pairs(annotations)
+                a.props = [i // 2, i % 2]
         self.affine = affine_fit(moving_points, fixed_points)
 
         # Set the transformation on the layer that is being registered
