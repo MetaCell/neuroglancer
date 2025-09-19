@@ -343,7 +343,31 @@ class LinearRegistrationWorkflow:
             )
             s.layers["registered"].source[0].transform = existing_transform
         if self.affine is not None:
-            s.layers["registered"].source[0].transform.matrix = self.affine.tolist()
+            transform = self.affine.tolist()
+            if s.layers["registered"].source[0].transform is not None:
+                final_transform = []
+                layer_transform = s.layers["registered"].source[0].transform
+                local_channel_indices = [
+                    i
+                    for i, name in enumerate(layer_transform.outputDimensions.names)
+                    if name.endswith(("'", "^", "#"))
+                ]
+                num_local_count = 0
+                for i, name in enumerate(layer_transform.outputDimensions.names):
+                    is_local = i in local_channel_indices
+                    if is_local:
+                        final_transform.append(layer_transform.matrix[i].tolist())
+                        num_local_count += 1
+                    else:
+                        row = transform[i - num_local_count]
+                        # At the indices corresponding to local channels, insert 0s
+                        for j in local_channel_indices:
+                            row.insert(j, 0)
+                        final_transform.append(row)
+            else:
+                final_transform = transform
+            print("Updated affine transform:", final_transform)
+            s.layers["registered"].source[0].transform.matrix = final_transform
 
     def estimate_affine(self, s: neuroglancer.ViewerState):
         annotations = s.layers["markers"].annotations
