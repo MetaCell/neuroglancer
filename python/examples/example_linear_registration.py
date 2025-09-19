@@ -116,20 +116,28 @@ def create_dimensions(viewer_dims: neuroglancer.CoordinateSpace):
 
 
 class LinearRegistrationWorkflow:
-    def __init__(self, fixed_url: str, moving_url: str):
-        self.fixed_url = fixed_url
-        self.moving_url = moving_url
+    def __init__(self, starting_state=neuroglancer.ViewerState | None):
         self.status_timers = {}
         self.stored_points = [[], []]
         self.stored_group_number = -1
         self.affine = None
         self.ready = False
-
-        if fixed_url is None or moving_url is None:
-            self.demo_data = create_demo_data()
-
-        self.setup_viewer()
         self.last_updated_print = -1
+        self.viewer = neuroglancer.Viewer()
+        self.viewer.shared_state.add_changed_callback(
+            lambda: self.viewer.defer_callback(self.on_state_changed)
+        )
+
+        if starting_state is None:
+            self.demo_data = create_demo_data()
+            self.setup_demo_viewer()
+        else:
+            self.viewer.set_state(starting_state)
+
+        self._set_status_message(
+            "help",
+            "Waiting for viewer to initialize with one layer called fixed and one layer called moving.",
+        )
 
     def get_state(self):
         with self.viewer.txn() as s:
@@ -163,38 +171,37 @@ class LinearRegistrationWorkflow:
             s.layers["registered"].visible = not is_registered_visible
             s.layers["fixed"].visible = is_registered_visible
 
-    def setup_viewer(self):
-        self.viewer = viewer = neuroglancer.Viewer()
-        fixed_layer = self.create_fixed_image()
-        moving_layer = self.create_moving_image()
-        registered_layer = self.create_registered_image()
+    def setup_demo_viewer(self):
+        viewer = self.viewer
+        fixed_layer = self.create_demo_fixed_image()
+        moving_layer = self.create_demo_moving_image()
 
         with viewer.txn() as s:
             s.layers["fixed"] = fixed_layer
             s.layers["moving"] = moving_layer
-            s.layers["registered"] = registered_layer
-            s.layers["registered"].visible = False
 
+    def setup_viewer(self):
+        viewer = self.viewer
         viewer.actions.add(
             "toggle-registered-visibility", self.toggle_registered_visibility
         )
 
         with viewer.config_state.txn() as s:
             s.input_event_bindings.viewer["keyt"] = "toggle-registered-visibility"
-        self.viewer.shared_state.add_changed_callback(
-            lambda: self.viewer.defer_callback(self.on_state_changed)
-        )
-
-        self._set_status_message(
-            "help",
-            "Waiting for viewer to initialize...",
-        )
 
     @debounce(0.5)
     def post_setup_viewer(self):
         with self.viewer.txn() as s:
-            if s.dimensions.names == []:
+            if (
+                s.dimensions.names == []
+                or s.layers.index("fixed") == -1
+                or s.layers.index("moving") == -1
+            ):
                 return
+            # registered_layer = self.create_registered_image()
+            s.layers["moving1"] = self.create_registered_image()
+            s.layers["moving1"].name = "registered"
+            s.layers["registered"].visible = False
             s.layers["markers"] = neuroglancer.LocalAnnotationLayer(
                 dimensions=create_dimensions(s.dimensions),
                 annotation_properties=[
@@ -213,18 +220,23 @@ class LinearRegistrationWorkflow:
                 ],
                 shader=MARKERS_SHADER,
             )
+            s.layers["moving"].visible = True
+            s.layers["fixed"].visible = True
             s.layers["markers"].tool = "annotatePoint"
             s.selected_layer.layer = "markers"
             s.selected_layer.visible = True
 
+            all_layer_names = [layer.name for layer in s.layers]
+            group_1_names = [name for name in all_layer_names if name != "moving"]
+            group_2_names = [
+                name
+                for name in all_layer_names
+                if name != "fixed" and name != "registered"
+            ]
             s.layout = neuroglancer.row_layout(
                 [
-                    neuroglancer.LayerGroupViewer(
-                        layers=["fixed", "registered", "markers"], layout="xy-3d"
-                    ),
-                    neuroglancer.LayerGroupViewer(
-                        layers=["moving", "markers"], layout="xy-3d"
-                    ),
+                    neuroglancer.LayerGroupViewer(layers=group_1_names, layout="xy-3d"),
+                    neuroglancer.LayerGroupViewer(layers=group_2_names, layout="xy-3d"),
                 ]
             )
             s.layout.children[1].position.link = "unlinked"
@@ -238,77 +250,67 @@ class LinearRegistrationWorkflow:
             "Place markers in pairs, starting with the fixed, and then the moving. The registered layer will automatically update as you add markers. Press 't' to toggle between viewing the fixed and registered layers.",
         )
         self.ready = True
+        self.setup_viewer()
 
     def on_state_changed(self):
         self.viewer.defer_callback(self.update)
 
     def update(self):
-        if not self.ready:
-            self.post_setup_viewer()
-            return
         current_time = time()
         if current_time - self.last_updated_print > 5:
             print(f"Viewer states are successfully syncing at {ctime()}")
             self.last_updated_print = current_time
+        if not self.ready:
+            self.post_setup_viewer()
+            return
         self.automatically_group_markers_and_update()
         self.update_affine()
         self._clear_status_messages()
 
-    @debounce(0.2)
+    @debounce(0.25)
     def automatically_group_markers_and_update(self):
         with self.viewer.txn() as s:
             self.automatically_group_markers(s)
 
-    @debounce(1.0)
+    @debounce(1.5)
     def update_affine(self):
         with self.viewer.txn() as s:
             self.estimate_affine(s)
 
-    def create_fixed_image(self):
-        if self.fixed_url is None:
-            return neuroglancer.ImageLayer(
-                source=[
-                    neuroglancer.LayerDataSource(
-                        neuroglancer.LocalVolume(self.demo_data)
-                    )
-                ]
-            )
-        else:
-            return neuroglancer.ImageLayer(source=self.fixed_url)
+    def create_demo_fixed_image(self):
+        return neuroglancer.ImageLayer(
+            source=[
+                neuroglancer.LayerDataSource(neuroglancer.LocalVolume(self.demo_data))
+            ]
+        )
 
-    def create_moving_image(self):
-        if self.moving_url is None:
-            if NUM_DEMO_DIMS == 2:
-                desired_output_matrix_homogenous = [
-                    [0.8, 0, 0],
-                    [0, 0.2, 0],
-                    [0, 0, 1],
-                ]
-            else:
-                desired_output_matrix_homogenous = [
-                    [0.8, 0, 0, 0],
-                    [0, 0.2, 0, 0],
-                    [0, 0, 0.9, 0],
-                    [0, 0, 0, 1],
-                ]
-            inverse_matrix = np.linalg.inv(desired_output_matrix_homogenous)
-            transformed = scipy.ndimage.affine_transform(
-                self.demo_data,
-                matrix=inverse_matrix,
-            )
-            print("target demo affine", inverse_matrix)
-            return neuroglancer.ImageLayer(
-                source=[
-                    neuroglancer.LayerDataSource(neuroglancer.LocalVolume(transformed))
-                ]
-            )
+    def create_demo_moving_image(self):
+        if NUM_DEMO_DIMS == 2:
+            desired_output_matrix_homogenous = [
+                [0.8, 0, 0],
+                [0, 0.2, 0],
+                [0, 0, 1],
+            ]
         else:
-            return neuroglancer.ImageLayer(
-                source=self.moving_url,
-            )
+            desired_output_matrix_homogenous = [
+                [0.8, 0, 0, 0],
+                [0, 0.2, 0, 0],
+                [0, 0, 0.9, 0],
+                [0, 0, 0, 1],
+            ]
+        inverse_matrix = np.linalg.inv(desired_output_matrix_homogenous)
+        transformed = scipy.ndimage.affine_transform(
+            self.demo_data,
+            matrix=inverse_matrix,
+        )
+        print("target demo affine", inverse_matrix)
+        return neuroglancer.ImageLayer(
+            source=[neuroglancer.LayerDataSource(neuroglancer.LocalVolume(transformed))]
+        )
 
     def create_registered_image(self):
-        return self.create_moving_image()
+        with self.viewer.txn() as s:
+            return s.layers["moving"]
 
     def split_points_into_pairs(self, annotations):
         num_points = len(annotations) // 2
@@ -417,19 +419,8 @@ class LinearRegistrationWorkflow:
 
 def handle_args():
     ap = argparse.ArgumentParser()
+    neuroglancer.cli.add_state_arguments(ap, required=False)
     neuroglancer.cli.add_server_arguments(ap)
-    ap.add_argument(
-        "--fixed",
-        "-f",
-        type=str,
-        help="Source URL for the fixed image",
-    )
-    ap.add_argument(
-        "--moving",
-        "-m",
-        type=str,
-        help="Source URL for the image to be registered",
-    )
     args = ap.parse_args()
     neuroglancer.cli.handle_server_arguments(args)
     return args
@@ -438,9 +429,6 @@ def handle_args():
 if __name__ == "__main__":
     args = handle_args()
 
-    demo = LinearRegistrationWorkflow(
-        fixed_url=args.fixed,
-        moving_url=args.moving,
-    )
+    demo = LinearRegistrationWorkflow(args.state)
 
     webbrowser.open_new(demo.viewer.get_viewer_url())
