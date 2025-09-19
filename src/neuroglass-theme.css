@@ -530,6 +530,8 @@ input[type="checkbox"]:checked {
     font-style: normal;
     font-weight: 400;
     line-height: normal;
+    display: flex;
+    align-items: center;
   }
 
   .CodeMirror pre.CodeMirror-line,
@@ -1538,6 +1540,17 @@ input[type="checkbox"]:checked {
         .CodeMirror-gutter-elt {
           .CodeMirror-guttermarker-subtle {
             color: var(--content100);
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+
+          .CodeMirror-guttermarker-subtle:after {
+            font-size: 12px;
+            font-style: normal;
+            font-weight: 400;
+            line-height: 1;
           }
         }
       }
