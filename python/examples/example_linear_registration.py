@@ -2,7 +2,6 @@ import argparse
 import threading
 import webbrowser
 from time import ctime, time
-from typing import Optional
 
 import neuroglancer
 import neuroglancer.cli
@@ -158,10 +157,9 @@ class LinearRegistrationWorkflow:
 
     def toggle_registered_visibility(self, _):
         with self.viewer.txn() as s:
-            s.layers["registered"].visible = not s.layers["registered"].visible
-            s.layers["fixed"].visible = not s.layers["registered"].visible
-            s.layers["markers"].visible = not s.layers["registered"].visible
-            s.layers["mappedMarkers"].visible = s.layers["registered"].visible
+            is_registered_visible = s.layers["registered"].visible
+            s.layers["registered"].visible = not is_registered_visible
+            s.layers["fixed"].visible = is_registered_visible
 
     def setup_viewer(self):
         self.viewer = viewer = neuroglancer.Viewer()
@@ -235,12 +233,14 @@ class LinearRegistrationWorkflow:
         if current_time - self.last_updated_print > 5:
             print(f"Viewer states are successfully syncing at {ctime()}")
             self.last_updated_print = current_time
-        # with self.viewer.txn() as s:
-        # self.automatically_group_markers(s)
-        # self.estimate_affine(s)
-        self._clear_status_messages()
-        # TODO for some reason I need to keep the layer change for states
+        self.automatically_group_markers_and_update()
         self.update_affine()
+        self._clear_status_messages()
+
+    @debounce(0.2)
+    def automatically_group_markers_and_update(self):
+        with self.viewer.txn() as s:
+            self.automatically_group_markers(s)
 
     @debounce(1.0)
     def update_affine(self):
@@ -308,23 +308,17 @@ class LinearRegistrationWorkflow:
         return self.create_moving_image(registration_matrix=self.affine)
 
     def split_points_into_pairs(self, annotations):
-        fixed_points = []
-        moving_points = []
+        num_points = len(annotations) // 2
+        num_dims = len(annotations[0].point)
+        fixed_points = np.zeros((num_points, num_dims))
+        moving_points = np.zeros((num_points, num_dims))
         for i, a in enumerate(annotations):
             props = a.props
             if props[1] == 0:
-                fixed_points.append(a.point)
+                fixed_points[props[0]] = a.point
             else:
-                moving_points.append(a.point)
-        # If the moving points is not evenly split, instead split differently
-        if len(moving_points) != len(fixed_points):
-            fixed_points = []
-            moving_points = []
-            for i, a in enumerate(annotations):
-                if i % 2 == 0:
-                    fixed_points.append(a.point)
-                else:
-                    moving_points.append(a.point)
+                moving_points[props[0]] = a.point
+
         return np.array(fixed_points), np.array(moving_points)
 
     def automatically_group_markers(self, s: neuroglancer.ViewerState):
@@ -333,12 +327,21 @@ class LinearRegistrationWorkflow:
             return False
         if len(annotations) == self.stored_group_number:
             return False
-        print("Updating marker groups")
         for i, a in enumerate(s.layers["markers"].annotations):
             a.props = [i // 2, i % 2]
-            print(a.props, i // 2, i % 2)
         self.stored_group_number = len(annotations)
         return True
+
+    def update_registered_layer(self, s: neuroglancer.ViewerState):
+        existing_transform = s.layers["registered"].source[0].transform
+        if existing_transform is None:
+            # TODO again the create dimensions call needs to be fixed
+            existing_transform = neuroglancer.CoordinateSpaceTransform(
+                output_dimensions=create_dimensions()
+            )
+            s.layers["registered"].source[0].transform = existing_transform
+        if self.affine is not None:
+            s.layers["registered"].source[0].transform.matrix = self.affine.tolist()
 
     def estimate_affine(self, s: neuroglancer.ViewerState):
         annotations = s.layers["markers"].annotations
@@ -355,22 +358,8 @@ class LinearRegistrationWorkflow:
                 np.isclose(self.stored_points[1], moving_points)
             ):
                 return False
-        else:
-            # TODO instead of directly doing the update, debounce it and only do
-            # it after a short delay if no other updates
-            for i, a in enumerate(s.layers["markers"].annotations):
-                a.props = [i // 2, i % 2]
         self.affine = affine_fit(moving_points, fixed_points)
-
-        # Set the transformation on the layer that is being registered
-        # Something seems to go wrong with the state updates once this happens
-        # s.layers["registered"].source[0].transform.matrix = A.T[:3]
-        # Because of this, trying to replace the whole layer to see if that helps
-        # TODO in theory should be able to just update the matrix,
-        # but if cannot, can replace whole layer and restore settings
-        old_visible = s.layers["registered"].visible
-        s.layers["registered"] = self.create_registered_image()
-        s.layers["registered"].visible = old_visible
+        self.update_registered_layer(s)
 
         self._set_status_message(
             "info",
