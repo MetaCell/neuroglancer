@@ -108,12 +108,10 @@ def create_demo_data(size: int | tuple = 60, radius: float = 20):
     return data
 
 
-# TODO can we avoid calling this at all? Can the layers just be created and dims inferred?
-def create_dimensions():
-    if NUM_DEMO_DIMS == 2:
-        return neuroglancer.CoordinateSpace(names=["x", "y"], units="nm", scales=[1, 1])
+def create_dimensions(viewer_dims: neuroglancer.CoordinateSpace):
+    print(viewer_dims)
     return neuroglancer.CoordinateSpace(
-        names=["x", "y", "z"], units="nm", scales=[1, 1, 1]
+        names=viewer_dims.names, units=viewer_dims.units, scales=viewer_dims.scales
     )
 
 
@@ -125,6 +123,7 @@ class LinearRegistrationWorkflow:
         self.stored_points = [[], []]
         self.stored_group_number = -1
         self.affine = None
+        self.ready = False
 
         if fixed_url is None or moving_url is None:
             self.demo_data = create_demo_data()
@@ -132,9 +131,12 @@ class LinearRegistrationWorkflow:
         self.setup_viewer()
         self.last_updated_print = -1
 
-    def __str__(self):
+    def get_state(self):
         with self.viewer.txn() as s:
-            return str(s)
+            return s
+
+    def __str__(self):
+        return str(self.get_state())
 
     def _clear_status_messages(self):
         to_pop = []
@@ -172,8 +174,29 @@ class LinearRegistrationWorkflow:
             s.layers["moving"] = moving_layer
             s.layers["registered"] = registered_layer
             s.layers["registered"].visible = False
+
+        viewer.actions.add(
+            "toggle-registered-visibility", self.toggle_registered_visibility
+        )
+
+        with viewer.config_state.txn() as s:
+            s.input_event_bindings.viewer["keyt"] = "toggle-registered-visibility"
+        self.viewer.shared_state.add_changed_callback(
+            lambda: self.viewer.defer_callback(self.on_state_changed)
+        )
+
+        self._set_status_message(
+            "help",
+            "Waiting for viewer to initialize...",
+        )
+
+    @debounce(0.5)
+    def post_setup_viewer(self):
+        with self.viewer.txn() as s:
+            if s.dimensions.names == []:
+                return
             s.layers["markers"] = neuroglancer.LocalAnnotationLayer(
-                dimensions=create_dimensions(),
+                dimensions=create_dimensions(s.dimensions),
                 annotation_properties=[
                     neuroglancer.AnnotationPropertySpec(
                         id="label",
@@ -190,6 +213,10 @@ class LinearRegistrationWorkflow:
                 ],
                 shader=MARKERS_SHADER,
             )
+            s.layers["markers"].tool = "annotatePoint"
+            s.selected_layer.layer = "markers"
+            s.selected_layer.visible = True
+
             s.layout = neuroglancer.row_layout(
                 [
                     neuroglancer.LayerGroupViewer(
@@ -205,30 +232,20 @@ class LinearRegistrationWorkflow:
             s.layout.children[1].crossSectionScale.link = "unlinked"
             s.layout.children[1].projectionOrientation.link = "unlinked"
             s.layout.children[1].projectionScale.link = "unlinked"
-            s.layers["markers"].tool = "annotatePoint"
-            s.selected_layer.layer = "markers"
-            s.selected_layer.visible = True
-
-        viewer.actions.add(
-            "toggle-registered-visibility", self.toggle_registered_visibility
-        )
-
-        with viewer.config_state.txn() as s:
-            s.input_event_bindings.viewer["keyt"] = "toggle-registered-visibility"
 
         self._set_status_message(
             "help",
             "Place markers in pairs, starting with the fixed, and then the moving. The registered layer will automatically update as you add markers. Press 't' to toggle between viewing the fixed and registered layers.",
         )
-
-        self.viewer.shared_state.add_changed_callback(
-            lambda: self.viewer.defer_callback(self.on_state_changed)
-        )
+        self.ready = True
 
     def on_state_changed(self):
         self.viewer.defer_callback(self.update)
 
     def update(self):
+        if not self.ready:
+            self.post_setup_viewer()
+            return
         current_time = time()
         if current_time - self.last_updated_print > 5:
             print(f"Viewer states are successfully syncing at {ctime()}")
@@ -252,19 +269,14 @@ class LinearRegistrationWorkflow:
             return neuroglancer.ImageLayer(
                 source=[
                     neuroglancer.LayerDataSource(
-                        neuroglancer.LocalVolume(
-                            self.demo_data, dimensions=create_dimensions()
-                        )
+                        neuroglancer.LocalVolume(self.demo_data)
                     )
                 ]
             )
         else:
             return neuroglancer.ImageLayer(source=self.fixed_url)
 
-    def create_moving_image(self, registration_matrix: list | np.ndarray | None = None):
-        transform_kwargs = {}
-        if registration_matrix is not None:
-            transform_kwargs["matrix"] = registration_matrix
+    def create_moving_image(self):
         if self.moving_url is None:
             if NUM_DEMO_DIMS == 2:
                 desired_output_matrix_homogenous = [
@@ -287,25 +299,16 @@ class LinearRegistrationWorkflow:
             print("target demo affine", inverse_matrix)
             return neuroglancer.ImageLayer(
                 source=[
-                    neuroglancer.LayerDataSource(
-                        neuroglancer.LocalVolume(
-                            transformed, dimensions=create_dimensions()
-                        ),
-                        transform=neuroglancer.CoordinateSpaceTransform(
-                            output_dimensions=create_dimensions(),
-                            **transform_kwargs,
-                        ),
-                    )
+                    neuroglancer.LayerDataSource(neuroglancer.LocalVolume(transformed))
                 ]
             )
         else:
             return neuroglancer.ImageLayer(
                 source=self.moving_url,
-                transform=neuroglancer.CoordinateSpaceTransform(**transform_kwargs),
             )
 
     def create_registered_image(self):
-        return self.create_moving_image(registration_matrix=self.affine)
+        return self.create_moving_image()
 
     def split_points_into_pairs(self, annotations):
         num_points = len(annotations) // 2
@@ -335,9 +338,8 @@ class LinearRegistrationWorkflow:
     def update_registered_layer(self, s: neuroglancer.ViewerState):
         existing_transform = s.layers["registered"].source[0].transform
         if existing_transform is None:
-            # TODO again the create dimensions call needs to be fixed
             existing_transform = neuroglancer.CoordinateSpaceTransform(
-                output_dimensions=create_dimensions()
+                output_dimensions=create_dimensions(s.dimensions)
             )
             s.layers["registered"].source[0].transform = existing_transform
         if self.affine is not None:
