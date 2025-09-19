@@ -323,13 +323,13 @@ class LinearRegistrationWorkflow:
 
     def automatically_group_markers(self, s: neuroglancer.ViewerState):
         annotations = s.layers["markers"].annotations
-        if len(annotations) < 2:
-            return False
         if len(annotations) == self.stored_group_number:
+            return False
+        self.stored_group_number = len(annotations)
+        if len(annotations) < 2:
             return False
         for i, a in enumerate(s.layers["markers"].annotations):
             a.props = [i // 2, i % 2]
-        self.stored_group_number = len(annotations)
         return True
 
     def update_registered_layer(self, s: neuroglancer.ViewerState):
