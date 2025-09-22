@@ -71,61 +71,23 @@ export class DisplayOptionsTab extends AccordionTab {
       this.appendChild(widget.element, APPEARANCE_SECTION_JSON_KEY);
     }
 
-    const colorTab = document.createElement("div");
-    colorTab.classList.add("neuroglancer-segmentation-color-tab");
-    this.appendChild(colorTab, APPEARANCE_SECTION_JSON_KEY);
-
-    const colorText = document.createElement("span");
-    colorText.textContent = "Colours";
-    colorTab.appendChild(colorText);
-
-    const buttonContainer = document.createElement("div");
-    buttonContainer.classList.add(
-      "neuroglancer-segmentation-color-tab-buttons",
-    );
-    colorTab.appendChild(buttonContainer);
-
-    const colorControlsContainer = document.createElement("div");
-    colorControlsContainer.classList.add(
-      "neuroglancer-segmentation-color-controls",
-    );
-    this.appendChild(colorControlsContainer, APPEARANCE_SECTION_JSON_KEY);
-
     const tabSystem = createColorModeTabsWithControls(layer, this);
-    colorTab.replaceWith(tabSystem.colorTab);
-
-    const colorControlsToolIds = ["colorSeed", "segmentDefaultColor"];
-
-    for (const control of LAYER_CONTROLS) {
-      if (!colorControlsToolIds.includes(control.toolJson)) {
-        const e = addLayerControlToOptionsTab(
-          this,
-          layer,
-          this.visibility,
-          control,
-        );
-        e.id = control.toolJson;
-        this.appendChild(e, control.sectionKey);
-      }
-    }
+    this.appendChild(tabSystem.colorTab, APPEARANCE_SECTION_JSON_KEY);
+    this.appendChild(
+      tabSystem.colorControlsContainer,
+      APPEARANCE_SECTION_JSON_KEY,
+    );
 
     for (const control of LAYER_CONTROLS) {
-      if (colorControlsToolIds.includes(control.toolJson)) {
-        const e = addLayerControlToOptionsTab(
-          this,
-          layer,
-          this.visibility,
-          control,
-        );
-        e.id = control.toolJson;
-        colorControlsContainer.appendChild(e);
-
-        if (control.toolJson === "colorSeed") {
-          tabSystem.registerSeedControl(e);
-        } else if (control.toolJson === "segmentDefaultColor") {
-          tabSystem.registerFixedColorControl(e);
-        }
-      }
+      const e = addLayerControlToOptionsTab(
+        this,
+        layer,
+        this.visibility,
+        control,
+      );
+      this.appendChild(e, control.sectionKey);
+      // @metacell we group color controls under our own custom div
+      tabSystem.registerColorControl(e, control.toolJson);
     }
 
     const skeletonControls = this.registerDisposer(
