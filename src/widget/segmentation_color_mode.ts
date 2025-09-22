@@ -29,6 +29,9 @@ import type { LayerControlFactory } from "#src/widget/layer_control.js";
 import { colorLayerControl } from "#src/widget/layer_control_color.js";
 import { TextInputWidget } from "#src/widget/text_input.js";
 
+// @metacell, the old always went to red on fixed color,
+// so we keep a weak ref to the last fixed color used for each layer
+// and restore it when switching back to fixed color mode
 function chooseColorMode(layer: SegmentationUserLayer, useFixedColor: boolean) {
   if (!useFixedColor) {
     const currentColor = layer.displayState.segmentDefaultColor.value;
