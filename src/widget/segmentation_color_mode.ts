@@ -17,6 +17,8 @@
 import "#src/widget/segmentation_color_mode.css";
 
 import svg_rotate from "ikonate/icons/rotate.svg?raw";
+import svg_gradient from "#src/ui/images/gradient.svg?raw";
+import svg_format_color_fill from "#src/ui/images/format_color_fill.svg?raw";
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import { observeWatchable } from "#src/trackable_value.js";
 import { vec3 } from "#src/util/geom.js";
@@ -28,10 +30,106 @@ import { TextInputWidget } from "#src/widget/text_input.js";
 
 function chooseColorMode(layer: SegmentationUserLayer, useFixedColor: boolean) {
   if (!useFixedColor) {
+    const currentColor = layer.displayState.segmentDefaultColor.value;
+    if (currentColor !== undefined) {
+      layerFixedColors.set(layer, vec3.clone(currentColor));
+    }
     layer.displayState.segmentDefaultColor.value = undefined;
   } else {
-    layer.displayState.segmentDefaultColor.value = vec3.fromValues(1, 0, 0);
+    const savedColor = layerFixedColors.get(layer);
+    if (savedColor) {
+      layer.displayState.segmentDefaultColor.value = vec3.clone(savedColor);
+    } else if (layer.displayState.segmentDefaultColor.value === undefined) {
+      layer.displayState.segmentDefaultColor.value = vec3.fromValues(1, 0, 0);
+    }
   }
+}
+
+const layerFixedColors = new WeakMap<SegmentationUserLayer, vec3>();
+
+const createColorModeTabContainer = () => {
+  const colorTab = document.createElement("div");
+  colorTab.classList.add("neuroglancer-segmentation-color-tab");
+
+  const colorText = document.createElement("span");
+  colorText.textContent = "Colours";
+  colorTab.appendChild(colorText);
+
+  const buttonContainer = document.createElement("div");
+  buttonContainer.classList.add("neuroglancer-segmentation-color-tab-buttons");
+  colorTab.appendChild(buttonContainer);
+
+  const randomColorButton = document.createElement("button");
+  randomColorButton.classList.add("neuroglancer-segmentation-color-tab-button");
+  randomColorButton.classList.add("active");
+  randomColorButton.innerHTML = svg_gradient;
+  randomColorButton.title = "Seeded random colours";
+  buttonContainer.appendChild(randomColorButton);
+
+  const fixedColorButton = document.createElement("button");
+  fixedColorButton.classList.add("neuroglancer-segmentation-color-tab-button");
+  fixedColorButton.innerHTML = svg_format_color_fill;
+  fixedColorButton.title = "Fixed color";
+  buttonContainer.appendChild(fixedColorButton);
+
+  return { colorTab, randomColorButton, fixedColorButton };
+};
+
+export function createColorModeTabsWithControls(
+  layer: SegmentationUserLayer,
+  context: any
+) {
+  const { colorTab, randomColorButton, fixedColorButton } = createColorModeTabContainer();
+
+  let seedControlContainer: HTMLElement | null = null;
+  let fixedColorControlContainer: HTMLElement | null = null;
+
+  const updateTabState = (isRandomColor: boolean) => {
+    randomColorButton.classList.toggle("active", isRandomColor);
+    fixedColorButton.classList.toggle("active", !isRandomColor);
+
+    // Control visibility of the entire control containers
+    if (seedControlContainer) {
+      seedControlContainer.style.display = isRandomColor ? "" : "none";
+    }
+    if (fixedColorControlContainer) {
+      fixedColorControlContainer.style.display = isRandomColor ? "none" : "";
+    }
+  };
+
+  const showControls = (isRandomColor: boolean) => {
+    updateTabState(isRandomColor);
+    chooseColorMode(layer, !isRandomColor);
+  };
+
+  randomColorButton.addEventListener("click", () => showControls(true));
+  fixedColorButton.addEventListener("click", () => showControls(false));
+
+  context.registerDisposer(
+    observeWatchable((value) => {
+      const isRandomColor = value === undefined;
+      updateTabState(isRandomColor);
+
+      if (!isRandomColor && value !== undefined) {
+        layerFixedColors.set(layer, vec3.clone(value));
+      }
+    }, layer.displayState.segmentDefaultColor),
+  );
+
+  const initialIsRandomColor = layer.displayState.segmentDefaultColor.value === undefined;
+  updateTabState(initialIsRandomColor);
+
+  return {
+    colorTab,
+    registerSeedControl: (container: HTMLElement) => {
+      seedControlContainer = container;
+      updateTabState(layer.displayState.segmentDefaultColor.value === undefined);
+    },
+    registerFixedColorControl: (container: HTMLElement) => {
+      fixedColorControlContainer = container;
+      updateTabState(layer.displayState.segmentDefaultColor.value === undefined);
+    }
+  };
 }
 
 export function colorSeedLayerControl(): LayerControlFactory<SegmentationUserLayer> {
@@ -39,13 +137,7 @@ export function colorSeedLayerControl(): LayerControlFactory<SegmentationUserLay
     layer.displayState.segmentationColorGroupState.value.segmentColorHash.randomize();
   };
   return {
-    makeControl: (layer, context, { labelTextContainer }) => {
-      const checkbox = document.createElement("input");
-      checkbox.type = "radio";
-      checkbox.addEventListener("change", () => {
-        chooseColorMode(layer, !checkbox.checked);
-      });
-      labelTextContainer.prepend(checkbox);
+    makeControl: (layer, context) => {
       const controlElement = document.createElement("div");
       controlElement.classList.add(
         "neuroglancer-segmentation-color-seed-control",
@@ -61,13 +153,7 @@ export function colorSeedLayerControl(): LayerControlFactory<SegmentationUserLay
         className: "ikonate",
       });
       controlElement.appendChild(randomizeButton);
-      context.registerDisposer(
-        observeWatchable((value) => {
-          const isVisible = value === undefined;
-          controlElement.style.visibility = isVisible ? "" : "hidden";
-          checkbox.checked = isVisible;
-        }, layer.displayState.segmentDefaultColor),
-      );
+      // Remove individual visibility control - now handled by tabs
       return { controlElement, control: widget };
     },
     activateTool: (activation) => {
@@ -89,23 +175,6 @@ export function fixedColorLayerControl(): LayerControlFactory<
     ...options,
     makeControl: (layer, context, labelElements) => {
       const result = options.makeControl(layer, context, labelElements);
-      const { controlElement } = result;
-      const checkbox = document.createElement("input");
-      checkbox.type = "radio";
-      checkbox.addEventListener("change", () => {
-        chooseColorMode(layer, checkbox.checked);
-        if (checkbox.checked) {
-          controlElement.click();
-        }
-      });
-      labelElements.labelTextContainer.prepend(checkbox);
-      context.registerDisposer(
-        observeWatchable((value) => {
-          const isVisible = value !== undefined;
-          controlElement.style.visibility = isVisible ? "" : "hidden";
-          checkbox.checked = isVisible;
-        }, layer.displayState.segmentDefaultColor),
-      );
       return result;
     },
     activateTool: (activation, control) => {

@@ -32,8 +32,7 @@ import {
   ShaderCodeWidget,
 } from "#src/widget/shader_code_widget.js";
 import { ShaderControls } from "#src/widget/shader_controls.js";
-import svg_gradient from "#src/ui/images/gradient.svg?raw";
-import svg_format_color_fill from "#src/ui/images/format_color_fill.svg?raw";
+import { createColorModeTabsWithControls } from "#src/widget/segmentation_color_mode.js";
 
 function makeSkeletonShaderCodeWidget(layer: SegmentationUserLayer) {
   return new ShaderCodeWidget({
@@ -88,50 +87,41 @@ export class DisplayOptionsTab extends AccordionTab {
     colorControlsContainer.classList.add("neuroglancer-segmentation-color-controls");
     this.appendChild(colorControlsContainer, APPEARANCE_SECTION_JSON_KEY);
 
-    const randomColorButton = document.createElement("button");
-    randomColorButton.classList.add("neuroglancer-segmentation-color-tab-button");
-    randomColorButton.classList.add("active");
-    randomColorButton.innerHTML = svg_gradient;
-    randomColorButton.title = "Seeded random colours";
-    buttonContainer.appendChild(randomColorButton);
+    const tabSystem = createColorModeTabsWithControls(layer, this);
+    colorTab.replaceWith(tabSystem.colorTab);
 
-    const fixedColorButton = document.createElement("button");
-    fixedColorButton.classList.add("neuroglancer-segmentation-color-tab-button");
-    fixedColorButton.innerHTML = svg_format_color_fill;
-    fixedColorButton.title = "Fixed color";
-    buttonContainer.appendChild(fixedColorButton);
-
-    // const showControls = (isRandomColor: boolean) => {
-    //   randomColorButton.classList.toggle("active", isRandomColor);
-    //   fixedColorButton.classList.toggle("active", !isRandomColor);
-
-    //   colorControlsContainer.innerHTML = "";
-
-    //   for (const control of LAYER_CONTROLS) {
-    //     const e = addLayerControlToOptionsTab(
-    //       this,
-    //       layer,
-    //       this.visibility,
-    //       control,
-    //     );
-    //     colorControlsContainer.appendChild(e);
-    //   }
-    // };
-
-    // randomColorButton.addEventListener("click", () => showControls(true));
-    // fixedColorButton.addEventListener("click", () => showControls(false));
-
-    // showControls(true);
+    const colorControlsToolIds = ["colorSeed", "segmentDefaultColor"];
 
     for (const control of LAYER_CONTROLS) {
-      const e = addLayerControlToOptionsTab(
-        this,
-        layer,
-        this.visibility,
-        control,
-      );
-      e.id = control.toolJson;
-      this.appendChild(e, control.sectionKey);
+      if (!colorControlsToolIds.includes(control.toolJson)) {
+        const e = addLayerControlToOptionsTab(
+          this,
+          layer,
+          this.visibility,
+          control,
+        );
+        e.id = control.toolJson;
+        this.appendChild(e, control.sectionKey);
+      }
+    }
+
+    for (const control of LAYER_CONTROLS) {
+      if (colorControlsToolIds.includes(control.toolJson)) {
+        const e = addLayerControlToOptionsTab(
+          this,
+          layer,
+          this.visibility,
+          control,
+        );
+        e.id = control.toolJson;
+        colorControlsContainer.appendChild(e);
+
+        if (control.toolJson === "colorSeed") {
+          tabSystem.registerSeedControl(e);
+        } else if (control.toolJson === "segmentDefaultColor") {
+          tabSystem.registerFixedColorControl(e);
+        }
+      }
     }
 
     const skeletonControls = this.registerDisposer(
