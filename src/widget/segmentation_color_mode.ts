@@ -21,6 +21,7 @@ import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import { observeWatchable } from "#src/trackable_value.js";
 import svg_format_color_fill from "#src/ui/images/format_color_fill.svg?raw";
 import svg_gradient from "#src/ui/images/gradient.svg?raw";
+import type { RefCounted } from "#src/util/disposable.js";
 import { vec3 } from "#src/util/geom.js";
 import type { ColorWidget } from "#src/widget/color.js";
 import { makeIcon } from "#src/widget/icon.js";
@@ -72,15 +73,29 @@ const createColorModeTabContainer = () => {
   fixedColorButton.title = "Fixed color";
   buttonContainer.appendChild(fixedColorButton);
 
-  return { colorTab, randomColorButton, fixedColorButton };
+  const colorControlsContainer = document.createElement("div");
+  colorControlsContainer.classList.add(
+    "neuroglancer-segmentation-color-controls",
+  );
+
+  return {
+    colorTab,
+    randomColorButton,
+    fixedColorButton,
+    colorControlsContainer,
+  };
 };
 
 export function createColorModeTabsWithControls(
   layer: SegmentationUserLayer,
-  context: any,
+  context: RefCounted,
 ) {
-  const { colorTab, randomColorButton, fixedColorButton } =
-    createColorModeTabContainer();
+  const {
+    colorTab,
+    randomColorButton,
+    fixedColorButton,
+    colorControlsContainer,
+  } = createColorModeTabContainer();
 
   let seedControlContainer: HTMLElement | null = null;
   let fixedColorControlContainer: HTMLElement | null = null;
@@ -99,7 +114,6 @@ export function createColorModeTabsWithControls(
   };
 
   const showControls = (isRandomColor: boolean) => {
-    updateTabState(isRandomColor);
     chooseColorMode(layer, !isRandomColor);
   };
 
@@ -121,20 +135,22 @@ export function createColorModeTabsWithControls(
     layer.displayState.segmentDefaultColor.value === undefined;
   updateTabState(initialIsRandomColor);
 
+  function registerColorControl(element: HTMLElement, toolJson: string) {
+    if (toolJson === "colorSeed") {
+      seedControlContainer = element;
+    } else if (toolJson === "segmentDefaultColor") {
+      fixedColorControlContainer = element;
+    } else {
+      return;
+    }
+    colorControlsContainer.appendChild(element);
+    updateTabState(layer.displayState.segmentDefaultColor.value === undefined);
+  }
+
   return {
     colorTab,
-    registerSeedControl: (container: HTMLElement) => {
-      seedControlContainer = container;
-      updateTabState(
-        layer.displayState.segmentDefaultColor.value === undefined,
-      );
-    },
-    registerFixedColorControl: (container: HTMLElement) => {
-      fixedColorControlContainer = container;
-      updateTabState(
-        layer.displayState.segmentDefaultColor.value === undefined,
-      );
-    },
+    colorControlsContainer,
+    registerColorControl,
   };
 }
 
