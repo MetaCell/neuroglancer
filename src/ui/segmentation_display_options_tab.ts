@@ -27,12 +27,12 @@ import { AccordionTab } from "#src/widget/accordion.js";
 import { DependentViewWidget } from "#src/widget/dependent_view_widget.js";
 import { addLayerControlToOptionsTab } from "#src/widget/layer_control.js";
 import { LinkedLayerGroupWidget } from "#src/widget/linked_layer.js";
+import { createColorModeTabsWithControls } from "#src/widget/segmentation_color_mode.js";
 import {
   makeShaderCodeWidgetTopRow,
   ShaderCodeWidget,
 } from "#src/widget/shader_code_widget.js";
 import { ShaderControls } from "#src/widget/shader_controls.js";
-import { createColorModeTabsWithControls } from "#src/widget/segmentation_color_mode.js";
 
 function makeSkeletonShaderCodeWidget(layer: SegmentationUserLayer) {
   return new ShaderCodeWidget({
@@ -80,11 +80,15 @@ export class DisplayOptionsTab extends AccordionTab {
     colorTab.appendChild(colorText);
 
     const buttonContainer = document.createElement("div");
-    buttonContainer.classList.add("neuroglancer-segmentation-color-tab-buttons");
+    buttonContainer.classList.add(
+      "neuroglancer-segmentation-color-tab-buttons",
+    );
     colorTab.appendChild(buttonContainer);
 
     const colorControlsContainer = document.createElement("div");
-    colorControlsContainer.classList.add("neuroglancer-segmentation-color-controls");
+    colorControlsContainer.classList.add(
+      "neuroglancer-segmentation-color-controls",
+    );
     this.appendChild(colorControlsContainer, APPEARANCE_SECTION_JSON_KEY);
 
     const tabSystem = createColorModeTabsWithControls(layer, this);

@@ -17,10 +17,10 @@
 import "#src/widget/segmentation_color_mode.css";
 
 import svg_rotate from "ikonate/icons/rotate.svg?raw";
-import svg_gradient from "#src/ui/images/gradient.svg?raw";
-import svg_format_color_fill from "#src/ui/images/format_color_fill.svg?raw";
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import { observeWatchable } from "#src/trackable_value.js";
+import svg_format_color_fill from "#src/ui/images/format_color_fill.svg?raw";
+import svg_gradient from "#src/ui/images/gradient.svg?raw";
 import { vec3 } from "#src/util/geom.js";
 import type { ColorWidget } from "#src/widget/color.js";
 import { makeIcon } from "#src/widget/icon.js";
@@ -77,9 +77,10 @@ const createColorModeTabContainer = () => {
 
 export function createColorModeTabsWithControls(
   layer: SegmentationUserLayer,
-  context: any
+  context: any,
 ) {
-  const { colorTab, randomColorButton, fixedColorButton } = createColorModeTabContainer();
+  const { colorTab, randomColorButton, fixedColorButton } =
+    createColorModeTabContainer();
 
   let seedControlContainer: HTMLElement | null = null;
   let fixedColorControlContainer: HTMLElement | null = null;
@@ -116,19 +117,24 @@ export function createColorModeTabsWithControls(
     }, layer.displayState.segmentDefaultColor),
   );
 
-  const initialIsRandomColor = layer.displayState.segmentDefaultColor.value === undefined;
+  const initialIsRandomColor =
+    layer.displayState.segmentDefaultColor.value === undefined;
   updateTabState(initialIsRandomColor);
 
   return {
     colorTab,
     registerSeedControl: (container: HTMLElement) => {
       seedControlContainer = container;
-      updateTabState(layer.displayState.segmentDefaultColor.value === undefined);
+      updateTabState(
+        layer.displayState.segmentDefaultColor.value === undefined,
+      );
     },
     registerFixedColorControl: (container: HTMLElement) => {
       fixedColorControlContainer = container;
-      updateTabState(layer.displayState.segmentDefaultColor.value === undefined);
-    }
+      updateTabState(
+        layer.displayState.segmentDefaultColor.value === undefined,
+      );
+    },
   };
 }
 
