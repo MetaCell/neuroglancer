@@ -2779,7 +2779,7 @@ input[type="checkbox"]:checked {
     }
 
     .neuroglancer-position-dimension-plot {
-      padding: 0px 24px 12px 12px;
+      padding: 0px 12px 12px 12px;
       justify-content: flex-end;
     }
 
