@@ -51,13 +51,12 @@ export function getCredentialsWithStatus<Token>(
     ) {
       status.setTitle(title);
       status.setContentText(msg);
-      const actionButton = document.createElement("button");
-      actionButton.textContent = linkMessage;
-      actionButton.addEventListener("click", () => {
+      const button = document.createElement("button");
+      button.textContent = linkMessage;
+      status.addButtonToFooter(button);
+      button.addEventListener("click", () => {
         login(/*immediate=*/ false);
       });
-
-      status.addButtonToFooter(actionButton);
     }
     function login(immediate: boolean) {
       abortController?.abort();
