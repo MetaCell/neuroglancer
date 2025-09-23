@@ -264,7 +264,10 @@ export class StatusMessage {
     }
   }
 
-  addButtonToFooter(button: HTMLButtonElement, cancelHandler?: () => void) {
+  linkPrimaryButtonToFooter(
+    button: HTMLButtonElement,
+    cancelHandler?: () => void,
+  ) {
     if (!this.modalFooter) {
       this.setupModal();
     }

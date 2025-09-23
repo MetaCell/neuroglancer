@@ -53,7 +53,7 @@ export function getCredentialsWithStatus<Token>(
       status.setContentText(msg);
       const button = document.createElement("button");
       button.textContent = linkMessage;
-      status.addButtonToFooter(button);
+      status.linkPrimaryButtonToFooter(button);
       button.addEventListener("click", () => {
         login(/*immediate=*/ false);
       });
