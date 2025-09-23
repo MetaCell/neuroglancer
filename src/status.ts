@@ -77,6 +77,9 @@ export function getStatusMessageContainers() {
 export class StatusMessage {
   element: HTMLElement;
   private modalElementWrapper: HTMLElement | undefined;
+  private modalHeader: HTMLElement | undefined;
+  private modalContent: HTMLElement | undefined;
+  private modalFooter: HTMLElement | undefined;
   private timer: number | null;
   private visibility = true;
   constructor(delay: Delay = false, modal = false) {
@@ -122,27 +125,59 @@ export class StatusMessage {
       this.setVisible(true);
     }
   }
+  private setupModal() {
+    if (this.modalElementWrapper !== undefined) {
+      return;
+    }
+
+    const modalElementWrapper = document.createElement("div");
+    modalElementWrapper.className = "neuroglancer-status-modal-wrapper";
+    const modalHeader = document.createElement("div");
+    modalHeader.className = "neuroglancer-status-modal-header";
+    this.modalHeader = modalHeader;
+
+    const dismissModalElement = makeCloseButton({
+      title: "Dismiss",
+      onClick: () => {
+        this.dispose();
+      },
+    });
+    dismissModalElement.classList.add("neuroglancer-dismiss-modal");
+
+    const titleElement = document.createElement("div");
+    titleElement.className = "neuroglancer-status-modal-title";
+    modalHeader.appendChild(titleElement);
+    modalHeader.appendChild(dismissModalElement);
+
+    const modalContent = document.createElement("div");
+    modalContent.className = "neuroglancer-status-modal-content";
+    this.modalContent = modalContent;
+
+    const modalFooter = document.createElement("div");
+    modalFooter.className = "neuroglancer-status-modal-footer";
+    this.modalFooter = modalFooter;
+
+    modalContent.appendChild(this.element);
+
+    modalElementWrapper.appendChild(modalHeader);
+    modalElementWrapper.appendChild(modalContent);
+    modalElementWrapper.appendChild(modalFooter);
+
+    this.modalElementWrapper = modalElementWrapper;
+    this.applyVisibility();
+    getModalStatusContainer().appendChild(modalElementWrapper);
+  }
+
   setModal(value: boolean) {
     if (value) {
-      if (this.modalElementWrapper === undefined) {
-        const modalElementWrapper = document.createElement("div");
-        const dismissModalElement = makeCloseButton({
-          title: "Dismiss",
-          onClick: () => {
-            this.setModal(false);
-          },
-        });
-        dismissModalElement.classList.add("neuroglancer-dismiss-modal");
-        modalElementWrapper.appendChild(dismissModalElement);
-        modalElementWrapper.appendChild(this.element);
-        this.modalElementWrapper = modalElementWrapper;
-        this.applyVisibility();
-        getModalStatusContainer().appendChild(modalElementWrapper);
-      }
+      this.setupModal();
     } else {
       if (this.modalElementWrapper !== undefined) {
         modalStatusContainer!.removeChild(this.modalElementWrapper);
         this.modalElementWrapper = undefined;
+        this.modalHeader = undefined;
+        this.modalContent = undefined;
+        this.modalFooter = undefined;
         getStatusContainer().appendChild(this.element);
       } else if (this.element.parentElement === null) {
         getStatusContainer().appendChild(this.element);
@@ -215,5 +250,54 @@ export class StatusMessage {
     const msg = StatusMessage.showMessage(message);
     window.setTimeout(() => msg.dispose(), closeAfter);
     return msg;
+  }
+
+  setTitle(title: string) {
+    if (!this.modalHeader) {
+      this.setupModal();
+    }
+    const titleElement = this.modalHeader!.querySelector(
+      ".neuroglancer-status-modal-title",
+    );
+    if (titleElement) {
+      titleElement.textContent = title;
+    }
+  }
+
+  linkPrimaryButtonToFooter(
+    button: HTMLButtonElement,
+    cancelHandler?: () => void,
+  ) {
+    if (!this.modalFooter) {
+      this.setupModal();
+    }
+
+    this.modalFooter!.innerHTML = "";
+
+    // Create cancel button
+    const cancelButton = document.createElement("button");
+    cancelButton.textContent = "Cancel";
+    cancelButton.classList.add("neuroglancer-status-modal-cancel-button");
+
+    cancelButton.addEventListener(
+      "click",
+      cancelHandler ||
+        (() => {
+          this.dispose();
+        }),
+    );
+
+    button.className = "neuroglancer-status-modal-action-button";
+
+    this.modalFooter!.appendChild(cancelButton);
+    this.modalFooter!.appendChild(document.createTextNode(" "));
+    this.modalFooter!.appendChild(button);
+  }
+
+  setContentText(text: string) {
+    if (!this.modalContent) {
+      this.setupModal();
+    }
+    this.element.textContent = text;
   }
 }
