@@ -2000,6 +2000,7 @@ input[type="checkbox"]:checked {
       .neuroglancer-accordion-body {
         flex-direction: column;
         padding: var(--spacing1);
+        height: 100%;
       }
 
       .neuroglancer-accordion-header {
@@ -2779,7 +2780,6 @@ input[type="checkbox"]:checked {
     }
 
     .neuroglancer-position-dimension-plot {
-      padding: 0px 12px 12px 12px;
       justify-content: flex-end;
     }
 
