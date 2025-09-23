@@ -67,78 +67,70 @@ input[type="checkbox"]:checked {
   border-radius: 10px;
 }
 
-#neuroglancer-container {
-  .neuroglancer-tool-status-content {
-    .neuroglancer-position-dimension-plot[data-orientation="row"] {
-      min-width: 12.5rem;
-    }
-  }
-}
-
-#neuroglancer-status-container-modal {
-  .neuroglancer-status-modal-wrapper {
-    border-radius: 2px;
-    border: 1px solid var(--Dark-Stroke-100);
-    background: var(--background80);
-    padding: 0;
-    max-width: 47rem;
-  }
-  .neuroglancer-dismiss-modal {
-    width: 2rem;
-    height: 2rem;
-    padding: 0.5rem;
-  }
-  .neuroglancer-status-modal-header {
-    position: unset !important;
-    width: 100%;
-    padding: 0.5rem 1rem !important;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-size: 0.875rem;
-    font-weight: 500;
-    border-bottom: 1px solid var(--dark80);
-  }
-  .neuroglancer-status-modal-content {
-    padding: 0.75rem 1rem;
-    margin: 10px 0;
-    font-size: 0.875rem;
-    color: var(--content100);
-  }
-  .neuroglancer-status-modal-footer {
-    padding: 0.75rem 1rem;
-    border-top: 1px solid var(--dark80);
-    display: flex;
-    justify-content: end;
-    gap: 0.5rem;
-  }
-  .neuroglancer-status-modal-footer button {
-    padding: 0.5rem 0.75rem;
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: var(--white);
-    cursor: pointer;
-  }
-  .neuroglancer-status-modal-footer button:hover {
-    background-color: var(--primary120);
-  }
-  .neuroglancer-status-modal-cancel-button {
-    border: 1.5px solid var(--stroke60);
-    background-color: transparent;
-  }
-  .neuroglancer-status-modal-cancel-button:hover {
-    background-color: transparent !important;
-  }
-  .neuroglancer-status-modal-action-button {
-    background-color: var(--primary100);
-    border: none;
-  }
-}
-
 .neuroglass-theme {
   * {
     font-family: var(--text-font);
     box-sizing: border-box;
+  }
+
+  #neuroglancer-status-container-modal {
+    .neuroglancer-status-modal-wrapper {
+      border-radius: 2px;
+      border: 1px solid var(--Dark-Stroke-100);
+      background: var(--background80);
+      padding: 0;
+      max-width: 47rem;
+    }
+    .neuroglancer-dismiss-modal {
+      width: 2rem;
+      height: 2rem;
+      padding: 0.5rem;
+    }
+    .neuroglancer-status-modal-header {
+      position: unset !important;
+      width: 100%;
+      padding: 0.5rem 1rem !important;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.875rem;
+      font-weight: 500;
+      border-bottom: 1px solid var(--dark80);
+    }
+    .neuroglancer-status-modal-content {
+      padding: 0.75rem 1rem;
+      margin: 10px 0;
+      font-size: 0.875rem;
+      color: var(--content100);
+    }
+    .neuroglancer-status-modal-footer {
+      padding: 0.75rem 1rem;
+      border-top: 1px solid var(--dark80);
+      display: flex;
+      justify-content: end;
+      gap: 0.5rem;
+    }
+    .neuroglancer-status-modal-footer button {
+      padding: 0.5rem 0.75rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--white);
+      cursor: pointer;
+    }
+    .neuroglancer-status-modal-footer button:hover {
+      background-color: var(--primary120);
+    }
+    .neuroglancer-status-modal-cancel-button {
+      border: 1.5px solid var(--stroke60);
+      background-color: transparent;
+    }
+    .neuroglancer-status-modal-cancel-button:hover {
+      background-color: transparent !important;
+    }
+    .neuroglancer-status-modal-action-button {
+      background-color: var(--primary100);
+      border: none;
+    }
   }
 
   ul#neuroglancer-status-container {
@@ -402,6 +394,17 @@ input[type="checkbox"]:checked {
       }
     }
 
+    .neuroglancer-invlerp-legend-panel {
+      margin: 0.5rem 0;
+      height: 0.938rem;
+      width: 11.875rem;
+
+      canvas {
+        width: 100% !important;
+        height: 100% !important;
+      }
+    }
+
     .neuroglancer-invlerp-cdfpanel {
       margin: 0.5rem 0;
       height: 3.125rem;
@@ -427,28 +430,6 @@ input[type="checkbox"]:checked {
           width: auto;
         }
       }
-    }
-  }
-
-  .neuroglancer-invlerp-legend-panel {
-    margin: 0.5rem 0;
-    height: 0.938rem;
-    width: 11.875rem;
-
-    canvas {
-      width: 100% !important;
-      height: 100% !important;
-    }
-  }
-
-  .neuroglancer-invlerp-cdfpanel {
-    margin: 0.5rem 0;
-    height: 3.125rem;
-    width: 11.875rem;
-
-    canvas {
-      width: 100% !important;
-      height: 100% !important;
     }
   }
 
