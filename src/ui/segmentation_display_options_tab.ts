@@ -27,6 +27,7 @@ import { AccordionTab } from "#src/widget/accordion.js";
 import { DependentViewWidget } from "#src/widget/dependent_view_widget.js";
 import { addLayerControlToOptionsTab } from "#src/widget/layer_control.js";
 import { LinkedLayerGroupWidget } from "#src/widget/linked_layer.js";
+import { SegmentationColorModeWidget } from "#src/widget/segmentation_color_mode.js";
 import {
   makeShaderCodeWidgetTopRow,
   ShaderCodeWidget,
@@ -70,6 +71,11 @@ export class DisplayOptionsTab extends AccordionTab {
       this.appendChild(widget.element, APPEARANCE_SECTION_JSON_KEY);
     }
 
+    const colorModeWidget = this.registerDisposer(
+      new SegmentationColorModeWidget(layer),
+    );
+    this.appendChild(colorModeWidget.element, APPEARANCE_SECTION_JSON_KEY);
+
     for (const control of LAYER_CONTROLS) {
       const e = addLayerControlToOptionsTab(
         this,
@@ -77,8 +83,9 @@ export class DisplayOptionsTab extends AccordionTab {
         this.visibility,
         control,
       );
-      e.id = control.toolJson;
       this.appendChild(e, control.sectionKey);
+      // @metacell we group color controls under our own custom div
+      colorModeWidget.registerColorControl(e, control.toolJson);
     }
 
     const skeletonControls = this.registerDisposer(
