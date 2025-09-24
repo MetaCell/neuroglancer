@@ -2196,10 +2196,14 @@ input[type="checkbox"]:checked {
     }
 
     .neuroglancer-segmentation-color-tab {
+      display: block;
+      padding: 0.25rem 0;
+    }
+
+    .neuroglancer-segmentation-color-tab-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0.25rem 0;
     }
 
     .neuroglancer-segmentation-color-tab-buttons {

@@ -21,7 +21,7 @@ import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import { observeWatchable } from "#src/trackable_value.js";
 import svg_format_color_fill from "#src/ui/images/format_color_fill.svg?raw";
 import svg_gradient from "#src/ui/images/gradient.svg?raw";
-import type { RefCounted } from "#src/util/disposable.js";
+import { RefCounted } from "#src/util/disposable.js";
 import { vec3 } from "#src/util/geom.js";
 import type { ColorWidget } from "#src/widget/color.js";
 import { makeIcon } from "#src/widget/icon.js";
@@ -29,134 +29,129 @@ import type { LayerControlFactory } from "#src/widget/layer_control.js";
 import { colorLayerControl } from "#src/widget/layer_control_color.js";
 import { TextInputWidget } from "#src/widget/text_input.js";
 
+const layerFixedColors = new WeakMap<SegmentationUserLayer, vec3>();
+
 // @metacell, the old always went to red on fixed color,
-// so we keep a weak ref to the last fixed color used for each layer
+// so we keep a ref to the last fixed color used for each layer
 // and restore it when switching back to fixed color mode
+function restoreLayerFixedColor(layer: SegmentationUserLayer) {
+  const savedColor = layerFixedColors.get(layer);
+  if (savedColor) {
+    layer.displayState.segmentDefaultColor.value = savedColor;
+    return true;
+  }
+  return false;
+}
+
 function chooseColorMode(layer: SegmentationUserLayer, useFixedColor: boolean) {
   if (!useFixedColor) {
-    const currentColor = layer.displayState.segmentDefaultColor.value;
-    if (currentColor !== undefined) {
-      layerFixedColors.set(layer, vec3.clone(currentColor));
-    }
     layer.displayState.segmentDefaultColor.value = undefined;
   } else {
-    const savedColor = layerFixedColors.get(layer);
-    if (savedColor) {
-      layer.displayState.segmentDefaultColor.value = vec3.clone(savedColor);
-    } else if (layer.displayState.segmentDefaultColor.value === undefined) {
-      layer.displayState.segmentDefaultColor.value = vec3.fromValues(1, 0, 0);
-    }
+    if (restoreLayerFixedColor(layer)) return;
+    layer.displayState.segmentDefaultColor.value = vec3.fromValues(1, 0, 0);
   }
 }
 
-const layerFixedColors = new WeakMap<SegmentationUserLayer, vec3>();
+export class SegmentationColorModeWidget extends RefCounted {
+  element = document.createElement("div");
+  colorText = document.createElement("span");
+  buttonContainer = document.createElement("div");
+  header = document.createElement("div");
+  randomColorButton = document.createElement("button");
+  fixedColorButton = document.createElement("button");
+  colorControlsContainer = document.createElement("div");
+  seedControlContainer: HTMLElement | null = null;
+  fixedColorControlContainer: HTMLElement | null = null;
+  constructor(public layer: SegmentationUserLayer) {
+    super();
+    const {
+      element,
+      colorText,
+      buttonContainer,
+      header,
+      randomColorButton,
+      fixedColorButton,
+      colorControlsContainer,
+    } = this;
+    element.classList.add("neuroglancer-segmentation-color-tab");
+    colorText.textContent = "Colours";
+    buttonContainer.classList.add(
+      "neuroglancer-segmentation-color-tab-buttons",
+    );
+    randomColorButton.classList.add(
+      "neuroglancer-segmentation-color-tab-button",
+    );
+    header.classList.add("neuroglancer-segmentation-color-tab-header");
+    randomColorButton.classList.add("active");
+    randomColorButton.innerHTML = svg_gradient;
+    randomColorButton.title = "Seeded random colours";
+    fixedColorButton.classList.add(
+      "neuroglancer-segmentation-color-tab-button",
+    );
+    fixedColorButton.innerHTML = svg_format_color_fill;
+    fixedColorButton.title = "Fixed color";
+    colorControlsContainer.classList.add(
+      "neuroglancer-segmentation-color-controls",
+    );
 
-const createColorModeTabContainer = () => {
-  const colorTab = document.createElement("div");
-  colorTab.classList.add("neuroglancer-segmentation-color-tab");
+    header.appendChild(colorText);
+    header.appendChild(buttonContainer);
+    buttonContainer.appendChild(fixedColorButton);
+    buttonContainer.appendChild(randomColorButton);
+    element.appendChild(header);
+    element.appendChild(colorControlsContainer);
 
-  const colorText = document.createElement("span");
-  colorText.textContent = "Colours";
-  colorTab.appendChild(colorText);
+    this.registerEventListener(randomColorButton, "click", () => {
+      chooseColorMode(layer, false /* fixed color */);
+    });
+    this.registerEventListener(fixedColorButton, "click", () => {
+      chooseColorMode(layer, true /* fixed color */);
+    });
+    this.registerDisposer(
+      observeWatchable((value) => {
+        const isRandomColor = value === undefined;
+        this.updateTabState(isRandomColor);
 
-  const buttonContainer = document.createElement("div");
-  buttonContainer.classList.add("neuroglancer-segmentation-color-tab-buttons");
-  colorTab.appendChild(buttonContainer);
+        if (!isRandomColor) {
+          layerFixedColors.set(layer, vec3.clone(value));
+        }
+      }, layer.displayState.segmentDefaultColor),
+    );
+  }
 
-  const randomColorButton = document.createElement("button");
-  randomColorButton.classList.add("neuroglancer-segmentation-color-tab-button");
-  randomColorButton.classList.add("active");
-  randomColorButton.innerHTML = svg_gradient;
-  randomColorButton.title = "Seeded random colours";
-  buttonContainer.appendChild(randomColorButton);
-
-  const fixedColorButton = document.createElement("button");
-  fixedColorButton.classList.add("neuroglancer-segmentation-color-tab-button");
-  fixedColorButton.innerHTML = svg_format_color_fill;
-  fixedColorButton.title = "Fixed color";
-  buttonContainer.appendChild(fixedColorButton);
-
-  const colorControlsContainer = document.createElement("div");
-  colorControlsContainer.classList.add(
-    "neuroglancer-segmentation-color-controls",
-  );
-
-  return {
-    colorTab,
-    randomColorButton,
-    fixedColorButton,
-    colorControlsContainer,
-  };
-};
-
-export function createColorModeTabsWithControls(
-  layer: SegmentationUserLayer,
-  context: RefCounted,
-) {
-  const {
-    colorTab,
-    randomColorButton,
-    fixedColorButton,
-    colorControlsContainer,
-  } = createColorModeTabContainer();
-
-  let seedControlContainer: HTMLElement | null = null;
-  let fixedColorControlContainer: HTMLElement | null = null;
-
-  const updateTabState = (isRandomColor: boolean) => {
-    randomColorButton.classList.toggle("active", isRandomColor);
-    fixedColorButton.classList.toggle("active", !isRandomColor);
-
-    // Control visibility of the entire control containers
-    if (seedControlContainer) {
-      seedControlContainer.style.display = isRandomColor ? "" : "none";
-    }
-    if (fixedColorControlContainer) {
-      fixedColorControlContainer.style.display = isRandomColor ? "none" : "";
-    }
-  };
-
-  const showControls = (isRandomColor: boolean) => {
-    chooseColorMode(layer, !isRandomColor);
-  };
-
-  randomColorButton.addEventListener("click", () => showControls(true));
-  fixedColorButton.addEventListener("click", () => showControls(false));
-
-  context.registerDisposer(
-    observeWatchable((value) => {
-      const isRandomColor = value === undefined;
-      updateTabState(isRandomColor);
-
-      if (!isRandomColor && value !== undefined) {
-        layerFixedColors.set(layer, vec3.clone(value));
-      }
-    }, layer.displayState.segmentDefaultColor),
-  );
-
-  const initialIsRandomColor =
-    layer.displayState.segmentDefaultColor.value === undefined;
-  updateTabState(initialIsRandomColor);
-
-  function registerColorControl(element: HTMLElement, toolJson: string) {
+  registerColorControl(element: HTMLElement, toolJson: string) {
     if (toolJson === "colorSeed") {
-      seedControlContainer = element;
+      this.seedControlContainer = element;
     } else if (toolJson === "segmentDefaultColor") {
-      fixedColorControlContainer = element;
+      this.fixedColorControlContainer = element;
     } else {
       return;
     }
-    colorControlsContainer.appendChild(element);
-    updateTabState(layer.displayState.segmentDefaultColor.value === undefined);
+    this.colorControlsContainer.appendChild(element);
+    this.updateTabState();
   }
 
-  return {
-    colorTab,
-    colorControlsContainer,
-    registerColorControl,
-  };
+  updateTabState(isRandomColor?: boolean) {
+    if (isRandomColor === undefined) {
+      isRandomColor =
+        this.layer.displayState.segmentDefaultColor.value === undefined;
+    }
+    this.randomColorButton.classList.toggle("active", isRandomColor);
+    this.fixedColorButton.classList.toggle("active", !isRandomColor);
+
+    // Control visibility of the entire control containers
+    if (this.seedControlContainer) {
+      this.seedControlContainer.style.display = isRandomColor ? "" : "none";
+    }
+    if (this.fixedColorControlContainer) {
+      this.fixedColorControlContainer.style.display = isRandomColor
+        ? "none"
+        : "";
+    }
+  }
 }
 
+// @metacell, no longer watches the layer values, instead SegmentationColorModeWidget does that
 export function colorSeedLayerControl(): LayerControlFactory<SegmentationUserLayer> {
   const randomize = (layer: SegmentationUserLayer) => {
     layer.displayState.segmentationColorGroupState.value.segmentColorHash.randomize();
@@ -178,7 +173,6 @@ export function colorSeedLayerControl(): LayerControlFactory<SegmentationUserLay
         className: "ikonate",
       });
       controlElement.appendChild(randomizeButton);
-      // Remove individual visibility control - now handled by tabs
       return { controlElement, control: widget };
     },
     activateTool: (activation) => {
@@ -189,6 +183,7 @@ export function colorSeedLayerControl(): LayerControlFactory<SegmentationUserLay
   };
 }
 
+// @metacell, no longer watches the layer values, instead SegmentationColorModeWidget does that
 export function fixedColorLayerControl(): LayerControlFactory<
   SegmentationUserLayer,
   ColorWidget<vec3 | undefined>
