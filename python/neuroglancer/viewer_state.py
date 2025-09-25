@@ -1482,6 +1482,14 @@ def make_linked_navigation_type(
 
     return Linked
 
+if typing.TYPE_CHECKING or _BUILDING_DOCS:
+    _LinkedDisplayDimensionsBase = LinkedType[list[str]]
+else:
+    _LinkedDisplayDimensionsBase = make_linked_navigation_type(typed_list(str), lambda x: x)
+
+@export
+class LinkedDisplayDimensions(_LinkedDisplayDimensionsBase):
+    __slots__ = ()
 
 if typing.TYPE_CHECKING or _BUILDING_DOCS:
     _LinkedPositionBase = LinkedType[np.typing.NDArray[np.float32]]
@@ -1710,6 +1718,9 @@ class LayerGroupViewer(JsonObjectWrapper):
     layers = wrapped_property("layers", typed_list(str))
     layout = wrapped_property("layout", data_panel_layout_wrapper("xy"))
     position = wrapped_property("position", LinkedPosition)
+    display_dimensions = displayDimensions = wrapped_property(
+        "displayDimensions", LinkedDisplayDimensions
+    )
     velocity = wrapped_property(
         "velocity", typed_map(key_type=str, value_type=DimensionPlaybackVelocity)
     )
