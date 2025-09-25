@@ -45,14 +45,81 @@ def debounce(wait: float):
     return decorator
 
 
-# TODO add other types of fits
 # Inspired by https://github.com/AllenInstitute/render-python/blob/master/renderapi/transform/leaf/affine_models.py
-def affine_fit(fixed_points: np.ndarray, moving_points: np.ndarray):
-    # Points are NxD arrays
+
+
+def fit_model(fixed_points: np.ndarray, moving_points: np.ndarray):
     assert fixed_points.shape == moving_points.shape
-    N = fixed_points.shape[0]
-    D = fixed_points.shape[1]
-    T = fixed_points
+    N, D = fixed_points.shape
+
+    if N == 1:
+        return translation_fit(fixed_points, moving_points)
+    if N == 2:
+        return rigid_or_similarity_fit(fixed_points, moving_points, rigid=True)
+    if N == 3 and D == 2:
+        return affine_fit(fixed_points, moving_points)
+    if N == 3 and D > 2:
+        return rigid_or_similarity_fit(fixed_points, moving_points, rigid=False)
+    return affine_fit(fixed_points, moving_points)
+
+
+# See https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem
+# and https://math.nist.gov/~JBernal/kujustf.pdf
+def rigid_or_similarity_fit(
+    fixed_points: np.ndarray, moving_points: np.ndarray, rigid: bool = True
+):
+    N, D = fixed_points.shape
+
+    # Remove translation aspect to first determine rotation/scale
+    X = fixed_points - fixed_points.mean(axis=0)
+    Y = moving_points - moving_points.mean(axis=0)
+
+    # Cross-covariance
+    sigma = (Y.T @ X) / N
+
+    # SVD - Unitary matrix, Diagonal, conjugate transpose of unitary matrix
+    U, S, Vt = np.linalg.svd(sigma)  # Sigma ≈ U diag(S) V*
+
+    d = np.ones(D)
+    if np.linalg.det(U @ Vt) < 0:
+        d[-1] = -1
+    R = U @ np.diag(d) @ Vt
+
+    # Scale
+    if rigid:
+        s = 1.0
+    else:
+        var_src = (X**2).sum() / N  # sum of variances across dims
+        s = (S * d).sum() / var_src
+
+    # Translation
+    t = Y - s * (R @ X)
+
+    # Homogeneous (D+1)x(D+1)
+    T = np.zeros((D, D + 1))
+    T[:D, :D] = s * R
+    T[:, -1] = t
+
+    affine = np.round(T, decimals=3)
+    return affine
+
+
+# TODO bring these fits together a bit more nicely
+def translation_fit(fixed_points: np.ndarray, moving_points: np.ndarray):
+    N, D = fixed_points.shape
+
+    estimated_translation = np.mean(moving_points - fixed_points, axis=0)
+
+    affine = np.zeros((D, D + 1))
+    affine[:, :D] = np.eye(D)
+    affine[:, -1] = estimated_translation
+
+    affine = np.round(affine, decimals=3)
+    return affine
+
+
+def affine_fit(fixed_points: np.ndarray, moving_points: np.ndarray):
+    N, D = fixed_points.shape
 
     # Target values (B) is a D * N array
     # Input values (A) is a D * N, (D * (D + 1)) array
@@ -62,7 +129,7 @@ def affine_fit(fixed_points: np.ndarray, moving_points: np.ndarray):
         for j in range(D):
             start_index = j * D
             end_index = (j + 1) * D
-            A[D * i + j, start_index:end_index] = T[i]
+            A[D * i + j, start_index:end_index] = fixed_points[i]
             A[D * i + j, D * D + j] = 1
     B = moving_points.flatten()
 
@@ -468,7 +535,7 @@ class LinearRegistrationWorkflow:
                 np.isclose(self.stored_points[1], moving_points)
             ):
                 return False
-        self.affine = affine_fit(moving_points, fixed_points)
+        self.affine = fit_model(moving_points, fixed_points)
         self.update_registered_layer(s)
 
         self._set_status_message(
