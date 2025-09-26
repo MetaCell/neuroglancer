@@ -894,9 +894,22 @@ input[type="checkbox"]:checked {
       gap: 0.25rem;
 
       .neuroglancer-annotation-shader-property {
-        font-family: var(--text-font);
+        font-family: var(--monospaced-font);
+        font-size: 0.75rem;
         font-style: normal;
         font-weight: 400;
+
+        * {
+          font-family: var(--monospaced-font);
+        }
+      }
+
+      .neuroglancer-annotation-shader-property-type {
+        color: var(--error60);
+      }
+
+      .neuroglancer-annotation-shader-property-identifier {
+        color: rgba(255, 255, 255, 0.6);
       }
     }
 
@@ -2062,6 +2075,29 @@ input[type="checkbox"]:checked {
         flex-direction: column;
         padding: var(--spacing1);
         height: 100%;
+
+        .neuroglancer-annotation-shader-property-list {
+          margin-bottom: 0.75rem;
+        }
+
+        .neuroglancer-annotation-shader-property {
+          font-family: var(--monospaced-font);
+          font-size: 0.75rem;
+          font-style: normal;
+          font-weight: 400;
+
+          * {
+            font-family: var(--monospaced-font);
+          }
+        }
+
+        .neuroglancer-annotation-shader-property-type {
+          color: var(--error60);
+        }
+
+        .neuroglancer-annotation-shader-property-identifier {
+          color: rgba(255, 255, 255, 0.6);
+        }
       }
 
       .neuroglancer-accordion-header {
