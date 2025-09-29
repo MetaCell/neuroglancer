@@ -11,6 +11,7 @@ import scipy.ndimage
 
 MESSAGE_DURATION = 5  # seconds
 NUM_DEMO_DIMS = 2  # Currently can be 2D or 3D
+AFFINE_NUM_DECIMALS = 4
 
 # TODO may not be needed, depends on how we handle the two coord spaces
 MARKERS_SHADER = """
@@ -46,10 +47,12 @@ def debounce(wait: float):
     return decorator
 
 
-# Inspired by https://github.com/AllenInstitute/render-python/blob/master/renderapi/transform/leaf/affine_models.py
-
-
 def fit_model(fixed_points: np.ndarray, moving_points: np.ndarray):
+    """
+    Choose the appropriate model based on number of points and dimensions.
+
+    Inspired by https://github.com/AllenInstitute/render-python/blob/master/renderapi/transform/leaf/affine_models.py
+    """
     assert fixed_points.shape == moving_points.shape
     N, D = fixed_points.shape
 
@@ -99,13 +102,12 @@ def rigid_or_similarity_fit(
     # Homogeneous (D+1)x(D+1)
     T = np.zeros((D, D + 1))
     T[:D, :D] = s * R
-    T[:, -1] = t
+    T[:, -1] = np.diagonal(t)
 
-    affine = np.round(T, decimals=3)
+    affine = np.round(T, decimals=AFFINE_NUM_DECIMALS)
     return affine
 
 
-# TODO bring these fits together a bit more nicely
 def translation_fit(fixed_points: np.ndarray, moving_points: np.ndarray):
     N, D = fixed_points.shape
 
@@ -115,7 +117,7 @@ def translation_fit(fixed_points: np.ndarray, moving_points: np.ndarray):
     affine[:, :D] = np.eye(D)
     affine[:, -1] = estimated_translation
 
-    affine = np.round(affine, decimals=3)
+    affine = np.round(affine, decimals=AFFINE_NUM_DECIMALS)
     return affine
 
 
@@ -130,9 +132,9 @@ def affine_fit(fixed_points: np.ndarray, moving_points: np.ndarray):
         for j in range(D):
             start_index = j * D
             end_index = (j + 1) * D
-            A[D * i + j, start_index:end_index] = fixed_points[i]
+            A[D * i + j, start_index:end_index] = moving_points[i]
             A[D * i + j, D * D + j] = 1
-    B = moving_points.flatten()
+    B = fixed_points.flatten()
 
     # The estimated affine transform params will be flattened
     # and there will be D * (D + 1) of them
@@ -148,12 +150,12 @@ def affine_fit(fixed_points: np.ndarray, moving_points: np.ndarray):
         affine[i, -1] = tvec[D * D + i]
 
     # Round to close decimals
-    affine = np.round(affine, decimals=3)
+    affine = np.round(affine, decimals=AFFINE_NUM_DECIMALS)
     return affine
 
 
 def transform_points(affine: np.ndarray, points: np.ndarray):
-    # Apply the current affine transform to the points
+    # Apply the affine transform to the points
     transformed = np.zeros_like(points)
     padded = np.pad(points, ((0, 0), (0, 1)), constant_values=1)
     for i in range(len(points)):
@@ -189,6 +191,7 @@ def _create_demo_fixed_image():
     )
 
 
+# Only used if no data provided
 def _create_demo_moving_image():
     if NUM_DEMO_DIMS == 2:
         desired_output_matrix_homogenous = [
@@ -214,20 +217,22 @@ def _create_demo_moving_image():
     )
 
 
-# TODO this should be more intelligent for the copy
-# in that case it should take the original layers dimensions
-# and actually map the names
-# the problem is that right now we can't query those names from python
-# since it wraps the state and that info isn't in the state if it is still the
-# default information
+def change_coord_names(dims: neuroglancer.CoordinateSpace, name_mod):
+    return neuroglancer.CoordinateSpace(
+        names=[n + name_mod for n in dims.names],
+        units=dims.units,
+        scales=dims.scales,
+    )
+
+
 def create_dimensions(viewer_dims: neuroglancer.CoordinateSpace, indices=None):
     names = viewer_dims.names
     units = viewer_dims.units
     scales = viewer_dims.scales
     if indices is not None:
-        names = [viewer_dims.names[i] for i in indices]
-        units = [viewer_dims.units[i] for i in indices]
-        scales = [viewer_dims.scales[i] for i in indices]
+        names = [names[i] for i in indices]
+        units = [units[i] for i in indices]
+        scales = [scales[i] for i in indices]
 
     return neuroglancer.CoordinateSpace(names=names, units=units, scales=scales)
 
@@ -235,14 +240,17 @@ def create_dimensions(viewer_dims: neuroglancer.CoordinateSpace, indices=None):
 class LinearRegistrationWorkflow:
     def __init__(self, args):
         starting_state = args.state
+        self.two_coord_spaces = not args.single_coord_space
         self.annotations_name = args.annotations_name
         self.status_timers = {}
         self.stored_points = [[], []]
+        self.stored_moving_dims = {}
+        self.moving_layer_names = []
         self.stored_group_number = -1
         self.affine = None
+        self.co_ords_ready = False
         self.ready = False
         self.last_updated_print = -1
-        self.two_coord_spaces = False
         self.viewer = neuroglancer.Viewer()
         self.viewer.shared_state.add_changed_callback(
             lambda: self.viewer.defer_callback(self.on_state_changed)
@@ -258,7 +266,7 @@ class LinearRegistrationWorkflow:
             "Place fixed (reference) layers in the left hand panel, and moving layers (to be registered) in the right hand panel. Then press 't' once you have completed this setup.",
         )
         with self.viewer.txn() as s:
-            self.create_two_panel_layout(s)
+            self.setup_two_panel_layout(s)
         self.setup_viewer_actions()
 
     def update(self):
@@ -267,43 +275,63 @@ class LinearRegistrationWorkflow:
         if current_time - self.last_updated_print > 5:
             print(f"Viewer states are successfully syncing at {ctime()}")
             self.last_updated_print = current_time
-        return  # for now don't do regular actions
-        if not self.two_coord_spaces:
-            self.automatically_group_markers_and_update()
-        self.update_affine()
-        self._clear_status_messages()
+        # TODO make ready a status instead of two vars
+        # TODO overall update the class attributes at the end to cleaner
+        if self.co_ords_ready and not self.ready:
+            with self.viewer.txn() as s:
+                self.setup_registration_layers(s)
+        if self.ready:
+            if not self.two_coord_spaces:
+                self.automatically_group_markers_and_update()
+            self.update_affine()
+            self._clear_status_messages()
 
     def setup_viewer(self):
-        with self.viewer.txn() as s:
-            self.init_coord_spaces(s)
-            self.create_registration_layers(s)
+        self.setup_second_coord_space()
         self._set_status_message(
             "help",
             "Place markers in pairs, starting with the fixed, and then the moving. The registered layer will automatically update as you add markers. Press 't' to toggle visiblity of the registered layer.",
         )
-        self.ready = True
+        self.co_ords_ready = True
 
-    def create_two_panel_layout(self, s: neuroglancer.ViewerState):
+    def setup_two_panel_layout(self, s: neuroglancer.ViewerState):
         all_layer_names = [layer.name for layer in s.layers]
-        half_point = len(all_layer_names) // 2
-        group1_names = all_layer_names[:half_point]
-        group2_names = all_layer_names[half_point:]
+        if len(all_layer_names) >= 2:
+            half_point = len(all_layer_names) // 2
+            group1_names = all_layer_names[:half_point]
+            group2_names = all_layer_names[half_point:]
+        else:
+            group1_names = all_layer_names
+            group2_names = all_layer_names
         s.layout = neuroglancer.row_layout(
             [
                 neuroglancer.LayerGroupViewer(layers=group1_names, layout="xy-3d"),
                 neuroglancer.LayerGroupViewer(layers=group2_names, layout="xy-3d"),
             ]
         )
-        s.layout.children[1].position.link = "unlinked"
-        s.layout.children[1].position.value = [512, 0, 40]
+        # Unliked position solves rendering problem but makes navigation awkward
+        # s.layout.children[1].position.link = "unlinked"
+        # In theory we could make keep unlinked and then on state change check
+        # but that could be not worth compared to trying to improve rendering
         s.layout.children[1].crossSectionOrientation.link = "unlinked"
         s.layout.children[1].crossSectionScale.link = "unlinked"
         s.layout.children[1].projectionOrientation.link = "unlinked"
         s.layout.children[1].projectionScale.link = "unlinked"
 
-    def create_registration_layers(self, s: neuroglancer.ViewerState):
-        # TODO consider making a copy of registered layers in left panel
-        self.init_registered_transform(s)
+    def setup_second_coord_space(self):
+        if not self.moving_layer_names:
+            moving_layers = self.get_state().layout.children[1].layers
+            self.moving_layer_names = moving_layers
+            self._moving_idx = 0
+        layer_name = self.moving_layer_names[self._moving_idx]
+        info_future = self.viewer.volume_info(layer_name)
+        info_future.add_done_callback(lambda f: self.save_coord_space_info(f))
+
+    def setup_registration_layers(self, s: neuroglancer.ViewerState):
+        dimensions = s.dimensions
+        # It is possible that the dimensions are not ready yet, return if so
+        if len(dimensions.names) != self.num_dims:
+            return
         # Make the annotation layer if needed
         # TODO probably don't need the properties, to be confirmed if
         # one co-ord space is fine or need two
@@ -331,14 +359,39 @@ class LinearRegistrationWorkflow:
         s.selected_layer.visible = True
         s.layout.children[0].layers.append(self.annotations_name)
         s.layout.children[1].layers.append(self.annotations_name)
+        self.setup_panel_coordinates(s)
+        self.ready = True
 
-    def init_coord_spaces(self, s: neuroglancer.ViewerState):
+    def setup_panel_coordinates(self, s: neuroglancer.ViewerState):
         dimensions = s.dimensions.names
         s.layout.children[1].displayDimensions.link = "unlinked"
-        print(s.layout.children[1].displayDimensions.value)
-        s.layout.children[1].displayDimensions.value = [d + "2" for d in dimensions]
-        # Now I think we need some help from Python, which would be to get the
-        # current transform and replace all the names by the above for the output
+        s.layout.children[1].displayDimensions.value = self.output_dim_names[:3]
+        s.layout.children[0].displayDimensions.link = "unlinked"
+        s.layout.children[0].displayDimensions.value = self.input_dim_names[:3]
+
+    def save_coord_space_info(self, info_future):
+        result = info_future.result()
+        self.moving_name = self.moving_layer_names[self._moving_idx]
+        self.stored_moving_dims[self.moving_name] = result.dimensions
+        done = len(self.stored_moving_dims) == len(self.moving_layer_names)
+        if not done:
+            self._moving_idx += 1
+            self.setup_second_coord_space()
+            return
+        # If we get here we have all the coord spaces ready and can update viewer
+        with self.viewer.txn() as s:
+            for layer_name in self.moving_layer_names:
+                input_dims = self.stored_moving_dims[layer_name]
+                output_dims = change_coord_names(input_dims, "2")
+                self.input_dim_names = input_dims.names
+                self.output_dim_names = output_dims.names
+                self.num_dims = len(input_dims.names) * 2
+                new_coord_space = neuroglancer.CoordinateSpaceTransform(
+                    input_dimensions=input_dims,
+                    output_dimensions=output_dims,
+                )
+                for source in s.layers[layer_name].source:
+                    source.transform = new_coord_space
 
     def toggle_registered_visibility(self, _):
         self.setup_viewer()
@@ -348,37 +401,16 @@ class LinearRegistrationWorkflow:
     def setup_viewer_actions(self):
         viewer = self.viewer
         viewer.actions.add(
-            "toggle-registered-visibility", self.toggle_registered_visibility
+            "toggleRegisteredVisibility", self.toggle_registered_visibility
         )
 
         with viewer.config_state.txn() as s:
-            s.input_event_bindings.viewer["keyt"] = "toggle-registered-visibility"
+            s.input_event_bindings.viewer["keyt"] = "toggleRegisteredVisibility"
+            s.input_event_bindings.viewer["keyp"] = "screenshotStatistics"
 
     def is_fixed_image_space_last(self, dim_names):
         first_name = dim_names[0]
-        return first_name[-1] in "0123456789"
-
-    # TODO this shouldn't be needed, need to check main python side
-    def init_registered_transform(self, s: neuroglancer.ViewerState, force=True):
-        if not force and s.layers["registered"].source[0].transform is not None:
-            return
-        # TODO this can fail to solve the no matrix issue if ends up as the identity
-        # think I need to change something in neuroglancer python for this instead
-        indices = None
-        if self.check_for_two_coord_spaces(s.dimensions.names):
-            self.coord_spaces = True
-            num_dims = len(s.dimensions.names) // 2
-            if self.is_fixed_image_space_last(s.dimensions.names):
-                indices = list(
-                    range(len(s.dimensions.names) - num_dims, len(s.dimensions.names))
-                )
-            else:
-                indices = list(range(num_dims))
-        existing_transform = neuroglancer.CoordinateSpaceTransform(
-            output_dimensions=create_dimensions(s.dimensions, indices)
-        )
-        s.layers["registered"].source[0].transform = existing_transform
-        print(s.layers["registered"].source[0].transform.matrix)
+        return first_name not in self.input_dim_names
 
     def on_state_changed(self):
         self.viewer.defer_callback(self.update)
@@ -399,22 +431,10 @@ class LinearRegistrationWorkflow:
             layer.name = "registered"
             return layer
 
-    def check_for_two_coord_spaces(self, dim_names):
-        # Dims should be exactly double the number of unique names
-        if len(dim_names) == 0 or len(dim_names) % 2 != 0:
-            return False
-        set_of_names = set()
-        for name in dim_names:
-            # rstrip any number off the end
-            stripped_name = name.rstrip("0123456789")
-            set_of_names.add(stripped_name)
-        return len(set_of_names) * 2 == len(dim_names)
-
     def split_points_into_pairs(self, annotations, dim_names):
         if len(annotations) == 0:
             return np.zeros((0, 0)), np.zeros((0, 0))
-        two_coord_spaces = self.check_for_two_coord_spaces(dim_names)
-        if two_coord_spaces:
+        if self.two_coord_spaces:
             real_dims_last = self.is_fixed_image_space_last(dim_names)
             num_points = len(annotations)
             num_dims = len(annotations[0].point) // 2
@@ -444,7 +464,7 @@ class LinearRegistrationWorkflow:
 
     def automatically_group_markers(self, s: neuroglancer.ViewerState):
         dimensions = s.dimensions.names
-        if self.check_for_two_coord_spaces(dimensions):
+        if self.two_coord_spaces:
             return False
         annotations = s.layers[self.annotations_name].annotations
         if len(annotations) == self.stored_group_number:
@@ -456,46 +476,53 @@ class LinearRegistrationWorkflow:
             a.props = [i // 2, i % 2]
         return True
 
-    def update_registered_layer(self, s: neuroglancer.ViewerState):
-        self.init_registered_transform(s, force=False)
+    def update_registered_layers(self, s: neuroglancer.ViewerState):
         if self.affine is not None:
-            print(s.layers["registered"].source[0].transform.matrix)
             transform = self.affine.tolist()
+            # TODO handle layer being renamed
+            for k, v in self.stored_moving_dims.items():
+                # TODO not sure if need to handle local channels here
+                # keeping code below just in case
+                for source in s.layers[k].source:
+                    source.transform = neuroglancer.CoordinateSpaceTransform(
+                        input_dimensions=v,
+                        output_dimensions=change_coord_names(v, "2"),
+                        matrix=transform,
+                    )
+
+            # print(s.layers["registered"].source[0].transform.matrix)
             # TODO this is where that mapping needs to happen of affine dims
             # overall this is a bit awkward right now, we need a lot of
             # mapping info which we just don't have
             # right now you can't input it from the command line
-            if s.layers["registered"].source[0].transform is not None:
-                final_transform = []
-                layer_transform = s.layers["registered"].source[0].transform
-                local_channel_indices = [
-                    i
-                    for i, name in enumerate(layer_transform.outputDimensions.names)
-                    if name.endswith(("'", "^", "#"))
-                ]
-                num_local_count = 0
-                for i, name in enumerate(layer_transform.outputDimensions.names):
-                    is_local = i in local_channel_indices
-                    if is_local:
-                        final_transform.append(layer_transform.matrix[i].tolist())
-                        num_local_count += 1
-                    else:
-                        row = transform[i - num_local_count]
-                        # At the indices corresponding to local channels, insert 0s
-                        for j in local_channel_indices:
-                            row.insert(j, 0)
-                        final_transform.append(row)
-            else:
-                final_transform = transform
-            print("Updated affine transform:", final_transform)
-            print(s.layers["registered"].source[0].transform)
-            print(final_transform)
-            s.layers["registered"].source[0].transform.matrix = final_transform
+            # if s.layers["registered"].source[0].transform is not None:
+            #     final_transform = []
+            #     layer_transform = s.layers["registered"].source[0].transform
+            #     local_channel_indices = [
+            #         i
+            #         for i, name in enumerate(layer_transform.outputDimensions.names)
+            #         if name.endswith(("'", "^", "#"))
+            #     ]
+            #     num_local_count = 0
+            #     for i, name in enumerate(layer_transform.outputDimensions.names):
+            #         is_local = i in local_channel_indices
+            #         if is_local:
+            #             final_transform.append(layer_transform.matrix[i].tolist())
+            #             num_local_count += 1
+            #         else:
+            #             row = transform[i - num_local_count]
+            #             # At the indices corresponding to local channels, insert 0s
+            #             for j in local_channel_indices:
+            #                 row.insert(j, 0)
+            #             final_transform.append(row)
+            # else:
+            #     final_transform = transform
+            print("Updated affine transform:", transform)
             print(s.layers["registered"].source[0].transform)
 
     def estimate_affine(self, s: neuroglancer.ViewerState):
         annotations = s.layers[self.annotations_name].annotations
-        if len(annotations) < 1:
+        if len(annotations) == 0:
             return False
 
         dim_names = s.dimensions.names
@@ -509,8 +536,8 @@ class LinearRegistrationWorkflow:
                 np.isclose(self.stored_points[1], moving_points)
             ):
                 return False
-        self.affine = fit_model(moving_points, fixed_points)
-        self.update_registered_layer(s)
+        self.affine = fit_model(fixed_points, moving_points)
+        self.update_registered_layers(s)
 
         self._set_status_message(
             "info",
@@ -584,6 +611,14 @@ def add_mapping_args(ap: argparse.ArgumentParser):
         type=str,
         help="Name of the annotation layer (default is annotations)",
         default="annotation",
+        required=False,
+    )
+    ap.add_argument(
+        "--single-coord-space",
+        "-s",
+        action="store_true",
+        help="Use a single coordinate space for both fixed and moving layers (default is two coord spaces)",
+        default=False,
         required=False,
     )
 
