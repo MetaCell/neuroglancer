@@ -2265,6 +2265,7 @@ input[type="checkbox"]:checked {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      padding: 0.25rem 0;
     }
 
     .neuroglancer-segmentation-color-tab-buttons {
@@ -2298,7 +2299,7 @@ input[type="checkbox"]:checked {
     }
 
     .neuroglancer-segmentation-color-controls {
-      padding-left: 1.5rem;
+      padding: 0.25rem 0 0.25rem 1.5rem;
     }
 
     .neuroglancer-segmentation-color-controls
