@@ -890,7 +890,7 @@ input[type="checkbox"]:checked {
     .neuroglancer-annotation-shader-property-list {
       display: flex;
       flex-direction: column;
-      padding: 0.75rem 0;
+      padding: 0.5rem;
       gap: 0.25rem;
 
       .neuroglancer-annotation-shader-property {
@@ -1624,7 +1624,7 @@ input[type="checkbox"]:checked {
   }
 
   .neuroglancer-shader-code-widget-top-row {
-    margin-bottom: 0.75rem;
+    margin: 0.5rem;
     color: rgba(255, 255, 255, 0.8);
     font-size: 0.875rem;
 
@@ -1633,6 +1633,20 @@ input[type="checkbox"]:checked {
         margin-right: 0.125rem;
       }
     }
+  }
+
+  .neuroglancer-shader-code-widget {
+    margin: 0.5rem;
+    margin-top: 0;
+  }
+
+  .neuroglancer-accordion-body .neuroglancer-shader-code-widget-top-row {
+    margin: 0;
+    margin-bottom: 0.5rem;
+  }
+
+  .neuroglancer-accordion-body .neuroglancer-shader-code-widget {
+    margin: 0;
   }
 
   .neuroglancer-multiline-autocomplete-dropdown {
@@ -2067,6 +2081,29 @@ input[type="checkbox"]:checked {
         flex-direction: column;
         padding: var(--spacing1);
         height: 100%;
+
+        .neuroglancer-annotation-shader-property-list {
+          margin-bottom: 0.75rem;
+        }
+
+        .neuroglancer-annotation-shader-property {
+          font-family: var(--monospaced-font);
+          font-size: 0.75rem;
+          font-style: normal;
+          font-weight: 400;
+
+          * {
+            font-family: var(--monospaced-font);
+          }
+        }
+
+        .neuroglancer-annotation-shader-property-type {
+          color: var(--error60);
+        }
+
+        .neuroglancer-annotation-shader-property-identifier {
+          color: rgba(255, 255, 255, 0.6);
+        }
       }
 
       .neuroglancer-accordion-header {
