@@ -1598,6 +1598,12 @@ input[type="checkbox"]:checked {
 
       .CodeMirror {
         .CodeMirror-gutter-elt {
+          font-size: 12px;
+          font-style: normal;
+          font-weight: 400;
+          line-height: normal;
+          display: flex;
+          align-items: center;
           .CodeMirror-guttermarker-subtle {
             color: var(--content100);
             height: 100%;
@@ -2022,7 +2028,7 @@ input[type="checkbox"]:checked {
 
   .CodeMirror-lint-marker {
     width: 12px;
-    height: 12px;
+    height: 14px;
     vertical-align: baseline;
     margin-left: 4px;
   }
