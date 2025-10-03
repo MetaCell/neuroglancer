@@ -276,8 +276,6 @@ class LinearRegistrationWorkflow:
         if current_time - self.last_updated_print > 5:
             print(f"Viewer states are successfully syncing at {ctime()}")
             self.last_updated_print = current_time
-        # TODO make ready a status instead of two vars
-        # TODO overall update the class attributes at the end to cleaner
         if self.co_ords_ready and not self.ready:
             with self.viewer.txn() as s:
                 self.setup_registration_layers(s)
@@ -310,13 +308,14 @@ class LinearRegistrationWorkflow:
                 neuroglancer.LayerGroupViewer(layers=group2_names, layout="xy-3d"),
             ]
         )
-        # Unliked position solves rendering problem but makes navigation awkward
-        # s.layout.children[1].position.link = "unlinked"
-        # In theory we could make keep unlinked and then on state change check
-        # but that could be not worth compared to trying to improve rendering
+        # Unlinked position solves rendering problem but makes navigation awkward
+        if not self.two_coord_spaces
+            s.layout.children[1].position.link = "unlinked"
         s.layout.children[1].crossSectionOrientation.link = "unlinked"
-        # s.layout.children[1].crossSectionScale.link = "unlinked"
         s.layout.children[1].projectionOrientation.link = "unlinked"
+
+        # Can also unlink scales if desired
+        # s.layout.children[1].crossSectionScale.link = "unlinked"
         # s.layout.children[1].projectionScale.link = "unlinked"
 
     def setup_second_coord_space(self):
@@ -329,12 +328,15 @@ class LinearRegistrationWorkflow:
         info_future.add_done_callback(lambda f: self.save_coord_space_info(f))
 
     def combine_affine_across_dims(self, s: neuroglancer.ViewerState, affine):
+        """
+        The affine matrix only applies to the moving dims
+        but the annotation layer in the two coord space case
+        applies to all dims so we need to create a larger matrix
+        """
         all_dims = s.dimensions.names
         moving_dims = self.output_dim_names
-        # The affine matrix only applies to the moving dims
-        # so we need to create a larger matrix that applies to all dims
-        # by adding identity transforms for the real dims
         full_matrix = np.zeros((len(all_dims), len(all_dims) + 1))
+
         for i, dim in enumerate(all_dims):
             for j, dim2 in enumerate(all_dims):
                 if dim in moving_dims and dim2 in moving_dims:
@@ -350,8 +352,7 @@ class LinearRegistrationWorkflow:
 
     def setup_registration_layers(self, s: neuroglancer.ViewerState):
         dimensions = s.dimensions
-        # It is possible that the dimensions are not ready yet, return if so
-        if len(dimensions.names) != self.num_dims:
+        if len(dimensions.names) != self.num_dims # loading:
             return
 
         # Make the annotation layer if needed
@@ -448,11 +449,6 @@ class LinearRegistrationWorkflow:
 
         with viewer.config_state.txn() as s:
             s.input_event_bindings.viewer["keyt"] = "toggleRegisteredVisibility"
-            s.input_event_bindings.viewer["keyp"] = "screenshotStatistics"
-
-    def is_fixed_image_space_last(self, dim_names):
-        first_name = dim_names[0]
-        return first_name not in self.input_dim_names
 
     def on_state_changed(self):
         self.viewer.defer_callback(self.update)
@@ -477,7 +473,8 @@ class LinearRegistrationWorkflow:
         if len(annotations) == 0:
             return np.zeros((0, 0)), np.zeros((0, 0))
         if self.two_coord_spaces:
-            real_dims_last = self.is_fixed_image_space_last(dim_names)
+            first_name = dim_names[0]
+            real_dims_last = first_name not in self.input_dim_names
             num_points = len(annotations)
             num_dims = len(annotations[0].point) // 2
             fixed_points = np.zeros((num_points, num_dims))
@@ -647,7 +644,7 @@ class LinearRegistrationWorkflow:
             s.status_messages[key] = message
         self.status_timers[key] = time()
 
-    def transform_points_with_affine(self, points: np.ndarray):
+    def _transform_points_with_affine(self, points: np.ndarray):
         if self.affine is not None:
             return transform_points(self.affine, points)
 
