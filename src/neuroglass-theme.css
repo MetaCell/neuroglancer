@@ -932,6 +932,10 @@ input[type="checkbox"]:checked {
     .neuroglancer-icon {
       color: #999;
     }
+
+    .neuroglancer-layer-control-container {
+      padding: 0 0.5rem;
+    }
   }
 
   .neuroglancer-selection-details {
