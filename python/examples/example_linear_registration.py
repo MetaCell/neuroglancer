@@ -3,6 +3,7 @@ import threading
 import webbrowser
 from copy import deepcopy
 from time import ctime, time
+from enum import Enum
 
 import neuroglancer
 import neuroglancer.cli
@@ -216,15 +217,15 @@ def _create_demo_moving_image():
     )
 
 
-def change_coord_names(dims: neuroglancer.CoordinateSpace, name_mod):
+def new_coord_space_names(dims: neuroglancer.CoordinateSpace, name_suffix):
     return neuroglancer.CoordinateSpace(
-        names=[n + name_mod for n in dims.names],
+        names=[n + name_suffix for n in dims.names],
         units=dims.units,
         scales=dims.scales,
     )
 
 
-def create_dimensions(viewer_dims: neuroglancer.CoordinateSpace, indices=None):
+def create_coord_space_matching_global_dims(viewer_dims: neuroglancer.CoordinateSpace, indices=None):
     names = viewer_dims.names
     units = viewer_dims.units
     scales = viewer_dims.scales
@@ -235,6 +236,10 @@ def create_dimensions(viewer_dims: neuroglancer.CoordinateSpace, indices=None):
 
     return neuroglancer.CoordinateSpace(names=names, units=units, scales=scales)
 
+class ReadyState(Enum):
+    NOT_READY = 0
+    COORDS_READY = 1
+    READY = 2
 
 class LinearRegistrationWorkflow:
     def __init__(self, args):
@@ -243,15 +248,14 @@ class LinearRegistrationWorkflow:
         self.annotations_name = args.annotations_name
         self.status_timers = {}
         self.stored_points = [[], []]
-        self.stored_moving_dims = {}
+        self.stored_map_moving_name_to_coords = {}
         self.moving_layer_names = []
         self.input_dim_names = []
         self.output_dim_names = []
-        self.stored_group_number = -1
         self.affine = None
         self.co_ords_ready = False
-        self.ready = False
-        self.last_updated_print = -1
+        self.ready_state = ReadyState.NOT_READY
+        self.last_updated_print_time = -1
         self.viewer = neuroglancer.Viewer()
         self.viewer.shared_state.add_changed_callback(
             lambda: self.viewer.defer_callback(self.on_state_changed)
@@ -266,57 +270,53 @@ class LinearRegistrationWorkflow:
             "help",
             "Place fixed (reference) layers in the left hand panel, and moving layers (to be registered) in the right hand panel. Then press 't' once you have completed this setup.",
         )
-        with self.viewer.txn() as s:
-            self.setup_two_panel_layout(s)
+        self.setup_initial_two_panel_layout()
         self.setup_viewer_actions()
 
     def update(self):
         """Primary update loop, called whenever the viewer state changes."""
         current_time = time()
-        if current_time - self.last_updated_print > 5:
+        if current_time - self.last_updated_print_time > 5:
             print(f"Viewer states are successfully syncing at {ctime()}")
-            self.last_updated_print = current_time
-        if self.co_ords_ready and not self.ready:
-            with self.viewer.txn() as s:
-                self.setup_registration_layers(s)
-        if self.ready:
-            if not self.two_coord_spaces:
-                self.automatically_group_markers_and_update()
+            self.last_updated_print_time = current_time
+        if self.ready_state == ReadyState.COORDS_READY:
+            self.setup_registration_layers()
+        elif self.ready_state == ReadyState.READY:
             self.update_affine()
             self._clear_status_messages()
 
-    def setup_viewer(self):
+    def setup_viewer_after_user_ready(self):
         self.setup_second_coord_space()
         self._set_status_message(
             "help",
             "Place markers in pairs, starting with the fixed, and then the moving. The registered layer will automatically update as you add markers. Press 't' to toggle visiblity of the registered layer.",
         )
-        self.co_ords_ready = True
+        self.ready_state = ReadyState.COORDS_READY
 
-    def setup_two_panel_layout(self, s: neuroglancer.ViewerState):
-        all_layer_names = [layer.name for layer in s.layers]
-        if len(all_layer_names) >= 2:
-            half_point = len(all_layer_names) // 2
-            group1_names = all_layer_names[:half_point]
-            group2_names = all_layer_names[half_point:]
-        else:
-            group1_names = all_layer_names
-            group2_names = all_layer_names
-        s.layout = neuroglancer.row_layout(
-            [
-                neuroglancer.LayerGroupViewer(layers=group1_names, layout="xy-3d"),
-                neuroglancer.LayerGroupViewer(layers=group2_names, layout="xy-3d"),
-            ]
-        )
-        # Unlinked position solves rendering problem but makes navigation awkward
-        if not self.two_coord_spaces
-            s.layout.children[1].position.link = "unlinked"
-        s.layout.children[1].crossSectionOrientation.link = "unlinked"
-        s.layout.children[1].projectionOrientation.link = "unlinked"
+    def setup_initial_two_panel_layout(self):
+        with self.viewer.txn() as s:
+            all_layer_names = [layer.name for layer in s.layers]
+            if len(all_layer_names) >= 2:
+                half_point = len(all_layer_names) // 2
+                group1_names = all_layer_names[:half_point]
+                group2_names = all_layer_names[half_point:]
+            else:
+                group1_names = all_layer_names
+                group2_names = all_layer_names
+            s.layout = neuroglancer.row_layout(
+                [
+                    neuroglancer.LayerGroupViewer(layers=group1_names, layout="xy-3d"),
+                    neuroglancer.LayerGroupViewer(layers=group2_names, layout="xy-3d"),
+                ]
+            )
+            if not self.two_coord_spaces
+                s.layout.children[1].position.link = "unlinked"
+            s.layout.children[1].crossSectionOrientation.link = "unlinked"
+            s.layout.children[1].projectionOrientation.link = "unlinked"
 
-        # Can also unlink scales if desired
-        # s.layout.children[1].crossSectionScale.link = "unlinked"
-        # s.layout.children[1].projectionScale.link = "unlinked"
+            # Can also unlink scales if desired
+            # s.layout.children[1].crossSectionScale.link = "unlinked"
+            # s.layout.children[1].projectionScale.link = "unlinked"
 
     def setup_second_coord_space(self):
         if not self.moving_layer_names:
@@ -350,55 +350,56 @@ class LinearRegistrationWorkflow:
                 full_matrix[i, -1] = affine[moving_i, -1]
         return full_matrix
 
-    def setup_registration_layers(self, s: neuroglancer.ViewerState):
-        dimensions = s.dimensions
-        if len(dimensions.names) != self.num_dims # loading:
-            return
+    def setup_registration_layers(self):
+        with self.viewer.txn() as s:
+            dimensions = s.dimensions
+            if len(dimensions.names) != self.num_dims # loading:
+                return
 
-        # Make the annotation layer if needed
-        if s.layers.index(self.annotations_name) == -1:
-            if self.two_coord_spaces:
-                s.layers[self.annotations_name] = neuroglancer.LocalAnnotationLayer(
-                    dimensions=create_dimensions(s.dimensions)
-                )
-            else:
-                s.layers[self.annotations_name] = neuroglancer.LocalAnnotationLayer(
-                    dimensions=create_dimensions(s.dimensions),
-                    annotation_properties=[
-                        neuroglancer.AnnotationPropertySpec(
-                            id="label",
-                            type="uint32",
-                            default=0,
-                        ),
-                        neuroglancer.AnnotationPropertySpec(
-                            id="group",
-                            type="uint8",
-                            default=0,
-                            enum_labels=["fixed", "moving"],
-                            enum_values=[0, 1],
-                        ),
-                    ],
-                    shader=MARKERS_SHADER,
-                )
+            # Make the annotation layer if needed
+            if s.layers.index(self.annotations_name) == -1:
+                if self.two_coord_spaces:
+                    s.layers[self.annotations_name] = neuroglancer.LocalAnnotationLayer(
+                        dimensions=create_coord_space_matching_global_dims(s.dimensions)
+                    )
+                else:
+                    s.layers[self.annotations_name] = neuroglancer.LocalAnnotationLayer(
+                        dimensions=create_coord_space_matching_global_dims(s.dimensions),
+                        annotation_properties=[
+                            neuroglancer.AnnotationPropertySpec(
+                                id="label",
+                                type="uint32",
+                                default=0,
+                            ),
+                            neuroglancer.AnnotationPropertySpec(
+                                id="group",
+                                type="uint8",
+                                default=0,
+                                enum_labels=["fixed", "moving"],
+                                enum_values=[0, 1],
+                            ),
+                        ],
+                        shader=MARKERS_SHADER,
+                    )
 
-        # Make a copy of all the moving layers but in original coord space
-        # and as part of the left hand panel
-        for layer_name in self.moving_layer_names:
-            copy = deepcopy(s.layers[layer_name])
-            copy.name = layer_name + "_registered"
-            copy.visible = False
-            for source in copy.source:
-                # TODO might need mapping
-                source.transform = None
-            s.layers[copy.name] = copy
-            s.layout.children[0].layers.append(copy.name)
-        s.layers[self.annotations_name].tool = "annotatePoint"
-        s.selected_layer.layer = self.annotations_name
-        s.selected_layer.visible = True
-        s.layout.children[0].layers.append(self.annotations_name)
-        s.layout.children[1].layers.append(self.annotations_name)
-        self.setup_panel_coordinates(s)
-        self.ready = True
+            # Make a copy of all the moving layers but in original coord space
+            # and as part of the left hand panel
+            for layer_name in self.moving_layer_names:
+                copy = deepcopy(s.layers[layer_name])
+                copy.name = layer_name + "_registered"
+                copy.visible = False
+                for source in copy.source:
+                    # TODO might need mapping
+                    source.transform = None
+                s.layers[copy.name] = copy
+                s.layout.children[0].layers.append(copy.name)
+            s.layers[self.annotations_name].tool = "annotatePoint"
+            s.selected_layer.layer = self.annotations_name
+            s.selected_layer.visible = True
+            s.layout.children[0].layers.append(self.annotations_name)
+            s.layout.children[1].layers.append(self.annotations_name)
+            self.setup_panel_coordinates(s)
+            self.ready_state = ReadyState.READY
 
     def setup_panel_coordinates(self, s: neuroglancer.ViewerState):
         dimensions = s.dimensions.names
@@ -410,8 +411,8 @@ class LinearRegistrationWorkflow:
     def save_coord_space_info(self, info_future):
         result = info_future.result()
         self.moving_name = self.moving_layer_names[self._moving_idx]
-        self.stored_moving_dims[self.moving_name] = result.dimensions
-        done = len(self.stored_moving_dims) == len(self.moving_layer_names)
+        self.stored_map_moving_name_to_coords[self.moving_name] = result.dimensions
+        done = len(self.stored_map_moving_name_to_coords) == len(self.moving_layer_names)
         if not done:
             self._moving_idx += 1
             self.setup_second_coord_space()
@@ -419,8 +420,8 @@ class LinearRegistrationWorkflow:
         # If we get here we have all the coord spaces ready and can update viewer
         with self.viewer.txn() as s:
             for layer_name in self.moving_layer_names:
-                input_dims = self.stored_moving_dims[layer_name]
-                output_dims = change_coord_names(input_dims, "2")
+                input_dims = self.stored_map_moving_name_to_coords[layer_name]
+                output_dims = new_coord_space_names(input_dims, "2")
                 self.input_dim_names = input_dims.names
                 self.output_dim_names = output_dims.names
                 self.num_dims = len(input_dims.names) * 2
@@ -432,8 +433,10 @@ class LinearRegistrationWorkflow:
                     source.transform = new_coord_space
 
     def toggle_registered_visibility(self, _):
-        if not self.ready:
-            self.setup_viewer()
+        if self.ready_state == ReadyState.NOT_READY:
+            self.setup_viewer_after_user_ready()
+            return
+        elif self.ready_state == ReadyState.COORDS_READY:
             return
         with self.viewer.txn() as s:
             for layer_name in self.moving_layer_names:
@@ -453,21 +456,10 @@ class LinearRegistrationWorkflow:
     def on_state_changed(self):
         self.viewer.defer_callback(self.update)
 
-    @debounce(0.25)
-    def automatically_group_markers_and_update(self):
-        with self.viewer.txn() as s:
-            self.automatically_group_markers(s)
-
     @debounce(1.5)
     def update_affine(self):
         with self.viewer.txn() as s:
             self.estimate_affine(s)
-
-    def create_registered_image(self):
-        with self.viewer.txn() as s:
-            layer = deepcopy(s.layers[self.moving_name])
-            layer.name = "registered"
-            return layer
 
     def split_points_into_pairs(self, annotations, dim_names):
         if len(annotations) == 0:
@@ -501,31 +493,17 @@ class LinearRegistrationWorkflow:
 
             return np.array(fixed_points), np.array(moving_points)
 
-    def automatically_group_markers(self, s: neuroglancer.ViewerState):
-        dimensions = s.dimensions.names
-        if self.two_coord_spaces:
-            return False
-        annotations = s.layers[self.annotations_name].annotations
-        if len(annotations) == self.stored_group_number:
-            return False
-        self.stored_group_number = len(annotations)
-        if len(annotations) < 2:
-            return False
-        for i, a in enumerate(s.layers[self.annotations_name].annotations):
-            a.props = [i // 2, i % 2]
-        return True
-
     def update_registered_layers(self, s: neuroglancer.ViewerState):
         if self.affine is not None:
             transform = self.affine.tolist()
             # TODO handle layer being renamed
-            for k, v in self.stored_moving_dims.items():
+            for k, v in self.stored_map_moving_name_to_coords.items():
                 # TODO not sure if need to handle local channels here
                 # keeping code below just in case
                 for source in s.layers[k].source:
                     source.transform = neuroglancer.CoordinateSpaceTransform(
                         input_dimensions=v,
-                        output_dimensions=change_coord_names(v, "2"),
+                        output_dimensions=new_coord_space_names(v, "2"),
                         matrix=transform,
                     )
                 for source in s.layers[k + "_registered"].source:
@@ -538,8 +516,8 @@ class LinearRegistrationWorkflow:
             s.layers[self.annotations_name].source[
                 0
             ].transform = neuroglancer.CoordinateSpaceTransform(
-                input_dimensions=create_dimensions(s.dimensions),
-                output_dimensions=create_dimensions(s.dimensions),
+                input_dimensions=create_coord_space_matching_global_dims(s.dimensions),
+                output_dimensions=create_coord_space_matching_global_dims(s.dimensions),
                 matrix=self.combine_affine_across_dims(s, self.affine).tolist(),
             )
 
