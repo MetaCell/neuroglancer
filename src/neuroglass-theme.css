@@ -2797,6 +2797,11 @@ input[type="checkbox"]:checked {
     display: flex;
     flex-direction: column;
 
+    .neuroglancer-multiline-autocomplete-hint {
+      font-family: var(--monospaced-font);
+      font-size: 0.875rem;
+    }
+
     li.neuroglancer-message-error {
       font-size: 0.75rem;
       color: var(--error100);
