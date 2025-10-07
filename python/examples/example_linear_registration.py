@@ -2,8 +2,8 @@ import argparse
 import threading
 import webbrowser
 from copy import deepcopy
-from time import ctime, time
 from enum import Enum
+from time import ctime, time
 
 import neuroglancer
 import neuroglancer.cli
@@ -222,6 +222,7 @@ def new_coord_space_names(dims: neuroglancer.CoordinateSpace, name_suffix):
         if n.endswith(("'", "^", "#")):
             return n
         return n + name_suffix
+
     return neuroglancer.CoordinateSpace(
         names=[change_name(n) for n in dims.names],
         units=dims.units,
@@ -229,7 +230,9 @@ def new_coord_space_names(dims: neuroglancer.CoordinateSpace, name_suffix):
     )
 
 
-def create_coord_space_matching_global_dims(viewer_dims: neuroglancer.CoordinateSpace, indices=None):
+def create_coord_space_matching_global_dims(
+    viewer_dims: neuroglancer.CoordinateSpace, indices=None
+):
     names = viewer_dims.names
     units = viewer_dims.units
     scales = viewer_dims.scales
@@ -240,16 +243,17 @@ def create_coord_space_matching_global_dims(viewer_dims: neuroglancer.Coordinate
 
     return neuroglancer.CoordinateSpace(names=names, units=units, scales=scales)
 
+
 class ReadyState(Enum):
     NOT_READY = 0
     COORDS_READY = 1
     READY = 2
     ERROR = 3
 
+
 class LinearRegistrationWorkflow:
     def __init__(self, args):
         starting_state = args.state
-        self.two_coord_spaces = not args.single_coord_space
         self.annotations_name = args.annotations_name
         self.status_timers = {}
         self.stored_points = [[], []]
@@ -293,30 +297,11 @@ class LinearRegistrationWorkflow:
             # TODO put in right place
             self._set_status_message(
                 "help",
-                "Please manually enter second coordinate space information for the moving layers."
+                "Please manually enter second coordinate space information for the moving layers.",
             )
         elif self.ready_state == ReadyState.READY:
-            if not self.two_coord_spaces:
-                self.update_based_on_annotations_debounced()
             self.update_affine()
             self._clear_status_messages()
-
-    @debounce(0.25)
-    def update_based_on_annotations_debounced(self):
-        with self.viewer.txn() as s:
-            self.update_based_on_annotations(s)
-
-    def update_based_on_annotations(self, s: neuroglancer.ViewerState):
-        annotations = s.layers[self.annotations_name].annotations
-        if len(annotations) > 2 and self.stored_last_grouped_points_num != len(annotations):
-            # TODO check the annotations for being modified
-            for i, a in enumerate(s.layers[self.annotations_name].annotations):
-                a.props = [i // 2, i % 2]
-        # Check if we are at one of the annotations in the left hand panel
-        # or right hand panel, if so we can move to that in the other panel
-        right_hand_position = s.layout.children[1].position.value
-        left_hand_position = s.position
-
 
     def setup_viewer_after_user_ready(self):
         if not self.moving_layer_names:
@@ -324,10 +309,7 @@ class LinearRegistrationWorkflow:
             self.moving_layer_names = moving_layers
             print(self.moving_layer_names)
             self._moving_idx = 0
-        if self.two_coord_spaces:
-            self.setup_second_coord_space()
-        else:
-            self.setup_registration_layers()
+        self.setup_second_coord_space()
         self._set_status_message(
             "help",
             "Place markers in pairs, starting with the fixed, and then the moving. The registered layer will automatically update as you add markers. Press 't' to toggle visiblity of the registered layer.",
@@ -349,8 +331,6 @@ class LinearRegistrationWorkflow:
                     neuroglancer.LayerGroupViewer(layers=group2_names, layout="xy-3d"),
                 ]
             )
-            if not self.two_coord_spaces:
-                s.layout.children[1].position.link = "unlinked"
             s.layout.children[1].crossSectionOrientation.link = "unlinked"
             s.layout.children[1].projectionOrientation.link = "unlinked"
 
@@ -389,34 +369,16 @@ class LinearRegistrationWorkflow:
     def setup_registration_layers(self):
         with self.viewer.txn() as s:
             dimensions = s.dimensions
-            if not self.ready_state == ReadyState.ERROR or (self.two_coord_spaces and (len(dimensions.names) != self.num_dims)): # loading
+            if not self.ready_state == ReadyState.ERROR or (
+                len(dimensions.names) != self.num_dims
+            ):
                 return
 
             # Make the annotation layer if needed
             if s.layers.index(self.annotations_name) == -1:
-                if self.two_coord_spaces:
-                    s.layers[self.annotations_name] = neuroglancer.LocalAnnotationLayer(
-                        dimensions=create_coord_space_matching_global_dims(s.dimensions)
-                    )
-                else:
-                    s.layers[self.annotations_name] = neuroglancer.LocalAnnotationLayer(
-                        dimensions=create_coord_space_matching_global_dims(s.dimensions),
-                        annotation_properties=[
-                            neuroglancer.AnnotationPropertySpec(
-                                id="label",
-                                type="uint32",
-                                default=0,
-                            ),
-                            neuroglancer.AnnotationPropertySpec(
-                                id="group",
-                                type="uint8",
-                                default=0,
-                                enum_labels=["fixed", "moving"],
-                                enum_values=[0, 1],
-                            ),
-                        ],
-                        shader=MARKERS_SHADER,
-                    )
+                s.layers[self.annotations_name] = neuroglancer.LocalAnnotationLayer(
+                    dimensions=create_coord_space_matching_global_dims(s.dimensions)
+                )
 
             # Make a copy of all the moving layers but in original coord space
             # and as part of the left hand panel
@@ -424,10 +386,9 @@ class LinearRegistrationWorkflow:
                 copy = deepcopy(s.layers[layer_name])
                 copy.name = layer_name + "_registered"
                 copy.visible = False
-                if self.two_coord_spaces:
-                    for source in copy.source:
-                        # TODO might need mapping
-                        source.transform = None
+                for source in copy.source:
+                    # TODO might need mapping, probably better is to copy before making the second coord space
+                    source.transform = None
                 s.layers[copy.name] = copy
                 s.layout.children[0].layers.append(copy.name)
             s.layers[self.annotations_name].tool = "annotatePoint"
@@ -450,8 +411,12 @@ class LinearRegistrationWorkflow:
         try:
             result = info_future.result()
         except Exception as e:
-            print(f"ERROR: Could not parse volume info for {self.moving_name}: {e} {info_future}")
-            print("Please manually enter the coordinate space information as a second co-ordinate space.")
+            print(
+                f"ERROR: Could not parse volume info for {self.moving_name}: {e} {info_future}"
+            )
+            print(
+                "Please manually enter the coordinate space information as a second co-ordinate space."
+            )
             self.ready_state = ReadyState.ERROR
             self._moving_idx += 1
             if self._moving_idx < len(self.moving_layer_names):
@@ -460,7 +425,9 @@ class LinearRegistrationWorkflow:
             # TODO not sure how to recover from this, maybe ask user to manually
             # input the coord space info?
         # TODO clean up
-        done = len(self.stored_map_moving_name_to_data_coords) == len(self.moving_layer_names)
+        done = len(self.stored_map_moving_name_to_data_coords) == len(
+            self.moving_layer_names
+        )
         if not done:
             self._moving_idx += 1
             self.setup_second_coord_space()
@@ -477,14 +444,28 @@ class LinearRegistrationWorkflow:
                     if source.transform is None:
                         output_dims = new_coord_space_names(input_dims, "2")
                     else:
-                        output_dims = new_coord_space_names(source.transform.output_dimensions, "2")
+                        output_dims = new_coord_space_names(
+                            source.transform.output_dimensions, "2"
+                        )
                     self.output_dim_names = output_dims.names
                     new_coord_space = neuroglancer.CoordinateSpaceTransform(
                         input_dimensions=input_dims,
                         output_dimensions=output_dims,
                     )
-                    self.num_dims = max(self.num_dims, 2 * len([n for n in new_coord_space.output_dimensions.names if not n.endswith(("'", "^", "#"))]))
-                    self.stored_map_moving_name_to_viewer_coords[layer_name].append(new_coord_space)
+                    self.num_dims = max(
+                        self.num_dims,
+                        2
+                        * len(
+                            [
+                                n
+                                for n in new_coord_space.output_dimensions.names
+                                if not n.endswith(("'", "^", "#"))
+                            ]
+                        ),
+                    )
+                    self.stored_map_moving_name_to_viewer_coords[layer_name].append(
+                        new_coord_space
+                    )
                     source.transform = new_coord_space
         if not self.ready_state == ReadyState.ERROR:
             self.ready_state = ReadyState.COORDS_READY
@@ -523,34 +504,20 @@ class LinearRegistrationWorkflow:
     def split_points_into_pairs(self, annotations, dim_names):
         if len(annotations) == 0:
             return np.zeros((0, 0)), np.zeros((0, 0))
-        if self.two_coord_spaces:
-            first_name = dim_names[0]
-            real_dims_last = first_name not in self.input_dim_names
-            num_points = len(annotations)
-            num_dims = len(annotations[0].point) // 2
-            fixed_points = np.zeros((num_points, num_dims))
-            moving_points = np.zeros((num_points, num_dims))
-            for i, a in enumerate(annotations):
-                for j in range(num_dims):
-                    fixed_index = j + num_dims if real_dims_last else j
-                    moving_index = j if real_dims_last else j + num_dims
-                    fixed_points[i, j] = a.point[fixed_index]
-                    moving_points[i, j] = a.point[moving_index]
-            return np.array(fixed_points), np.array(moving_points)
-        else:
-            num_points = len(annotations) // 2
-            annotations = annotations[: num_points * 2]
-            num_dims = len(annotations[0].point)
-            fixed_points = np.zeros((num_points, num_dims))
-            moving_points = np.zeros((num_points, num_dims))
-            for i, a in enumerate(annotations):
-                props = a.props
-                if props[1] == 0:
-                    fixed_points[props[0]] = a.point
-                else:
-                    moving_points[props[0]] = a.point
-
-            return np.array(fixed_points), np.array(moving_points)
+        first_name = dim_names[0]
+        # TODO can this be avoided?
+        real_dims_last = first_name not in self.input_dim_names
+        num_points = len(annotations)
+        num_dims = len(annotations[0].point) // 2
+        fixed_points = np.zeros((num_points, num_dims))
+        moving_points = np.zeros((num_points, num_dims))
+        for i, a in enumerate(annotations):
+            for j in range(num_dims):
+                fixed_index = j + num_dims if real_dims_last else j
+                moving_index = j if real_dims_last else j + num_dims
+                fixed_points[i, j] = a.point[fixed_index]
+                moving_points[i, j] = a.point[moving_index]
+        return np.array(fixed_points), np.array(moving_points)
 
     def update_registered_layers(self, s: neuroglancer.ViewerState):
         if self.affine is not None:
@@ -612,7 +579,7 @@ class LinearRegistrationWorkflow:
 
     def estimate_affine(self, s: neuroglancer.ViewerState):
         annotations = s.layers[self.annotations_name].annotations
-        if len(annotations) == 0 or (not self.two_coord_spaces and len(annotations) < 2):
+        if len(annotations) == 0:
             return False
 
         dim_names = s.dimensions.names
@@ -701,14 +668,6 @@ def add_mapping_args(ap: argparse.ArgumentParser):
         type=str,
         help="Name of the annotation layer (default is annotations)",
         default="annotation",
-        required=False,
-    )
-    ap.add_argument(
-        "--single-coord-space",
-        "-s",
-        action="store_true",
-        help="Use a single coordinate space for both fixed and moving layers (default is two coord spaces)",
-        default=False,
         required=False,
     )
 
