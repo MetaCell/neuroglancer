@@ -264,7 +264,6 @@ class LinearRegistrationWorkflow:
         self.output_dim_names = []
         self.affine = None
         self.co_ords_ready = False
-        self.stored_last_grouped_points_num = -1
         self.ready_state = ReadyState.NOT_READY
         self.last_updated_print_time = -1
         self.num_dims = 0
@@ -293,8 +292,7 @@ class LinearRegistrationWorkflow:
             self.last_updated_print_time = current_time
         if self.ready_state == ReadyState.COORDS_READY:
             self.setup_registration_layers()
-        if self.ready_state == ReadyState.ERROR:
-            # TODO put in right place
+        elif self.ready_state == ReadyState.ERROR:
             self._set_status_message(
                 "help",
                 "Please manually enter second coordinate space information for the moving layers.",
@@ -303,12 +301,23 @@ class LinearRegistrationWorkflow:
             self.update_affine()
             self._clear_status_messages()
 
+    def copy_moving_layers_to_left_panel(self):
+        """Make copies of the moving layers to show the registered result."""
+        with self.viewer.txn() as s:
+            for layer_name in self.moving_layer_names:
+                copy = deepcopy(s.layers[layer_name])
+                copy.name = layer_name + "_registered"
+                copy.visible = False
+                s.layers[copy.name] = copy
+                s.layout.children[0].layers.append(copy.name)
+
     def setup_viewer_after_user_ready(self):
+        """Called when the user indicates they have placed layers in the two panels."""
         if not self.moving_layer_names:
             moving_layers = self.get_state().layout.children[1].layers
             self.moving_layer_names = moving_layers
-            print(self.moving_layer_names)
             self._moving_idx = 0
+        self.copy_moving_layers_to_left_panel()
         self.setup_second_coord_space()
         self._set_status_message(
             "help",
@@ -316,6 +325,7 @@ class LinearRegistrationWorkflow:
         )
 
     def setup_initial_two_panel_layout(self):
+        """Set up a two panel layout if not already present."""
         with self.viewer.txn() as s:
             all_layer_names = [layer.name for layer in s.layers]
             if len(all_layer_names) >= 2:
@@ -339,6 +349,7 @@ class LinearRegistrationWorkflow:
             # s.layout.children[1].projectionScale.link = "unlinked"
 
     def setup_second_coord_space(self):
+        """Set up the second coordinate space for the moving layers."""
         layer_name = self.moving_layer_names[self._moving_idx]
         info_future = self.viewer.volume_info(layer_name)
         info_future.add_done_callback(lambda f: self.save_coord_space_info(f))
@@ -380,17 +391,6 @@ class LinearRegistrationWorkflow:
                     dimensions=create_coord_space_matching_global_dims(s.dimensions)
                 )
 
-            # Make a copy of all the moving layers but in original coord space
-            # and as part of the left hand panel
-            for layer_name in self.moving_layer_names:
-                copy = deepcopy(s.layers[layer_name])
-                copy.name = layer_name + "_registered"
-                copy.visible = False
-                for source in copy.source:
-                    # TODO might need mapping, probably better is to copy before making the second coord space
-                    source.transform = None
-                s.layers[copy.name] = copy
-                s.layout.children[0].layers.append(copy.name)
             s.layers[self.annotations_name].tool = "annotatePoint"
             s.selected_layer.layer = self.annotations_name
             s.selected_layer.visible = True
@@ -400,7 +400,6 @@ class LinearRegistrationWorkflow:
             self.ready_state = ReadyState.READY
 
     def setup_panel_coordinates(self, s: neuroglancer.ViewerState):
-        dimensions = s.dimensions.names
         s.layout.children[1].displayDimensions.link = "unlinked"
         s.layout.children[1].displayDimensions.value = self.output_dim_names[:3]
         s.layout.children[0].displayDimensions.link = "unlinked"
@@ -417,29 +416,30 @@ class LinearRegistrationWorkflow:
             print(
                 "Please manually enter the coordinate space information as a second co-ordinate space."
             )
-            self.ready_state = ReadyState.ERROR
-            self._moving_idx += 1
-            if self._moving_idx < len(self.moving_layer_names):
-                self.setup_second_coord_space()
-            return
-            # TODO not sure how to recover from this, maybe ask user to manually
-            # input the coord space info?
-        # TODO clean up
-        done = len(self.stored_map_moving_name_to_data_coords) == len(
-            self.moving_layer_names
-        )
-        if not done:
-            self._moving_idx += 1
+        else:
+            self.stored_map_moving_name_to_data_coords[self.moving_name] = (
+                result.dimensions
+            )
+
+        self._moving_idx += 1
+        if self._moving_idx < len(self.moving_layer_names):
             self.setup_second_coord_space()
             return
-        self.stored_map_moving_name_to_data_coords[self.moving_name] = result.dimensions
+
         # If we get here we have all the coord spaces ready and can update viewer
+        self.ready_state = ReadyState.COORDS_READY
         with self.viewer.txn() as s:
             for layer_name in self.moving_layer_names:
-                input_dims = self.stored_map_moving_name_to_data_coords[layer_name]
-                print(layer_name, input_dims)
+                input_dims = self.stored_map_moving_name_to_data_coords.get(
+                    layer_name, None
+                )
+                if input_dims is None:
+                    self.ready_state = ReadyState.ERROR
+                    continue
                 self.input_dim_names = input_dims.names
                 self.stored_map_moving_name_to_viewer_coords[layer_name] = []
+                # TODO this logic I think needs to be improved because volume info
+                # is actually the mapped dims not the input dims
                 for source in s.layers[layer_name].source:
                     if source.transform is None:
                         output_dims = new_coord_space_names(input_dims, "2")
@@ -467,10 +467,9 @@ class LinearRegistrationWorkflow:
                         new_coord_space
                     )
                     source.transform = new_coord_space
-        if not self.ready_state == ReadyState.ERROR:
-            self.ready_state = ReadyState.COORDS_READY
+        return self.ready_state
 
-    def toggle_registered_visibility(self, _):
+    def continue_workflow(self, _):
         if self.ready_state == ReadyState.NOT_READY:
             self.setup_viewer_after_user_ready()
             return
@@ -486,12 +485,11 @@ class LinearRegistrationWorkflow:
 
     def setup_viewer_actions(self):
         viewer = self.viewer
-        viewer.actions.add(
-            "toggleRegisteredVisibility", self.toggle_registered_visibility
-        )
+        name = "continueLinearRegistrationWorkflow"
+        viewer.actions.add(name, self.continue_workflow)
 
         with viewer.config_state.txn() as s:
-            s.input_event_bindings.viewer["keyt"] = "toggleRegisteredVisibility"
+            s.input_event_bindings.viewer["keyt"] = name
 
     def on_state_changed(self):
         self.viewer.defer_callback(self.update)
@@ -501,12 +499,31 @@ class LinearRegistrationWorkflow:
         with self.viewer.txn() as s:
             self.estimate_affine(s)
 
+    def get_moving_and_fixed_dims(
+        self, s: neuroglancer.ViewerState | None, dim_names=()
+    ):
+        if s is None:
+            dimensions = dim_names
+        else:
+            dimensions = s.dimensions.names
+        # The moving dims are the same as the input dims, but end with an extra number
+        # to indicate the second coord space
+        # e.g. x -> x2, y -> y2, z -> z2
+        moving_dims = []
+        fixed_dims = []
+        for dim in dimensions:
+            if dim[:-1] in dimensions:
+                moving_dims.append(dim)
+            else:
+                fixed_dims.append(dim)
+        return fixed_dims, moving_dims
+
     def split_points_into_pairs(self, annotations, dim_names):
         if len(annotations) == 0:
             return np.zeros((0, 0)), np.zeros((0, 0))
         first_name = dim_names[0]
-        # TODO can this be avoided?
-        real_dims_last = first_name not in self.input_dim_names
+        fixed_dims, _ = self.get_moving_and_fixed_dims(dim_names)
+        real_dims_last = first_name not in fixed_dims
         num_points = len(annotations)
         num_dims = len(annotations[0].point) // 2
         fixed_points = np.zeros((num_points, num_dims))
@@ -538,7 +555,6 @@ class LinearRegistrationWorkflow:
                         output_dimensions=v,
                         matrix=transform,
                     )
-            print(self.combine_affine_across_dims(s, self.affine).tolist())
             s.layers[self.annotations_name].source[
                 0
             ].transform = neuroglancer.CoordinateSpaceTransform(
@@ -611,10 +627,10 @@ class LinearRegistrationWorkflow:
             fixed_points, moving_points = self.split_points_into_pairs(
                 annotations, dim_names
             )
-            transformed_points = self.transform_points_with_affine(moving_points)
             info["fixedPoints"] = fixed_points.tolist()
             info["movingPoints"] = moving_points.tolist()
-            if self.affine is not None and transformed_points is not None:
+            if self.affine is not None:
+                transformed_points = transform_points(self.affine, moving_points)
                 info["transformedPoints"] = transformed_points.tolist()
                 info["affineTransform"] = self.affine.tolist()
         return info
