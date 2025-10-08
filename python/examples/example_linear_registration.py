@@ -257,12 +257,14 @@ class LinearRegistrationWorkflow:
     def __init__(self, args):
         starting_state = args.state
         self.annotations_name = args.annotations_name
+        self.ready_state = (
+            ReadyState.READY if args.continue_workflow else ReadyState.NOT_READY
+        )
 
         self.stored_points = ([], [])
         self.stored_map_moving_name_to_data_coords = {}
         self.stored_map_moving_name_to_viewer_coords = {}
         self.affine = None
-        self.ready_state = ReadyState.NOT_READY
         self.viewer = neuroglancer.Viewer()
         self.viewer.shared_state.add_changed_callback(
             lambda: self.viewer.defer_callback(self.on_state_changed)
@@ -278,12 +280,13 @@ class LinearRegistrationWorkflow:
         else:
             self.viewer.set_state(starting_state)
 
-        self._set_status_message(
-            "help",
-            "Place fixed (reference) layers in the left hand panel, and moving layers (to be registered) in the right hand panel. Then press 't' once you have completed this setup.",
-        )
-        self.setup_initial_two_panel_layout()
         self.setup_viewer_actions()
+        if self.ready_state != ReadyState.READY:
+            self._set_status_message(
+                "help",
+                "Place fixed (reference) layers in the left hand panel, and moving layers (to be registered) in the right hand panel. Then press 't' once you have completed this setup.",
+            )
+            self.setup_initial_two_panel_layout()
 
     def update(self):
         """Primary update loop, called whenever the viewer state changes."""
@@ -300,7 +303,12 @@ class LinearRegistrationWorkflow:
             )
         elif self.ready_state == ReadyState.READY:
             self.update_affine()
-            self._clear_status_messages()
+            # TODO consider allowing to dump to disk
+            self._set_status_message(
+                "help",
+                "Place points to inform registration by first placing the crosshair in the left/right panel to the correct place for the fixed/moving data, and then placing an actual annotation with ctrl+right click in the other panel. You can move the annotations afterwards if needed. Press 't' to toggle visibility of the registered layer.",
+            )
+            # self._clear_status_messages()
 
     def get_moving_layer_names(self, s: neuroglancer.ViewerState):
         right_panel_layers = [
@@ -625,6 +633,7 @@ class LinearRegistrationWorkflow:
 
     def get_registration_info(self):
         info = {}
+        # TODO consider also dumping the full viewer state
         with self.viewer.txn() as s:
             annotations = s.layers[self.annotations_name].annotations
             dim_names = s.dimensions.names
@@ -690,6 +699,12 @@ def add_mapping_args(ap: argparse.ArgumentParser):
         help="Name of the annotation layer (default is annotations)",
         default="annotation",
         required=False,
+    )
+    ap.add_argument(
+        "--continue-workflow",
+        "-c",
+        action="store_true",
+        help="Indicates that we are continuing the workflow from a previously saved state. This will skip the inital setup steps and resume from the affine estimation step directly.",
     )
 
 
