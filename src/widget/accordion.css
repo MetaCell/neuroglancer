@@ -34,11 +34,12 @@
   padding: 8px 2px;
   cursor: pointer;
   justify-content: space-between;
+  align-items: center;
   display: flex;
 }
 
 .neuroglancer-accordion-body {
-  padding: 2px;
+  padding: 8px;
   overflow-x: auto;
   overflow-y: auto;
 }
