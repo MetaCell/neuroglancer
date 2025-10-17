@@ -3015,7 +3015,7 @@ input[type="checkbox"]:checked {
     }
 
     .neuroglancer-position-dimension-dropdown .neuroglancer-tool-button {
-      padding: 0.5rem 0.75rem;
+      padding: 0.5rem;
       margin-top: 0.25rem;
       margin-bottom: 0.25rem !important;
     }
@@ -3032,7 +3032,7 @@ input[type="checkbox"]:checked {
     }
 
     .neuroglancer-position-dimension-playback {
-      padding: 0px 12px 12px 12px;
+      padding: 12px 8px;
       margin-bottom: 4px;
 
       select {
@@ -3060,6 +3060,10 @@ input[type="checkbox"]:checked {
       gap: 0.5rem;
     }
 
+    .neuroglancer-position-dimension-playback .neuroglancer-number-input .neuroglancer-icon {
+      margin: 0;
+    }
+
     .neuroglancer-position-dimension-playback .neuroglancer-number-input span {
       font-size: 0.875rem;
       font-family: Graphik;
@@ -3071,9 +3075,11 @@ input[type="checkbox"]:checked {
       font-family: Graphik;
       font-size: 12px;
 
-      padding: 8px 16px 8px 8px;
+      padding: 8px;
       border: 1px solid var(--dark80);
       background-color: var(--background80);
+
+      min-width: 4.5ch;
     }
 
     .neuroglancer-position-dimension-playback select {
@@ -3115,7 +3121,7 @@ input[type="checkbox"]:checked {
     }
 
     .neuroglancer-position-dimension-playback-checkbox {
-      padding: 0.25rem;
+      padding: 0;
       margin-right: 0.25rem;
     }
 
