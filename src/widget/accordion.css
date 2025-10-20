@@ -22,7 +22,7 @@
 .neuroglancer-accordion-chevron svg {
   width: 20px;
   height: 20px;
-  fill: rgb(255, 255, 255); /* Chevron color */
+  fill: rgba(255, 255, 255, 0.80); /* Chevron color */
 }
 
 .neuroglancer-accordion-item[data-expanded="false"]
@@ -38,8 +38,13 @@
   display: flex;
 }
 
+.neuroglancer-accordion-header-text {
+  color: rgba(255, 255, 255, 0.80);
+}
+
 .neuroglancer-accordion-body {
-  padding: 8px;
+  padding: 8px 2px;
   overflow-x: auto;
   overflow-y: auto;
+  padding-top: 0;
 }
