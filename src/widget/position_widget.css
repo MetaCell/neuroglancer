@@ -113,7 +113,6 @@ interferes with our click handling.  Setting `pointer-events: none;` avoids that
 }
 
 .neuroglancer-dimension-dropdown-coordinate-label {
-  width: var(--neuroglancer-coordinate-label-width);
   color: #0ff;
 }
 
