@@ -469,10 +469,8 @@ export class PositionWidget extends RefCounted {
       labelElement: HTMLDivElement;
     }[] = [];
     const length = coordinates.length;
-    dropdown.style.setProperty(
-      "--neuroglancer-coordinate-label-width",
-      `${widget.coordinateLabelWidth}ch`,
-    );
+    const width = widget.coordinateLabelWidth > 0 ? `${widget.coordinateLabelWidth}ch` : "";
+    dropdown.style.setProperty("--neuroglancer-coordinate-label-width", width);
     for (let i = 0; i < length; ++i) {
       const entryElement = document.createElement("div");
       entryElement.classList.add(
