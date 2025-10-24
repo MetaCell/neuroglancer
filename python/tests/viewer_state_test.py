@@ -43,24 +43,24 @@ def test_coordinate_space_from_json():
     assert x["z"] == viewer_state.DimensionScale(6e-9, "m")
     assert x[3] == viewer_state.DimensionScale(2, "s")
     assert x["t"] == viewer_state.DimensionScale(2, "s")
-    assert x.to_json() == {
-        "x": [4e-9, "m"],
-        "y": [5e-9, "m"],
-        "z": [6e-9, "m"],
-        "t": [2, "s"],
-    }
+    assert x.to_json() == [
+        {"name": "x", "scale": [4e-9, "m"]},
+        {"name": "y", "scale": [5e-9, "m"]},
+        {"name": "z", "scale": [6e-9, "m"]},
+        {"name": "t", "scale": [2, "s"]},
+    ]
 
 
 def test_coordinate_space_from_split():
     x = viewer_state.CoordinateSpace(
         names=["x", "y", "z", "t"], scales=[4, 5, 6, 2], units=["nm", "nm", "nm", "s"]
     )
-    assert x.to_json() == {
-        "x": [4e-9, "m"],
-        "y": [5e-9, "m"],
-        "z": [6e-9, "m"],
-        "t": [2, "s"],
-    }
+    assert x.to_json() == [
+        {"name": "x", "scale": [4e-9, "m"]},
+        {"name": "y", "scale": [5e-9, "m"]},
+        {"name": "z", "scale": [6e-9, "m"]},
+        {"name": "t", "scale": [2, "s"]},
+    ]
 
 
 def test_layers():
@@ -116,3 +116,69 @@ def test_tool():
 
 def test_annotation():
     viewer_state.PointAnnotation(point=[1])
+
+
+def test_converts_output_dimensions_to_array_format():
+    """Test that outputDimensions are converted from object to array format to preserve ordering."""
+    # Create a state with outputDimensions in object format (as received from client)
+    state_with_object_dimensions = {
+        "layers": [
+            {
+                "name": "1416936002",
+                "type": "image",
+                "source": [
+                    {
+                        "url": "s3://my.zarr",
+                        "transform": {
+                            "outputDimensions": {
+                                "c^": {"labels": ["Channel:0", "Channel:1", "Channel:2"], "coordinates": [0, 1, 2]},
+                                "z": [0.0001, "m"],
+                                "y": [3.5e-07, "m"],
+                                "x": [3.5e-07, "m"],
+                            }
+                        }}]}
+        ],
+        "layout": "xy",
+        "dimensions": {
+            "x": [
+                3.5e-7,
+                "m"
+            ],
+            "y": [
+                3.5e-7,
+                "m"
+            ],
+            "z": [
+                0.0001,
+                "m"
+            ]
+        }
+    }
+
+    # Create ViewerState with outputDimensions in object format
+    viewer_state_obj = viewer_state.ViewerState(state_with_object_dimensions)
+    converted_state = viewer_state_obj.to_json()
+
+    # Verify root-level dimensions are converted to array format
+    assert isinstance(converted_state["dimensions"], list)
+    assert len(converted_state["dimensions"]) == 3
+
+    # Verify dimension ordering is preserved
+    dim_names = [dim["name"] for dim in converted_state["dimensions"]]
+    assert dim_names == ["x", "y", "z"]
+
+    # Verify layer outputDimensions are also converted
+    layer = converted_state["layers"][0]
+    assert isinstance(layer["source"][0]["transform"]["outputDimensions"], list)
+    assert len(layer["source"][0]["transform"]["outputDimensions"]) == 4
+
+    # Find the coordinate array dimension
+    channel_dim = next((d for d in layer["source"][0]["transform"]["outputDimensions"] if d["name"] == "c^"), None)
+    assert channel_dim is not None
+    assert "coordinates" in channel_dim
+    assert "labels" in channel_dim
+    assert channel_dim["coordinates"] == [0, 1, 2]
+
+    # Verify layer dimension ordering is preserved
+    layer_dim_names = [dim["name"] for dim in layer["source"][0]["transform"]["outputDimensions"]]
+    assert layer_dim_names == ["c^", "z", "y", "x"]

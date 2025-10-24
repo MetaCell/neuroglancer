@@ -596,11 +596,11 @@ class LayerDataSources(_LayerDataSourcesBase):
     def __init__(self, json_data=None, **kwargs):
         if isinstance(
             json_data,
-            LayerDataSource
-            | str
-            | local_volume.LocalVolume
-            | skeleton.SkeletonSource
-            | dict,
+            LayerDataSource |
+            str |
+            local_volume.LocalVolume |
+            skeleton.SkeletonSource |
+            dict,
         ):
             json_data = [json_data]
         elif isinstance(json_data, LayerDataSources):
@@ -781,9 +781,9 @@ class StarredSegments(collections.abc.MutableMapping[int, bool]):
             elif isinstance(item, tuple):
                 k, v = item
                 if (
-                    not isinstance(k, numbers.Integral)
-                    or np.uint64(k) != k
-                    or not isinstance(v, bool)
+                    not isinstance(k, numbers.Integral) or
+                    np.uint64(k) != k or
+                    not isinstance(v, bool)
                 ):
                     raise TypeError(f"Invalid (uint64, bool) pair: {(k, v)!r}")
                 k = np.uint64(k)
@@ -1974,3 +1974,33 @@ class ViewerState(JsonObjectWrapper):
         c.layers = Layers.interpolate(a.layers, b.layers, t)
         c.layout = interpolate_layout(a.layout, b.layout, t)
         return c
+
+    def to_json(self):
+        d = super().to_json()
+        if "dimensions" in d and not isinstance(d["dimensions"], list):
+            # Patch to convert old viewer state JSON dimensions that was dict to array
+            d["dimensions"] = CoordinateSpace(d["dimensions"]).to_json()
+        # Patch to convert all outputDimensions and inputDimensions in layer source transform
+        for layer in d.get("layers", []):
+            for source in layer.get("source", []):
+                if not isinstance(source, dict):
+                    continue
+                transform = source.get("transform", None)
+                if not transform:
+                    continue
+                output_dims = transform.get("outputDimensions", None)
+
+                if output_dims is not None and not isinstance(output_dims, list):
+                    transform["outputDimensions"] = CoordinateSpace(
+                        output_dims
+                    ).to_json()
+                input_dims = transform.get("inputDimensions", None)
+                if input_dims is not None and not isinstance(input_dims, list):
+                    transform["inputDimensions"] = CoordinateSpace(
+                        input_dims
+                    ).to_json()
+                # Patch to convert localDimensions on the layer itself
+                local_dims = layer.get("localDimensions", None)
+                if local_dims is not None and not isinstance(local_dims, list):
+                    layer["localDimensions"] = CoordinateSpace(local_dims).to_json()
+        return d
