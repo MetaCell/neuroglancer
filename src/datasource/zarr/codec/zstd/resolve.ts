@@ -15,16 +15,28 @@
  */
 
 import { CodecKind } from "#src/datasource/zarr/codec/index.js";
+import type { BytesToBytesCodecResolver } from "#src/datasource/zarr/codec/resolve.js";
 import { registerCodec } from "#src/datasource/zarr/codec/resolve.js";
 import { verifyObject } from "#src/util/json.js";
 
 export type Configuration = object;
 
-registerCodec({
-  name: "zstd",
+const zstdResolver: Omit<BytesToBytesCodecResolver<Configuration>, 'name'> = {
   kind: CodecKind.bytesToBytes,
   resolve(configuration: unknown): { configuration: Configuration } {
     verifyObject(configuration);
     return { configuration: {} };
   },
+};
+
+// Register "zstd" (v2 and older v3)
+registerCodec({
+  name: "zstd",
+  ...zstdResolver,
+});
+
+// Register "zstandard" (v3 0.6+ spec)
+registerCodec({
+  name: "zstandard",
+  ...zstdResolver,
 });

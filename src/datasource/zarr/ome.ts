@@ -55,7 +55,7 @@ export interface OmeMetadata {
   channels: ChannelMetadata | undefined;
 }
 
-const SUPPORTED_OME_MULTISCALE_VERSIONS = new Set(["0.4", "0.5-dev", "0.5"]);
+const SUPPORTED_OME_MULTISCALE_VERSIONS = new Set(["0.4", "0.5-dev", "0.5", "0.6.dev1", "0.6-dev2"]);
 
 const OME_UNITS = new Map<string, { unit: string; scale: number }>([
   ["angstrom", { unit: "m", scale: 1e-10 }],
@@ -86,6 +86,8 @@ interface Axis {
   unit: string;
   scale: number;
   type: string | undefined;
+  discrete?: boolean;
+  longName?: string;
 }
 
 function parseOmeroChannel(omeroChannel: unknown): SingleChannelMetadata {
@@ -161,6 +163,8 @@ function parseOmeAxis(axis: unknown): Axis {
   verifyObject(axis);
   const name = verifyObjectProperty(axis, "name", verifyString);
   const type = verifyOptionalObjectProperty(axis, "type", verifyString);
+  const discrete = verifyOptionalObjectProperty(axis, "discrete", verifyBoolean);
+  const longName = verifyOptionalObjectProperty(axis, "longName", verifyString);
   const parsedUnit = verifyOptionalObjectProperty(
     axis,
     "unit",
@@ -173,7 +177,7 @@ function parseOmeAxis(axis: unknown): Axis {
     },
     { unit: "", scale: 1 },
   );
-  return { name, unit: parsedUnit.unit, scale: parsedUnit.scale, type };
+  return { name, unit: parsedUnit.unit, scale: parsedUnit.scale, type, discrete, longName };
 }
 
 function parseOmeAxes(axes: unknown): CoordinateSpace {
@@ -189,6 +193,27 @@ function parseOmeAxes(axes: unknown): CoordinateSpace {
     scales: Float64Array.from(parsedAxes, (axis) => axis.scale),
     units: parsedAxes.map((axis) => axis.unit),
   });
+}
+
+// Parse a single coordinate system (0.6 format)
+function parseCoordinateSystem(coordinateSystem: unknown): { name: string; coordinateSpace: CoordinateSpace } {
+  verifyObject(coordinateSystem);
+  const name = verifyObjectProperty(coordinateSystem, "name", verifyString);
+  const axes = verifyObjectProperty(coordinateSystem, "axes", parseOmeAxes);
+  return { name, coordinateSpace: axes };
+}
+
+// Parse coordinateSystems array (0.6 format)
+function parseCoordinateSystems(coordinateSystems: unknown): Map<string, CoordinateSpace> {
+  const systems = parseArray(coordinateSystems, parseCoordinateSystem);
+  const map = new Map<string, CoordinateSpace>();
+  for (const system of systems) {
+    if (map.has(system.name)) {
+      throw new Error(`Duplicate coordinate system name: ${JSON.stringify(system.name)}`);
+    }
+    map.set(system.name, system.coordinateSpace);
+  }
+  return map;
 }
 
 function parseScaleTransform(rank: number, obj: unknown) {
@@ -214,10 +239,161 @@ function parseTranslationTransform(rank: number, obj: unknown) {
   return matrix.createHomogeneousTranslationMatrix(Float64Array, translation);
 }
 
+function parseMapAxisTransform(rank: number, obj: unknown): Float64Array<ArrayBuffer> {
+  const mapAxis = verifyObjectProperty(obj, "mapAxis", (values) =>
+    parseFixedLengthArray(new Int32Array(rank), values, (x) => {
+      if (typeof x !== "number" || !Number.isInteger(x) || x < 0 || x >= rank) {
+        throw new Error(`Invalid axis index: ${x}`);
+      }
+      return x;
+    }),
+  );
+  
+  // Verify each index appears exactly once
+  const seen = new Set<number>();
+  for (const idx of mapAxis) {
+    if (seen.has(idx)) {
+      throw new Error(`Duplicate axis index in mapAxis: ${idx}`);
+    }
+    seen.add(idx);
+  }
+  
+  // Create permutation matrix
+  const mat = new Float64Array((rank + 1) ** 2) as Float64Array<ArrayBuffer>;
+  mat[(rank + 1) ** 2 - 1] = 1; // Bottom-right corner = 1
+  for (let outAxis = 0; outAxis < rank; ++outAxis) {
+    const inAxis = mapAxis[outAxis];
+    mat[outAxis * (rank + 1) + inAxis] = 1;
+  }
+  return mat;
+}
+
+function parseAffineTransform(rank: number, obj: unknown): Float64Array<ArrayBuffer> {
+  verifyObject(obj);
+  
+  // Check if affine is provided inline
+  const affineMatrix = verifyOptionalObjectProperty(obj, "affine", (values) => {
+    if (!Array.isArray(values)) {
+      throw new Error("affine field must be a 2D array");
+    }
+    // Values should be MxN+1 where M can vary, but we need rank dimensions input
+    const result = new Float64Array((rank + 1) ** 2) as Float64Array<ArrayBuffer>;
+    result[(rank + 1) ** 2 - 1] = 1; // Homogeneous coordinate
+    
+    if (values.length === 0 || values.length > rank) {
+      throw new Error(`affine matrix must have between 1 and ${rank} rows`);
+    }
+    
+    for (let row = 0; row < values.length; ++row) {
+      if (!Array.isArray(values[row]) || values[row].length !== rank + 1) {
+        throw new Error(`affine matrix row ${row} must have ${rank + 1} columns`);
+      }
+      for (let col = 0; col < rank + 1; ++col) {
+        const val = verifyFiniteFloat(values[row][col]);
+        result[row * (rank + 1) + col] = val;
+      }
+    }
+    
+    return result;
+  });
+  
+  if (affineMatrix !== undefined) {
+    return affineMatrix;
+  }
+  
+  // TODO: Handle path-based affine loading if needed
+  const path = verifyOptionalObjectProperty(obj, "path", verifyString);
+  if (path !== undefined) {
+    throw new Error("path-based affine transforms are not yet supported");
+  }
+  
+  throw new Error("affine transform must specify either 'affine' or 'path'");
+}
+
+function parseRotationTransform(rank: number, obj: unknown): Float64Array<ArrayBuffer> {
+  verifyObject(obj);
+  
+  // Check if rotation is provided inline
+  const rotationMatrix = verifyOptionalObjectProperty(obj, "rotation", (values) => {
+    if (!Array.isArray(values)) {
+      throw new Error("rotation field must be a 2D array");
+    }
+    
+    if (values.length !== rank) {
+      throw new Error(`rotation matrix must be ${rank}x${rank}`);
+    }
+    
+    const linearPart = new Float64Array(rank * rank);
+    for (let row = 0; row < rank; ++row) {
+      if (!Array.isArray(values[row]) || values[row].length !== rank) {
+        throw new Error(`rotation matrix row ${row} must have ${rank} columns`);
+      }
+      for (let col = 0; col < rank; ++col) {
+        linearPart[row * rank + col] = verifyFiniteFloat(values[row][col]);
+      }
+    }
+    
+    // Convert to homogeneous coordinates
+    const result = new Float64Array((rank + 1) ** 2) as Float64Array<ArrayBuffer>;
+    for (let row = 0; row < rank; ++row) {
+      for (let col = 0; col < rank; ++col) {
+        result[row * (rank + 1) + col] = linearPart[row * rank + col];
+      }
+    }
+    result[(rank + 1) ** 2 - 1] = 1; // Homogeneous coordinate
+    
+    return result;
+  });
+  
+  if (rotationMatrix !== undefined) {
+    return rotationMatrix;
+  }
+  
+  // TODO: Handle path-based rotation loading if needed
+  const path = verifyOptionalObjectProperty(obj, "path", verifyString);
+  if (path !== undefined) {
+    throw new Error("path-based rotation transforms are not yet supported");
+  }
+  
+  throw new Error("rotation transform must specify either 'rotation' or 'path'");
+}
+
+function parseSequenceTransform(rank: number, obj: unknown): Float64Array<ArrayBuffer> {
+  const transformations = verifyObjectProperty(obj, "transformations", (values) => {
+    if (!Array.isArray(values) || values.length === 0) {
+      throw new Error("sequence transformations must be a non-empty array");
+    }
+    return values;
+  });
+  
+  let result = matrix.createIdentity(Float64Array, rank + 1);
+  
+  for (const transformJson of transformations) {
+    const transform = parseOmeCoordinateTransform(rank, transformJson);
+    result = matrix.multiply(
+      new Float64Array((rank + 1) ** 2) as Float64Array<ArrayBuffer>,
+      rank + 1,
+      transform,
+      rank + 1,
+      result,
+      rank + 1,
+      rank + 1,
+      rank + 1,
+      rank + 1,
+    );
+  }
+  
+  return result;
+}
+
 const coordinateTransformParsers = new Map([
   ["scale", parseScaleTransform],
   ["identity", parseIdentityTransform],
   ["translation", parseTranslationTransform],
+  ["mapAxis", parseMapAxisTransform],
+  ["affine", parseAffineTransform],
+  ["rotation", parseRotationTransform],
+  ["sequence", parseSequenceTransform],
 ]);
 
 function parseOmeCoordinateTransform(
@@ -225,6 +401,12 @@ function parseOmeCoordinateTransform(
   transformJson: unknown,
 ): Float64Array<ArrayBuffer> {
   verifyObject(transformJson);
+  
+  // Note: In OME-Zarr 0.6, transforms may have "input" and "output" fields
+  // that reference coordinate system names. These are currently ignored
+  // since we only support a single coordinate system per multiscale.
+  // Future enhancements could validate these fields against coordinateSystems.
+  
   const transformType = verifyObjectProperty(
     transformJson,
     "type",
@@ -283,11 +465,35 @@ function parseOmeMultiscale(
   url: string,
   multiscale: unknown,
 ): OmeMultiscaleMetadata {
-  const coordinateSpace = verifyObjectProperty(
+  verifyObject(multiscale);
+  
+  // Try to get coordinate space - support both 0.6 (coordinateSystems) and pre-0.6 (axes) formats
+  let coordinateSpace: CoordinateSpace;
+  
+  // Check for coordinateSystems (0.6 format)
+  const coordinateSystems = verifyOptionalObjectProperty(
     multiscale,
-    "axes",
-    parseOmeAxes,
+    "coordinateSystems",
+    parseCoordinateSystems,
   );
+  
+  if (coordinateSystems !== undefined) {
+    // 0.6 format: use the first coordinate system
+    // In the future, we might want to support multiple coordinate systems
+    const firstSystem = coordinateSystems.values().next().value;
+    if (firstSystem === undefined) {
+      throw new Error("coordinateSystems array must contain at least one coordinate system");
+    }
+    coordinateSpace = firstSystem;
+  } else {
+    // Pre-0.6 format: use axes directly
+    coordinateSpace = verifyObjectProperty(
+      multiscale,
+      "axes",
+      parseOmeAxes,
+    );
+  }
+  
   const rank = coordinateSpace.rank;
   const transform = verifyObjectProperty(
     multiscale,
@@ -316,34 +522,60 @@ function parseOmeMultiscale(
   }
 
   const baseTransform = scales[0].transform;
-  // Extract the scale factor from `baseTransform`.
-  //
-  // TODO(jbms): If coordinate transformations other than `scale` and `translation` are supported,
-  // this will need to be modified.
+  
+  // Compute the scale factors from the base transform as the length of each basis vector
+  // (column norm for each dimension)
   const baseScales = new Float64Array(rank);
-  for (let i = 0; i < rank; ++i) {
-    const scale = (baseScales[i] = baseTransform[i * (rank + 1) + i]);
-    coordinateSpace.scales[i] *= scale;
+  for (let col = 0; col < rank; ++col) {
+    let normSq = 0;
+    for (let row = 0; row < rank; ++row) {
+      const val = baseTransform[row * (rank + 1) + col];
+      normSq += val * val;
+    }
+    baseScales[col] = Math.sqrt(normSq);
+    coordinateSpace.scales[col] *= baseScales[col];
   }
+
+  // Compute inverse of base transform for normalization
+  const baseTransformInv = new Float64Array((rank + 1) ** 2);
+  matrix.inverse(
+    baseTransformInv,
+    rank + 1,
+    baseTransform,
+    rank + 1,
+    rank + 1,
+  );
 
   for (const scale of scales) {
     const t = scale.transform;
+    
     // In OME's coordinate space, the origin of a voxel is its center, while in Neuroglancer it is
-    // the "lower" (in coordinates) corner.  Translate by the physical size of half a voxel in the
-    // current scale.
-    for (let i = 0; i < rank; ++i) {
+    // the "lower" (in coordinates) corner.
+    // For arbitrary linear transforms, this is: translation -= Linear * (0.5, 0.5, ..., 0.5)
+    for (let row = 0; row < rank; ++row) {
       let offset = 0;
-      for (let j = 0; j < rank; ++j) {
-        offset += t[j * (rank + 1) + i] * 0.5;
+      for (let col = 0; col < rank; ++col) {
+        offset += t[row * (rank + 1) + col] * 0.5;
       }
-      t[rank * (rank + 1) + i] -= offset;
+      t[rank * (rank + 1) + row] -= offset;
     }
 
-    // Make the scale relative to the base scale.
-    for (let i = 0; i < rank; ++i) {
-      for (let j = 0; j <= rank; ++j) {
-        t[j * (rank + 1) + i] /= baseScales[i];
-      }
+    // Make the scale relative to the base scale by multiplying with inverse of base transform
+    const normalized = matrix.multiply(
+      new Float64Array((rank + 1) ** 2) as Float64Array<ArrayBuffer>,
+      rank + 1,
+      baseTransformInv,
+      rank + 1,
+      t,
+      rank + 1,
+      rank + 1,
+      rank + 1,
+      rank + 1,
+    );
+    
+    // Copy normalized transform back
+    for (let i = 0; i < (rank + 1) ** 2; ++i) {
+      t[i] = normalized[i];
     }
   }
   return { coordinateSpace, scales };

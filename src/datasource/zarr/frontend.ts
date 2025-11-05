@@ -341,14 +341,41 @@ async function resolveOmeMultiscale(
     }
   }
 
-  const lowerBounds = new Float64Array(rank);
-  const upperBounds = new Float64Array(rank);
+  // Compute axis-aligned bounding box by transforming all corners of the base scale dataset
   const baseScale = multiscale.scales[0];
   const baseZarrMetadata = scaleZarrMetadata[0];
-  for (let i = 0; i < rank; ++i) {
-    const lower = (lowerBounds[i] = baseScale.transform[(rank + 1) * rank + i]);
-    upperBounds[i] = lower + baseZarrMetadata.shape[i];
+  const baseTransform = baseScale.transform;
+  const shape = baseZarrMetadata.shape;
+  
+  // Enumerate all 2^rank corners of the voxel-space dataset
+  const cornerCount = 1 << rank; 
+  const lowerBounds = new Float64Array(rank).fill(Number.POSITIVE_INFINITY);
+  const upperBounds = new Float64Array(rank).fill(Number.NEGATIVE_INFINITY);
+  
+  for (let mask = 0; mask < cornerCount; ++mask) {
+    // Each bit in mask determines whether we use 0 or shape[dim] for that dimension
+    const voxelCorner = new Float64Array(rank);
+    for (let dim = 0; dim < rank; ++dim) {
+      voxelCorner[dim] = (mask & (1 << dim)) ? shape[dim] : 0;
+    }
+    
+    // Transform corner to world space: worldPos = baseTransform * [voxelCorner; 1]
+    for (let row = 0; row < rank; ++row) {
+      let worldCoord = baseTransform[rank * (rank + 1) + row]; // translation component
+      for (let col = 0; col < rank; ++col) {
+        worldCoord += baseTransform[row * (rank + 1) + col] * voxelCorner[col];
+      }
+      
+      // Update bounds
+      if (worldCoord < lowerBounds[row]) {
+        lowerBounds[row] = worldCoord;
+      }
+      if (worldCoord > upperBounds[row]) {
+        upperBounds[row] = worldCoord;
+      }
+    }
   }
+  
   const boundingBox = makeIdentityTransformedBoundingBox({
     lowerBounds,
     upperBounds,

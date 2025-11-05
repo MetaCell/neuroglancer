@@ -400,6 +400,7 @@ export function parseV2Metadata(
         case "zlib":
         case "gzip":
         case "zstd":
+        case "zstandard":
           codecs.push({
             name: id,
             configuration: {
