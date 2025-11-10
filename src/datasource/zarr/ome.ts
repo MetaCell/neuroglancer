@@ -55,7 +55,7 @@ export interface OmeMetadata {
   channels: ChannelMetadata | undefined;
 }
 
-const SUPPORTED_OME_MULTISCALE_VERSIONS = new Set(["0.4", "0.5-dev", "0.5"]);
+const SUPPORTED_OME_MULTISCALE_VERSIONS = new Set(["0.4", "0.5-dev", "0.5", "0.6.dev1", "0.6", "0.6-dev2"]);
 
 const OME_UNITS = new Map<string, { unit: string; scale: number }>([
   ["angstrom", { unit: "m", scale: 1e-10 }],
@@ -191,6 +191,24 @@ function parseOmeAxes(axes: unknown): CoordinateSpace {
   });
 }
 
+function parseOmeCoordinateSystem(coordinateSystem: unknown): CoordinateSpace {
+  verifyObject(coordinateSystem);
+  const axes = verifyObjectProperty(coordinateSystem, "axes", (x) =>
+    parseArray(x, parseOmeAxis),
+  );
+  return makeCoordinateSpace({
+    names: axes.map((axis) => {
+      const { name, type } = axis;
+      if (type === "channel") {
+        return `${name}'`;
+      }
+      return name;
+    }),
+    scales: Float64Array.from(axes, (axis) => axis.scale),
+    units: axes.map((axis) => axis.unit),
+  });
+}
+
 function parseScaleTransform(rank: number, obj: unknown) {
   const scales = verifyObjectProperty(obj, "scale", (values) =>
     parseFixedLengthArray(
@@ -214,10 +232,56 @@ function parseTranslationTransform(rank: number, obj: unknown) {
   return matrix.createHomogeneousTranslationMatrix(Float64Array, translation);
 }
 
+function parseAffineTransform(rank: number, obj: unknown) {
+  const affineMatrix = verifyObjectProperty(obj, "affine", (values) => {
+    const parsed = parseArray(values, (row) =>
+      parseFixedLengthArray(new Float64Array(rank + 1), row, verifyFiniteFloat),
+    );
+    if (parsed.length !== rank) {
+      throw new Error(
+        `Expected affine matrix to have ${rank} rows, but received: ${parsed.length}`,
+      );
+    }
+    return parsed;
+  });
+  // Convert to homogeneous matrix format (rank+1 x rank+1)
+  const transform = matrix.createIdentity(Float64Array, rank + 1);
+  for (let i = 0; i < rank; ++i) {
+    for (let j = 0; j <= rank; ++j) {
+      transform[j * (rank + 1) + i] = affineMatrix[i][j];
+    }
+  }
+  return transform;
+}
+
+function parseRotationTransform(rank: number, obj: unknown) {
+  const rotationMatrix = verifyObjectProperty(obj, "rotation", (values) => {
+    const parsed = parseArray(values, (row) =>
+      parseFixedLengthArray(new Float64Array(rank), row, verifyFiniteFloat),
+    );
+    if (parsed.length !== rank) {
+      throw new Error(
+        `Expected rotation matrix to have ${rank} rows, but received: ${parsed.length}`,
+      );
+    }
+    return parsed;
+  });
+  // Convert to homogeneous matrix format (rank+1 x rank+1)
+  const transform = matrix.createIdentity(Float64Array, rank + 1);
+  for (let i = 0; i < rank; ++i) {
+    for (let j = 0; j < rank; ++j) {
+      transform[j * (rank + 1) + i] = rotationMatrix[i][j];
+    }
+  }
+  return transform;
+}
+
 const coordinateTransformParsers = new Map([
   ["scale", parseScaleTransform],
   ["identity", parseIdentityTransform],
   ["translation", parseTranslationTransform],
+  ["affine", parseAffineTransform],
+  ["rotation", parseRotationTransform],
 ]);
 
 function parseOmeCoordinateTransform(
@@ -283,16 +347,34 @@ function parseOmeMultiscale(
   url: string,
   multiscale: unknown,
 ): OmeMultiscaleMetadata {
-  const coordinateSpace = verifyObjectProperty(
+  verifyObject(multiscale);
+  
+  // Check if using 0.6+ format with coordinateSystems
+  let coordinateSpace: CoordinateSpace;
+  const coordinateSystems = verifyOptionalObjectProperty(
     multiscale,
-    "axes",
-    parseOmeAxes,
+    "coordinateSystems",
+    (x) => parseArray(x, parseOmeCoordinateSystem),
   );
+  
+  if (coordinateSystems !== undefined && coordinateSystems.length > 0) {
+    // OME-ZARR 0.6+: Use the last (intrinsic) coordinate system
+    coordinateSpace = coordinateSystems[coordinateSystems.length - 1];
+  } else {
+    // OME-ZARR 0.4/0.5: Use axes directly
+    coordinateSpace = verifyObjectProperty(
+      multiscale,
+      "axes",
+      parseOmeAxes,
+    );
+  }
+  
   const rank = coordinateSpace.rank;
-  const transform = verifyObjectProperty(
+  const transform = verifyOptionalObjectProperty(
     multiscale,
     "coordinateTransformations",
     (x) => parseOmeCoordinateTransforms(rank, x),
+    matrix.createIdentity(Float64Array, rank + 1),
   );
   const scales = verifyObjectProperty(multiscale, "datasets", (obj) =>
     parseArray(obj, (x) => {
@@ -316,21 +398,28 @@ function parseOmeMultiscale(
   }
 
   const baseTransform = scales[0].transform;
-  // Extract the scale factor from `baseTransform`.
-  //
-  // TODO(jbms): If coordinate transformations other than `scale` and `translation` are supported,
-  // this will need to be modified.
+  // Extract the effective scale factor from `baseTransform` for each axis.
+  // For general affine transformations, the effective scale is the L2 norm (length)
+  // of each column vector in the linear part of the transformation matrix.
+  // This generalizes the simple diagonal case where scale[i] = transform[i,i].
   const baseScales = new Float64Array(rank);
   for (let i = 0; i < rank; ++i) {
-    const scale = (baseScales[i] = baseTransform[i * (rank + 1) + i]);
+    let sumSquares = 0;
+    for (let j = 0; j < rank; ++j) {
+      const val = baseTransform[j * (rank + 1) + i];
+      sumSquares += val * val;
+    }
+    const scale = (baseScales[i] = Math.sqrt(sumSquares));
     coordinateSpace.scales[i] *= scale;
   }
 
   for (const scale of scales) {
     const t = scale.transform;
     // In OME's coordinate space, the origin of a voxel is its center, while in Neuroglancer it is
-    // the "lower" (in coordinates) corner.  Translate by the physical size of half a voxel in the
-    // current scale.
+    // the "lower" (in coordinates) corner.
+    // For general transformations, we compute the offset by applying the linear part of the
+    // transformation to the vector [0.5, 0.5, ..., 0.5] and subtracting the result from the
+    // translation component.
     for (let i = 0; i < rank; ++i) {
       let offset = 0;
       for (let j = 0; j < rank; ++j) {
@@ -340,6 +429,7 @@ function parseOmeMultiscale(
     }
 
     // Make the scale relative to the base scale.
+    // We divide each column of the transformation by the corresponding base scale.
     for (let i = 0; i < rank; ++i) {
       for (let j = 0; j <= rank; ++j) {
         t[j * (rank + 1) + i] /= baseScales[i];

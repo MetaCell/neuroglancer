@@ -16,14 +16,14 @@
 
 import { decodeZstd } from "#src/async_computation/decode_zstd_request.js";
 import { requestAsyncComputation } from "#src/async_computation/request.js";
+import type { BytesToBytesCodec } from "#src/datasource/zarr/codec/decode.js";
 import { registerCodec } from "#src/datasource/zarr/codec/decode.js";
 import { CodecKind } from "#src/datasource/zarr/codec/index.js";
 import type { Configuration } from "#src/datasource/zarr/codec/zstd/resolve.js";
 
-registerCodec({
-  name: "zstd",
+const zstdDecode: Omit<BytesToBytesCodec<Configuration>, 'name'> = {
   kind: CodecKind.bytesToBytes,
-  decode(configuration: Configuration, encoded, signal: AbortSignal) {
+  decode(configuration: Configuration, encoded: Uint8Array<ArrayBuffer>, signal: AbortSignal) {
     configuration;
     return requestAsyncComputation(
       decodeZstd,
@@ -32,4 +32,16 @@ registerCodec({
       encoded,
     );
   },
+};
+
+// Register "zstd" (v2 and older v3)
+registerCodec({
+  name: "zstd",
+  ...zstdDecode,
+});
+
+// Register "zstandard" (v3 0.6+ spec)
+registerCodec({
+  name: "zstandard",
+  ...zstdDecode,
 });
