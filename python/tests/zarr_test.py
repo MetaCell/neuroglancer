@@ -503,22 +503,24 @@ def test_ome_zarr_0_6_inverse_transform_composition(static_file_server, webdrive
     This test verifies the complete transformation pipeline using an L-shaped asymmetrical figure:
     1. Base data (OME-ZARR 0.5) with identity transform - L-shape in original orientation
     2. Intermediate data (OME-ZARR 0.5) with forward transform applied but identity in metadata - shows transformed L
-    3. Transformed data (OME-ZARR 0.6/Zarr v3) with forward transform applied + inverse transform in metadata - should match base
+    3. Transformed data with affine (OME-ZARR 0.6/Zarr v3) with forward transform applied + inverse affine in metadata - should match base
+    4. Transformed data with rotation (OME-ZARR 0.6/Zarr v3) with forward transform applied + inverse rotation in metadata - should match base
     
     The forward transformation (applied to data) swaps y and x axes:
       z_out = z_in, y_out = x_in, x_out = y_in
     
-    The inverse (in metadata of transformed file) undoes this:
+    The inverse (in metadata of transformed files) undoes this:
       z_in = z_out, y_in = x_out, x_in = y_out
     
-    When rendered together, base and transformed should show the same L-shape at the same physical coordinates.
+    When rendered together, base and both transformed variants should show the same L-shape at the same physical coordinates.
     The intermediate file shows the transformed L-shape directly without inverse correction.
     """
     import json
     
-    base_dir = TEST_DATA_DIR / "ome_zarr" / "test_base_0.5.zarr"
-    intermediate_dir = TEST_DATA_DIR / "ome_zarr" / "test_intermediate_0.5.zarr"
-    transformed_dir = TEST_DATA_DIR / "ome_zarr" / "test_transformed_0.6.zarr"
+    base_dir = TEST_DATA_DIR / "ome_zarr" / "custom_0.6_test" / "test_base_0.5.zarr"
+    intermediate_dir = TEST_DATA_DIR / "ome_zarr" / "custom_0.6_test" / "test_intermediate_0.5.zarr"
+    transformed_affine_dir = TEST_DATA_DIR / "ome_zarr" / "custom_0.6_test" / "test_transformed_0.6_affine.zarr"
+    transformed_rotation_dir = TEST_DATA_DIR / "ome_zarr" / "custom_0.6_test" / "test_transformed_0.6_rotation.zarr"
     
     # Verify the metadata is correct
     # All files use Zarr v3 format with zarr.json
@@ -528,8 +530,11 @@ def test_ome_zarr_0_6_inverse_transform_composition(static_file_server, webdrive
     with open(intermediate_dir / "zarr.json", "r") as f:
         intermediate_meta = json.load(f)
     
-    with open(transformed_dir / "zarr.json", "r") as f:
-        trans_meta = json.load(f)
+    with open(transformed_affine_dir / "zarr.json", "r") as f:
+        trans_affine_meta = json.load(f)
+    
+    with open(transformed_rotation_dir / "zarr.json", "r") as f:
+        trans_rotation_meta = json.load(f)
     
     # Base should have scale transform (identity-like) in 0.5 format
     base_transform = base_meta["attributes"]["ome"]["multiscales"][0]["datasets"][0][
@@ -545,11 +550,11 @@ def test_ome_zarr_0_6_inverse_transform_composition(static_file_server, webdrive
     assert intermediate_transform["type"] == "scale", "Intermediate should have scale transform"
     assert intermediate_transform["scale"] == [1, 1, 1], "Intermediate should have identity scale"
     
-    # Transformed should have affine transform
-    trans_transform = trans_meta["attributes"]["ome"]["multiscales"][0]["datasets"][0][
+    # Transformed affine should have affine transform
+    trans_affine_transform = trans_affine_meta["attributes"]["ome"]["multiscales"][0]["datasets"][0][
         "coordinateTransformations"
     ][0]
-    assert trans_transform["type"] == "affine", "Transformed should have affine transform"
+    assert trans_affine_transform["type"] == "affine", "Transformed affine should have affine transform"
     
     # Verify the affine is a y<->x swap (inverse of forward transform)
     expected_affine = [
@@ -557,12 +562,27 @@ def test_ome_zarr_0_6_inverse_transform_composition(static_file_server, webdrive
         [0, 0, 1, 0],  # y_in = x_out
         [0, 1, 0, 0],  # x_in = y_out
     ]
-    assert trans_transform["affine"] == expected_affine, "Affine should be y<->x swap"
+    assert trans_affine_transform["affine"] == expected_affine, "Affine should be y<->x swap"
     
-    # Now test that neuroglancer can load all three files
+    # Transformed rotation should have rotation transform
+    trans_rotation_transform = trans_rotation_meta["attributes"]["ome"]["multiscales"][0]["datasets"][0][
+        "coordinateTransformations"
+    ][0]
+    assert trans_rotation_transform["type"] == "rotation", "Transformed rotation should have rotation transform"
+    
+    # Verify the rotation is a y<->x swap (3x3 matrix, inverse of forward transform)
+    expected_rotation = [
+        [1, 0, 0],  # z_in = z_out
+        [0, 0, 1],  # y_in = x_out
+        [0, 1, 0],  # x_in = y_out
+    ]
+    assert trans_rotation_transform["rotation"] == expected_rotation, "Rotation should be y<->x swap"
+    
+    # Now test that neuroglancer can load all files
     base_url = static_file_server(base_dir)
     intermediate_url = static_file_server(intermediate_dir)
-    transformed_url = static_file_server(transformed_dir)
+    transformed_affine_url = static_file_server(transformed_affine_dir)
+    transformed_rotation_url = static_file_server(transformed_rotation_dir)
     
     # Load base data (identity transform, original L-shape)
     with webdriver.viewer.txn() as s:
@@ -584,23 +604,38 @@ def test_ome_zarr_0_6_inverse_transform_composition(static_file_server, webdrive
     intermediate_vol = webdriver.viewer.volume("intermediate").result()
     intermediate_ng_data = intermediate_vol.read().result()
     
-    # Load transformed data (inverse transform in metadata, data is transformed)
+    # Load transformed data with affine (inverse transform in metadata, data is transformed)
     with webdriver.viewer.txn() as s:
         s.layers.append(
-            name="transformed",
-            layer=neuroglancer.ImageLayer(source=f"zarr3://{transformed_url}"),
+            name="transformed_affine",
+            layer=neuroglancer.ImageLayer(source=f"zarr3://{transformed_affine_url}"),
         )
     
-    transformed_vol = webdriver.viewer.volume("transformed").result()
-    transformed_ng_data = transformed_vol.read().result()
+    transformed_affine_vol = webdriver.viewer.volume("transformed_affine").result()
+    transformed_affine_ng_data = transformed_affine_vol.read().result()
+    
+    # Load transformed data with rotation (inverse transform in metadata, data is transformed)
+    with webdriver.viewer.txn() as s:
+        s.layers.append(
+            name="transformed_rotation",
+            layer=neuroglancer.ImageLayer(source=f"zarr3://{transformed_rotation_url}"),
+        )
+    
+    transformed_rotation_vol = webdriver.viewer.volume("transformed_rotation").result()
+    transformed_rotation_ng_data = transformed_rotation_vol.read().result()
     
     # All should have the same underlying array shape
-    assert base_ng_data.shape == intermediate_ng_data.shape == transformed_ng_data.shape, "Shapes should match"
+    assert (base_ng_data.shape == intermediate_ng_data.shape == 
+            transformed_affine_ng_data.shape == transformed_rotation_ng_data.shape), "Shapes should match"
     assert base_ng_data.shape == (16, 16, 16), "Should be 16x16x16"
     
-    # Verify that intermediate and transformed have the same underlying data (both forward transformed)
-    np.testing.assert_array_equal(intermediate_ng_data, transformed_ng_data, 
-                                   err_msg="Intermediate and transformed should have same underlying data")
+    # Verify that intermediate and both transformed variants have the same underlying data (all forward transformed)
+    np.testing.assert_array_equal(intermediate_ng_data, transformed_affine_ng_data, 
+                                   err_msg="Intermediate and transformed_affine should have same underlying data")
+    np.testing.assert_array_equal(intermediate_ng_data, transformed_rotation_ng_data, 
+                                   err_msg="Intermediate and transformed_rotation should have same underlying data")
+    np.testing.assert_array_equal(transformed_affine_ng_data, transformed_rotation_ng_data, 
+                                   err_msg="Both transformed variants should have same underlying data")
     
     # Verify that base and intermediate have different data (one original, one transformed)
     assert not np.array_equal(base_ng_data, intermediate_ng_data), \
@@ -608,8 +643,10 @@ def test_ome_zarr_0_6_inverse_transform_composition(static_file_server, webdrive
     
     print(f"✓ Base data loaded successfully with identity transform (original L-shape)")
     print(f"✓ Intermediate data loaded successfully (transformed L-shape, no inverse in metadata)")
-    print(f"✓ Transformed data loaded successfully with affine y<->x swap inverse")
-    print(f"✓ All three have shape {base_ng_data.shape}")
-    print(f"✓ Intermediate and transformed have same underlying data (both forward transformed)")
+    print(f"✓ Transformed affine data loaded successfully with affine y<->x swap inverse")
+    print(f"✓ Transformed rotation data loaded successfully with rotation y<->x swap inverse")
+    print(f"✓ All four files have shape {base_ng_data.shape}")
+    print(f"✓ Intermediate and both transformed variants have same underlying data (all forward transformed)")
     print(f"✓ Base and intermediate have different data as expected")
-    print(f"✓ Transformation metadata parsed correctly")
+    print(f"✓ Both affine and rotation transformations produce identical results")
+    print(f"✓ Transformation metadata parsed correctly for both affine and rotation")
