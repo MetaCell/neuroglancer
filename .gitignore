@@ -26,4 +26,3 @@ tsconfig.tsbuildinfo
 -/docs/python/api/index.rst
 /docs/python/api/*.rst
 /.vite
-testdata/datasource/zarr/ome_zarr/all_0.6
