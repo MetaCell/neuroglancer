@@ -386,10 +386,22 @@ def _verify_data_at_point(webdriver, layer_name, voxel_point, expected_value):
 TEST_VOXEL = (13, 122, 169)
 EXPECTED_VALUE = 145  # Value at the specified voxel coordinates
 
-@pytest.mark.skip(reason="Hangs the test suite")
 def test_ome_zarr_0_6_map_axis(static_file_server, webdriver):
-    """mapAxis: Axis permutation via integer index mapping.
+    """mapAxis: Axis permutation via axis name mapping.
     Example dataset: axis_dependent/mapAxis.zarr
+    
+    This dataset uses the same underlying array as identity.zarr (shape [27, 226, 186])
+    but applies a mapAxis transform that **permutes the axes**:
+      - output physical "x" ← input array "dim_0" (size 27)
+      - output physical "y" ← input array "dim_1" (size 226)
+      - output physical "z" ← input array "dim_2" (size 186)
+    
+    In identity.zarr, the mapping is: z←dim_0, y←dim_1, x←dim_2
+    So this mapAxis swaps the x and z axes.
+    
+    The same array data at index [13, 122, 169] that appears at physical 
+    coordinates (z=13, y=122, x=169) in identity.zarr will appear at
+    physical coordinates (z=169, y=122, x=13) in mapAxis.zarr.
     """
     test_dir = OME_ZARR_0_6_ROOT / "axis_dependent" / "mapAxis.zarr"
     server_url = static_file_server(test_dir)
@@ -398,13 +410,12 @@ def test_ome_zarr_0_6_map_axis(static_file_server, webdriver):
     webdriver.sync()
     _assert_renders(webdriver, "mapAxis")
     
-    # mapAxis: [0, 2, 1] -> z, x, y. Swaps y and x.
-    # If applied correctly, should match identity (if data was pre-swapped?)
-    # Or does it swap the axes of the *view*?
-    # Assuming it behaves like rotation/affine in the test generation:
-    # If data is pre-swapped, and mapAxis restores it, we should find L-shape at L_SHAPE_POINT.
-    # _verify_data_at_point(webdriver, "mapAxis", L_SHAPE_POINT, 1000, model_space)
-    pass
+    # Verify that the mapAxis transform was applied correctly.
+    # The array indices [13, 122, 169] become physical coordinates (x=13, y=122, z=169)
+    # which in (z, y, x) order is (169, 122, 13).
+    # This should have the same value (EXPECTED_VALUE) as TEST_VOXEL in identity.zarr.
+    permuted_voxel = (169, 122, 13)  # (z, y, x) after mapAxis permutation
+    _verify_data_at_point(webdriver, "mapAxis", permuted_voxel, EXPECTED_VALUE)
 
 
 

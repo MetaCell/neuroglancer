@@ -282,7 +282,49 @@ const coordinateTransformParsers = new Map([
   ["translation", parseTranslationTransform],
   ["affine", parseAffineTransform],
   ["rotation", parseRotationTransform],
+  ["mapAxis", parseMapAxisTransform],
 ]);
+
+function parseMapAxisTransform(rank: number, obj: unknown) {
+  const mapAxis = verifyObjectProperty(obj, "mapAxis", (values) =>
+    parseFixedLengthArray(new Float64Array(rank), values, (x) => {
+      const val = verifyFiniteFloat(x);
+      if (!Number.isInteger(val) || val < 0 || val >= rank) {
+        throw new Error(
+          `Invalid mapAxis index: ${val}. Must be integer between 0 and ${rank - 1
+          }`,
+        );
+      }
+      return val;
+    }),
+  );
+
+  // Verify permutation
+  const seen = new Set<number>();
+  for (const val of mapAxis) {
+    if (seen.has(val)) {
+      throw new Error(`Duplicate axis index in mapAxis: ${val}`);
+    }
+    seen.add(val);
+  }
+
+  const transform = matrix.createIdentity(Float64Array, rank + 1);
+  // Reset the top-left rank*rank part to 0
+  for (let i = 0; i < rank; ++i) {
+    for (let j = 0; j < rank; ++j) {
+      transform[j * (rank + 1) + i] = 0;
+    }
+  }
+
+  // Set the 1s
+  // The value at position `i` in the array indicates which input axis becomes the `i`-th output axis.
+  // Output[i] = Input[mapAxis[i]]
+  // So Row i has a 1 at Column mapAxis[i]
+  for (let i = 0; i < rank; ++i) {
+    transform[mapAxis[i] * (rank + 1) + i] = 1;
+  }
+  return transform;
+}
 
 function parseOmeCoordinateTransform(
   rank: number,
@@ -348,7 +390,7 @@ function parseOmeMultiscale(
   multiscale: unknown,
 ): OmeMultiscaleMetadata {
   verifyObject(multiscale);
-  
+
   // Check if using 0.6+ format with coordinateSystems
   let coordinateSpace: CoordinateSpace;
   const coordinateSystems = verifyOptionalObjectProperty(
@@ -356,7 +398,7 @@ function parseOmeMultiscale(
     "coordinateSystems",
     (x) => parseArray(x, parseOmeCoordinateSystem),
   );
-  
+
   if (coordinateSystems !== undefined && coordinateSystems.length > 0) {
     // OME-ZARR 0.6+: Use the last (intrinsic) coordinate system
     coordinateSpace = coordinateSystems[coordinateSystems.length - 1];
@@ -368,7 +410,7 @@ function parseOmeMultiscale(
       parseOmeAxes,
     );
   }
-  
+
   const rank = coordinateSpace.rank;
   const transform = verifyOptionalObjectProperty(
     multiscale,
