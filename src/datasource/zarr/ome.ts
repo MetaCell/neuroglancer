@@ -283,7 +283,17 @@ const coordinateTransformParsers = new Map([
   ["affine", parseAffineTransform],
   ["rotation", parseRotationTransform],
   ["mapAxis", parseMapAxisTransform],
+  ["sequence", parseSequenceTransform],
 ]);
+
+function parseSequenceTransform(rank: number, obj: unknown) {
+  const transformations = verifyObjectProperty(
+    obj,
+    "transformations",
+    (x) => x,
+  );
+  return parseOmeCoordinateTransforms(rank, transformations);
+}
 
 function parseMapAxisTransform(rank: number, obj: unknown) {
   const mapAxis = verifyObjectProperty(obj, "mapAxis", (values) =>
@@ -342,7 +352,7 @@ function parseOmeCoordinateTransform(
       `Unsupported coordinate transform type: ${JSON.stringify(transformType)}`,
     );
   }
-  return parser(rank, transformJson);
+  return parser(rank, transformJson) as Float64Array<ArrayBuffer>;
 }
 
 function parseOmeCoordinateTransforms(
