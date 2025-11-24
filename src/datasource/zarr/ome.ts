@@ -287,11 +287,27 @@ const coordinateTransformParsers = new Map([
 ]);
 
 function parseSequenceTransform(rank: number, obj: unknown) {
+  verifyObject(obj);
+  
   const transformations = verifyObjectProperty(
     obj,
     "transformations",
     (x) => x,
   );
+  
+  // Validate that inner transformations don't contain nested sequences
+  if (Array.isArray(transformations)) {
+    parseArray(transformations, (innerTransform) => {
+      verifyObject(innerTransform);
+      const innerType = verifyObjectProperty(innerTransform, "type", verifyString);
+      if (innerType === "sequence") {
+        throw new Error(
+          "A sequence transformation MUST NOT be part of another sequence transformation"
+        );
+      }
+    });
+  }
+  
   return parseOmeCoordinateTransforms(rank, transformations);
 }
 
@@ -378,17 +394,104 @@ function parseOmeCoordinateTransforms(
   return transform;
 }
 
+function validateCoordinateTransformations(
+  transformations: unknown,
+  expectedInput: string,
+  expectedOutput: string,
+  path: string,
+) {
+  if (!Array.isArray(transformations)) return;
+  
+  // For a single transformation or the outermost sequence
+  if (transformations.length === 1) {
+    const transform = transformations[0];
+    verifyObject(transform);
+    
+    const input = verifyOptionalObjectProperty(transform, "input", verifyString);
+    const output = verifyOptionalObjectProperty(transform, "output", verifyString);
+    const type = verifyObjectProperty(transform, "type", verifyString);
+    
+    // Validate input matches expected (array path)
+    // Empty string or undefined means the field is not specified
+    if (input !== undefined && input !== "" && input !== expectedInput) {
+      throw new Error(
+        `Invalid coordinate transformation for dataset at path "${path}": ` +
+        `input is "${input}" but expected "${expectedInput}"`
+      );
+    }
+    
+    // Validate output matches expected (intrinsic coordinate system)
+    // Empty string or undefined means the field is not specified
+    if (output !== undefined && output !== "" && output !== expectedOutput) {
+      throw new Error(
+        `Invalid coordinate transformation for dataset at path "${path}": ` +
+        `output is "${output}" but expected "${expectedOutput}"`
+      );
+    }
+    
+    // For sequence transforms, validate inner transforms
+    if (type === "sequence") {
+      const innerTransforms = verifyObjectProperty(transform, "transformations", (x) => x);
+      if (Array.isArray(innerTransforms)) {
+        // Validate the chain of inner transforms
+        for (let i = 0; i < innerTransforms.length; i++) {
+          const innerTransform = innerTransforms[i];
+          verifyObject(innerTransform);
+          
+          const innerInput = verifyOptionalObjectProperty(innerTransform, "input", verifyString);
+          const innerOutput = verifyOptionalObjectProperty(innerTransform, "output", verifyString);
+          
+          // First transform in sequence should have input matching the sequence's input
+          if (i === 0 && innerInput !== undefined && innerInput !== expectedInput) {
+            throw new Error(
+              `Invalid sequence transformation for dataset at path "${path}": ` +
+              `first inner transform has input "${innerInput}" but expected "${expectedInput}"`
+            );
+          }
+          
+          // Last transform in sequence should have output matching the sequence's output
+          if (i === innerTransforms.length - 1 && innerOutput !== undefined && innerOutput !== expectedOutput) {
+            throw new Error(
+              `Invalid sequence transformation for dataset at path "${path}": ` +
+              `last inner transform has output "${innerOutput}" but expected "${expectedOutput}"`
+            );
+          }
+          
+          // Validate chaining between consecutive transforms
+          if (i > 0) {
+            const prevTransform = innerTransforms[i - 1];
+            verifyObject(prevTransform);
+            const prevOutput = verifyOptionalObjectProperty(prevTransform, "output", verifyString);
+            
+            if (prevOutput !== undefined && innerInput !== undefined && prevOutput !== innerInput) {
+              throw new Error(
+                `Invalid sequence transformation for dataset at path "${path}": ` +
+                `transform ${i - 1} has output "${prevOutput}" but transform ${i} has input "${innerInput}". ` +
+                `Transforms in a sequence must have matching input/output for consecutive transforms.`
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 function parseMultiscaleScale(
   rank: number,
   url: string,
   obj: unknown,
+  intrinsicCoordinateSystemName: string | undefined,
 ): OmeMultiscaleScale {
   const path = verifyObjectProperty(obj, "path", verifyString);
-  const transform = verifyObjectProperty(
-    obj,
-    "coordinateTransformations",
-    (x) => parseOmeCoordinateTransforms(rank, x),
-  );
+  const transformations = verifyObjectProperty(obj, "coordinateTransformations", (x) => x);
+  
+  // Validate transformations before parsing (only for 0.6+ with coordinate systems)
+  if (intrinsicCoordinateSystemName !== undefined) {
+    validateCoordinateTransformations(transformations, path, intrinsicCoordinateSystemName, path);
+  }
+  
+  const transform = parseOmeCoordinateTransforms(rank, transformations);
   const scaleUrl = kvstoreEnsureDirectoryPipelineUrl(
     joinBaseUrlAndPath(url, path),
   );
@@ -403,15 +506,23 @@ function parseOmeMultiscale(
 
   // Check if using 0.6+ format with coordinateSystems
   let coordinateSpace: CoordinateSpace;
-  const coordinateSystems = verifyOptionalObjectProperty(
+  let intrinsicCoordinateSystemName: string | undefined;
+  
+  const coordinateSystemsRaw = verifyOptionalObjectProperty(
     multiscale,
     "coordinateSystems",
-    (x) => parseArray(x, parseOmeCoordinateSystem),
+    (x) => x,
   );
-
-  if (coordinateSystems !== undefined && coordinateSystems.length > 0) {
+  
+  if (coordinateSystemsRaw !== undefined && Array.isArray(coordinateSystemsRaw) && coordinateSystemsRaw.length > 0) {
     // OME-ZARR 0.6+: Use the last (intrinsic) coordinate system
+    const coordinateSystems = parseArray(coordinateSystemsRaw, parseOmeCoordinateSystem);
     coordinateSpace = coordinateSystems[coordinateSystems.length - 1];
+    
+    // Extract the name of the intrinsic coordinate system from the raw object
+    const intrinsicCoordinateSystemRaw = coordinateSystemsRaw[coordinateSystemsRaw.length - 1];
+    verifyObject(intrinsicCoordinateSystemRaw);
+    intrinsicCoordinateSystemName = verifyObjectProperty(intrinsicCoordinateSystemRaw, "name", verifyString);
   } else {
     // OME-ZARR 0.4/0.5: Use axes directly
     coordinateSpace = verifyObjectProperty(
@@ -430,7 +541,7 @@ function parseOmeMultiscale(
   );
   const scales = verifyObjectProperty(multiscale, "datasets", (obj) =>
     parseArray(obj, (x) => {
-      const scale = parseMultiscaleScale(rank, url, x);
+      const scale = parseMultiscaleScale(rank, url, x, intrinsicCoordinateSystemName);
       scale.transform = matrix.multiply(
         new Float64Array((rank + 1) ** 2) as Float64Array<ArrayBuffer>,
         rank + 1,
