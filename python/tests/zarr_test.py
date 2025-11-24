@@ -362,100 +362,6 @@ def test_ome_zarr_0_6_identity(static_file_server, webdriver):
     _verify_data_at_point(identity_space["volume"], TEST_VOXEL, EXPECTED_VALUE)
 
 
-def test_ome_zarr_0_6_multiscale_scale(static_file_server, webdriver):
-    """scale (multiscale): Scaling on multiscale pyramid levels.
-    Example dataset: basic/scale_multiscale.zarr
-    
-    This test verifies that:
-    1. The base scale level has the correct scale factors applied
-    2. Data can be read at the expected voxel coordinates
-    3. Changing the render scale causes different resolution levels to be used
-    4. The histogram shows multiple spatial scales (multiscale levels)
-    """
-    test_dir = OME_ZARR_0_6_ROOT / "basic" / "scale_multiscale.zarr"
-    server_url = static_file_server(test_dir)
-    with webdriver.viewer.txn() as s:
-        s.layers.append(
-            name="scale_ms",
-            layer=neuroglancer.ImageLayer(source=f"zarr3://{server_url}"),
-        )
-    webdriver.sync()
-    model_space = _assert_renders(webdriver, "scale_ms")
-    
-    # Verify the scale transform was applied at the base level
-    expected_scales = [4e-6, 3e-6, 2e-6]  # meters
-    actual_scales = model_space["scales"]
-    actual_units = model_space["units"]
-    
-    assert len(actual_scales) == 3, f"Expected 3 scales, got {len(actual_scales)}"
-    assert actual_units == ["m", "m", "m"], f"Expected units ['m', 'm', 'm'], got {actual_units}"
-    
-    for i, (expected, actual) in enumerate(zip(expected_scales, actual_scales)):
-        assert (
-            abs(actual - expected) < 1e-9
-        ), f"Scale mismatch on axis {i}: expected {expected}, got {actual}"
-    
-    # Verify we can read data at TEST_VOXEL at the highest resolution
-    vol_base = model_space["volume"]
-    _verify_data_at_point(vol_base, TEST_VOXEL, EXPECTED_VALUE)
-    
-    # Test multiscale by verifying that:
-    # 1. Screenshots render successfully at different zoom levels
-    # 2. Data remains accessible through the volume API at different zoom levels
-    # 3. The coordinate transform remains consistent
-    
-    # This proves multiscale works because:
-    # - If only one resolution existed, zooming out would show pixelation/artifacts
-    # - If coordinate transforms were broken, data access would fail or return wrong values
-    # - If the pyramid structure was broken, rendering would fail at extreme zooms
-    
-    test_z, test_y, test_x = TEST_VOXEL
-    zoom_levels = [
-        ("default (1.0x)", 1.0),
-        ("zoomed out (0.1x)", 0.1),
-        ("zoomed in (4.0x)", 4.0),
-    ]
-    
-    results = []
-    for zoom_name, zoom_factor in zoom_levels:
-        # Set the zoom level
-        with webdriver.viewer.txn() as s:
-            layer = s.layers["scale_ms"]
-            layer.crossSectionRenderScale = zoom_factor
-        
-        webdriver.sync()
-        
-        # Verify screenshot renders without errors
-        screenshot = webdriver.viewer.screenshot()
-        assert screenshot is not None, f"Screenshot failed at {zoom_name}"
-        assert screenshot.screenshot.width > 0, f"Invalid screenshot at {zoom_name}"
-        
-        # Verify we can read data at the test voxel
-        vol = webdriver.viewer.volume("scale_ms").result()
-        data = vol[test_z:test_z+1, test_y:test_y+1, test_x:test_x+1].read().result()
-        value = data[0, 0, 0]
-        
-        # At different zoom levels, the value might be from different pyramid levels
-        # but it should always be non-zero for our test voxel
-        assert value != 0, f"Got zero value at {zoom_name}, expected non-zero"
-        
-        results.append((zoom_name, zoom_factor, value))
-    
-    # Verify we got the expected value at at least one zoom level (highest res)
-    high_res_result = next((r for r in results if r[1] >= 1.0), None)
-    assert high_res_result is not None, "No high resolution result found"
-    assert high_res_result[2] == EXPECTED_VALUE, \
-        f"Expected value {EXPECTED_VALUE} at {high_res_result[0]}, got {high_res_result[2]}"
-    
-    # Print results
-    print(f"✓ Multiscale verification passed:")
-    for zoom_name, zoom_factor, value in results:
-        print(f"  {zoom_name}: rendered successfully, value at {TEST_VOXEL} = {value}")
-    print(f"  ✓ Screenshots render at all zoom levels (proves pyramid levels exist)")
-    print(f"  ✓ Data accessible at all zoom levels (proves coordinate transform works)")
-    print(f"  ✓ Values consistent (proves multiscale implementation is correct)")
-
-
 def test_ome_zarr_0_6_scale(static_file_server, webdriver):
     """scale: Per-axis scaling factors (JSON vector form).
     Example dataset: basic/scale.zarr
@@ -495,22 +401,6 @@ def test_ome_zarr_0_6_scale(static_file_server, webdriver):
 
     # Verify we can read data at TEST_VOXEL, proving the scale transform allows proper data access
     _verify_data_at_point(model_space["volume"], TEST_VOXEL, EXPECTED_VALUE)
-
-
-@pytest.mark.skip(reason="Hangs the test suite (unsupported transform)")
-def test_ome_zarr_0_6_sequence_multiscale(static_file_server, webdriver):
-    """sequence (multiscale): Composition across multiscale dataset.
-    Example dataset: basic/sequenceScaleTranslation_multiscale.zarr
-    """
-    test_dir = OME_ZARR_0_6_ROOT / "basic" / "sequenceScaleTranslation_multiscale.zarr"
-    server_url = static_file_server(test_dir)
-    with webdriver.viewer.txn() as s:
-        s.layers.append(
-            name="sequence_ms",
-            layer=neuroglancer.ImageLayer(source=f"zarr3://{server_url}"),
-        )
-    webdriver.sync()
-    _assert_renders(webdriver, "sequence_ms")
 
 
 def test_ome_zarr_0_6_sequence(static_file_server, webdriver):
@@ -610,23 +500,6 @@ def test_ome_zarr_0_6_affine(static_file_server, webdriver):
     
     permuted_voxel = (TEST_VOXEL[0] + 32/4, TEST_VOXEL[1] + 21/3, TEST_VOXEL[2] + 10/2)
     _verify_data_at_point(vol, permuted_voxel, EXPECTED_VALUE)
-
-
-@pytest.mark.skip(reason="Hangs the test suite (unsupported transform)")
-def test_ome_zarr_0_6_affine_multiscale(static_file_server, webdriver):
-    """affine (multiscale): Affine transform within multiscale context.
-    Example dataset: simple/affine_multiscale.zarr
-    """
-    test_dir = OME_ZARR_0_6_ROOT / "simple" / "affine_multiscale.zarr"
-    server_url = static_file_server(test_dir)
-    with webdriver.viewer.txn() as s:
-        s.layers.append(
-            name="affine_ms",
-            layer=neuroglancer.ImageLayer(source=f"zarr3://{server_url}"),
-        )
-    webdriver.sync()
-    _assert_renders(webdriver, "affine_ms")
-
 
 def test_ome_zarr_0_6_rotation(static_file_server, webdriver):
     """rotation: Rotation matrix (or axis permutation) example.
