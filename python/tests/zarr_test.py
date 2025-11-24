@@ -515,17 +515,46 @@ def test_ome_zarr_0_6_sequence_multiscale(static_file_server, webdriver):
     _assert_renders(webdriver, "sequence_ms")
 
 
-@pytest.mark.skip(reason="Hangs the test suite (unsupported transform)")
 def test_ome_zarr_0_6_sequence(static_file_server, webdriver):
     """sequence: Ordered composition of transforms (scale + translation).
     Example dataset: basic/sequenceScaleTranslation.zarr
+    
+    Transform:
+    1. Scale: [4, 3, 2] (z, y, x)
+    2. Translation: [32, 21, 10] (z, y, x)
+    
+    Physical = Scale * Index + Translation
+    For voxel index (13, 122, 169):
+    - Physical z = 4 * 13 + 32 = 84 micrometers
+    - Physical y = 3 * 122 + 21 = 387 micrometers
+    - Physical x = 2 * 169 + 10 = 348 micrometers
+    
+    The translation values are chosen so that translation/scale yields
+    integer origins [8, 7, 5] in voxel space, which Neuroglancer requires.
     """
     test_dir = OME_ZARR_0_6_ROOT / "basic" / "sequenceScaleTranslation.zarr"
     server_url = static_file_server(test_dir)
     with webdriver.viewer.txn() as s:
         s.layers.append(name="sequence", layer=neuroglancer.ImageLayer(source=f"zarr3://{server_url}"))
     webdriver.sync()
-    _assert_renders(webdriver, "sequence")
+    model_space = _assert_renders(webdriver, "sequence")
+    
+    # Verify scales - the scale component of the sequence transform
+    # Expected scales are [4, 3, 2] micrometers -> [4e-6, 3e-6, 2e-6] meters
+    expected_scales = [4e-6, 3e-6, 2e-6]
+    actual_scales = model_space["scales"]
+    for i, (expected, actual) in enumerate(zip(expected_scales, actual_scales)):
+        assert abs(actual - expected) < 1e-9, \
+            f"Scale mismatch on axis {i}: expected {expected}, got {actual}"
+    
+    # Verify the translation component by reading data
+    # The sequence transform applies: Physical = Scale * Index + Translation
+    # Scale: [4, 3, 2], Translation: [32, 21, 10] (all in micrometers)
+    
+    # In voxel space with the normalized coordinate system (scale factored out):
+    # - The origin is at translation/scale = [32/4, 21/3, 10/2] = [8, 7, 5] voxels
+    # - The data at array index [13, 122, 169] appears at voxel [13+8, 122+7, 169+5] = [21, 129, 174]
+    _verify_data_at_point(webdriver, "sequence", (21, 129, 174), EXPECTED_VALUE)
 
 
 

@@ -283,7 +283,17 @@ const coordinateTransformParsers = new Map([
   ["affine", parseAffineTransform],
   ["rotation", parseRotationTransform],
   ["mapAxis", parseMapAxisTransform],
+  ["sequence", parseSequenceTransform],
 ]);
+
+function parseSequenceTransform(rank: number, obj: unknown) {
+  const transformations = verifyObjectProperty(
+    obj,
+    "transformations",
+    (x) => x,
+  );
+  return parseOmeCoordinateTransforms(rank, transformations);
+}
 
 function parseMapAxisTransform(rank: number, obj: unknown) {
   const mapAxis = verifyObjectProperty(obj, "mapAxis", (values) =>
@@ -342,7 +352,7 @@ function parseOmeCoordinateTransform(
       `Unsupported coordinate transform type: ${JSON.stringify(transformType)}`,
     );
   }
-  return parser(rank, transformJson);
+  return parser(rank, transformJson) as Float64Array<ArrayBuffer>;
 }
 
 function parseOmeCoordinateTransforms(
@@ -475,6 +485,77 @@ function parseOmeMultiscale(
     for (let i = 0; i < rank; ++i) {
       for (let j = 0; j <= rank; ++j) {
         t[j * (rank + 1) + i] /= baseScales[i];
+      }
+    }
+
+    // Validate that the normalized transformation satisfies Neuroglancer's constraints.
+    // Neuroglancer requires that voxel positions map to integer or half-integer coordinates
+    // in the chunk grid. This is required because Neuroglancer uses a chunk-based storage
+    // system with discrete grid positions.
+    const tolerance = 1e-6;
+
+    // Check if the linear part is a scaled permutation matrix (diagonal + axis swaps OK).
+    // A scaled permutation matrix has at most one non-zero element per row and column.
+    // This allows: pure scales, axis permutations, or combinations thereof.
+    // It rejects: shear (multiple non-zero elements per row/column) and non-90° rotations.
+    let isValidTransform = true;
+    const rowNonZeroCount = new Array(rank).fill(0);
+    const colNonZeroCount = new Array(rank).fill(0);
+
+    for (let i = 0; i < rank; ++i) {
+      for (let j = 0; j < rank; ++j) {
+        const val = t[j * (rank + 1) + i];
+        if (Math.abs(val) > tolerance) {
+          rowNonZeroCount[j]++;
+          colNonZeroCount[i]++;
+        }
+      }
+    }
+
+    // Each row and column should have at most one non-zero element
+    for (let i = 0; i < rank; ++i) {
+      if (rowNonZeroCount[i] > 1 || colNonZeroCount[i] > 1) {
+        isValidTransform = false;
+        break;
+      }
+    }
+
+    if (!isValidTransform) {
+      // The transformation includes shear or non-90° rotation, which is not supported.
+      // Scaled permutations (including axis swaps and pure scales) are OK because they
+      // preserve the integer grid structure, just potentially reordered and scaled.
+      throw new Error(
+        `Invalid OME-Zarr transform: transformation includes shear or non-90° rotation, ` +
+        `which is not supported by Neuroglancer. The transformation matrix after ` +
+        `normalization has multiple non-zero elements in at least one row or column, ` +
+        `indicating shear or non-orthogonal rotation. Only scaled permutation matrices ` +
+        `(diagonal scales with optional axis swaps) are supported. `      );
+    }
+
+    // For diagonal transformations, validate that the translation (origin) satisfies the
+    // integer or half-integer constraint.
+    for (let i = 0; i < rank; ++i) {
+      const origin = t[rank * (rank + 1) + i];
+      const isInteger = Number.isInteger(origin);
+      const isHalfInteger = Number.isInteger(origin + 0.5);
+
+      if (!isInteger && !isHalfInteger) {
+        const nearestInt = Math.round(origin);
+        const nearestHalfInt = Math.round(origin - 0.5) + 0.5;
+        const distToInt = Math.abs(origin - nearestInt);
+        const distToHalfInt = Math.abs(origin - nearestHalfInt);
+
+        if (distToInt > tolerance && distToHalfInt > tolerance) {
+          const axisName = coordinateSpace.names[i];
+          throw new Error(
+            `Invalid OME-Zarr transform: origin for axis '${axisName}' (dimension ${i}) ` +
+            `is ${origin.toFixed(6)} in normalized voxel coordinates, which is neither an ` +
+            `integer nor a half-integer. Neuroglancer requires origins to be integers or ` +
+            `half-integers (e.g., 0, 0.5, 1, 1.5, ...). This typically occurs when the ` +
+            `translation is not a multiple (or half-multiple) of the scale. ` +
+            `Original transform had scale ${baseScales[i].toExponential(3)} and ` +
+            `translation ${(origin * baseScales[i]).toExponential(3)} in physical units.`);
+        }
       }
     }
   }
