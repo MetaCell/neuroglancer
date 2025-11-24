@@ -30,26 +30,6 @@
                   "discrete": false
                 }
               ]
-            },
-            {
-              "name": "array",
-              "axes": [
-                {
-                  "type": "array",
-                  "name": "dim_0",
-                  "discrete": true
-                },
-                {
-                  "type": "array",
-                  "name": "dim_1",
-                  "discrete": true
-                },
-                {
-                  "type": "array",
-                  "name": "dim_2",
-                  "discrete": true
-                }
-              ]
             }
           ],
           "datasets": [

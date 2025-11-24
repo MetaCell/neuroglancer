@@ -331,7 +331,7 @@ function parseMapAxisTransform(rank: number, obj: unknown) {
   // Output[i] = Input[mapAxis[i]]
   // So Row i has a 1 at Column mapAxis[i]
   for (let i = 0; i < rank; ++i) {
-    transform[mapAxis[i] * (rank + 1) + i] = 1;
+    transform[i * (rank + 1) + mapAxis[i]] = 1;
   }
   return transform;
 }
