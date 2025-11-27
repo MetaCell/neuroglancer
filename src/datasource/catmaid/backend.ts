@@ -14,103 +14,16 @@
  * limitations under the License.
  */
 
-import {
-    AnnotationGeometryChunk,
-    AnnotationGeometryChunkSourceBackend,
-    AnnotationGeometryData,
-    AnnotationSource,
-} from "#src/annotation/backend.js";
-import {
-    Annotation,
-    AnnotationId,
-    AnnotationType,
-    makeAnnotationPropertySerializers,
-    annotationTypeHandlers,
-} from "#src/annotation/index.js";
 import { WithParameters } from "#src/chunk_manager/backend.js";
-import { CatmaidClient, CatmaidNode } from "#src/datasource/catmaid/api.js";
-import { 
-    CatmaidAnnotationSourceParameters,
-    CatmaidAnnotationGeometryChunkSourceParameters 
-} from "#src/datasource/catmaid/base.js";
+import { SkeletonSource, SkeletonChunk } from "#src/skeleton/backend.js";
+import { CatmaidClient } from "#src/datasource/catmaid/api.js";
+import { CatmaidSkeletonSourceParameters } from "#src/datasource/catmaid/base.js";
 import { registerSharedObject } from "#src/worker_rpc.js";
-import { vec3 } from "#src/util/geom.js";
-
-function serializeAnnotations(
-    annotations: Annotation[]
-): AnnotationGeometryData {
-    const rank = 3;
-    const properties: any[] = [];
-    const propertySerializers = makeAnnotationPropertySerializers(
-        rank,
-        properties
-    );
-
-    const typeToAnnotations = new Map<AnnotationType, Annotation[]>();
-    for (const ann of annotations) {
-        if (!typeToAnnotations.has(ann.type)) {
-            typeToAnnotations.set(ann.type, []);
-        }
-        typeToAnnotations.get(ann.type)!.push(ann);
-    }
-
-    const geometryData = new AnnotationGeometryData();
-    geometryData.typeToIds = [];
-    geometryData.typeToOffset = [];
-    geometryData.typeToIdMaps = [];
-    geometryData.typeToInstanceCounts = [];
-    geometryData.typeToSize = [];
-
-    let totalBytes = 0;
-    for (const [type, anns] of typeToAnnotations) {
-        const serializer = propertySerializers[type];
-        const handler = annotationTypeHandlers[type];
-        const geometryBytes = handler.serializedBytes(rank);
-        const stride = geometryBytes + serializer.serializedBytes;
-        totalBytes += anns.length * stride;
-    }
-
-    geometryData.data = new Uint8Array(totalBytes);
-    const dv = new DataView(geometryData.data.buffer);
-    let currentOffset = 0;
-
-    for (const [type, anns] of typeToAnnotations) {
-        geometryData.typeToOffset[type] = currentOffset;
-        geometryData.typeToIds[type] = anns.map((a) => a.id);
-        geometryData.typeToIdMaps[type] = new Map(anns.map((a, i) => [a.id, i]));
-        geometryData.typeToSize[type] = anns.length;
-        geometryData.typeToInstanceCounts[type] = anns.map((_, i) => i);
-
-        const serializer = propertySerializers[type];
-        const handler = annotationTypeHandlers[type];
-        const geometryBytes = handler.serializedBytes(rank);
-        const stride = geometryBytes + serializer.serializedBytes;
-
-        for (let i = 0; i < anns.length; ++i) {
-            const ann = anns[i];
-            const offset = currentOffset + i * stride;
-
-            handler.serialize(dv, offset, true, rank, ann);
-
-            serializer.serialize(
-                dv,
-                offset + geometryBytes,
-                i,
-                anns.length,
-                true,
-                ann.properties
-            );
-        }
-        currentOffset += anns.length * stride;
-    }
-
-    return geometryData;
-}
 
 @registerSharedObject()
-export class CatmaidAnnotationGeometryChunkSourceBackend extends WithParameters(
-    AnnotationGeometryChunkSourceBackend,
-    CatmaidAnnotationGeometryChunkSourceParameters
+export class CatmaidSkeletonSource extends WithParameters(
+    SkeletonSource,
+    CatmaidSkeletonSourceParameters
 ) {
     get client(): CatmaidClient {
         const { catmaidParameters } = this.parameters;
@@ -121,120 +34,39 @@ export class CatmaidAnnotationGeometryChunkSourceBackend extends WithParameters(
         );
     }
 
-    async download(chunk: AnnotationGeometryChunk, _signal: AbortSignal) {
-        console.log('CATMAID Backend: download called for chunk:', chunk.chunkGridPosition);
-        const { chunkGridPosition } = chunk;
-        const { spec } = this;
-        const { chunkDataSize } = spec;
+    async download(chunk: SkeletonChunk, _signal: AbortSignal) {
+        const { objectId } = chunk;
+        // objectId is bigint, but CATMAID uses number.
+        // We assume objectId fits in number.
+        const skeletonId = Number(objectId);
 
-        // Calculate bounding box in voxel coordinates
-        const minVoxel = vec3.create();
-        const maxVoxel = vec3.create();
-        for (let i = 0; i < 3; ++i) {
-            minVoxel[i] = chunkGridPosition[i] * chunkDataSize[i];
-            maxVoxel[i] = (chunkGridPosition[i] + 1) * chunkDataSize[i];
-        }
-        
-        console.log('CATMAID Backend: Querying box:', minVoxel, 'to', maxVoxel);
+        const nodes = await this.client.getSkeleton(skeletonId);
 
-        // Since we don't have the full transform chain here easily, and CATMAID usually works in physical coordinates (nm),
-        // we assume the chunk grid is aligned with physical space or we need to apply the transform.
-        // For this POC, let's assume 1 voxel = 1 nm if no transform is applied, or use the transform if available.
-        // spec.chunkToMultiscaleTransform is available.
+        // Convert nodes to vertexPositions and indices
+        const numVertices = nodes.length;
+        const vertexPositions = new Float32Array(numVertices * 3);
+        const indices: number[] = [];
+        const nodeMap = new Map<number, number>(); // id -> index
 
-        // TODO: Apply transform correctly. For now, assuming identity/scaling is handled elsewhere or simple mapping.
-        // If chunkToMultiscaleTransform is identity, then voxel coords = physical coords.
-
-        const nodes = await this.client.boxQuery(minVoxel, maxVoxel);
-        
-        console.log('CATMAID Backend: Retrieved', nodes.length, 'nodes');
-
-        const annotations: Annotation[] = [];
-        const nodeMap = new Map<number, CatmaidNode>();
-        for (const node of nodes) {
-            nodeMap.set(node.id, node);
-            annotations.push({
-                type: AnnotationType.POINT,
-                id: `node_${node.id}`,
-                point: new Float32Array([node.x, node.y, node.z]),
-                properties: [],
-                description: undefined,
-                relatedSegments: undefined,
-            });
+        for (let i = 0; i < numVertices; ++i) {
+            const node = nodes[i];
+            nodeMap.set(node.id, i);
+            vertexPositions[i * 3] = node.x;
+            vertexPositions[i * 3 + 1] = node.y;
+            vertexPositions[i * 3 + 2] = node.z;
         }
 
-        for (const node of nodes) {
-            if (node.parent_id && nodeMap.has(node.parent_id)) {
-                const parent = nodeMap.get(node.parent_id)!;
-                annotations.push({
-                    type: AnnotationType.LINE,
-                    id: `edge_${node.id}_${node.parent_id}`,
-                    pointA: new Float32Array([node.x, node.y, node.z]),
-                    pointB: new Float32Array([parent.x, parent.y, parent.z]),
-                    properties: [],
-                    description: undefined,
-                    relatedSegments: undefined,
-                });
+        for (let i = 0; i < numVertices; ++i) {
+            const node = nodes[i];
+            if (node.parent_id !== null) {
+                const parentIndex = nodeMap.get(node.parent_id);
+                if (parentIndex !== undefined) {
+                    indices.push(i, parentIndex);
+                }
             }
         }
 
-        console.log('CATMAID Backend: Created', annotations.length, 'annotations');
-        
-        chunk.data = serializeAnnotations(annotations);
-        
-        console.log('CATMAID Backend: Chunk data serialized successfully');
-    }
-}
-
-@registerSharedObject()
-export class CatmaidAnnotationSource extends WithParameters(
-    AnnotationSource,
-    CatmaidAnnotationSourceParameters
-) {
-    constructor(rpc: any, options: any) {
-        console.log('CATMAID Backend: CatmaidAnnotationSource constructor called with options:', options);
-        console.log('CATMAID Backend: options.metadataChunkSource:', options.metadataChunkSource);
-        console.log('CATMAID Backend: options.segmentFilteredSource:', options.segmentFilteredSource);
-        console.log('CATMAID Backend: options.chunkManager:', options.chunkManager);
-        super(rpc, options);
-        console.log('CATMAID Backend: CatmaidAnnotationSource constructor completed');
-    }
-
-    get client(): CatmaidClient {
-        const { catmaidParameters } = this.parameters;
-        return new CatmaidClient(
-            catmaidParameters.url,
-            catmaidParameters.projectId,
-            catmaidParameters.token
-        );
-    }
-
-    async add(annotation: Annotation): Promise<AnnotationId> {
-        if (annotation.type === AnnotationType.POINT) {
-            const point = (annotation as any).point;
-            const id = await this.client.addNode(
-                1, // TODO: Handle skeleton ID selection
-                point[0],
-                point[1],
-                point[2]
-            );
-            return `node_${id}`;
-        }
-        throw new Error("Only points supported for add in POC");
-    }
-
-    async delete(id: AnnotationId): Promise<void> {
-        if (id.startsWith("node_")) {
-            const nodeId = parseInt(id.substring(5));
-            await this.client.deleteNode(nodeId);
-        }
-    }
-
-    async update(id: AnnotationId, newAnnotation: Annotation): Promise<void> {
-        if (newAnnotation.type === AnnotationType.POINT) {
-            const nodeId = parseInt(id.substring(5));
-            const point = (newAnnotation as any).point;
-            await this.client.moveNode(nodeId, point[0], point[1], point[2]);
-        }
+        chunk.vertexPositions = vertexPositions;
+        chunk.indices = new Uint32Array(indices);
     }
 }

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { AnnotationSourceParameters } from "#src/datasource/precomputed/base.js";
+import { AnnotationSourceParameters, SkeletonSourceParameters } from "#src/datasource/precomputed/base.js";
 import type { AnnotationGeometryChunkSpecification } from "#src/annotation/base.js";
 
 export class CatmaidDataSourceParameters {
@@ -30,6 +30,11 @@ export class CatmaidAnnotationSourceParameters extends AnnotationSourceParameter
 export class CatmaidAnnotationGeometryChunkSourceParameters {
     catmaidParameters: CatmaidDataSourceParameters;
     spec: AnnotationGeometryChunkSpecification;
-    
+
     static readonly RPC_ID = "catmaid/AnnotationGeometryChunkSource";
+}
+
+export class CatmaidSkeletonSourceParameters extends SkeletonSourceParameters {
+    catmaidParameters: CatmaidDataSourceParameters;
+    static RPC_ID = "catmaid/SkeletonSource";
 }

@@ -18,10 +18,7 @@ import {
     makeCoordinateSpace,
     makeIdentityTransform,
 } from "#src/coordinate_transform.js";
-import {
-    AnnotationGeometryChunkSource,
-    MultiscaleAnnotationSource,
-} from "#src/annotation/frontend_source.js";
+import { SkeletonSource } from "#src/skeleton/frontend.js";
 import { WithParameters } from "#src/chunk_manager/frontend.js";
 import {
     DataSource,
@@ -29,60 +26,21 @@ import {
     GetDataSourceOptions,
 } from "#src/datasource/index.js";
 import {
-    CatmaidAnnotationSourceParameters,
-    CatmaidAnnotationGeometryChunkSourceParameters,
+    CatmaidSkeletonSourceParameters,
     CatmaidDataSourceParameters,
 } from "#src/datasource/catmaid/base.js";
-import type { SliceViewSingleResolutionSource } from "#src/sliceview/frontend.js";
-import { makeSliceViewChunkSpecification } from "#src/sliceview/base.js";
+import { CatmaidClient } from "#src/datasource/catmaid/api.js";
+import {
+    SegmentPropertyMap,
+    InlineSegmentProperty,
+} from "#src/segmentation_display_state/property_map.js";
+import type { DataSubsourceEntry } from "#src/datasource/index.js";
 import { mat4 } from "#src/util/geom.js";
 
-export class CatmaidAnnotationGeometryChunkSource extends WithParameters(
-    AnnotationGeometryChunkSource,
-    CatmaidAnnotationGeometryChunkSourceParameters
+export class CatmaidSkeletonSource extends WithParameters(
+    SkeletonSource,
+    CatmaidSkeletonSourceParameters
 ) { }
-
-export class CatmaidAnnotationSource extends WithParameters(
-    MultiscaleAnnotationSource,
-    CatmaidAnnotationSourceParameters
-) {
-    initializeCounterpart(rpc: any, options: any) {
-        console.log('CATMAID Frontend: initializeCounterpart called with options:', options);
-        super.initializeCounterpart(rpc, options);
-        console.log('CATMAID Frontend: initializeCounterpart completed, options now:', options);
-    }
-
-    getSources(): SliceViewSingleResolutionSource<AnnotationGeometryChunkSource>[][] {
-        // Create a single resolution level with one chunk source
-        const spec = (this.parameters as any).spec;
-        if (!spec) {
-            throw new Error('CATMAID annotation source: spec is required');
-        }
-        
-        const chunkSourceParameters: CatmaidAnnotationGeometryChunkSourceParameters = {
-            catmaidParameters: this.parameters.catmaidParameters,
-            spec,
-        };
-        
-        const chunkSource = this.chunkManager.getChunkSource(
-            CatmaidAnnotationGeometryChunkSource,
-            {
-                parent: this,
-                parameters: chunkSourceParameters,
-                spec,
-            },
-        );
-
-        // Return a 2D array: [scales][alternatives]
-        // We have one scale with one alternative
-        return [[
-            {
-                chunkSource,
-                chunkToMultiscaleTransform: spec.chunkToMultiscaleTransform,
-            },
-        ]];
-    }
-}
 
 export class CatmaidDataSourceProvider implements DataSourceProvider {
     get scheme() {
@@ -95,50 +53,45 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
 
     async get(options: GetDataSourceOptions): Promise<DataSource> {
         const { providerUrl } = options;
-        // Parse URL: catmaid://<server>/<project_id>
-        const parts = providerUrl.split("/");
-        const projectId = parseInt(parts[parts.length - 1]);
-        const baseUrl = "https://" + parts.slice(0, parts.length - 1).join("/");
 
-        const parameters = new CatmaidAnnotationSourceParameters();
+        let baseUrl: string;
+        let projectId: number;
+
+        const lastSlash = providerUrl.lastIndexOf('/');
+        if (lastSlash === -1) {
+            // Maybe just project ID?
+            // Assume user knows what they are doing if they provide just a number?
+            // But we need a base URL.
+            throw new Error("Invalid CATMAID URL. Expected format: <base_url>/<project_id>");
+        }
+
+        const projectIdStr = providerUrl.substring(lastSlash + 1);
+        projectId = parseInt(projectIdStr);
+        if (isNaN(projectId)) {
+            throw new Error(`Invalid project ID: ${projectIdStr}`);
+        }
+
+        baseUrl = providerUrl.substring(0, lastSlash);
+
+        // If baseUrl doesn't start with http, prepend https://
+        if (!baseUrl.startsWith("http")) {
+            baseUrl = "https://" + baseUrl;
+        }
+
+        const parameters = new CatmaidSkeletonSourceParameters();
         parameters.catmaidParameters = new CatmaidDataSourceParameters();
         parameters.catmaidParameters.url = baseUrl;
         parameters.catmaidParameters.projectId = projectId;
-        parameters.rank = 3;
-        parameters.properties = []; // Default properties
-
-        // Create a simple chunk specification for spatial indexing
-        // Use 1000nm chunks (1 micron) which is reasonable for neuron tracing
-        const chunkDataSize = new Uint32Array([1000, 1000, 1000]);
-        const upperVoxelBound = new Float32Array([1000000000, 1000000000, 1000000000]); // 1 billion nm = 1 meter cube
-        const lowerVoxelBound = new Float32Array([0, 0, 0]);
-        
-        // Use the helper function to create a proper spec
-        const baseSpec = makeSliceViewChunkSpecification({
-            rank: 3,
-            chunkDataSize,
-            upperVoxelBound,
-            lowerVoxelBound,
-        });
-        
-        // Add the additional properties needed for AnnotationGeometryChunkSpecification
-        const spec = {
-            ...baseSpec,
-            chunkToMultiscaleTransform: mat4.create(), // Identity transform
-            limit: 0, // No limit on annotation density
+        parameters.url = providerUrl;
+        parameters.metadata = {
+            transform: mat4.create(),
+            vertexAttributes: new Map(),
+            sharding: undefined
         };
-        
-        // Store spec in parameters for getSources to access it
-        (parameters as any).spec = spec;
 
         const source = options.registry.chunkManager.getChunkSource(
-            CatmaidAnnotationSource,
-            {
-                parameters,
-                rank: 3,
-                relationships: [],
-                properties: [],
-            } as any
+            CatmaidSkeletonSource,
+            { parameters }
         );
 
         const modelSpace = makeCoordinateSpace({
@@ -147,15 +100,49 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
             scales: Float64Array.of(1, 1, 1),
         });
 
+        // Fetch skeleton list to populate segment property map.
+        let subsources: DataSubsourceEntry[] = [
+            {
+                id: "skeletons",
+                default: true,
+                subsource: { mesh: source },
+            },
+        ];
+
+        try {
+            const client = new CatmaidClient(
+                parameters.catmaidParameters.url,
+                parameters.catmaidParameters.projectId,
+                parameters.catmaidParameters.token,
+            );
+            const skeletonIds = await client.listSkeletons();
+            if (Array.isArray(skeletonIds) && skeletonIds.length > 0) {
+                const ids = new BigUint64Array(skeletonIds.length);
+                for (let i = 0; i < skeletonIds.length; ++i) {
+                    ids[i] = BigInt(skeletonIds[i]);
+                }
+                const labelProperty: InlineSegmentProperty = {
+                    id: "label",
+                    type: "label",
+                    values: skeletonIds.map((id) => `Skeleton ${id}`),
+                };
+                const segmentPropertyMap = new SegmentPropertyMap({
+                    inlineProperties: { ids, properties: [labelProperty] },
+                });
+                subsources.push({
+                    id: "properties",
+                    default: true,
+                    subsource: { segmentPropertyMap },
+                });
+            }
+        } catch (e) {
+            // Non-fatal: just skip properties if request fails.
+            console.warn("Failed to load CATMAID skeleton list", e);
+        }
+
         return {
             modelTransform: makeIdentityTransform(modelSpace),
-            subsources: [
-                {
-                    id: "annotations",
-                    default: true,
-                    subsource: { annotation: source },
-                },
-            ],
+            subsources,
         };
     }
 }

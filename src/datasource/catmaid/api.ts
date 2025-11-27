@@ -14,9 +14,6 @@
  * limitations under the License.
  */
 
-
-import { vec3 } from "#src/util/geom.js";
-
 export interface CatmaidNode {
     id: number;
     parent_id: number | null;
@@ -28,82 +25,52 @@ export interface CatmaidNode {
     skeleton_id: number;
 }
 
-export class CatmaidClient {
-    // Mock data storage for testing without a real CATMAID server
-    private static mockNodes: Map<number, CatmaidNode> = new Map();
-    private static nextNodeId = 1000;
-    private static useMockData = true; // Set to false to use real CATMAID server
+export interface SkeletonSummary {
+    skeleton_id: number;
+    num_nodes: number;
+    cable_length: number;
+}
 
+export interface CatmaidSource {
+    listSkeletons(): Promise<number[]>;
+    getSkeleton(skeletonId: number): Promise<CatmaidNode[]>;
+    addNode(
+        skeletonId: number,
+        x: number,
+        y: number,
+        z: number,
+        parentId?: number,
+    ): Promise<number>;
+    moveNode(nodeId: number, x: number, y: number, z: number): Promise<void>;
+    deleteNode(nodeId: number): Promise<void>;
+
+    mergeSkeletons(skeletonId1: number, skeletonId2: number): Promise<void>;
+    splitSkeleton(nodeId: number): Promise<void>;
+}
+
+export class CatmaidClient implements CatmaidSource {
     constructor(
         public baseUrl: string,
         public projectId: number,
-        public token?: string
-    ) {
-        // Initialize mock data if not already done
-        if (CatmaidClient.mockNodes.size === 0) {
-            this.initializeMockData();
-        }
-    }
-
-    private initializeMockData() {
-        console.log('Initializing CATMAID mock data...');
-        
-        // Create a sample neuron with multiple branches
-        // Main trunk along z-axis - positioned at [500, 500, 500] for easy viewing
-        const nodes: CatmaidNode[] = [
-            // Root node
-            { id: 1, parent_id: null, x: 500, y: 500, z: 500, radius: 8, confidence: 5, skeleton_id: 1 },
-            // Main trunk
-            { id: 2, parent_id: 1, x: 500, y: 500, z: 600, radius: 6, confidence: 5, skeleton_id: 1 },
-            { id: 3, parent_id: 2, x: 500, y: 500, z: 700, radius: 5, confidence: 5, skeleton_id: 1 },
-            { id: 4, parent_id: 3, x: 500, y: 500, z: 800, radius: 5, confidence: 5, skeleton_id: 1 },
-            { id: 5, parent_id: 4, x: 500, y: 500, z: 900, radius: 4, confidence: 5, skeleton_id: 1 },
-            
-            // Branch 1 - extending in +x direction
-            { id: 6, parent_id: 3, x: 600, y: 500, z: 700, radius: 4, confidence: 5, skeleton_id: 1 },
-            { id: 7, parent_id: 6, x: 700, y: 500, z: 700, radius: 3, confidence: 5, skeleton_id: 1 },
-            { id: 8, parent_id: 7, x: 800, y: 500, z: 750, radius: 3, confidence: 4, skeleton_id: 1 },
-            
-            // Branch 2 - extending in -x direction
-            { id: 9, parent_id: 3, x: 400, y: 500, z: 700, radius: 4, confidence: 5, skeleton_id: 1 },
-            { id: 10, parent_id: 9, x: 300, y: 500, z: 700, radius: 3, confidence: 5, skeleton_id: 1 },
-            
-            // Branch 3 - extending in +y direction from node 4
-            { id: 11, parent_id: 4, x: 500, y: 600, z: 800, radius: 4, confidence: 5, skeleton_id: 1 },
-            { id: 12, parent_id: 11, x: 500, y: 700, z: 850, radius: 3, confidence: 5, skeleton_id: 1 },
-            { id: 13, parent_id: 12, x: 550, y: 750, z: 900, radius: 2, confidence: 4, skeleton_id: 1 },
-            
-            // Branch 4 - extending in -y direction from node 4
-            { id: 14, parent_id: 4, x: 500, y: 400, z: 800, radius: 4, confidence: 5, skeleton_id: 1 },
-            { id: 15, parent_id: 14, x: 500, y: 300, z: 850, radius: 3, confidence: 5, skeleton_id: 1 },
-        ];
-
-        // Add a second neuron nearby
-        const neuron2Nodes: CatmaidNode[] = [
-            { id: 100, parent_id: null, x: 1000, y: 1000, z: 500, radius: 7, confidence: 5, skeleton_id: 2 },
-            { id: 101, parent_id: 100, x: 1000, y: 1000, z: 600, radius: 6, confidence: 5, skeleton_id: 2 },
-            { id: 102, parent_id: 101, x: 950, y: 950, z: 700, radius: 5, confidence: 5, skeleton_id: 2 },
-            { id: 103, parent_id: 102, x: 900, y: 900, z: 800, radius: 4, confidence: 5, skeleton_id: 2 },
-            { id: 104, parent_id: 103, x: 850, y: 850, z: 900, radius: 3, confidence: 4, skeleton_id: 2 },
-        ];
-
-        [...nodes, ...neuron2Nodes].forEach(node => {
-            CatmaidClient.mockNodes.set(node.id, node);
-        });
-
-        CatmaidClient.nextNodeId = 200;
-        console.log(`Initialized ${CatmaidClient.mockNodes.size} mock nodes`);
-    }
+        public token?: string,
+    ) { }
 
     private async fetch(
         endpoint: string,
-        options: RequestInit = {}
+        options: RequestInit = {},
     ): Promise<any> {
-        const url = `${this.baseUrl}/${this.projectId}/${endpoint}`;
+        // Ensure baseUrl doesn't have trailing slash and endpoint doesn't have leading slash
+        const baseUrl = this.baseUrl.replace(/\/$/, "");
+        const url = `${baseUrl}/${this.projectId}/${endpoint}`;
         const headers = new Headers(options.headers);
         if (this.token) {
             headers.append("X-Authorization", `Token ${this.token}`);
         }
+        // CATMAID API often expects form-encoded data for POST
+        if (options.method === "POST" && options.body instanceof URLSearchParams) {
+            headers.append("Content-Type", "application/x-www-form-urlencoded");
+        }
+
         const response = await fetch(url, { ...options, headers });
         if (!response.ok) {
             throw new Error(`CATMAID request failed: ${response.statusText}`);
@@ -111,17 +78,13 @@ export class CatmaidClient {
         return response.json();
     }
 
-    async getSkeleton(skeletonId: number): Promise<CatmaidNode[]> {
-        if (CatmaidClient.useMockData) {
-            console.log(`Mock: Getting skeleton ${skeletonId}`);
-            const nodes = Array.from(CatmaidClient.mockNodes.values())
-                .filter(n => n.skeleton_id === skeletonId);
-            console.log(`Mock: Found ${nodes.length} nodes for skeleton ${skeletonId}`);
-            return nodes;
-        }
+    async listSkeletons(): Promise<number[]> {
+        return this.fetch("skeletons/");
+    }
 
-        // Real implementation
+    async getSkeleton(skeletonId: number): Promise<CatmaidNode[]> {
         const data = await this.fetch(`skeletons/${skeletonId}/compact-detail`);
+        // data[0] contains the nodes
         const nodes = data[0];
         return nodes.map((n: any[]) => ({
             id: n[0],
@@ -135,88 +98,32 @@ export class CatmaidClient {
         }));
     }
 
-    async boxQuery(min: vec3, max: vec3): Promise<CatmaidNode[]> {
-        if (CatmaidClient.useMockData) {
-            console.log(`Mock: Box query [${min[0]}, ${min[1]}, ${min[2]}] to [${max[0]}, ${max[1]}, ${max[2]}]`);
-            const nodes = Array.from(CatmaidClient.mockNodes.values()).filter(node => {
-                return node.x >= min[0] && node.x <= max[0] &&
-                       node.y >= min[1] && node.y <= max[1] &&
-                       node.z >= min[2] && node.z <= max[2];
-            });
-            console.log(`Mock: Found ${nodes.length} nodes in box`);
-            return nodes;
-        }
-
-        // Real implementation
-        const body = new URLSearchParams({
-            left: min[0].toString(),
-            top: min[1].toString(),
-            z1: min[2].toString(),
-            right: max[0].toString(),
-            bottom: max[1].toString(),
-            z2: max[2].toString(),
-        });
-
-        const data = await this.fetch(`nodes/`, {
-            method: "POST",
-            body: body,
-        });
-
-        const nodes = data[0];
-        return nodes.map((n: any[]) => ({
-            id: n[0],
-            parent_id: n[1],
-            x: n[2],
-            y: n[3],
-            z: n[4],
-            confidence: n[5],
-            radius: n[6],
-            skeleton_id: n[7],
-        }));
-    }
-
     async moveNode(
         nodeId: number,
         x: number,
         y: number,
-        z: number
+        z: number,
     ): Promise<void> {
-        if (CatmaidClient.useMockData) {
-            console.log(`Mock: Moving node ${nodeId} to [${x}, ${y}, ${z}]`);
-            const node = CatmaidClient.mockNodes.get(nodeId);
-            if (node) {
-                node.x = x;
-                node.y = y;
-                node.z = z;
-                console.log(`Mock: Node ${nodeId} moved successfully`);
-            } else {
-                console.warn(`Mock: Node ${nodeId} not found`);
-            }
-            return;
-        }
+        const body = new URLSearchParams({
+            x: x.toString(),
+            y: y.toString(),
+            z: z.toString(),
+            treenode_id: nodeId.toString(),
+        });
 
-        // Real implementation
-        await this.fetch(`node/${nodeId}/move`, {
+        await this.fetch(`node/update`, {
             method: "POST",
-            body: JSON.stringify({ x, y, z }),
+            body: body,
         });
     }
 
     async deleteNode(nodeId: number): Promise<void> {
-        if (CatmaidClient.useMockData) {
-            console.log(`Mock: Deleting node ${nodeId}`);
-            const deleted = CatmaidClient.mockNodes.delete(nodeId);
-            if (deleted) {
-                console.log(`Mock: Node ${nodeId} deleted successfully`);
-            } else {
-                console.warn(`Mock: Node ${nodeId} not found`);
-            }
-            return;
-        }
-
-        // Real implementation
-        await this.fetch(`node/${nodeId}/delete`, {
+        const body = new URLSearchParams({
+            treenode_id: nodeId.toString(),
+        });
+        await this.fetch(`treenode/delete`, {
             method: "POST",
+            body: body,
         });
     }
 
@@ -225,39 +132,36 @@ export class CatmaidClient {
         x: number,
         y: number,
         z: number,
-        parentId?: number
+        parentId?: number,
     ): Promise<number> {
-        if (CatmaidClient.useMockData) {
-            const nodeId = CatmaidClient.nextNodeId++;
-            console.log(`Mock: Adding node ${nodeId} at [${x}, ${y}, ${z}] with parent ${parentId} to skeleton ${skeletonId}`);
-            
-            const newNode: CatmaidNode = {
-                id: nodeId,
-                parent_id: parentId || null,
-                x,
-                y,
-                z,
-                radius: 3,
-                confidence: 5,
-                skeleton_id: skeletonId,
-            };
-            
-            CatmaidClient.mockNodes.set(nodeId, newNode);
-            console.log(`Mock: Node ${nodeId} added successfully`);
-            return nodeId;
+        const body = new URLSearchParams({
+            x: x.toString(),
+            y: y.toString(),
+            z: z.toString(),
+            skeleton_id: skeletonId.toString(),
+        });
+        if (parentId) {
+            body.append("parent_id", parentId.toString());
         }
 
-        // Real implementation
-        const res = await this.fetch(`node/add`, {
+        const res = await this.fetch(`treenode/create`, {
             method: "POST",
-            body: JSON.stringify({
-                skeleton_id: skeletonId,
-                x,
-                y,
-                z,
-                parent_id: parentId,
-            }),
+            body: body,
         });
-        return res.node_id;
+        return res.treenode_id;
+    }
+
+    async mergeSkeletons(
+        skeletonId1: number,
+        skeletonId2: number,
+    ): Promise<void> {
+        // Placeholder implementation; parameters referenced to satisfy noUnusedParameters.
+        void skeletonId1;
+        void skeletonId2;
+        throw new Error("mergeSkeletons not implemented.");
+    }
+    async splitSkeleton(nodeId: number): Promise<void> {
+        void nodeId;
+        throw new Error("splitSkeleton not implemented.");
     }
 }
