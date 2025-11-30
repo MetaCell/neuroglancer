@@ -14,33 +14,20 @@
  * limitations under the License.
  */
 
-import {
-    makeCoordinateSpace,
-    makeIdentityTransform,
-} from "#src/coordinate_transform.js";
+import { makeCoordinateSpace, makeIdentityTransform } from "#src/coordinate_transform.js";
 import { SkeletonSource } from "#src/skeleton/frontend.js";
 import { WithParameters } from "#src/chunk_manager/frontend.js";
-import {
-    DataSource,
-    DataSourceProvider,
-    GetDataSourceOptions,
-} from "#src/datasource/index.js";
-import {
-    CatmaidSkeletonSourceParameters,
-    CatmaidDataSourceParameters,
-} from "#src/datasource/catmaid/base.js";
+import { DataSource, DataSourceProvider, GetDataSourceOptions } from "#src/datasource/index.js";
+import { CatmaidSkeletonSourceParameters, CatmaidDataSourceParameters } from "#src/datasource/catmaid/base.js";
 import { CatmaidClient } from "#src/datasource/catmaid/api.js";
-import {
-    SegmentPropertyMap,
-    InlineSegmentProperty,
-} from "#src/segmentation_display_state/property_map.js";
+import { SegmentPropertyMap, InlineSegmentProperty } from "#src/segmentation_display_state/property_map.js";
 import type { DataSubsourceEntry } from "#src/datasource/index.js";
 import { mat4 } from "#src/util/geom.js";
 
 export class CatmaidSkeletonSource extends WithParameters(
     SkeletonSource,
-    CatmaidSkeletonSourceParameters
-) { }
+    CatmaidSkeletonSourceParameters,
+) {}
 
 export class CatmaidDataSourceProvider implements DataSourceProvider {
     get scheme() {
@@ -53,27 +40,19 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
 
     async get(options: GetDataSourceOptions): Promise<DataSource> {
         const { providerUrl } = options;
-
         let baseUrl: string;
         let projectId: number;
 
-        const lastSlash = providerUrl.lastIndexOf('/');
+        const lastSlash = providerUrl.lastIndexOf("/");
         if (lastSlash === -1) {
-            // Maybe just project ID?
-            // Assume user knows what they are doing if they provide just a number?
-            // But we need a base URL.
             throw new Error("Invalid CATMAID URL. Expected format: <base_url>/<project_id>");
         }
-
         const projectIdStr = providerUrl.substring(lastSlash + 1);
         projectId = parseInt(projectIdStr);
         if (isNaN(projectId)) {
             throw new Error(`Invalid project ID: ${projectIdStr}`);
         }
-
         baseUrl = providerUrl.substring(0, lastSlash);
-
-        // If baseUrl doesn't start with http, prepend https://
         if (!baseUrl.startsWith("http")) {
             baseUrl = "https://" + baseUrl;
         }
@@ -86,21 +65,35 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
         parameters.metadata = {
             transform: mat4.create(),
             vertexAttributes: new Map(),
-            sharding: undefined
+            sharding: undefined,
         };
 
         const source = options.registry.chunkManager.getChunkSource(
             CatmaidSkeletonSource,
-            { parameters }
+            { parameters },
         );
+
+        const client = new CatmaidClient(
+            parameters.catmaidParameters.url,
+            parameters.catmaidParameters.projectId,
+            parameters.catmaidParameters.token,
+        );
+        let stackInfo: any = null;
+        try {
+            stackInfo = await client.getStackInfo();
+        } catch {
+            // Ignore stack info errors.
+        }
+        const xResolution = stackInfo?.resolution?.x || 1;
+        const yResolution = stackInfo?.resolution?.y || 1;
+        const zResolution = stackInfo?.resolution?.z || 1;
 
         const modelSpace = makeCoordinateSpace({
             names: ["x", "y", "z"],
             units: ["nm", "nm", "nm"],
-            scales: Float64Array.of(1, 1, 1),
+            scales: Float64Array.of(xResolution, yResolution, zResolution),
         });
 
-        // Fetch skeleton list to populate segment property map.
         let subsources: DataSubsourceEntry[] = [
             {
                 id: "skeletons",
@@ -110,11 +103,6 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
         ];
 
         try {
-            const client = new CatmaidClient(
-                parameters.catmaidParameters.url,
-                parameters.catmaidParameters.projectId,
-                parameters.catmaidParameters.token,
-            );
             const skeletonIds = await client.listSkeletons();
             if (Array.isArray(skeletonIds) && skeletonIds.length > 0) {
                 const ids = new BigUint64Array(skeletonIds.length);

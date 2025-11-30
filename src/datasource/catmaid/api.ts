@@ -34,6 +34,7 @@ export interface SkeletonSummary {
 export interface CatmaidSource {
     listSkeletons(): Promise<number[]>;
     getSkeleton(skeletonId: number): Promise<CatmaidNode[]>;
+    getStackInfo(stackId?: number): Promise<any>;
     addNode(
         skeletonId: number,
         x: number,
@@ -80,6 +81,18 @@ export class CatmaidClient implements CatmaidSource {
 
     async listSkeletons(): Promise<number[]> {
         return this.fetch("skeletons/");
+    }
+
+    async getStackInfo(stackId?: number): Promise<any> {
+        // If a specific stack id is provided, fetch its info directly.
+        if (stackId !== undefined) {
+            return this.fetch(`stack/${stackId}/info`);
+        }
+        // Otherwise, list stacks and return info for the first one.
+        const stacks: Array<{ id: number }> = await this.fetch("stacks");
+        if (!stacks || stacks.length === 0) return null;
+        const targetId = stacks[0].id;
+        return this.fetch(`stack/${targetId}/info`);
     }
 
     async getSkeleton(skeletonId: number): Promise<CatmaidNode[]> {
