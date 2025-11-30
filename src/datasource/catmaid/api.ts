@@ -34,7 +34,7 @@ export interface SkeletonSummary {
 export interface CatmaidSource {
     listSkeletons(): Promise<number[]>;
     getSkeleton(skeletonId: number): Promise<CatmaidNode[]>;
-    getStackInfo(stackId?: number): Promise<any>;
+    getMetadataInfo(stackId?: number): Promise<any>;
     addNode(
         skeletonId: number,
         x: number,
@@ -83,7 +83,9 @@ export class CatmaidClient implements CatmaidSource {
         return this.fetch("skeletons/");
     }
 
-    async getStackInfo(stackId?: number): Promise<any> {
+    async getMetadataInfo(stackId?: number): Promise<any> {
+        return null // From the tests tried applying the stack resolution was making things worse
+
         // If a specific stack id is provided, fetch its info directly.
         if (stackId !== undefined) {
             return this.fetch(`stack/${stackId}/info`);

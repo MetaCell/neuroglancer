@@ -80,7 +80,7 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
         );
         let stackInfo: any = null;
         try {
-            stackInfo = await client.getStackInfo();
+            stackInfo = await client.getMetadataInfo();
         } catch {
             // Ignore stack info errors.
         }
