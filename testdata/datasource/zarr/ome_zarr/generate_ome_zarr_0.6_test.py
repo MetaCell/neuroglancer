@@ -19,21 +19,23 @@ import shutil
 
 THIS_DIR = Path(__file__).parent
 
+
 def create_test_pattern(shape=(16, 16, 16)):
     """Create an asymmetrical test pattern - an L-shaped figure visible in X-Y top view."""
     data = np.zeros(shape, dtype=np.uint16)
     # Create an L-shape that's clearly asymmetrical when viewed from top (X-Y plane)
     # The L extends through multiple Z layers so it's visible in any Z slice
-    
+
     # Vertical bar of the L: extends in +Y direction
     # Position: x=[6:8], y=[4:10], z=[5:11]
     data[5:11, 4:10, 6:8] = 1000
-    
+
     # Horizontal bar of the L: extends in +X direction from bottom of vertical bar
     # Position: x=[8:14], y=[4:6], z=[5:11]
     data[5:11, 4:6, 8:14] = 1000
-    
+
     return data
+
 
 def create_ome_zarr_0_5(path, data, name="test"):
     """Create an OME-ZARR 0.5 file using ngff_zarr."""
@@ -45,13 +47,13 @@ def create_ome_zarr_0_5(path, data, name="test"):
         axes_units={"z": "micrometer", "y": "micrometer", "x": "micrometer"},
         name=name,
     )
-    
+
     # Create multiscales (just single scale for simplicity)
     multiscales = nz.to_multiscales(image)
-    
+
     # Remove existing directory
     shutil.rmtree(path, ignore_errors=True)
-    
+
     # Write to disk using ngff_zarr
     nz.to_ngff_zarr(
         str(path),
@@ -60,49 +62,51 @@ def create_ome_zarr_0_5(path, data, name="test"):
         version="0.5",
     )
 
+
 def apply_transform_to_data(data, transform_matrix):
     """Apply transformation to data by resampling.
-    
+
     For each output position, we compute the inverse transform to find
     the input position to sample from.
     """
     from scipy.ndimage import map_coordinates
-    
+
     shape = data.shape
     output = np.zeros_like(data)
-    
+
     # Create coordinate grids for output
-    coords_out = np.mgrid[0:shape[0], 0:shape[1], 0:shape[2]].astype(float)
-    
+    coords_out = np.mgrid[0 : shape[0], 0 : shape[1], 0 : shape[2]].astype(float)
+
     # Flatten for easier processing
     coords_flat = coords_out.reshape(3, -1)
-    
+
     # Apply inverse transform to find input coordinates
     # First, invert the affine matrix
     # Format: each row is [a, b, c, tx] representing: out_i = a*in_0 + b*in_1 + c*in_2 + tx
     M = np.array(transform_matrix)  # 3x4 matrix
-    
+
     # Convert to homogeneous 4x4
     M_hom = np.eye(4)
     M_hom[:3, :] = M
-    
+
     # Invert
     M_inv = np.linalg.inv(M_hom)
-    
+
     # Add homogeneous coordinate
     coords_hom = np.vstack([coords_flat, np.ones(coords_flat.shape[1])])
-    
+
     # Apply inverse transform
     coords_in_hom = M_inv @ coords_hom
     coords_in = coords_in_hom[:3, :]
-    
+
     # Reshape back
     coords_in_grid = coords_in.reshape(3, *shape)
-    
+
     # Sample from input using the computed coordinates
-    output = map_coordinates(data, coords_in_grid, order=1, mode='constant', cval=0)
-    
+    output = map_coordinates(data, coords_in_grid, order=1, mode="constant", cval=0)
+
     return output
+
 
 # Create base data
 print("Creating base data...")
@@ -115,16 +119,16 @@ print(f"    Horizontal bar: x=[8:14], y=[4:6], z=[5:11]")
 
 # Define a simple transformation: swap y and x, with offset
 forward_transform = [
-    [1, 0, 0, 0],      # z_out = z_in
-    [0, 0, 1, 0],      # y_out = x_in 
-    [0, 1, 0, 0],      # x_out = y_in
+    [1, 0, 0, 0],  # z_out = z_in
+    [0, 0, 1, 0],  # y_out = x_in
+    [0, 1, 0, 0],  # x_out = y_in
 ]
 
 # Compute inverse
 inverse_transform = [
-    [1, 0, 0, 0],      # z_in = z_out
-    [0, 0, 1, 0],      # y_in = x_out
-    [0, 1, 0, 0],      # x_in = y_out
+    [1, 0, 0, 0],  # z_in = z_out
+    [0, 0, 1, 0],  # y_in = x_out
+    [0, 1, 0, 0],  # x_in = y_out
 ]
 
 print(f"\nForward transform (applied to data):")
@@ -153,37 +157,35 @@ print(f"Creating {intermediate_dir}...")
 create_ome_zarr_0_5(intermediate_dir, transformed_data, name="intermediate")
 
 # Create both affine and rotation transformed files
-for transform_type, transformed_dir in [("affine", transformed_affine_dir), ("rotation", transformed_rotation_dir)]:
+for transform_type, transformed_dir in [
+    ("affine", transformed_affine_dir),
+    ("rotation", transformed_rotation_dir),
+]:
     print(f"Creating {transformed_dir} with {transform_type} transform...")
     shutil.rmtree(transformed_dir, ignore_errors=True)
 
     # For the transformed file, we need to create a Zarr v3 array manually
     # because we need to add a custom transformation in the metadata
-    array_path = transformed_dir / 'array'
+    array_path = transformed_dir / "array"
     array_path.mkdir(parents=True, exist_ok=True)
 
     spec = {
-        'driver': 'zarr3',
-        'kvstore': {
-            'driver': 'file',
-            'path': str(array_path)
+        "driver": "zarr3",
+        "kvstore": {"driver": "file", "path": str(array_path)},
+        "metadata": {
+            "shape": list(transformed_data.shape),
+            "chunk_grid": {
+                "name": "regular",
+                "configuration": {"chunk_shape": list(transformed_data.shape)},
+            },
+            "chunk_key_encoding": {
+                "name": "default",
+                "configuration": {"separator": "/"},
+            },
+            "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}],
+            "data_type": str(transformed_data.dtype),
+            "fill_value": 0,
         },
-        'metadata': {
-            'shape': list(transformed_data.shape),
-            'chunk_grid': {
-                'name': 'regular',
-                'configuration': {'chunk_shape': list(transformed_data.shape)}
-            },
-            'chunk_key_encoding': {
-                'name': 'default',
-                'configuration': {'separator': '/'}
-            },
-            'codecs': [
-                {'name': 'bytes', 'configuration': {'endian': 'little'}}
-            ],
-            'data_type': str(transformed_data.dtype),
-            'fill_value': 0
-        }
     }
 
     array = ts.open(spec, create=True, dtype=ts.uint16).result()
@@ -203,14 +205,14 @@ for transform_type, transformed_dir in [("affine", transformed_affine_dir), ("ro
             "type": "rotation",
             "rotation": rotation_matrix,
             "input": "array",
-            "output": "physical"
+            "output": "physical",
         }
     else:  # affine
         coord_transform = {
             "type": "affine",
             "affine": inverse_transform,
             "input": "array",
-            "output": "physical"
+            "output": "physical",
         }
 
     transformed_metadata = {
@@ -219,31 +221,52 @@ for transform_type, transformed_dir in [("affine", transformed_affine_dir), ("ro
         "attributes": {
             "ome": {
                 "version": "0.6-dev2",
-                "multiscales": [{
-                    "name": "test",
-                    "coordinateSystems": [{
-                        "name": "physical",
-                        "axes": [
-                            {"name": "z", "type": "space", "unit": "micrometer", "discrete": False},
-                            {"name": "y", "type": "space", "unit": "micrometer", "discrete": False},
-                            {"name": "x", "type": "space", "unit": "micrometer", "discrete": False},
-                        ]
-                    }],
-                    "datasets": [{
-                        "path": "array",
-                        "coordinateTransformations": [coord_transform]
-                    }]
-                }]
+                "multiscales": [
+                    {
+                        "name": "test",
+                        "coordinateSystems": [
+                            {
+                                "name": "physical",
+                                "axes": [
+                                    {
+                                        "name": "z",
+                                        "type": "space",
+                                        "unit": "micrometer",
+                                        "discrete": False,
+                                    },
+                                    {
+                                        "name": "y",
+                                        "type": "space",
+                                        "unit": "micrometer",
+                                        "discrete": False,
+                                    },
+                                    {
+                                        "name": "x",
+                                        "type": "space",
+                                        "unit": "micrometer",
+                                        "discrete": False,
+                                    },
+                                ],
+                            }
+                        ],
+                        "datasets": [
+                            {
+                                "path": "array",
+                                "coordinateTransformations": [coord_transform],
+                            }
+                        ],
+                    }
+                ],
             }
-        }
+        },
     }
 
     with open(transformed_dir / "zarr.json", "w") as f:
         json.dump(transformed_metadata, f, indent=2)
 
-print("\n" + "="*70)
+print("\n" + "=" * 70)
 print("Test files created successfully!")
-print("="*70)
+print("=" * 70)
 print(f"\nBase file: {base_dir}")
 print(f"  - OME-ZARR 0.5 format")
 print(f"  - Identity transform in metadata")
@@ -267,4 +290,3 @@ print(f"  - Inverse rotation transform in metadata (3x3 matrix)")
 print(f"  - Data has forward transform applied")
 print(f"  - When rendered, should match base file!")
 print(f"  - Expected L-shape at original position in physical space")
-

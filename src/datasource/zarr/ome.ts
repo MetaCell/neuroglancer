@@ -55,7 +55,14 @@ export interface OmeMetadata {
   channels: ChannelMetadata | undefined;
 }
 
-const SUPPORTED_OME_MULTISCALE_VERSIONS = new Set(["0.4", "0.5-dev", "0.5", "0.6.dev1", "0.6", "0.6-dev2"]);
+const SUPPORTED_OME_MULTISCALE_VERSIONS = new Set([
+  "0.4",
+  "0.5-dev",
+  "0.5",
+  "0.6.dev1",
+  "0.6",
+  "0.6-dev2",
+]);
 
 const OME_UNITS = new Map<string, { unit: string; scale: number }>([
   ["angstrom", { unit: "m", scale: 1e-10 }],
@@ -288,26 +295,30 @@ const coordinateTransformParsers = new Map([
 
 function parseSequenceTransform(rank: number, obj: unknown) {
   verifyObject(obj);
-  
+
   const transformations = verifyObjectProperty(
     obj,
     "transformations",
     (x) => x,
   );
-  
+
   // Validate that inner transformations don't contain nested sequences
   if (Array.isArray(transformations)) {
     parseArray(transformations, (innerTransform) => {
       verifyObject(innerTransform);
-      const innerType = verifyObjectProperty(innerTransform, "type", verifyString);
+      const innerType = verifyObjectProperty(
+        innerTransform,
+        "type",
+        verifyString,
+      );
       if (innerType === "sequence") {
         throw new Error(
-          "A sequence transformation MUST NOT be part of another sequence transformation"
+          "A sequence transformation MUST NOT be part of another sequence transformation",
         );
       }
     });
   }
-  
+
   return parseOmeCoordinateTransforms(rank, transformations);
 }
 
@@ -317,7 +328,8 @@ function parseMapAxisTransform(rank: number, obj: unknown) {
       const val = verifyFiniteFloat(x);
       if (!Number.isInteger(val) || val < 0 || val >= rank) {
         throw new Error(
-          `Invalid mapAxis index: ${val}. Must be integer between 0 and ${rank - 1
+          `Invalid mapAxis index: ${val}. Must be integer between 0 and ${
+            rank - 1
           }`,
         );
       }
@@ -401,73 +413,109 @@ function validateCoordinateTransformations(
   path: string,
 ) {
   if (!Array.isArray(transformations)) return;
-  
+
   // For a single transformation or the outermost sequence
   if (transformations.length === 1) {
     const transform = transformations[0];
     verifyObject(transform);
-    
-    const input = verifyOptionalObjectProperty(transform, "input", verifyString);
-    const output = verifyOptionalObjectProperty(transform, "output", verifyString);
+
+    const input = verifyOptionalObjectProperty(
+      transform,
+      "input",
+      verifyString,
+    );
+    const output = verifyOptionalObjectProperty(
+      transform,
+      "output",
+      verifyString,
+    );
     const type = verifyObjectProperty(transform, "type", verifyString);
-    
+
     // Validate input matches expected (array path)
     // Empty string or undefined means the field is not specified
     if (input !== undefined && input !== "" && input !== expectedInput) {
       throw new Error(
         `Invalid coordinate transformation for dataset at path "${path}": ` +
-        `input is "${input}" but expected "${expectedInput}"`
+          `input is "${input}" but expected "${expectedInput}"`,
       );
     }
-    
+
     // Validate output matches expected (intrinsic coordinate system)
     // Empty string or undefined means the field is not specified
     if (output !== undefined && output !== "" && output !== expectedOutput) {
       throw new Error(
         `Invalid coordinate transformation for dataset at path "${path}": ` +
-        `output is "${output}" but expected "${expectedOutput}"`
+          `output is "${output}" but expected "${expectedOutput}"`,
       );
     }
-    
+
     // For sequence transforms, validate inner transforms
     if (type === "sequence") {
-      const innerTransforms = verifyObjectProperty(transform, "transformations", (x) => x);
+      const innerTransforms = verifyObjectProperty(
+        transform,
+        "transformations",
+        (x) => x,
+      );
       if (Array.isArray(innerTransforms)) {
         // Validate the chain of inner transforms
         for (let i = 0; i < innerTransforms.length; i++) {
           const innerTransform = innerTransforms[i];
           verifyObject(innerTransform);
-          
-          const innerInput = verifyOptionalObjectProperty(innerTransform, "input", verifyString);
-          const innerOutput = verifyOptionalObjectProperty(innerTransform, "output", verifyString);
-          
+
+          const innerInput = verifyOptionalObjectProperty(
+            innerTransform,
+            "input",
+            verifyString,
+          );
+          const innerOutput = verifyOptionalObjectProperty(
+            innerTransform,
+            "output",
+            verifyString,
+          );
+
           // First transform in sequence should have input matching the sequence's input
-          if (i === 0 && innerInput !== undefined && innerInput !== expectedInput) {
+          if (
+            i === 0 &&
+            innerInput !== undefined &&
+            innerInput !== expectedInput
+          ) {
             throw new Error(
               `Invalid sequence transformation for dataset at path "${path}": ` +
-              `first inner transform has input "${innerInput}" but expected "${expectedInput}"`
+                `first inner transform has input "${innerInput}" but expected "${expectedInput}"`,
             );
           }
-          
+
           // Last transform in sequence should have output matching the sequence's output
-          if (i === innerTransforms.length - 1 && innerOutput !== undefined && innerOutput !== expectedOutput) {
+          if (
+            i === innerTransforms.length - 1 &&
+            innerOutput !== undefined &&
+            innerOutput !== expectedOutput
+          ) {
             throw new Error(
               `Invalid sequence transformation for dataset at path "${path}": ` +
-              `last inner transform has output "${innerOutput}" but expected "${expectedOutput}"`
+                `last inner transform has output "${innerOutput}" but expected "${expectedOutput}"`,
             );
           }
-          
+
           // Validate chaining between consecutive transforms
           if (i > 0) {
             const prevTransform = innerTransforms[i - 1];
             verifyObject(prevTransform);
-            const prevOutput = verifyOptionalObjectProperty(prevTransform, "output", verifyString);
-            
-            if (prevOutput !== undefined && innerInput !== undefined && prevOutput !== innerInput) {
+            const prevOutput = verifyOptionalObjectProperty(
+              prevTransform,
+              "output",
+              verifyString,
+            );
+
+            if (
+              prevOutput !== undefined &&
+              innerInput !== undefined &&
+              prevOutput !== innerInput
+            ) {
               throw new Error(
                 `Invalid sequence transformation for dataset at path "${path}": ` +
-                `transform ${i - 1} has output "${prevOutput}" but transform ${i} has input "${innerInput}". ` +
-                `Transforms in a sequence must have matching input/output for consecutive transforms.`
+                  `transform ${i - 1} has output "${prevOutput}" but transform ${i} has input "${innerInput}". ` +
+                  `Transforms in a sequence must have matching input/output for consecutive transforms.`,
               );
             }
           }
@@ -484,13 +532,22 @@ function parseMultiscaleScale(
   intrinsicCoordinateSystemName: string | undefined,
 ): OmeMultiscaleScale {
   const path = verifyObjectProperty(obj, "path", verifyString);
-  const transformations = verifyObjectProperty(obj, "coordinateTransformations", (x) => x);
-  
+  const transformations = verifyObjectProperty(
+    obj,
+    "coordinateTransformations",
+    (x) => x,
+  );
+
   // Validate transformations before parsing (only for 0.6+ with coordinate systems)
   if (intrinsicCoordinateSystemName !== undefined) {
-    validateCoordinateTransformations(transformations, path, intrinsicCoordinateSystemName, path);
+    validateCoordinateTransformations(
+      transformations,
+      path,
+      intrinsicCoordinateSystemName,
+      path,
+    );
   }
-  
+
   const transform = parseOmeCoordinateTransforms(rank, transformations);
   const scaleUrl = kvstoreEnsureDirectoryPipelineUrl(
     joinBaseUrlAndPath(url, path),
@@ -507,29 +564,37 @@ function parseOmeMultiscale(
   // Check if using 0.6+ format with coordinateSystems
   let coordinateSpace: CoordinateSpace;
   let intrinsicCoordinateSystemName: string | undefined;
-  
+
   const coordinateSystemsRaw = verifyOptionalObjectProperty(
     multiscale,
     "coordinateSystems",
     (x) => x,
   );
-  
-  if (coordinateSystemsRaw !== undefined && Array.isArray(coordinateSystemsRaw) && coordinateSystemsRaw.length > 0) {
+
+  if (
+    coordinateSystemsRaw !== undefined &&
+    Array.isArray(coordinateSystemsRaw) &&
+    coordinateSystemsRaw.length > 0
+  ) {
     // OME-ZARR 0.6+: Use the last (intrinsic) coordinate system
-    const coordinateSystems = parseArray(coordinateSystemsRaw, parseOmeCoordinateSystem);
+    const coordinateSystems = parseArray(
+      coordinateSystemsRaw,
+      parseOmeCoordinateSystem,
+    );
     coordinateSpace = coordinateSystems[coordinateSystems.length - 1];
-    
+
     // Extract the name of the intrinsic coordinate system from the raw object
-    const intrinsicCoordinateSystemRaw = coordinateSystemsRaw[coordinateSystemsRaw.length - 1];
+    const intrinsicCoordinateSystemRaw =
+      coordinateSystemsRaw[coordinateSystemsRaw.length - 1];
     verifyObject(intrinsicCoordinateSystemRaw);
-    intrinsicCoordinateSystemName = verifyObjectProperty(intrinsicCoordinateSystemRaw, "name", verifyString);
+    intrinsicCoordinateSystemName = verifyObjectProperty(
+      intrinsicCoordinateSystemRaw,
+      "name",
+      verifyString,
+    );
   } else {
     // OME-ZARR 0.4/0.5: Use axes directly
-    coordinateSpace = verifyObjectProperty(
-      multiscale,
-      "axes",
-      parseOmeAxes,
-    );
+    coordinateSpace = verifyObjectProperty(multiscale, "axes", parseOmeAxes);
   }
 
   const rank = coordinateSpace.rank;
@@ -541,7 +606,12 @@ function parseOmeMultiscale(
   );
   const scales = verifyObjectProperty(multiscale, "datasets", (obj) =>
     parseArray(obj, (x) => {
-      const scale = parseMultiscaleScale(rank, url, x, intrinsicCoordinateSystemName);
+      const scale = parseMultiscaleScale(
+        rank,
+        url,
+        x,
+        intrinsicCoordinateSystemName,
+      );
       scale.transform = matrix.multiply(
         new Float64Array((rank + 1) ** 2) as Float64Array<ArrayBuffer>,
         rank + 1,
@@ -637,10 +707,11 @@ function parseOmeMultiscale(
       // preserve the integer grid structure, just potentially reordered and scaled.
       throw new Error(
         `Invalid OME-Zarr transform: transformation includes shear or non-90° rotation, ` +
-        `which is not supported by Neuroglancer. The transformation matrix after ` +
-        `normalization has multiple non-zero elements in at least one row or column, ` +
-        `indicating shear or non-orthogonal rotation. Only scaled permutation matrices ` +
-        `(diagonal scales with optional axis swaps) are supported. `      );
+          `which is not supported by Neuroglancer. The transformation matrix after ` +
+          `normalization has multiple non-zero elements in at least one row or column, ` +
+          `indicating shear or non-orthogonal rotation. Only scaled permutation matrices ` +
+          `(diagonal scales with optional axis swaps) are supported. `,
+      );
     }
 
     // For diagonal transformations, validate that the translation (origin) satisfies the
@@ -660,12 +731,13 @@ function parseOmeMultiscale(
           const axisName = coordinateSpace.names[i];
           throw new Error(
             `Invalid OME-Zarr transform: origin for axis '${axisName}' (dimension ${i}) ` +
-            `is ${origin.toFixed(6)} in normalized voxel coordinates, which is neither an ` +
-            `integer nor a half-integer. Neuroglancer requires origins to be integers or ` +
-            `half-integers (e.g., 0, 0.5, 1, 1.5, ...). This typically occurs when the ` +
-            `translation is not a multiple (or half-multiple) of the scale. ` +
-            `Original transform had scale ${baseScales[i].toExponential(3)} and ` +
-            `translation ${(origin * baseScales[i]).toExponential(3)} in physical units.`);
+              `is ${origin.toFixed(6)} in normalized voxel coordinates, which is neither an ` +
+              `integer nor a half-integer. Neuroglancer requires origins to be integers or ` +
+              `half-integers (e.g., 0, 0.5, 1, 1.5, ...). This typically occurs when the ` +
+              `translation is not a multiple (or half-multiple) of the scale. ` +
+              `Original transform had scale ${baseScales[i].toExponential(3)} and ` +
+              `translation ${(origin * baseScales[i]).toExponential(3)} in physical units.`,
+          );
         }
       }
     }

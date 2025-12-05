@@ -348,7 +348,7 @@ async function resolveOmeMultiscale(
   const baseScale = multiscale.scales[0];
   const baseZarrMetadata = scaleZarrMetadata[0];
   const transform = baseScale.transform;
-  
+
   // Initialize bounds with extreme values
   const lowerBounds = new Float64Array(rank);
   const upperBounds = new Float64Array(rank);
@@ -356,18 +356,18 @@ async function resolveOmeMultiscale(
     lowerBounds[i] = Infinity;
     upperBounds[i] = -Infinity;
   }
-  
+
   // Transform all 2^rank corners of the array bounding box
   const numCorners = 1 << rank; // 2^rank
   const corner = new Float64Array(rank);
   const transformedCorner = new Float64Array(rank);
-  
+
   for (let cornerIdx = 0; cornerIdx < numCorners; ++cornerIdx) {
     // Set corner coordinates (each bit determines if we use 0 or shape[i])
     for (let i = 0; i < rank; ++i) {
-      corner[i] = (cornerIdx & (1 << i)) ? baseZarrMetadata.shape[i] : 0;
+      corner[i] = cornerIdx & (1 << i) ? baseZarrMetadata.shape[i] : 0;
     }
-    
+
     // Apply transformation: transformedCorner = transform * [corner; 1]
     for (let i = 0; i < rank; ++i) {
       let val = transform[(rank + 1) * rank + i]; // translation component
@@ -375,13 +375,13 @@ async function resolveOmeMultiscale(
         val += transform[j * (rank + 1) + i] * corner[j];
       }
       transformedCorner[i] = val;
-      
+
       // Update bounds
       lowerBounds[i] = Math.min(lowerBounds[i], val);
       upperBounds[i] = Math.max(upperBounds[i], val);
     }
   }
-  
+
   const boundingBox = makeIdentityTransformedBoundingBox({
     lowerBounds,
     upperBounds,

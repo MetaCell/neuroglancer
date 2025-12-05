@@ -21,9 +21,13 @@ import { registerCodec } from "#src/datasource/zarr/codec/decode.js";
 import { CodecKind } from "#src/datasource/zarr/codec/index.js";
 import type { Configuration } from "#src/datasource/zarr/codec/zstd/resolve.js";
 
-const zstdDecode: Omit<BytesToBytesCodec<Configuration>, 'name'> = {
+const zstdDecode: Omit<BytesToBytesCodec<Configuration>, "name"> = {
   kind: CodecKind.bytesToBytes,
-  decode(configuration: Configuration, encoded: Uint8Array<ArrayBuffer>, signal: AbortSignal) {
+  decode(
+    configuration: Configuration,
+    encoded: Uint8Array<ArrayBuffer>,
+    signal: AbortSignal,
+  ) {
     configuration;
     return requestAsyncComputation(
       decodeZstd,

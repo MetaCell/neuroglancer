@@ -21,7 +21,7 @@ import { verifyObject } from "#src/util/json.js";
 
 export type Configuration = object;
 
-const zstdResolver: Omit<BytesToBytesCodecResolver<Configuration>, 'name'> = {
+const zstdResolver: Omit<BytesToBytesCodecResolver<Configuration>, "name"> = {
   kind: CodecKind.bytesToBytes,
   resolve(configuration: unknown): { configuration: Configuration } {
     verifyObject(configuration);

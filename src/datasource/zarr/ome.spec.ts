@@ -84,7 +84,7 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
                   {
                     type: "scale",
                     output: "physical",
-                    input: "",  // Empty string means not specified
+                    input: "", // Empty string means not specified
                     scale: [4, 3, 2],
                   },
                 ],
@@ -124,9 +124,7 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
                     type: "sequence",
                     output: "wrong_system",
                     input: "array",
-                    transformations: [
-                      { type: "scale", scale: [4, 3, 2] },
-                    ],
+                    transformations: [{ type: "scale", scale: [4, 3, 2] }],
                   },
                 ],
               },
@@ -138,7 +136,7 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
 
     // This should throw an error
     expect(() => parseOmeMetadata("test://", attrs, 3)).toThrow(
-      /output is "wrong_system" but expected "physical"/
+      /output is "wrong_system" but expected "physical"/,
     );
   });
 
@@ -167,9 +165,7 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
                     type: "sequence",
                     output: "physical",
                     input: "wrong_path",
-                    transformations: [
-                      { type: "scale", scale: [4, 3, 2] },
-                    ],
+                    transformations: [{ type: "scale", scale: [4, 3, 2] }],
                   },
                 ],
               },
@@ -181,7 +177,7 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
 
     // This should throw an error
     expect(() => parseOmeMetadata("test://", attrs, 3)).toThrow(
-      /input is "wrong_path" but expected "array"/
+      /input is "wrong_path" but expected "array"/,
     );
   });
 
@@ -213,9 +209,7 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
                     transformations: [
                       {
                         type: "sequence",
-                        transformations: [
-                          { type: "scale", scale: [4, 3, 2] },
-                        ],
+                        transformations: [{ type: "scale", scale: [4, 3, 2] }],
                       },
                     ],
                   },
@@ -229,7 +223,7 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
 
     // This should throw an error
     expect(() => parseOmeMetadata("test://", attrs, 3)).toThrow(
-      /sequence transformation MUST NOT be part of another sequence transformation/
+      /sequence transformation MUST NOT be part of another sequence transformation/,
     );
   });
 
@@ -336,7 +330,7 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
                       {
                         type: "translation",
                         translation: [32, 21, 10],
-                        input: "wrong_system",  // Wrong input - doesn't match previous output
+                        input: "wrong_system", // Wrong input - doesn't match previous output
                         output: "physical",
                       },
                     ],
@@ -351,7 +345,7 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
 
     // This should throw an error as the chain is broken
     expect(() => parseOmeMetadata("test://", attrs, 3)).toThrow(
-      /transform 0 has output "intermediate" but transform 1 has input "wrong_system"/
+      /transform 0 has output "intermediate" but transform 1 has input "wrong_system"/,
     );
   });
 });

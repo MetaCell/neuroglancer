@@ -474,13 +474,13 @@ def test_ome_zarr_0_6_translation(static_file_server, webdriver):
 def test_ome_zarr_0_6_affine(static_file_server, webdriver):
     """affine: Affine matrix (JSON form) applied to single scale.
     Example dataset: simple/affine.zarr
-    
+
     Affine transform: Diagonal scale matrix with translation (equivalent to sequence of scale + translation).
     Matrix:
       [4, 0, 0, 32]   - z axis: scale 4, translation 32
       [0, 3, 0, 21]   - y axis: scale 3, translation 21
       [0, 0, 2, 10]   - x axis: scale 2, translation 10
-    
+
     This is a diagonal affine transform equivalent to the sequence test.
     Scales: [4, 3, 2] for (z, y, x)
     Translations: [32, 21, 10] for (z, y, x)
@@ -494,12 +494,17 @@ def test_ome_zarr_0_6_affine(static_file_server, webdriver):
             name="affine", layer=neuroglancer.ImageLayer(source=f"zarr3://{server_url}")
         )
     webdriver.sync()
-    
+
     model_space = _assert_renders(webdriver, "affine")
     vol = model_space["volume"]
-    
-    permuted_voxel = (TEST_VOXEL[0] + 32/4, TEST_VOXEL[1] + 21/3, TEST_VOXEL[2] + 10/2)
+
+    permuted_voxel = (
+        TEST_VOXEL[0] + 32 / 4,
+        TEST_VOXEL[1] + 21 / 3,
+        TEST_VOXEL[2] + 10 / 2,
+    )
     _verify_data_at_point(vol, permuted_voxel, EXPECTED_VALUE)
+
 
 def test_ome_zarr_0_6_rotation(static_file_server, webdriver):
     """rotation: Rotation matrix (or axis permutation) example.
@@ -522,7 +527,6 @@ def test_ome_zarr_0_6_rotation(static_file_server, webdriver):
         TEST_VOXEL[1],
     )  # (z, y, x) -> (x, z, y)
     _verify_data_at_point(vol, permuted_voxel, EXPECTED_VALUE)
-
 
 
 # Helper functions
