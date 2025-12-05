@@ -49,6 +49,10 @@ export interface OmeMultiscaleScale {
 export interface OmeMultiscaleMetadata {
   scales: OmeMultiscaleScale[];
   coordinateSpace: CoordinateSpace;
+  baseInfo: {
+    baseScales: Float64Array;
+    baseTransform: Float64Array;
+  };
 }
 
 export interface OmeMetadata {
@@ -660,7 +664,7 @@ function parseOmeMultiscale(
       }
     }
   }
-  return { coordinateSpace, scales };
+  return { coordinateSpace, scales, baseInfo: { baseScales, baseTransform } };
 }
 
 export function parseOmeMetadata(
