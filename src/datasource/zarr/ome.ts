@@ -24,7 +24,10 @@ import {
   joinBaseUrlAndPath,
   kvstoreEnsureDirectoryPipelineUrl,
 } from "#src/kvstore/url.js";
-import { extractScalesFromAffineMatrix } from "#src/util/affine.js";
+import {
+  extractBaseTransformFromAffineMatrix,
+  extractScalesFromAffineMatrix,
+} from "#src/util/affine.js";
 import { parseRGBColorSpecification } from "#src/util/color.js";
 import {
   parseArray,
@@ -641,8 +644,54 @@ function parseOmeMultiscale(
     coordinateSpace.scales[i] *= baseScales[i];
   }
 
-  for (const scale of scales) {
+  // Desired output is
+  // 1. The transform that the user would put into the source tab
+  // if they were putting the information there instead
+  // That means we need to take the transform for scale 0
+  // And removing the scaling part of that transform
+  // 2. At each scale, we provide an affine transform matrix
+  // to get applied on top of the above base transformation matrix
+  // This matrix should apply the per path scaling for moving between
+  // LODs as well as the per-lod offset in translations
+  // In theory this could also specify any kind of translation that is applied
+  // on top of the base transform, but that only works if the base
+  // transform is invertible
+
+  const baseTransformScaled = new Float64Array((rank + 1) * (rank + 1));
+  matrix.copy(
+    baseTransformScaled,
+    rank + 1,
+    baseTransform,
+    rank + 1,
+    rank + 1,
+    rank + 1,
+  );
+  const baseTransformUnscaled = new Float64Array((rank + 1) * (rank + 1));
+  matrix.copy(
+    baseTransformUnscaled,
+    rank + 1,
+    baseTransform,
+    rank + 1,
+    rank + 1,
+    rank + 1,
+  );
+  for (let i = 0; i < rank; ++i) {
+    for (let j = 0; j <= rank; ++j) {
+      baseTransformScaled[j * (rank + 1) + i] /= baseScales[i];
+    }
+  }
+
+  for (let k = 0; k < scales.length; ++k) {
+    // TODO unsure if anything special needs to happen at path 0
+    // If it does not, can remove k and set back to for const ...
+    const scale = scales[k];
+    scale.transform = extractBaseTransformFromAffineMatrix(
+      scale.transform,
+      baseTransformUnscaled,
+      rank,
+    );
     const t = scale.transform;
+    console.log(t);
     // In OME's coordinate space, the origin of a voxel is its center, while in Neuroglancer it is
     // the "lower" (in coordinates) corner.
     // For general transformations, we compute the offset by applying the linear part of the
@@ -664,7 +713,11 @@ function parseOmeMultiscale(
       }
     }
   }
-  return { coordinateSpace, scales, baseInfo: { baseScales, baseTransform } };
+  return {
+    coordinateSpace,
+    scales,
+    baseInfo: { baseScales, baseTransform: baseTransformScaled },
+  };
 }
 
 export function parseOmeMetadata(

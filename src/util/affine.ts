@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+import { createHomogeneousScaleMatrix } from "#src/util/matrix.js";
+
 export function extractScalesFromAffineMatrix(
   affineTransform: Float64Array,
   rank: number,
@@ -21,6 +23,7 @@ export function extractScalesFromAffineMatrix(
   // For now, use the L2 norm method. But should replace this by either
   // SVD, or exploring how the transform affects a known object
   // such as a unit sphere
+  // TODO address the above
   const scales = new Float64Array(rank);
   for (let i = 0; i < rank; ++i) {
     let sumSquares = 0;
@@ -31,4 +34,21 @@ export function extractScalesFromAffineMatrix(
     scales[i] = Math.sqrt(sumSquares);
   }
   return scales;
+}
+
+export function extractBaseTransformFromAffineMatrix(
+  affineTransform: Float64Array,
+  baseTransform: Float64Array,
+  rank: number,
+): Float64Array {
+  // In theory this would need to use inversion of the baseTransform
+  // However, for now we just assume the simple case
+  // TODO address the above
+  baseTransform;
+
+  const scales = extractScalesFromAffineMatrix(affineTransform, rank);
+
+  const scaleMatrix = createHomogeneousScaleMatrix(Float64Array, scales);
+
+  return scaleMatrix;
 }
