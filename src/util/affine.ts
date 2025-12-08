@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { createHomogeneousScaleMatrix } from "#src/util/matrix.js";
+import { multiply } from "#src/util/matrix.js";
 
 export function extractScalesFromAffineMatrix(
   affineTransform: Float64Array,
@@ -36,19 +36,22 @@ export function extractScalesFromAffineMatrix(
   return scales;
 }
 
-export function extractBaseTransformFromAffineMatrix(
+export function makeAffineRelativeToBaseTransform(
   affineTransform: Float64Array,
-  baseTransform: Float64Array,
+  baseTransformInverse: Float64Array,
   rank: number,
 ): Float64Array {
-  // In theory this would need to use inversion of the baseTransform
-  // However, for now we just assume the simple case
-  // TODO address the above
-  baseTransform;
-
-  const scales = extractScalesFromAffineMatrix(affineTransform, rank);
-
-  const scaleMatrix = createHomogeneousScaleMatrix(Float64Array, scales);
-
-  return scaleMatrix;
+  const relativeTransform = new Float64Array(baseTransformInverse.length);
+  multiply(
+    relativeTransform,
+    rank + 1,
+    baseTransformInverse,
+    rank + 1,
+    affineTransform,
+    rank + 1,
+    rank + 1,
+    rank + 1,
+    rank + 1,
+  );
+  return relativeTransform;
 }

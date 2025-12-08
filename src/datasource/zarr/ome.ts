@@ -25,7 +25,7 @@ import {
   kvstoreEnsureDirectoryPipelineUrl,
 } from "#src/kvstore/url.js";
 import {
-  extractBaseTransformFromAffineMatrix,
+  makeAffineRelativeToBaseTransform,
   extractScalesFromAffineMatrix,
 } from "#src/util/affine.js";
 import { parseRGBColorSpecification } from "#src/util/color.js";
@@ -657,6 +657,7 @@ function parseOmeMultiscale(
   // on top of the base transform, but that only works if the base
   // transform is invertible
 
+  // TODO can just keep the unscaled inverse
   const baseTransformScaled = new Float64Array((rank + 1) * (rank + 1));
   matrix.copy(
     baseTransformScaled,
@@ -681,22 +682,22 @@ function parseOmeMultiscale(
     }
   }
 
-  for (let k = 0; k < scales.length; ++k) {
-    // TODO unsure if anything special needs to happen at path 0
-    // If it does not, can remove k and set back to for const ...
-    const scale = scales[k];
-    scale.transform = extractBaseTransformFromAffineMatrix(
-      scale.transform,
-      baseTransformUnscaled,
-      rank,
-    );
-    const t = scale.transform;
-    console.log(t);
+  const inverseBaseTransformUnscaled = new Float64Array(baseTransform.length);
+  // TODO need non-invertible check here?
+  matrix.inverse(
+    inverseBaseTransformUnscaled,
+    rank + 1,
+    baseTransformUnscaled,
+    rank + 1,
+    rank + 1,
+  );
+  for (const scale of scales) {
     // In OME's coordinate space, the origin of a voxel is its center, while in Neuroglancer it is
     // the "lower" (in coordinates) corner.
     // For general transformations, we compute the offset by applying the linear part of the
     // transformation to the vector [0.5, 0.5, ..., 0.5] and subtracting the result from the
     // translation component.
+    const t = scale.transform;
     for (let i = 0; i < rank; ++i) {
       let offset = 0;
       for (let j = 0; j < rank; ++j) {
@@ -704,14 +705,11 @@ function parseOmeMultiscale(
       }
       t[rank * (rank + 1) + i] -= offset;
     }
-
-    // Make the scale relative to the base scale.
-    // We divide each column of the transformation by the corresponding base scale.
-    for (let i = 0; i < rank; ++i) {
-      for (let j = 0; j <= rank; ++j) {
-        t[j * (rank + 1) + i] /= baseScales[i];
-      }
-    }
+    scale.transform = makeAffineRelativeToBaseTransform(
+      scale.transform,
+      inverseBaseTransformUnscaled,
+      rank,
+    );
   }
   return {
     coordinateSpace,
