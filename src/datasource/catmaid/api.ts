@@ -119,13 +119,24 @@ export class CatmaidClient implements CatmaidSource {
         const info = await this.getMetadataInfo();
         if (!info) return null;
 
-        // Return world-space bounds in nanometers
-        const { dimension, resolution, translation } = info;
-        const min = translation;
+        // Return voxel-space bounds (dimension from stack info)
+        // The "dimension" field in the stack info represents the size in voxels
+        const { dimension, translation } = info;
+
+        // Use translation if available, otherwise 0,0,0
+        const offX = translation?.x ?? 0;
+        const offY = translation?.y ?? 0;
+        const offZ = translation?.z ?? 0;
+
+        const min = {
+            x: offX,
+            y: offY,
+            z: offZ,
+        };
         const max = {
-            x: translation.x + dimension.x * resolution.x,
-            y: translation.y + dimension.y * resolution.y,
-            z: translation.z + dimension.z * resolution.z,
+            x: offX + dimension.x,
+            y: offY + dimension.y,
+            z: offZ + dimension.z,
         };
         return { min, max };
     }

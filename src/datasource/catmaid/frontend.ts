@@ -85,12 +85,14 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
             throw new Error("Failed to fetch CATMAID stack metadata");
         }
 
+        // Resolution is in nm per voxel, convert to meters
         const scaleFactors = Float64Array.from([
-            resolution.x,
-            resolution.y,
-            resolution.z,
+            resolution.x * 1e-9,
+            resolution.y * 1e-9,
+            resolution.z * 1e-9,
         ]);
 
+        // Dimensions are already in voxel coordinates from the API
         const lowerBounds = Float64Array.from([
             dimensions.min.x,
             dimensions.min.y,
@@ -104,7 +106,7 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
 
         const modelSpace = makeCoordinateSpace({
             names: ["x", "y", "z"],
-            units: ["nm", "nm", "nm"],
+            units: ["m", "m", "m"],
             scales: scaleFactors,
             boundingBoxes: [
                 {
@@ -112,7 +114,7 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
                         lowerBounds,
                         upperBounds,
                     },
-                    transform: Float64Array.from(mat4.create()),
+                    transform: Float64Array.from([1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]),
                 }
             ]
         });
@@ -132,12 +134,10 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
         };
 
         const rank = 3;
-        
-        // Convert bounds from nanometers to voxels
+
         const upperVoxelBound = new Float32Array(rank);
         for (let i = 0; i < rank; ++i) {
-            const boundsSize = upperBounds[i] - lowerBounds[i];
-            upperVoxelBound[i] = boundsSize / scaleFactors[i];
+            upperVoxelBound[i] = upperBounds[i];
         }
 
         const chunkToViewTransform = new Float32Array([
@@ -183,9 +183,6 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
             { parameters, spec }
         );
 
-        // Fetch list of skeletons
-        const skeletonIds = await client.listSkeletons();
-
         const subsources = [
             {
                 id: "skeletons",
@@ -193,15 +190,6 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
                 subsource: { mesh: source },
             },
         ];
-
-        // Add individual skeleton subsources
-        for (const skeletonId of skeletonIds) {
-            subsources.push({
-                id: `skeleton_${skeletonId}`,
-                default: false,
-                subsource: { mesh: source },
-            });
-        }
 
         return {
             modelTransform: makeIdentityTransform(modelSpace),
