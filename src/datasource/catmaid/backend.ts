@@ -15,14 +15,18 @@
  */
 
 import { WithParameters } from "#src/chunk_manager/backend.js";
-import { SkeletonSource, SkeletonChunk } from "#src/skeleton/backend.js";
+import { SpatiallyIndexedSkeletonSourceBackend, SpatiallyIndexedSkeletonChunk } from "#src/skeleton/backend.js";
 import { CatmaidClient } from "#src/datasource/catmaid/api.js";
 import { CatmaidSkeletonSourceParameters } from "#src/datasource/catmaid/base.js";
 import { registerSharedObject } from "#src/worker_rpc.js";
+import { vec3 } from "#src/util/geom.js";
+import { ChunkLayout } from "#src/sliceview/chunk_layout.js";
+
+
 
 @registerSharedObject()
-export class CatmaidSkeletonSource extends WithParameters(
-    SkeletonSource,
+export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters(
+    SpatiallyIndexedSkeletonSourceBackend,
     CatmaidSkeletonSourceParameters
 ) {
     get client(): CatmaidClient {
@@ -34,19 +38,31 @@ export class CatmaidSkeletonSource extends WithParameters(
         );
     }
 
-    async download(chunk: SkeletonChunk, _signal: AbortSignal) {
-        const { objectId } = chunk;
-        // objectId is bigint, but CATMAID uses number.
-        // We assume objectId fits in number.
-        const skeletonId = Number(objectId);
+    async download(chunk: SpatiallyIndexedSkeletonChunk, _signal: AbortSignal) {
+        const { chunkGridPosition } = chunk;
+        const { chunkDataSize } = this.spec;
+        const chunkLayout = ChunkLayout.fromObject(this.spec.chunkLayout);
+        const { transform } = chunkLayout;
 
-        const nodes = await this.client.getSkeleton(skeletonId);
+        const localMin = vec3.multiply(vec3.create(), chunkGridPosition as unknown as vec3, chunkDataSize as unknown as vec3);
+        const localMax = vec3.add(vec3.create(), localMin, chunkDataSize as unknown as vec3);
 
-        // Convert nodes to vertexPositions and indices
+        const globalMin = vec3.transformMat4(vec3.create(), localMin, transform);
+        const globalMax = vec3.transformMat4(vec3.create(), localMax, transform);
+
+        const min = vec3.min(vec3.create(), globalMin, globalMax);
+        const max = vec3.max(vec3.create(), globalMin, globalMax);
+
+        const nodes = await this.client.fetchNodes({
+            min: { x: min[0], y: min[1], z: min[2] },
+            max: { x: max[0], y: max[1], z: max[2] },
+        });
+
         const numVertices = nodes.length;
         const vertexPositions = new Float32Array(numVertices * 3);
+        const vertexAttributes = new Float32Array(numVertices);
         const indices: number[] = [];
-        const nodeMap = new Map<number, number>(); // id -> index
+        const nodeMap = new Map<number, number>();
 
         for (let i = 0; i < numVertices; ++i) {
             const node = nodes[i];
@@ -54,6 +70,7 @@ export class CatmaidSkeletonSource extends WithParameters(
             vertexPositions[i * 3] = node.x;
             vertexPositions[i * 3 + 1] = node.y;
             vertexPositions[i * 3 + 2] = node.z;
+            vertexAttributes[i] = node.skeleton_id;
         }
 
         for (let i = 0; i < numVertices; ++i) {
@@ -68,5 +85,23 @@ export class CatmaidSkeletonSource extends WithParameters(
 
         chunk.vertexPositions = vertexPositions;
         chunk.indices = new Uint32Array(indices);
+        
+        const positionsBytes = new Uint8Array(vertexPositions.buffer);
+        const segmentsBytes = new Uint8Array(vertexAttributes.buffer);
+
+        const totalBytes = positionsBytes.byteLength + segmentsBytes.byteLength;
+        const packedData = new Uint8Array(totalBytes);
+        packedData.set(positionsBytes, 0);
+        packedData.set(segmentsBytes, positionsBytes.byteLength);
+
+        chunk.vertexAttributes = [packedData];
+
+        const positionsByteLength = numVertices * 3 * 4;
+        const segmentsByteLength = numVertices * 1 * 4;
+        (chunk as any).vertexAttributeOffsets = new Uint32Array([
+            0,
+            positionsByteLength,
+            positionsByteLength + segmentsByteLength
+        ]);
     }
 }

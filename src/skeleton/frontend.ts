@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+import type { Uint64Set } from "#src/uint64_set.js";
+import { uploadVertexAttributesToGPU } from "#src/skeleton/gpu_upload_utils.js";
+
 import { ChunkState, LayerChunkProgressInfo } from "#src/chunk_manager/base.js";
 import type { ChunkManager } from "#src/chunk_manager/frontend.js";
 import { Chunk, ChunkSource } from "#src/chunk_manager/frontend.js";
@@ -41,7 +44,13 @@ import { SKELETON_LAYER_RPC_ID } from "#src/skeleton/base.js";
 import type { SliceViewPanel } from "#src/sliceview/panel.js";
 import type { SliceViewPanelRenderContext } from "#src/sliceview/renderlayer.js";
 import { SliceViewPanelRenderLayer } from "#src/sliceview/renderlayer.js";
-import { TrackableValue, WatchableValue } from "#src/trackable_value.js";
+import {
+  SliceViewChunk,
+  SliceViewChunkSource,
+} from "#src/sliceview/frontend.js";
+import type { SliceViewChunkSpecification } from "#src/sliceview/base.js";
+import { ChunkLayout } from "#src/sliceview/chunk_layout.js";
+import { TrackableValue, WatchableValue, registerNested } from "#src/trackable_value.js";
 import { DataType } from "#src/util/data_type.js";
 import { RefCounted } from "#src/util/disposable.js";
 import type { vec3 } from "#src/util/geom.js";
@@ -87,10 +96,10 @@ import {
   computeTextureFormat,
   getSamplerPrefixForDataType,
   OneDimensionalTextureAccessHelper,
-  setOneDimensionalTextureData,
   TextureFormat,
 } from "#src/webgl/texture_access.js";
 import { defineVertexId, VertexIdHelper } from "#src/webgl/vertex_id.js";
+
 
 const tempMat2 = mat4.create();
 
@@ -112,6 +121,27 @@ const vertexPositionTextureFormat = computeTextureFormat(
   DataType.FLOAT32,
   3,
 );
+
+interface SkeletonLayerInterface {
+  vertexAttributes: VertexAttributeRenderInfo[];
+  gl: GL;
+  fallbackShaderParameters: WatchableValue<ShaderControlsBuilderState>;
+  displayState: SkeletonLayerDisplayState;
+}
+
+interface SkeletonChunkInterface {
+  vertexAttributeTextures: (WebGLTexture | null)[];
+  indexBuffer: GLBuffer;
+  numIndices: number;
+  numVertices: number;
+}
+
+interface SkeletonChunkData {
+  vertexAttributes: Uint8Array;
+  indices: Uint32Array;
+  numVertices: number;
+  vertexAttributeOffsets: Uint32Array;
+}
 
 class RenderHelper extends RefCounted {
   private textureAccessHelper = new OneDimensionalTextureAccessHelper(
@@ -137,7 +167,7 @@ class RenderHelper extends RefCounted {
   }
 
   constructor(
-    public base: SkeletonLayer,
+    public base: SkeletonLayerInterface,
     public targetIsSliceView: boolean,
   ) {
     super();
@@ -336,7 +366,7 @@ void emitDefault() {
     gl: GL,
     edgeShader: ShaderProgram,
     nodeShader: ShaderProgram | null,
-    skeletonChunk: SkeletonChunk,
+    skeletonChunk: SkeletonChunkInterface,
     projectionParameters: { width: number; height: number },
   ) {
     const { vertexAttributes } = this;
@@ -783,7 +813,15 @@ const vertexPositionAttribute: VertexAttributeRenderInfo = {
   glslDataType: "vec3",
 };
 
-export class SkeletonChunk extends Chunk {
+const segmentAttribute: VertexAttributeRenderInfo = {
+  dataType: DataType.FLOAT32,
+  numComponents: 1,
+  name: "segment",
+  webglDataType: WebGL2RenderingContext.FLOAT,
+  glslDataType: "float",
+};
+
+export class SkeletonChunk extends Chunk implements SkeletonChunkInterface {
   declare source: SkeletonSource;
   vertexAttributes: Uint8Array;
   indices: Uint32Array;
@@ -806,28 +844,14 @@ export class SkeletonChunk extends Chunk {
     super.copyToGPU(gl);
     const { attributeTextureFormats } = this.source;
     const { vertexAttributes, vertexAttributeOffsets } = this;
-    const vertexAttributeTextures: (WebGLTexture | null)[] =
-      (this.vertexAttributeTextures = []);
-    for (
-      let i = 0, numAttributes = vertexAttributeOffsets.length;
-      i < numAttributes;
-      ++i
-    ) {
-      const texture = gl.createTexture();
-      gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, texture);
-      setOneDimensionalTextureData(
-        gl,
-        attributeTextureFormats[i],
-        vertexAttributes.subarray(
-          vertexAttributeOffsets[i],
-          i + 1 !== numAttributes
-            ? vertexAttributeOffsets[i + 1]
-            : vertexAttributes.length,
-        ),
-      );
-      vertexAttributeTextures[i] = texture;
-    }
-    gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, null);
+    
+    this.vertexAttributeTextures = uploadVertexAttributesToGPU(
+      gl,
+      vertexAttributes,
+      vertexAttributeOffsets,
+      attributeTextureFormats,
+    );
+    
     this.indexBuffer = GLBuffer.fromData(
       gl,
       this.indices,
@@ -844,6 +868,387 @@ export class SkeletonChunk extends Chunk {
     }
     vertexAttributeTextures.length = 0;
     this.indexBuffer.dispose();
+  }
+}
+
+export class SpatiallyIndexedSkeletonChunk extends SliceViewChunk implements SkeletonChunkInterface {
+  declare source: SpatiallyIndexedSkeletonSource;
+  vertexAttributes: Uint8Array;
+  indices: Uint32Array;
+  indexBuffer: GLBuffer;
+  numIndices: number;
+  numVertices: number;
+  vertexAttributeOffsets: Uint32Array;
+  vertexAttributeTextures: (WebGLTexture | null)[];
+
+  // Filtering support
+  filteredIndexBuffer: GLBuffer | undefined;
+  filteredGeneration: number = -1;
+  numFilteredIndices: number = 0;
+
+  constructor(source: SpatiallyIndexedSkeletonSource, chunkData: SkeletonChunkData) {
+    super(source, chunkData);
+    this.vertexAttributes = chunkData.vertexAttributes;
+    const indices = (this.indices = chunkData.indices);
+    this.numVertices = chunkData.numVertices;
+    this.numIndices = indices.length;
+    this.vertexAttributeOffsets = chunkData.vertexAttributeOffsets;
+
+    const gl = source.gl;
+    this.indexBuffer = new GLBuffer(
+      gl,
+      WebGL2RenderingContext.ELEMENT_ARRAY_BUFFER,
+    );
+    this.indexBuffer.setData(indices);
+
+    const { attributeTextureFormats } = source;
+    this.vertexAttributeTextures = uploadVertexAttributesToGPU(
+      gl,
+      this.vertexAttributes,
+      this.vertexAttributeOffsets,
+      attributeTextureFormats,
+    );
+  }
+
+  freeGPUMemory(gl: GL) {
+    super.freeGPUMemory(gl);
+    this.indexBuffer.dispose();
+    const { vertexAttributeTextures } = this;
+    for (let i = 0, length = vertexAttributeTextures.length; i < length; ++i) {
+      gl.deleteTexture(vertexAttributeTextures[i]);
+    }
+
+    if (this.filteredIndexBuffer) {
+      this.filteredIndexBuffer.dispose();
+      this.filteredIndexBuffer = undefined;
+    }
+  }
+}
+
+export interface SpatiallyIndexedSkeletonChunkSpecification extends SliceViewChunkSpecification {
+  chunkLayout: ChunkLayout;
+}
+
+export class SpatiallyIndexedSkeletonSource extends SliceViewChunkSource<
+  SpatiallyIndexedSkeletonChunkSpecification,
+  SpatiallyIndexedSkeletonChunk
+> {
+  vertexAttributes: VertexAttributeRenderInfo[];
+  private attributeTextureFormats_?: TextureFormat[];
+
+  constructor(chunkManager: ChunkManager, options: any) {
+    super(chunkManager, options);
+    this.vertexAttributes = [vertexPositionAttribute, segmentAttribute];
+  }
+
+  get attributeTextureFormats() {
+    let attributeTextureFormats = this.attributeTextureFormats_;
+    if (attributeTextureFormats === undefined) {
+      attributeTextureFormats = this.attributeTextureFormats_ =
+        getAttributeTextureFormats(
+          new Map([
+            ["", vertexPositionAttribute],
+            ["segment", segmentAttribute],
+          ]),
+        );
+    }
+    return attributeTextureFormats;
+  }
+
+  static encodeSpec(spec: SpatiallyIndexedSkeletonChunkSpecification) {
+    const base = SliceViewChunkSource.encodeSpec(spec);
+    return { ...base, chunkLayout: spec.chunkLayout.toObject() };
+  }
+
+  getChunk(chunkData: SkeletonChunkData) {
+    return new SpatiallyIndexedSkeletonChunk(this, chunkData);
+  }
+}
+
+export class SpatiallyIndexedSkeletonLayer extends RefCounted implements SkeletonLayerInterface {
+  layerChunkProgressInfo = new LayerChunkProgressInfo();
+  redrawNeeded = new NullarySignal();
+  vertexAttributes: VertexAttributeRenderInfo[];
+  fallbackShaderParameters = new WatchableValue(
+    getFallbackBuilderState(parseShaderUiControls(DEFAULT_FRAGMENT_MAIN)),
+  );
+
+  private generation = 0;
+
+  get visibility() {
+    return this.displayState.objectAlpha;
+  }
+
+  constructor(
+    public chunkManager: ChunkManager,
+    public source: SpatiallyIndexedSkeletonSource,
+    public displayState: SkeletonLayerDisplayState,
+  ) {
+    super();
+    registerRedrawWhenSegmentationDisplayState3DChanged(displayState, this);
+    this.displayState.shaderError.value = undefined;
+    const { skeletonRenderingOptions: renderingOptions } = displayState;
+    this.registerDisposer(
+      renderingOptions.shader.changed.add(() => {
+        this.displayState.shaderError.value = undefined;
+        this.redrawNeeded.dispatch();
+      }),
+    );
+
+    this.vertexAttributes = source.vertexAttributes;
+    // Monitor visible segments changes to update generation
+    this.registerDisposer(
+      registerNested((context, segmentationGroup) => {
+        context.registerDisposer(
+          segmentationGroup.visibleSegments.changed.add(() => {
+            this.generation++;
+            this.redrawNeeded.dispatch();
+          })
+        );
+      }, this.displayState.segmentationGroupState)
+    );
+  }
+
+  get gl() {
+    return this.chunkManager.chunkQueueManager.gl;
+  }
+
+  draw(
+    renderContext: SliceViewPanelRenderContext | PerspectiveViewRenderContext,
+    _layer: RenderLayer,
+    renderHelper: RenderHelper,
+    renderOptions: ViewSpecificSkeletonRenderingOptions,
+    attachment: VisibleLayerInfo<
+      LayerView,
+      ThreeDimensionalRenderLayerAttachmentState
+    >,
+  ) {
+    const lineWidth = renderOptions.lineWidth.value;
+    const { gl, source, displayState } = this;
+    if (displayState.objectAlpha.value <= 0.0) {
+      return;
+    }
+    const modelMatrix = update3dRenderLayerAttachment(
+      displayState.transform.value,
+      renderContext.projectionParameters.displayDimensionRenderInfo,
+      attachment,
+    );
+    if (modelMatrix === undefined) return;
+    let pointDiameter: number;
+    if (renderOptions.mode.value === SkeletonRenderMode.LINES_AND_POINTS) {
+      pointDiameter = Math.max(5, lineWidth * 2);
+    } else {
+      pointDiameter = lineWidth;
+    }
+
+    const edgeShaderResult = renderHelper.edgeShaderGetter(
+      renderContext.emitter,
+    );
+    const nodeShaderResult = renderHelper.nodeShaderGetter(
+      renderContext.emitter,
+    );
+    const { shader: edgeShader, parameters: edgeShaderParameters } =
+      edgeShaderResult;
+    const { shader: nodeShader, parameters: nodeShaderParameters } =
+      nodeShaderResult;
+    if (edgeShader === null || nodeShader === null) {
+      return;
+    }
+
+    const { shaderControlState } = this.displayState.skeletonRenderingOptions;
+
+    edgeShader.bind();
+    renderHelper.beginLayer(gl, edgeShader, renderContext, modelMatrix);
+    setControlsInShader(
+      gl,
+      edgeShader,
+      shaderControlState,
+      edgeShaderParameters.parseResult.controls,
+    );
+    gl.uniform1f(edgeShader.uniform("uLineWidth"), lineWidth!);
+
+    nodeShader.bind();
+    renderHelper.beginLayer(gl, nodeShader, renderContext, modelMatrix);
+    gl.uniform1f(nodeShader.uniform("uNodeDiameter"), pointDiameter);
+    setControlsInShader(
+      gl,
+      nodeShader,
+      shaderControlState,
+      nodeShaderParameters.parseResult.controls,
+    );
+
+    // Filter logic
+    const { visibleSegments } = displayState.segmentationGroupState.value as { visibleSegments: Uint64Set };
+
+    const chunks = source.chunks;
+    for (const chunk of chunks.values()) {
+      if (chunk.state === ChunkState.GPU_MEMORY) {
+        this.updateChunkFilteredBuffer(chunk, visibleSegments);
+
+        if (chunk.filteredIndexBuffer && chunk.numFilteredIndices > 0) {
+          const chunkWrapper = {
+            ...chunk,
+            indexBuffer: chunk.filteredIndexBuffer,
+            numIndices: chunk.numFilteredIndices
+          };
+          renderHelper.drawSkeleton(
+            gl,
+            edgeShader,
+            nodeShader,
+            chunkWrapper,
+            renderContext.projectionParameters,
+          );
+        }
+      }
+    }
+
+    renderHelper.endLayer(gl, edgeShader);
+  }
+
+  updateChunkFilteredBuffer(
+    chunk: SpatiallyIndexedSkeletonChunk,
+    visibleSegments: Uint64Set
+  ) {
+    if (chunk.filteredGeneration === this.generation && chunk.filteredIndexBuffer) {
+      return;
+    }
+
+    const gl = this.gl;
+    if (!chunk.filteredIndexBuffer) {
+      chunk.filteredIndexBuffer = new GLBuffer(gl, WebGL2RenderingContext.ELEMENT_ARRAY_BUFFER);
+    }
+    // chunk.vertexAttributeOffsets[0] is start of POSITION (attribute 0).
+    // chunk.vertexAttributeOffsets[1] is start of SEGMENT (attribute 1).
+
+    const attrOffset = chunk.vertexAttributeOffsets ? chunk.vertexAttributeOffsets[1] : 0;
+    const attrBytes = chunk.vertexAttributes;
+    const ids = new Float32Array(
+      attrBytes.buffer,
+      attrBytes.byteOffset + attrOffset,
+      chunk.numVertices,
+    );
+
+    const indices = chunk.indices;
+    const filteredIndices: number[] = [];
+    const numIndices = chunk.numIndices;
+
+    // Check visibility
+    for (let i = 0; i < numIndices; i += 2) {
+      const idxA = indices[i];
+      const idxB = indices[i + 1];
+      const idA = ids[idxA];
+      if (SpatiallyIndexedSkeletonLayer.isSegmentVisible(idA, visibleSegments)) {
+        filteredIndices.push(idxA, idxB);
+      }
+    }
+
+    chunk.filteredIndexBuffer.setData(new Uint32Array(filteredIndices));
+    chunk.filteredGeneration = this.generation;
+    chunk.numFilteredIndices = filteredIndices.length;
+  }
+
+
+  static isSegmentVisible(id: number, visibleSegments: Uint64Set): boolean {
+    const id64 = BigInt(Math.round(id));
+    return visibleSegments.has(id64);
+  }
+
+  isReady() {
+    return true;
+  }
+}
+
+export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveViewRenderLayer {
+  private renderHelper: RenderHelper;
+  private renderOptions: ViewSpecificSkeletonRenderingOptions;
+  constructor(public base: SpatiallyIndexedSkeletonLayer) {
+    super();
+    this.renderHelper = this.registerDisposer(new RenderHelper(base, false));
+    this.renderOptions = base.displayState.skeletonRenderingOptions.params3d;
+
+    this.layerChunkProgressInfo = base.layerChunkProgressInfo;
+    this.registerDisposer(base);
+    this.registerDisposer(base.redrawNeeded.add(this.redrawNeeded.dispatch));
+    const { renderOptions } = this;
+    this.registerDisposer(
+      renderOptions.mode.changed.add(this.redrawNeeded.dispatch),
+    );
+    this.registerDisposer(
+      renderOptions.lineWidth.changed.add(this.redrawNeeded.dispatch),
+    );
+  }
+  get gl() {
+    return this.base.gl;
+  }
+
+  get isTransparent() {
+    return this.base.displayState.objectAlpha.value < 1.0;
+  }
+
+  draw(
+    renderContext: PerspectiveViewRenderContext,
+    attachment: VisibleLayerInfo<
+      PerspectivePanel,
+      ThreeDimensionalRenderLayerAttachmentState
+    >,
+  ) {
+    if (!renderContext.emitColor && renderContext.alreadyEmittedPickID) {
+      return;
+    }
+    this.base.draw(
+      renderContext,
+      this,
+      this.renderHelper,
+      this.renderOptions,
+      attachment,
+    );
+  }
+
+  isReady() {
+    return this.base.isReady();
+  }
+}
+
+export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelRenderLayer {
+  private renderHelper: RenderHelper;
+  private renderOptions: ViewSpecificSkeletonRenderingOptions;
+  constructor(public base: SpatiallyIndexedSkeletonLayer) {
+    super();
+    this.renderHelper = this.registerDisposer(new RenderHelper(base, true));
+    this.renderOptions = base.displayState.skeletonRenderingOptions.params2d;
+    this.layerChunkProgressInfo = base.layerChunkProgressInfo;
+    this.registerDisposer(base);
+    const { renderOptions } = this;
+    this.registerDisposer(
+      renderOptions.mode.changed.add(this.redrawNeeded.dispatch),
+    );
+    this.registerDisposer(
+      renderOptions.lineWidth.changed.add(this.redrawNeeded.dispatch),
+    );
+    this.registerDisposer(base.redrawNeeded.add(this.redrawNeeded.dispatch));
+  }
+  get gl() {
+    return this.base.gl;
+  }
+
+  draw(
+    renderContext: SliceViewPanelRenderContext,
+    attachment: VisibleLayerInfo<
+      SliceViewPanel,
+      ThreeDimensionalRenderLayerAttachmentState
+    >,
+  ) {
+    this.base.draw(
+      renderContext,
+      this,
+      this.renderHelper,
+      this.renderOptions,
+      attachment,
+    );
+  }
+
+  isReady() {
+    return this.base.isReady();
   }
 }
 

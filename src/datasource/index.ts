@@ -42,7 +42,7 @@ import type { MeshSource, MultiscaleMeshSource } from "#src/mesh/frontend.js";
 import type { SegmentPropertyMap } from "#src/segmentation_display_state/property_map.js";
 import type { SegmentationGraphSource } from "#src/segmentation_graph/source.js";
 import type { SingleMeshSource } from "#src/single_mesh/frontend.js";
-import type { SkeletonSource } from "#src/skeleton/frontend.js";
+import type { SkeletonSource, SpatiallyIndexedSkeletonSource } from "#src/skeleton/frontend.js";
 import type { MultiscaleVolumeChunkSource } from "#src/sliceview/volume/frontend.js";
 import type { WatchableValueInterface } from "#src/trackable_value.js";
 import type {
@@ -125,7 +125,7 @@ export interface ConvertLegacyUrlOptions extends ConvertLegacyUrlOptionsBase {
 
 export interface DataSubsource {
   volume?: MultiscaleVolumeChunkSource;
-  mesh?: MeshSource | MultiscaleMeshSource | SkeletonSource;
+  mesh?: MeshSource | MultiscaleMeshSource | SkeletonSource | SpatiallyIndexedSkeletonSource;
   annotation?: MultiscaleAnnotationSource;
   staticAnnotations?: AnnotationSource;
   local?: LocalDataSource;
@@ -587,9 +587,9 @@ export class DataSourceRegistry extends RefCounted {
         });
         return applyCompletionOffset(
           url.length -
-            finalComponent.length +
-            parsedFinalComponent.scheme.length +
-            1,
+          finalComponent.length +
+          parsedFinalComponent.scheme.length +
+          1,
           completions,
         );
       }
@@ -619,12 +619,11 @@ export class DataSourceRegistry extends RefCounted {
 }
 
 export class KvStoreBasedDataSourceLegacyUrlAdapter
-  implements DataSourceProvider
-{
+  implements DataSourceProvider {
   constructor(
     public base: KvStoreBasedDataSourceProvider,
     public scheme = base.scheme,
-  ) {}
+  ) { }
 
   get hidden() {
     return true;

@@ -35,13 +35,30 @@ import {
   getPriorityTier,
   withSharedVisibility,
 } from "#src/visibility_priority/backend.js";
+
+import {
+  SliceViewChunk,
+  SliceViewChunkSourceBackend,
+} from "#src/sliceview/backend.js";
+import { SliceViewChunkSpecification } from "#src/sliceview/base.js";
+import {
+  freeSkeletonChunkSystemMemory,
+  getVertexAttributeBytes,
+  serializeSkeletonChunkData,
+  type SkeletonChunkData,
+} from "#src/skeleton/skeleton_chunk_serialization.js";
+
+
+export interface SpatiallyIndexedSkeletonChunkSpecification extends SliceViewChunkSpecification {
+  chunkLayout: any;
+}
 import type { RPC } from "#src/worker_rpc.js";
 import { registerSharedObject } from "#src/worker_rpc.js";
 
 const SKELETON_CHUNK_PRIORITY = 60;
 
 // Chunk that contains the skeleton of a single object.
-export class SkeletonChunk extends Chunk {
+export class SkeletonChunk extends Chunk implements SkeletonChunkData {
   objectId: bigint = 0n;
   vertexPositions: Float32Array | null = null;
   vertexAttributes: TypedNumberArray[] | null = null;
@@ -51,69 +68,20 @@ export class SkeletonChunk extends Chunk {
     super.initialize(key);
     this.objectId = objectId;
   }
-  freeSystemMemory() {
-    this.vertexPositions = this.indices = null;
-  }
 
-  private getVertexAttributeBytes() {
-    let total = this.vertexPositions!.byteLength;
-    const { vertexAttributes } = this;
-    if (vertexAttributes != null) {
-      vertexAttributes.forEach((a) => {
-        total += a.byteLength;
-      });
-    }
-    return total;
+  freeSystemMemory() {
+    freeSkeletonChunkSystemMemory(this);
   }
 
   serialize(msg: any, transfers: any[]) {
     super.serialize(msg, transfers);
-    const vertexPositions = this.vertexPositions!;
-    const indices = this.indices!;
-    msg.numVertices = vertexPositions.length / 3;
-    msg.indices = indices;
-    transfers.push(indices.buffer);
-
-    const { vertexAttributes } = this;
-    if (vertexAttributes != null && vertexAttributes.length > 0) {
-      const vertexData = new Uint8Array(this.getVertexAttributeBytes());
-      vertexData.set(
-        new Uint8Array(
-          vertexPositions.buffer,
-          vertexPositions.byteOffset,
-          vertexPositions.byteLength,
-        ),
-      );
-      const vertexAttributeOffsets = (msg.vertexAttributeOffsets =
-        new Uint32Array(vertexAttributes.length + 1));
-      vertexAttributeOffsets[0] = 0;
-      let offset = vertexPositions.byteLength;
-      vertexAttributes.forEach((a, i) => {
-        vertexAttributeOffsets[i + 1] = offset;
-        vertexData.set(
-          new Uint8Array(a.buffer, a.byteOffset, a.byteLength),
-          offset,
-        );
-        offset += a.byteLength;
-      });
-      transfers.push(vertexData.buffer);
-      msg.vertexAttributes = vertexData;
-    } else {
-      msg.vertexAttributes = new Uint8Array(
-        vertexPositions.buffer,
-        vertexPositions.byteOffset,
-        vertexPositions.byteLength,
-      );
-      msg.vertexAttributeOffsets = Uint32Array.of(0);
-      if (vertexPositions.buffer !== transfers[0]) {
-        transfers.push(vertexPositions.buffer);
-      }
-    }
-    this.vertexPositions = this.indices = this.vertexAttributes = null;
+    serializeSkeletonChunkData(this, msg, transfers);
+    freeSkeletonChunkSystemMemory(this);
   }
+
   downloadSucceeded() {
     this.systemMemoryBytes = this.gpuMemoryBytes =
-      this.indices!.byteLength + this.getVertexAttributeBytes();
+      this.indices!.byteLength + getVertexAttributeBytes(this);
     super.downloadSucceeded();
   }
 }
@@ -199,4 +167,30 @@ export function decodeSkeletonVertexPositionsAndIndices(
   );
   chunk.vertexPositions = meshData.vertexPositions as Float32Array;
   chunk.indices = meshData.indices as Uint32Array;
+}
+
+export class SpatiallyIndexedSkeletonChunk extends SliceViewChunk implements SkeletonChunkData {
+  vertexPositions: Float32Array | null = null;
+  vertexAttributes: TypedNumberArray[] | null = null;
+  indices: Uint32Array | null = null;
+
+  freeSystemMemory() {
+    freeSkeletonChunkSystemMemory(this);
+  }
+
+  serialize(msg: any, transfers: any[]) {
+    super.serialize(msg, transfers);
+    serializeSkeletonChunkData(this, msg, transfers);
+    freeSkeletonChunkSystemMemory(this);
+  }
+
+  downloadSucceeded() {
+    this.systemMemoryBytes = this.gpuMemoryBytes =
+      this.indices!.byteLength + getVertexAttributeBytes(this);
+    super.downloadSucceeded();
+  }
+}
+
+export class SpatiallyIndexedSkeletonSourceBackend extends SliceViewChunkSourceBackend<SpatiallyIndexedSkeletonChunkSpecification, SpatiallyIndexedSkeletonChunk> {
+  chunkConstructor = SpatiallyIndexedSkeletonChunk;
 }

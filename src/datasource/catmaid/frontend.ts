@@ -14,20 +14,31 @@
  * limitations under the License.
  */
 
-import { makeCoordinateSpace, makeIdentityTransform } from "#src/coordinate_transform.js";
-import { SkeletonSource } from "#src/skeleton/frontend.js";
+import {
+    makeCoordinateSpace,
+    makeIdentityTransform,
+} from "#src/coordinate_transform.js";
+import { SpatiallyIndexedSkeletonSource } from "#src/skeleton/frontend.js";
 import { WithParameters } from "#src/chunk_manager/frontend.js";
-import { DataSource, DataSourceProvider, GetDataSourceOptions } from "#src/datasource/index.js";
-import { CatmaidSkeletonSourceParameters, CatmaidDataSourceParameters } from "#src/datasource/catmaid/base.js";
-import { CatmaidClient } from "#src/datasource/catmaid/api.js";
-import { SegmentPropertyMap, InlineSegmentProperty } from "#src/segmentation_display_state/property_map.js";
-import type { DataSubsourceEntry } from "#src/datasource/index.js";
-import { mat4 } from "#src/util/geom.js";
-
-export class CatmaidSkeletonSource extends WithParameters(
-    SkeletonSource,
+import {
+    DataSource,
+    DataSourceProvider,
+    GetDataSourceOptions,
+} from "#src/datasource/index.js";
+import {
     CatmaidSkeletonSourceParameters,
-) {}
+    CatmaidDataSourceParameters,
+} from "#src/datasource/catmaid/base.js";
+import { mat4, vec3 } from "#src/util/geom.js";
+import { CatmaidClient } from "#src/datasource/catmaid/api.js";
+import { DataType } from "#src/util/data_type.js";
+import { ChunkLayout } from "#src/sliceview/chunk_layout.js";
+import { getNearIsotropicBlockSize, makeSliceViewChunkSpecification } from "#src/sliceview/base.js";
+
+export class CatmaidSpatiallyIndexedSkeletonSource extends WithParameters(
+    SpatiallyIndexedSkeletonSource,
+    CatmaidSkeletonSourceParameters
+) { }
 
 export class CatmaidDataSourceProvider implements DataSourceProvider {
     get scheme() {
@@ -40,61 +51,142 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
 
     async get(options: GetDataSourceOptions): Promise<DataSource> {
         const { providerUrl } = options;
-        let baseUrl: string;
-        let projectId: number;
 
-        const lastSlash = providerUrl.lastIndexOf("/");
-        if (lastSlash === -1) {
-            throw new Error("Invalid CATMAID URL. Expected format: <base_url>/<project_id>");
+        // Remove scheme if present to handle "catmaid://"
+        let cleanUrl = providerUrl;
+        if (cleanUrl.startsWith("catmaid://")) {
+            cleanUrl = cleanUrl.substring("catmaid://".length);
         }
-        const projectIdStr = providerUrl.substring(lastSlash + 1);
-        projectId = parseInt(projectIdStr);
+
+        const lastSlash = cleanUrl.lastIndexOf('/');
+        if (lastSlash === -1) {
+            throw new Error("Invalid CATMAID URL. Expected format: catmaid://<base_url>/<project_id>");
+        }
+
+        const projectIdStr = cleanUrl.substring(lastSlash + 1);
+        const projectId = parseInt(projectIdStr);
         if (isNaN(projectId)) {
             throw new Error(`Invalid project ID: ${projectIdStr}`);
         }
-        baseUrl = providerUrl.substring(0, lastSlash);
+
+        let baseUrl = cleanUrl.substring(0, lastSlash);
         if (!baseUrl.startsWith("http")) {
             baseUrl = "https://" + baseUrl;
         }
+
+        const client = new CatmaidClient(baseUrl, projectId);
+
+        const [dimensions, resolution] = await Promise.all([
+            client.getDimensions(),
+            client.getResolution(),
+        ]);
+
+        if (!dimensions || !resolution) {
+            throw new Error("Failed to fetch CATMAID stack metadata");
+        }
+
+        const scaleFactors = Float64Array.from([
+            resolution.x,
+            resolution.y,
+            resolution.z,
+        ]);
+
+        const lowerBounds = Float64Array.from([
+            dimensions.min.x,
+            dimensions.min.y,
+            dimensions.min.z,
+        ]);
+        const upperBounds = Float64Array.from([
+            dimensions.max.x,
+            dimensions.max.y,
+            dimensions.max.z,
+        ]);
+
+        const modelSpace = makeCoordinateSpace({
+            names: ["x", "y", "z"],
+            units: ["nm", "nm", "nm"],
+            scales: scaleFactors,
+            boundingBoxes: [
+                {
+                    box: {
+                        lowerBounds,
+                        upperBounds,
+                    },
+                    transform: Float64Array.from(mat4.create()),
+                }
+            ]
+        });
 
         const parameters = new CatmaidSkeletonSourceParameters();
         parameters.catmaidParameters = new CatmaidDataSourceParameters();
         parameters.catmaidParameters.url = baseUrl;
         parameters.catmaidParameters.projectId = projectId;
         parameters.url = providerUrl;
+
         parameters.metadata = {
             transform: mat4.create(),
-            vertexAttributes: new Map(),
-            sharding: undefined,
+            vertexAttributes: new Map([
+                ["segment", { dataType: DataType.FLOAT32, numComponents: 1 }],
+            ]),
+            sharding: undefined
+        };
+
+        const rank = 3;
+        
+        // Convert bounds from nanometers to voxels
+        const upperVoxelBound = new Float32Array(rank);
+        for (let i = 0; i < rank; ++i) {
+            const boundsSize = upperBounds[i] - lowerBounds[i];
+            upperVoxelBound[i] = boundsSize / scaleFactors[i];
+        }
+
+        const chunkToViewTransform = new Float32Array([
+            1, 0, 0,
+            0, 1, 0,
+            0, 0, 1
+        ]);
+
+        // Calculate near-isotropic chunk size based on bounds
+        const chunkDataSize = getNearIsotropicBlockSize({
+            rank,
+            displayRank: 3,
+            upperVoxelBound,
+            chunkToViewTransform,
+        });
+
+        const chunkLayoutTransform = mat4.create();
+        mat4.fromScaling(chunkLayoutTransform, vec3.fromValues(
+            scaleFactors[0],
+            scaleFactors[1],
+            scaleFactors[2]
+        ));
+
+        // Create chunk layout
+        const chunkLayout = new ChunkLayout(
+            vec3.fromValues(chunkDataSize[0], chunkDataSize[1], chunkDataSize[2]),
+            chunkLayoutTransform,
+            rank
+        );
+
+        // Create chunk specification
+        const spec = {
+            ...makeSliceViewChunkSpecification({
+                rank,
+                chunkDataSize,
+                upperVoxelBound,
+            }),
+            chunkLayout,
         };
 
         const source = options.registry.chunkManager.getChunkSource(
-            CatmaidSkeletonSource,
-            { parameters },
+            CatmaidSpatiallyIndexedSkeletonSource,
+            { parameters, spec }
         );
 
-        const client = new CatmaidClient(
-            parameters.catmaidParameters.url,
-            parameters.catmaidParameters.projectId,
-            parameters.catmaidParameters.token,
-        );
-        let stackInfo: any = null;
-        try {
-            stackInfo = await client.getMetadataInfo();
-        } catch {
-            // Ignore stack info errors.
-        }
-        const xResolution = stackInfo?.resolution?.x || 1;
-        const yResolution = stackInfo?.resolution?.y || 1;
-        const zResolution = stackInfo?.resolution?.z || 1;
+        // Fetch list of skeletons
+        const skeletonIds = await client.listSkeletons();
 
-        const modelSpace = makeCoordinateSpace({
-            names: ["x", "y", "z"],
-            units: ["nm", "nm", "nm"],
-            scales: Float64Array.of(xResolution, yResolution, zResolution),
-        });
-
-        let subsources: DataSubsourceEntry[] = [
+        const subsources = [
             {
                 id: "skeletons",
                 default: true,
@@ -102,30 +194,13 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
             },
         ];
 
-        try {
-            const skeletonIds = await client.listSkeletons();
-            if (Array.isArray(skeletonIds) && skeletonIds.length > 0) {
-                const ids = new BigUint64Array(skeletonIds.length);
-                for (let i = 0; i < skeletonIds.length; ++i) {
-                    ids[i] = BigInt(skeletonIds[i]);
-                }
-                const labelProperty: InlineSegmentProperty = {
-                    id: "label",
-                    type: "label",
-                    values: skeletonIds.map((id) => `Skeleton ${id}`),
-                };
-                const segmentPropertyMap = new SegmentPropertyMap({
-                    inlineProperties: { ids, properties: [labelProperty] },
-                });
-                subsources.push({
-                    id: "properties",
-                    default: true,
-                    subsource: { segmentPropertyMap },
-                });
-            }
-        } catch (e) {
-            // Non-fatal: just skip properties if request fails.
-            console.warn("Failed to load CATMAID skeleton list", e);
+        // Add individual skeleton subsources
+        for (const skeletonId of skeletonIds) {
+            subsources.push({
+                id: `skeleton_${skeletonId}`,
+                default: false,
+                subsource: { mesh: source },
+            });
         }
 
         return {

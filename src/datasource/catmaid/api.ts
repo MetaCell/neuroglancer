@@ -31,10 +31,19 @@ export interface SkeletonSummary {
     cable_length: number;
 }
 
+export interface CatmaidStackInfo {
+    dimension: { x: number; y: number; z: number };
+    resolution: { x: number; y: number; z: number };
+    translation: { x: number; y: number; z: number };
+    title?: string;
+}
+
 export interface CatmaidSource {
     listSkeletons(): Promise<number[]>;
     getSkeleton(skeletonId: number): Promise<CatmaidNode[]>;
-    getMetadataInfo(stackId?: number): Promise<any>;
+    getDimensions(): Promise<{ min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null>;
+    getResolution(): Promise<{ x: number; y: number; z: number } | null>;
+    fetchNodes(boundingBox: { min: { x: number, y: number, z: number }, max: { x: number, y: number, z: number } }): Promise<CatmaidNode[]>;
     addNode(
         skeletonId: number,
         x: number,
@@ -83,23 +92,51 @@ export class CatmaidClient implements CatmaidSource {
         return this.fetch("skeletons/");
     }
 
-    async getMetadataInfo(stackId?: number): Promise<any> {
-        return null // From the tests tried applying the stack resolution was making things worse
+    async listStacks(): Promise<{ id: number; title: string }[]> {
+        return this.fetch("stacks");
+    }
 
-        // If a specific stack id is provided, fetch its info directly.
+    async getStackInfo(stackId: number): Promise<CatmaidStackInfo> {
+        return this.fetch(`stack/${stackId}/info`);
+    }
+
+    private async getMetadataInfo(stackId?: number): Promise<CatmaidStackInfo | null> {
         if (stackId !== undefined) {
-            return this.fetch(`stack/${stackId}/info`);
+            return this.getStackInfo(stackId);
         }
-        // Otherwise, list stacks and return info for the first one.
-        const stacks: Array<{ id: number }> = await this.fetch("stacks");
-        if (!stacks || stacks.length === 0) return null;
-        const targetId = stacks[0].id;
-        return this.fetch(`stack/${targetId}/info`);
+        try {
+            const stacks = await this.listStacks();
+            if (!stacks || stacks.length === 0) return null;
+            const targetId = stacks[0].id;
+            return this.getStackInfo(targetId);
+        } catch (e) {
+            console.warn("Failed to fetch stack info:", e);
+            return null;
+        }
+    }
+
+    async getDimensions(): Promise<{ min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null> {
+        const info = await this.getMetadataInfo();
+        if (!info) return null;
+
+        // Return world-space bounds in nanometers
+        const { dimension, resolution, translation } = info;
+        const min = translation;
+        const max = {
+            x: translation.x + dimension.x * resolution.x,
+            y: translation.y + dimension.y * resolution.y,
+            z: translation.z + dimension.z * resolution.z,
+        };
+        return { min, max };
+    }
+
+    async getResolution(): Promise<{ x: number; y: number; z: number } | null> {
+        const info = await this.getMetadataInfo();
+        return info ? info.resolution : null;
     }
 
     async getSkeleton(skeletonId: number): Promise<CatmaidNode[]> {
         const data = await this.fetch(`skeletons/${skeletonId}/compact-detail`);
-        // data[0] contains the nodes
         const nodes = data[0];
         return nodes.map((n: any[]) => ({
             id: n[0],
@@ -110,6 +147,38 @@ export class CatmaidClient implements CatmaidSource {
             radius: n[6],
             confidence: n[7],
             skeleton_id: skeletonId,
+        }));
+    }
+
+    async fetchNodes(
+        boundingBox: {
+            min: { x: number; y: number; z: number };
+            max: { x: number; y: number; z: number };
+        },
+    ): Promise<CatmaidNode[]> {
+        const body = new URLSearchParams({
+            left: boundingBox.min.x.toString(),
+            top: boundingBox.min.y.toString(),
+            z1: boundingBox.min.z.toString(),
+            right: boundingBox.max.x.toString(),
+            bottom: boundingBox.max.y.toString(),
+            z2: boundingBox.max.z.toString(),
+        });
+
+        const data = await this.fetch("nodes/", {
+            method: "POST",
+            body: body,
+        });
+
+        return data.map((n: any[]) => ({
+            id: n[0],
+            parent_id: n[1],
+            x: n[2],
+            y: n[3],
+            z: n[4],
+            confidence: n[5],
+            radius: n[6],
+            skeleton_id: n[7],
         }));
     }
 
@@ -170,7 +239,6 @@ export class CatmaidClient implements CatmaidSource {
         skeletonId1: number,
         skeletonId2: number,
     ): Promise<void> {
-        // Placeholder implementation; parameters referenced to satisfy noUnusedParameters.
         void skeletonId1;
         void skeletonId2;
         throw new Error("mergeSkeletons not implemented.");
