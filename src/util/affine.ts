@@ -15,23 +15,56 @@
  */
 
 import { multiply } from "#src/util/matrix.js";
+import type { mat4 } from "#src/util/geom.js";
+import * as matrix from "#src/util/matrix.js";
 
+/**
+ * Extracts scale factors along each axis from an affine transformation matrix.
+ * To do this, we extract the upper-left `rank x rank` submatrix, compute its inverse,
+ * and determine how much it scales unit vectors along each axis.
+ * This is equivalent to 
+ */
 export function extractScalesFromAffineMatrix(
-  affineTransform: Float64Array,
+  affineTransform: Float64Array | mat4,
   rank: number,
 ): Float64Array {
-  // For now, use the L2 norm method. But should replace this by either
-  // SVD, or exploring how the transform affects a known object
-  // such as a unit sphere
-  // TODO address the above
+  // Extract just the upper left rank x rank submatrix
+  const upperLeft = new Float64Array(rank * rank);
+  for (let i = 0; i < rank; ++i) {
+    for (let j = 0; j < rank; ++j) {
+      upperLeft[i * rank + j] =
+        affineTransform[i * (rank + 1) + j];
+    }
+  }
+
+  const inverseTransform = new Float64Array(upperLeft.length);
+  // TODO need non-invertible check here?
+  matrix.inverse(
+    inverseTransform,
+    rank,
+    upperLeft,
+    rank,
+    rank,
+  );
   const scales = new Float64Array(rank);
   for (let i = 0; i < rank; ++i) {
     let sumSquares = 0;
+    const unitVector = new Float64Array(rank);
+    unitVector[i] = 1;
+    // Apply inverse transform to unit vector along axis i
+    const transformedVector = new Float64Array(rank);
+    matrix.transformVector(
+      transformedVector,
+      inverseTransform,
+      rank,
+      unitVector,
+      rank,
+    )
     for (let j = 0; j < rank; ++j) {
-      const val = affineTransform[j * (rank + 1) + i];
+      const val = transformedVector[j];
       sumSquares += val * val;
     }
-    scales[i] = Math.sqrt(sumSquares);
+    scales[i] = 1 / Math.sqrt(sumSquares);
   }
   return scales;
 }
