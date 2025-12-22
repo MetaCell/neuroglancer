@@ -20,13 +20,13 @@ import { CatmaidClient } from "#src/datasource/catmaid/api.js";
 import { CatmaidSkeletonSourceParameters } from "#src/datasource/catmaid/base.js";
 import { registerSharedObject } from "#src/worker_rpc.js";
 import { vec3 } from "#src/util/geom.js";
-import { ChunkLayout } from "#src/sliceview/chunk_layout.js";
-
+import { WithSharedCredentialsProviderCounterpart } from "#src/credentials_provider/shared_counterpart.js";
+import type { CatmaidToken } from "#src/datasource/catmaid/api.js";
 
 
 @registerSharedObject()
 export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters(
-    SpatiallyIndexedSkeletonSourceBackend,
+    WithSharedCredentialsProviderCounterpart<CatmaidToken>()(SpatiallyIndexedSkeletonSourceBackend),
     CatmaidSkeletonSourceParameters
 ) {
     get client(): CatmaidClient {
@@ -34,29 +34,31 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
         return new CatmaidClient(
             catmaidParameters.url,
             catmaidParameters.projectId,
-            catmaidParameters.token
+            catmaidParameters.token,
+            this.credentialsProvider
         );
+    }
+
+    constructor(...args: any[]) {
+        super(args[0], args[1]);
     }
 
     async download(chunk: SpatiallyIndexedSkeletonChunk, _signal: AbortSignal) {
         const { chunkGridPosition } = chunk;
         const { chunkDataSize } = this.spec;
-        const chunkLayout = ChunkLayout.fromObject(this.spec.chunkLayout);
-        const { transform } = chunkLayout;
 
         const localMin = vec3.multiply(vec3.create(), chunkGridPosition as unknown as vec3, chunkDataSize as unknown as vec3);
         const localMax = vec3.add(vec3.create(), localMin, chunkDataSize as unknown as vec3);
 
-        const globalMin = vec3.transformMat4(vec3.create(), localMin, transform);
-        const globalMax = vec3.transformMat4(vec3.create(), localMax, transform);
+        const bbox = {
+            min: { x: localMin[0], y: localMin[1], z: localMin[2] },
+            max: { x: localMax[0], y: localMax[1], z: localMax[2] },
+        };
+        console.log(`[CATMAID-BACKEND] Fetching nodes for bounds:`, bbox);
 
-        const min = vec3.min(vec3.create(), globalMin, globalMax);
-        const max = vec3.max(vec3.create(), globalMin, globalMax);
+        const nodes = await this.client.fetchNodes(bbox);
 
-        const nodes = await this.client.fetchNodes({
-            min: { x: min[0], y: min[1], z: min[2] },
-            max: { x: max[0], y: max[1], z: max[2] },
-        });
+        console.log('[CATMAID-BACKEND] Downloaded nodes:', nodes);
 
         const numVertices = nodes.length;
         const vertexPositions = new Float32Array(numVertices * 3);
@@ -85,7 +87,7 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
 
         chunk.vertexPositions = vertexPositions;
         chunk.indices = new Uint32Array(indices);
-        
+
         const positionsBytes = new Uint8Array(vertexPositions.buffer);
         const segmentsBytes = new Uint8Array(vertexAttributes.buffer);
 

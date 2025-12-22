@@ -1,19 +1,3 @@
-/**
- * @license
- * Copyright 2024 Google Inc.
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 export interface CatmaidNode {
     id: number;
     parent_id: number | null;
@@ -31,11 +15,22 @@ export interface SkeletonSummary {
     cable_length: number;
 }
 
+export interface CatmaidCacheConfiguration {
+    cache_type: string;
+    cell_width: number;
+    cell_height: number;
+    cell_depth: number;
+    [key: string]: any;
+}
+
 export interface CatmaidStackInfo {
     dimension: { x: number; y: number; z: number };
     resolution: { x: number; y: number; z: number };
     translation: { x: number; y: number; z: number };
     title?: string;
+    metadata?: {
+        cache_configurations?: CatmaidCacheConfiguration[];
+    };
 }
 
 export interface CatmaidSource {
@@ -43,6 +38,7 @@ export interface CatmaidSource {
     getSkeleton(skeletonId: number): Promise<CatmaidNode[]>;
     getDimensions(): Promise<{ min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null>;
     getResolution(): Promise<{ x: number; y: number; z: number } | null>;
+    getGridCellSize(): Promise<{ x: number; y: number; z: number }>;
     fetchNodes(boundingBox: { min: { x: number, y: number, z: number }, max: { x: number, y: number, z: number } }): Promise<CatmaidNode[]>;
     addNode(
         skeletonId: number,
@@ -58,11 +54,56 @@ export interface CatmaidSource {
     splitSkeleton(nodeId: number): Promise<void>;
 }
 
+import { fetchOkWithCredentials } from "#src/credentials_provider/http_request.js";
+import type { CredentialsProvider } from "#src/credentials_provider/index.js";
+
+export interface CatmaidToken {
+    token?: string;
+}
+
+export const credentialsKey = "CATMAID";
+
+// Default CATMAID cache grid cell dimensions
+const DEFAULT_CACHE_GRID_CELL_WIDTH = 25000;
+const DEFAULT_CACHE_GRID_CELL_HEIGHT = 25000;
+const DEFAULT_CACHE_GRID_CELL_DEPTH = 40;
+
+export function fetchWithCatmaidCredentials(
+    credentialsProvider: CredentialsProvider<CatmaidToken>,
+    input: string,
+    init: RequestInit,
+): Promise<Response> {
+    return fetchOkWithCredentials(
+        credentialsProvider,
+        input,
+        init,
+        (credentials: CatmaidToken, init: RequestInit) => {
+            const newInit: RequestInit = { ...init };
+            if (credentials.token) {
+                newInit.headers = {
+                    ...newInit.headers,
+                    Authorization: `Token ${credentials.token}`,
+                };
+            }
+            return newInit;
+        },
+        (error) => {
+            const { status } = error;
+            if (status === 403 || status === 401) {
+                // Authorization needed.  Retry with refreshed token.
+                return "refresh";
+            }
+            throw error;
+        },
+    );
+}
+
 export class CatmaidClient implements CatmaidSource {
     constructor(
         public baseUrl: string,
         public projectId: number,
         public token?: string,
+        public credentialsProvider?: CredentialsProvider<CatmaidToken>,
     ) { }
 
     private async fetch(
@@ -81,9 +122,14 @@ export class CatmaidClient implements CatmaidSource {
             headers.append("Content-Type", "application/x-www-form-urlencoded");
         }
 
-        const response = await fetch(url, { ...options, headers });
-        if (!response.ok) {
-            throw new Error(`CATMAID request failed: ${response.statusText}`);
+        let response: Response;
+        if (this.credentialsProvider) {
+            response = await fetchWithCatmaidCredentials(this.credentialsProvider, url, { ...options, headers });
+        } else {
+            response = await fetch(url, { ...options, headers });
+            if (!response.ok) {
+                throw new Error(`CATMAID request failed: ${response.statusText}`);
+            }
         }
         return response.json();
     }
@@ -146,6 +192,32 @@ export class CatmaidClient implements CatmaidSource {
         return info ? info.resolution : null;
     }
 
+    async getGridCellSize(): Promise<{ x: number; y: number; z: number }> {
+        const info = await this.getMetadataInfo();
+        
+        // Try to get grid cell size from metadata
+        if (info?.metadata?.cache_configurations) {
+            const gridConfig = info.metadata.cache_configurations.find(
+                (config: CatmaidCacheConfiguration) => config.cache_type === "grid"
+            );
+            
+            if (gridConfig) {
+                return {
+                    x: gridConfig.cell_width,
+                    y: gridConfig.cell_height,
+                    z: gridConfig.cell_depth,
+                };
+            }
+        }
+        
+        // Fall back to default values
+        return {
+            x: DEFAULT_CACHE_GRID_CELL_WIDTH,
+            y: DEFAULT_CACHE_GRID_CELL_HEIGHT,
+            z: DEFAULT_CACHE_GRID_CELL_DEPTH,
+        };
+    }
+
     async getSkeleton(skeletonId: number): Promise<CatmaidNode[]> {
         const data = await this.fetch(`skeletons/${skeletonId}/compact-detail`);
         const nodes = data[0];
@@ -181,7 +253,7 @@ export class CatmaidClient implements CatmaidSource {
             body: body,
         });
 
-        return data.map((n: any[]) => ({
+        return data[0].map((n: any[]) => ({
             id: n[0],
             parent_id: n[1],
             x: n[2],
