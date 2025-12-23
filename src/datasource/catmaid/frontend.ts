@@ -18,6 +18,7 @@ import {
     makeCoordinateSpace,
     makeIdentityTransform,
 } from "#src/coordinate_transform.js";
+import { makeDataBoundsBoundingBoxAnnotationSet } from "#src/annotation/index.js";
 import { SpatiallyIndexedSkeletonSource } from "#src/skeleton/frontend.js";
 import { WithParameters } from "#src/chunk_manager/frontend.js";
 import {
@@ -33,12 +34,28 @@ import { mat4, vec3 } from "#src/util/geom.js";
 import { CatmaidClient } from "#src/datasource/catmaid/api.js";
 import { DataType } from "#src/util/data_type.js";
 import { ChunkLayout } from "#src/sliceview/chunk_layout.js";
-import { getNearIsotropicBlockSize, makeSliceViewChunkSpecification } from "#src/sliceview/base.js";
+import { makeSliceViewChunkSpecification } from "#src/sliceview/base.js";
+import {
+    InlineSegmentPropertyMap,
+    SegmentPropertyMap,
+    normalizeInlineSegmentPropertyMap,
+} from "#src/segmentation_display_state/property_map.js";
+import { CatmaidToken, credentialsKey } from "#src/datasource/catmaid/api.js";
+import { CredentialsProvider } from "#src/credentials_provider/index.js";
+import { WithCredentialsProvider } from "#src/credentials_provider/chunk_source_frontend.js";
+import "#src/datasource/catmaid/register_credentials_provider.js";
 
 export class CatmaidSpatiallyIndexedSkeletonSource extends WithParameters(
-    SpatiallyIndexedSkeletonSource,
+    WithCredentialsProvider<CatmaidToken>()(SpatiallyIndexedSkeletonSource),
     CatmaidSkeletonSourceParameters
-) { }
+) {
+    getChunk(chunkData: any) {
+        return super.getChunk(chunkData);
+    }
+    static encodeOptions(options: any) {
+        return super.encodeOptions(options);
+    }
+}
 
 export class CatmaidDataSourceProvider implements DataSourceProvider {
     get scheme() {
@@ -74,11 +91,19 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
             baseUrl = "https://" + baseUrl;
         }
 
-        const client = new CatmaidClient(baseUrl, projectId);
+        const credentialsProvider =
+            options.registry.credentialsManager.getCredentialsProvider(
+                credentialsKey,
+                { serverUrl: baseUrl },
+            ) as CredentialsProvider<CatmaidToken>;
 
-        const [dimensions, resolution] = await Promise.all([
+        const client = new CatmaidClient(baseUrl, projectId, undefined, credentialsProvider);
+
+        const [dimensions, resolution, gridCellSize, skeletonIds] = await Promise.all([
             client.getDimensions(),
             client.getResolution(),
+            client.getGridCellSize(),
+            client.listSkeletons(),
         ]);
 
         if (!dimensions || !resolution) {
@@ -140,19 +165,12 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
             upperVoxelBound[i] = upperBounds[i];
         }
 
-        const chunkToViewTransform = new Float32Array([
-            1, 0, 0,
-            0, 1, 0,
-            0, 0, 1
+        // Use CATMAID's grid cell size for chunking
+        const chunkDataSize = Uint32Array.from([
+            gridCellSize.x,
+            gridCellSize.y,
+            gridCellSize.z,
         ]);
-
-        // Calculate near-isotropic chunk size based on bounds
-        const chunkDataSize = getNearIsotropicBlockSize({
-            rank,
-            displayRank: 3,
-            upperVoxelBound,
-            chunkToViewTransform,
-        });
 
         const chunkLayoutTransform = mat4.create();
         mat4.fromScaling(chunkLayoutTransform, vec3.fromValues(
@@ -180,14 +198,49 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
 
         const source = options.registry.chunkManager.getChunkSource(
             CatmaidSpatiallyIndexedSkeletonSource,
-            { parameters, spec }
+            { parameters, spec, credentialsProvider }
         );
+
+        // Create SegmentPropertyMap
+        const ids = new BigUint64Array(skeletonIds.length);
+        const labels = new Array<string>(skeletonIds.length);
+        for (let i = 0; i < skeletonIds.length; ++i) {
+            ids[i] = BigInt(skeletonIds[i]);
+            labels[i] = skeletonIds[i].toString();
+        }
+
+        const inlineProperties: InlineSegmentPropertyMap = normalizeInlineSegmentPropertyMap({
+            ids,
+            properties: [{
+                id: "label",
+                type: "label",
+                values: labels,
+            }],
+        });
+
+        const propertyMap = new SegmentPropertyMap({
+            inlineProperties,
+        });
 
         const subsources = [
             {
                 id: "skeletons",
                 default: true,
                 subsource: { mesh: source },
+            },
+            {
+                id: "properties",
+                default: true,
+                subsource: { segmentPropertyMap: propertyMap },
+            },
+            {
+                id: "bounds",
+                default: true,
+                subsource: {
+                    staticAnnotations: makeDataBoundsBoundingBoxAnnotationSet(
+                        modelSpace.bounds
+                    ),
+                },
             },
         ];
 

@@ -42,8 +42,12 @@ import {
 import type { VertexAttributeInfo } from "#src/skeleton/base.js";
 import { SKELETON_LAYER_RPC_ID } from "#src/skeleton/base.js";
 import type { SliceViewPanel } from "#src/sliceview/panel.js";
-import type { SliceViewPanelRenderContext } from "#src/sliceview/renderlayer.js";
-import { SliceViewPanelRenderLayer } from "#src/sliceview/renderlayer.js";
+import {
+  SliceViewPanelRenderLayer,
+  SliceViewPanelRenderContext,
+  SliceViewRenderLayer,
+  SliceViewRenderContext,
+} from "#src/sliceview/renderlayer.js";
 import {
   SliceViewChunk,
   SliceViewChunkSource,
@@ -844,14 +848,14 @@ export class SkeletonChunk extends Chunk implements SkeletonChunkInterface {
     super.copyToGPU(gl);
     const { attributeTextureFormats } = this.source;
     const { vertexAttributes, vertexAttributeOffsets } = this;
-    
+
     this.vertexAttributeTextures = uploadVertexAttributesToGPU(
       gl,
       vertexAttributes,
       vertexAttributeOffsets,
       attributeTextureFormats,
     );
-    
+
     this.indexBuffer = GLBuffer.fromData(
       gl,
       this.indices,
@@ -1206,6 +1210,46 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
 
   isReady() {
     return this.base.isReady();
+  }
+}
+
+export class SliceViewSpatiallyIndexedSkeletonLayer extends SliceViewRenderLayer {
+  private renderOptions: ViewSpecificSkeletonRenderingOptions;
+  constructor(public base: SpatiallyIndexedSkeletonLayer) {
+    super(base.chunkManager, {
+      getSources: () => {
+        return [[{
+          chunkSource: base.source,
+          chunkToMultiscaleTransform: mat4.create(),
+        }]];
+      }
+    } as any, {
+      transform: base.displayState.transform,
+      localPosition: (base.displayState as any).localPosition,
+    });
+    // @ts-ignore
+    this.renderHelper = this.registerDisposer(new RenderHelper(base, true));
+    this.renderOptions = base.displayState.skeletonRenderingOptions.params2d;
+    this.layerChunkProgressInfo = base.layerChunkProgressInfo;
+    this.registerDisposer(base);
+    const { renderOptions } = this;
+    this.registerDisposer(
+      renderOptions.mode.changed.add(this.redrawNeeded.dispatch),
+    );
+    this.registerDisposer(
+      renderOptions.lineWidth.changed.add(this.redrawNeeded.dispatch),
+    );
+    this.registerDisposer(base.redrawNeeded.add(this.redrawNeeded.dispatch));
+    this.initializeCounterpart();
+  }
+  get gl() {
+    return this.base.gl;
+  }
+
+  draw(renderContext: SliceViewRenderContext) {
+    renderContext;
+    // No-op for now to test data loading. 
+    // SliceViewRenderLayer draw is abstract, so we must implement it.
   }
 }
 

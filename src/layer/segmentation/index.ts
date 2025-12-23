@@ -82,6 +82,7 @@ import {
   SliceViewPanelSkeletonLayer,
   PerspectiveViewSpatiallyIndexedSkeletonLayer,
   SliceViewPanelSpatiallyIndexedSkeletonLayer,
+  SliceViewSpatiallyIndexedSkeletonLayer,
   SpatiallyIndexedSkeletonLayer,
   SpatiallyIndexedSkeletonSource,
 } from "#src/skeleton/frontend.js";
@@ -799,6 +800,7 @@ export class SegmentationUserLayer extends Base {
           const displayState = {
             ...this.displayState,
             transform: loadedSubsource.getRenderLayerTransform(),
+            localPosition: this.localPosition,
           };
           if (mesh instanceof MeshSource) {
             loadedSubsource.addRenderLayer(
@@ -820,6 +822,9 @@ export class SegmentationUserLayer extends Base {
             );
             loadedSubsource.addRenderLayer(
               new PerspectiveViewSpatiallyIndexedSkeletonLayer(base.addRef()),
+            );
+            loadedSubsource.addRenderLayer(
+              new SliceViewSpatiallyIndexedSkeletonLayer(base.addRef()),
             );
             loadedSubsource.addRenderLayer(
               new SliceViewPanelSpatiallyIndexedSkeletonLayer(
@@ -854,6 +859,9 @@ export class SegmentationUserLayer extends Base {
             );
             loadedSubsource.addRenderLayer(
               new PerspectiveViewSpatiallyIndexedSkeletonLayer(base.addRef()),
+            );
+            loadedSubsource.addRenderLayer(
+              new SliceViewSpatiallyIndexedSkeletonLayer(base.addRef()),
             );
             loadedSubsource.addRenderLayer(
               new SliceViewPanelSpatiallyIndexedSkeletonLayer(
