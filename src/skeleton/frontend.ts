@@ -1081,28 +1081,17 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       nodeShaderParameters.parseResult.controls,
     );
 
-    // Filter logic
-    const { visibleSegments } = displayState.segmentationGroupState.value as { visibleSegments: Uint64Set };
-
+    // Draw all nodes without filtering
     const chunks = source.chunks;
     for (const chunk of chunks.values()) {
-      if (chunk.state === ChunkState.GPU_MEMORY) {
-        this.updateChunkFilteredBuffer(chunk, visibleSegments);
-
-        if (chunk.filteredIndexBuffer && chunk.numFilteredIndices > 0) {
-          const chunkWrapper = {
-            ...chunk,
-            indexBuffer: chunk.filteredIndexBuffer,
-            numIndices: chunk.numFilteredIndices
-          };
-          renderHelper.drawSkeleton(
-            gl,
-            edgeShader,
-            nodeShader,
-            chunkWrapper,
-            renderContext.projectionParameters,
-          );
-        }
+      if (chunk.state === ChunkState.GPU_MEMORY && chunk.numIndices > 0) {
+        renderHelper.drawSkeleton(
+          gl,
+          edgeShader,
+          nodeShader,
+          chunk,
+          renderContext.projectionParameters,
+        );
       }
     }
 

@@ -88,22 +88,8 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
         chunk.vertexPositions = vertexPositions;
         chunk.indices = new Uint32Array(indices);
 
-        const positionsBytes = new Uint8Array(vertexPositions.buffer);
-        const segmentsBytes = new Uint8Array(vertexAttributes.buffer);
-
-        const totalBytes = positionsBytes.byteLength + segmentsBytes.byteLength;
-        const packedData = new Uint8Array(totalBytes);
-        packedData.set(positionsBytes, 0);
-        packedData.set(segmentsBytes, positionsBytes.byteLength);
-
-        chunk.vertexAttributes = [packedData];
-
-        const positionsByteLength = numVertices * 3 * 4;
-        const segmentsByteLength = numVertices * 1 * 4;
-        (chunk as any).vertexAttributeOffsets = new Uint32Array([
-            0,
-            positionsByteLength,
-            positionsByteLength + segmentsByteLength
-        ]);
+        // Pack only segment IDs into vertexAttributes (positions are in vertexPositions)
+        // This will be serialized as a separate attribute
+        chunk.vertexAttributes = [vertexAttributes];
     }
 }
