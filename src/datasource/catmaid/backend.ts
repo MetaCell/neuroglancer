@@ -66,6 +66,9 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
         const indices: number[] = [];
         const nodeMap = new Map<number, number>();
 
+        // Track unique skeleton IDs for debugging
+        const uniqueSkeletonIds = new Set<number>();
+
         for (let i = 0; i < numVertices; ++i) {
             const node = nodes[i];
             nodeMap.set(node.id, i);
@@ -73,7 +76,11 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
             vertexPositions[i * 3 + 1] = node.y;
             vertexPositions[i * 3 + 2] = node.z;
             vertexAttributes[i] = node.skeleton_id;
+            uniqueSkeletonIds.add(node.skeleton_id);
         }
+
+        console.log('[CATMAID-BACKEND] Unique skeleton IDs in chunk:', Array.from(uniqueSkeletonIds));
+        console.log('[CATMAID-BACKEND] Sample segment IDs:', Array.from(vertexAttributes.slice(0, Math.min(10, numVertices))));
 
         for (let i = 0; i < numVertices; ++i) {
             const node = nodes[i];

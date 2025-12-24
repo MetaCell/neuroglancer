@@ -1083,8 +1083,128 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
 
     // Draw all nodes without filtering
     const chunks = source.chunks;
+    console.log('[SKELETON-RENDER] Number of chunks:', chunks.size);
+    
+    // Collect all unique segment IDs from chunks
+    const allSegmentIds = new Set<number>();
     for (const chunk of chunks.values()) {
       if (chunk.state === ChunkState.GPU_MEMORY && chunk.numIndices > 0) {
+        const attrOffset = chunk.vertexAttributeOffsets && chunk.vertexAttributeOffsets.length > 1 
+          ? chunk.vertexAttributeOffsets[1] 
+          : 0;
+        const segmentIds = new Float32Array(
+          chunk.vertexAttributes.buffer,
+          chunk.vertexAttributes.byteOffset + attrOffset,
+          chunk.numVertices,
+        );
+        for (let i = 0; i < chunk.numVertices; ++i) {
+          allSegmentIds.add(Math.round(segmentIds[i]));
+        }
+      }
+    }
+    
+    console.log('[SKELETON-RENDER] All unique segment IDs in chunks:', Array.from(allSegmentIds));
+
+    // Build a color map by querying the display state for each segment
+    const segmentColorMap = new Map<number, Float32Array>();
+    const { segmentationColorGroupState } = displayState;
+    const colorGroup = segmentationColorGroupState.value;
+    const tempColor = new Float32Array(4);
+    
+    for (const segmentId of allSegmentIds) {
+      const bigintId = BigInt(segmentId);
+      let statedColor: bigint | undefined;
+      
+      // First check for stated colors (user-assigned)
+      if (
+        colorGroup.segmentStatedColors.size !== 0 &&
+        (statedColor = colorGroup.segmentStatedColors.get(bigintId)) !== undefined
+      ) {
+        tempColor[0] = Number(statedColor & 0x0000ffn) / 255.0;
+        tempColor[1] = (Number(statedColor & 0x00ff00n) >>> 8) / 255.0;
+        tempColor[2] = (Number(statedColor & 0xff0000n) >>> 16) / 255.0;
+        tempColor[3] = 1.0;
+        segmentColorMap.set(segmentId, new Float32Array(tempColor));
+        console.log('[SKELETON-RENDER] Found stated color for segment', segmentId, ':', Array.from(tempColor));
+        continue;
+      }
+      
+      // Then check for default color
+      const segmentDefaultColor = colorGroup.segmentDefaultColor.value;
+      if (segmentDefaultColor !== undefined) {
+        tempColor[0] = segmentDefaultColor[0];
+        tempColor[1] = segmentDefaultColor[1];
+        tempColor[2] = segmentDefaultColor[2];
+        tempColor[3] = 1.0;
+        segmentColorMap.set(segmentId, new Float32Array(tempColor));
+        console.log('[SKELETON-RENDER] Found default color for segment', segmentId, ':', Array.from(tempColor));
+        continue;
+      }
+      
+      // Finally use computed hash color
+      colorGroup.segmentColorHash.compute(tempColor, bigintId);
+      tempColor[3] = 1.0;
+      segmentColorMap.set(segmentId, new Float32Array(tempColor));
+      console.log('[SKELETON-RENDER] Using hash color for segment', segmentId, ':', Array.from(tempColor));
+    }
+
+    console.log('[SKELETON-RENDER] Total segments with colors:', segmentColorMap.size);
+
+    // Set default color
+    const defaultColor = new Float32Array([1.0, 0.5, 0.0, 1.0]); // Orange fallback
+    edgeShader.bind();
+    renderHelper.setColor(gl, edgeShader, <vec3>(<Float32Array>defaultColor));
+    nodeShader.bind();
+    renderHelper.setColor(gl, nodeShader, <vec3>(<Float32Array>defaultColor));
+    
+    // Render all chunks
+    for (const chunk of chunks.values()) {
+      if (chunk.state === ChunkState.GPU_MEMORY && chunk.numIndices > 0) {
+        console.log('[SKELETON-RENDER] Drawing chunk with', chunk.numIndices / 2, 'edges');
+        
+        // Extract segment IDs from vertex attributes
+        const attrOffset = chunk.vertexAttributeOffsets && chunk.vertexAttributeOffsets.length > 1 
+          ? chunk.vertexAttributeOffsets[1] 
+          : 0;
+        const segmentIds = new Float32Array(
+          chunk.vertexAttributes.buffer,
+          chunk.vertexAttributes.byteOffset + attrOffset,
+          chunk.numVertices,
+        );
+
+        // Group indices by segment ID
+        const indices = chunk.indices;
+        const segmentIndices = new Map<number, number[]>();
+        
+        for (let i = 0; i < chunk.numIndices; i += 2) {
+          const idxA = indices[i];
+          const idxB = indices[i + 1];
+          const segmentId = Math.round(segmentIds[idxA]);
+          
+          if (!segmentIndices.has(segmentId)) {
+            segmentIndices.set(segmentId, []);
+          }
+          segmentIndices.get(segmentId)!.push(idxA, idxB);
+        }
+
+        console.log('[SKELETON-RENDER] Chunk segments:', Array.from(segmentIndices.keys()));
+
+        // Render each segment with its color
+        for (const [segmentId] of segmentIndices.entries()) {
+          const color = segmentColorMap.get(segmentId);
+          if (color) {
+            edgeShader.bind();
+            renderHelper.setColor(gl, edgeShader, <vec3>(<Float32Array>color));
+            nodeShader.bind();
+            renderHelper.setColor(gl, nodeShader, <vec3>(<Float32Array>color));
+
+            console.log('[SKELETON-RENDER] Rendering segment', segmentId, 'with color:', Array.from(color));
+          } else {
+            console.log('[SKELETON-RENDER] No color for segment', segmentId, '- using default');
+          }
+        }
+
+        // Now render the full chunk (all indices)
         renderHelper.drawSkeleton(
           gl,
           edgeShader,
