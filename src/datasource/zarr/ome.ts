@@ -654,19 +654,20 @@ function parseOmeMultiscale(
   // This matrix should apply the per path scaling for moving between
   // LODs as well as the per-lod offset in translations (for voxel center)
 
-  // TODO can just keep the unscaled inverse
-  const baseTransformScaled = new Float64Array((rank + 1) * (rank + 1));
-  matrix.copy(
-    baseTransformScaled,
+  // The unscaled inverse of the base transform is used in the per-scale
+  // calculation of the affine transform to apply on top of the base transform.
+  const inverseBaseTransformUnscaled = new Float64Array(baseTransform.length);
+  matrix.inverse(
+    inverseBaseTransformUnscaled,
     rank + 1,
     baseTransform,
     rank + 1,
     rank + 1,
-    rank + 1,
   );
-  const baseTransformUnscaled = new Float64Array((rank + 1) * (rank + 1));
+
+  const baseTransformScaled = new Float64Array(baseTransform.length);
   matrix.copy(
-    baseTransformUnscaled,
+    baseTransformScaled,
     rank + 1,
     baseTransform,
     rank + 1,
@@ -679,15 +680,6 @@ function parseOmeMultiscale(
     }
   }
 
-  const inverseBaseTransformUnscaled = new Float64Array(baseTransform.length);
-  // TODO need non-invertible check here?
-  matrix.inverse(
-    inverseBaseTransformUnscaled,
-    rank + 1,
-    baseTransformUnscaled,
-    rank + 1,
-    rank + 1,
-  );
   for (const scale of scales) {
     // In OME's coordinate space, the origin of a voxel is its center, while in Neuroglancer it is
     // the "lower" (in coordinates) corner.
