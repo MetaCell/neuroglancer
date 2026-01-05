@@ -403,6 +403,10 @@ void emitDefault() {
         this.targetIsSliceView ? 1.0 : 0.0,
       );
       drawLines(gl, 1, skeletonChunk.numIndices / 2);
+      const glError = gl.getError();
+      if (glError !== gl.NO_ERROR) {
+        console.error('[SKELETON-RENDER] WebGL error after drawLines:', glError);
+      }
       gl.vertexAttribDivisor(aVertexIndex, 0);
       gl.disableVertexAttribArray(aVertexIndex);
     }
@@ -897,13 +901,15 @@ export class SpatiallyIndexedSkeletonChunk extends SliceViewChunk implements Ske
     this.numVertices = chunkData.numVertices;
     this.numIndices = indices.length;
     this.vertexAttributeOffsets = chunkData.vertexAttributeOffsets;
+    console.log(`[SKELETON-FRONTEND] SpatiallyIndexedSkeletonChunk created with ${this.numVertices} vertices and ${this.numIndices / 2} edges`);
 
     const gl = source.gl;
-    this.indexBuffer = new GLBuffer(
+    this.indexBuffer = GLBuffer.fromData(
       gl,
-      WebGL2RenderingContext.ELEMENT_ARRAY_BUFFER,
+      indices,
+      WebGL2RenderingContext.ARRAY_BUFFER,
+      WebGL2RenderingContext.STATIC_DRAW,
     );
-    this.indexBuffer.setData(indices);
 
     const { attributeTextureFormats } = source;
     this.vertexAttributeTextures = uploadVertexAttributesToGPU(
@@ -1162,6 +1168,14 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       if (chunk.state === ChunkState.GPU_MEMORY && chunk.numIndices > 0) {
         console.log('[SKELETON-RENDER] Drawing chunk with', chunk.numIndices / 2, 'edges');
         
+        // Extract vertex positions (first attribute)
+        const positionOffset = chunk.vertexAttributeOffsets[0];
+        const vertexPositions = new Float32Array(
+          chunk.vertexAttributes.buffer,
+          chunk.vertexAttributes.byteOffset + positionOffset,
+          chunk.numVertices * 3,
+        );
+        
         // Extract segment IDs from vertex attributes
         const attrOffset = chunk.vertexAttributeOffsets && chunk.vertexAttributeOffsets.length > 1 
           ? chunk.vertexAttributeOffsets[1] 
@@ -1171,6 +1185,40 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
           chunk.vertexAttributes.byteOffset + attrOffset,
           chunk.numVertices,
         );
+        
+        // Log sample edge coordinates for debugging
+        if (chunk.numIndices >= 2) {
+          const firstEdgeIdx0 = chunk.indices[0];
+          const firstEdgeIdx1 = chunk.indices[1];
+          const x0 = vertexPositions[firstEdgeIdx0 * 3];
+          const y0 = vertexPositions[firstEdgeIdx0 * 3 + 1];
+          const z0 = vertexPositions[firstEdgeIdx0 * 3 + 2];
+          const x1 = vertexPositions[firstEdgeIdx1 * 3];
+          const y1 = vertexPositions[firstEdgeIdx1 * 3 + 1];
+          const z1 = vertexPositions[firstEdgeIdx1 * 3 + 2];
+          const segId0 = segmentIds[firstEdgeIdx0];
+          const segId1 = segmentIds[firstEdgeIdx1];
+          console.log(`[SKELETON-RENDER] Sample edge: segment ${segId0}, vertex ${firstEdgeIdx0} at (${x0.toFixed(1)}, ${y0.toFixed(1)}, ${z0.toFixed(1)}) -> vertex ${firstEdgeIdx1} at (${x1.toFixed(1)}, ${y1.toFixed(1)}, ${z1.toFixed(1)}), segment ${segId1}`);
+          
+          // Log coordinate ranges
+          let minX = Infinity, minY = Infinity, minZ = Infinity;
+          let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+          for (let i = 0; i < chunk.numVertices; i++) {
+            const x = vertexPositions[i * 3];
+            const y = vertexPositions[i * 3 + 1];
+            const z = vertexPositions[i * 3 + 2];
+            minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+            minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+            minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
+          }
+          console.log(`[SKELETON-RENDER] Chunk coordinate bounds: X[${minX.toFixed(1)}, ${maxX.toFixed(1)}], Y[${minY.toFixed(1)}, ${maxY.toFixed(1)}], Z[${minZ.toFixed(1)}, ${maxZ.toFixed(1)}]`);
+          
+          const centerX = (minX + maxX) / 2;
+          const centerY = (minY + maxY) / 2;
+          const centerZ = (minZ + maxZ) / 2;
+          console.log(`[SKELETON-RENDER] 📍 To see edges, navigate to center: (${centerX.toFixed(1)}, ${centerY.toFixed(1)}, ${centerZ.toFixed(1)})`);
+          console.log(`[SKELETON-RENDER] 📍 Or try this URL coordinate: ${centerX.toFixed(0)},${centerY.toFixed(0)},${centerZ.toFixed(0)}`);
+        }
 
         // Group indices by segment ID
         const indices = chunk.indices;
@@ -1188,6 +1236,15 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
         }
 
         console.log('[SKELETON-RENDER] Chunk segments:', Array.from(segmentIndices.keys()));
+
+        // Log first few segments and their edge counts
+        let loggedCount = 0;
+        for (const [segmentId, indices] of segmentIndices.entries()) {
+          if (loggedCount < 3) {
+            console.log(`[SKELETON-RENDER]   Segment ${segmentId}: ${indices.length / 2} edges`);
+            loggedCount++;
+          }
+        }
 
         // Render each segment with its color
         for (const [segmentId] of segmentIndices.entries()) {

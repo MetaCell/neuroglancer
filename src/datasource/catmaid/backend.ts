@@ -92,6 +92,8 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
             }
         }
 
+        console.log(`[CATMAID-BACKEND] Created ${indices.length / 2} edges from parent-child relationships`);
+
         chunk.vertexPositions = vertexPositions;
         chunk.indices = new Uint32Array(indices);
 
