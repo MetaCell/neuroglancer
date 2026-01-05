@@ -14,57 +14,33 @@
  * limitations under the License.
  */
 
-import { multiply } from "#src/util/matrix.js";
 import type { mat4 } from "#src/util/geom.js";
-import * as matrix from "#src/util/matrix.js";
+import { multiply } from "#src/util/matrix.js";
 
 /**
- * Extracts scale factors along each axis from an affine transformation matrix.
- * To do this, we extract the upper-left `rank x rank` submatrix, compute its inverse,
- * and determine how much it scales unit vectors along each axis.
- * This is equivalent to 
- */
+  Computes the length of each basis vector after applying the given
+  affine transformation matrix to that vector.
+
+  We effectively multiply the matrix in turn by the unit vectors
+  along each axis, and measure the length of the resulting vector.
+  However, we can do this faster by just computing the length of
+  each column of the matrix, since that is the equivalent to the above.
+  */
 export function extractScalesFromAffineMatrix(
   affineTransform: Float64Array | mat4,
   rank: number,
+  basisVectorLengthPerAxis?: Float64Array,
 ): Float64Array {
-  // Extract just the upper left rank x rank submatrix
-  const upperLeft = new Float64Array(rank * rank);
-  for (let i = 0; i < rank; ++i) {
-    for (let j = 0; j < rank; ++j) {
-      upperLeft[i * rank + j] =
-        affineTransform[i * (rank + 1) + j];
-    }
-  }
-
-  const inverseTransform = new Float64Array(upperLeft.length);
-  // TODO need non-invertible check here?
-  matrix.inverse(
-    inverseTransform,
-    rank,
-    upperLeft,
-    rank,
-    rank,
-  );
   const scales = new Float64Array(rank);
   for (let i = 0; i < rank; ++i) {
-    let sumSquares = 0;
-    const unitVector = new Float64Array(rank);
-    unitVector[i] = 1;
-    // Apply inverse transform to unit vector along axis i
-    const transformedVector = new Float64Array(rank);
-    matrix.transformVector(
-      transformedVector,
-      inverseTransform,
-      rank,
-      unitVector,
-      rank,
-    )
+    let scaleSquared = 0;
     for (let j = 0; j < rank; ++j) {
-      const val = transformedVector[j];
-      sumSquares += val * val;
+      // Column-major order
+      const v = affineTransform[i * (rank + 1) + j];
+      const basisVectorLength = basisVectorLengthPerAxis?.[j] ?? 1;
+      scaleSquared += (v * basisVectorLength) ** 2;
     }
-    scales[i] = 1 / Math.sqrt(sumSquares);
+    scales[i] = Math.sqrt(scaleSquared);
   }
   return scales;
 }

@@ -648,14 +648,11 @@ function parseOmeMultiscale(
   // 1. The transform that the user would put into the source tab
   // if they were putting the information there instead
   // That means we need to take the transform for scale 0
-  // And removing the scaling part of that transform
+  // And remove the scaling part of that transform
   // 2. At each scale, we provide an affine transform matrix
   // to get applied on top of the above base transformation matrix
   // This matrix should apply the per path scaling for moving between
-  // LODs as well as the per-lod offset in translations
-  // In theory this could also specify any kind of translation that is applied
-  // on top of the base transform, but that only works if the base
-  // transform is invertible
+  // LODs as well as the per-lod offset in translations (for voxel center)
 
   // TODO can just keep the unscaled inverse
   const baseTransformScaled = new Float64Array((rank + 1) * (rank + 1));
