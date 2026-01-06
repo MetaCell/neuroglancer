@@ -42,8 +42,8 @@
                   "input": "array",
                   "name": "transform-name",
                   "mapAxis": [
-                    2,
                     1,
+                    2,
                     0
                   ]
                 }
