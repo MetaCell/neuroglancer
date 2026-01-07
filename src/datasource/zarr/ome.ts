@@ -639,16 +639,6 @@ function parseOmeMultiscale(
     coordinateSpace.scales[i] *= baseScales[i];
   }
 
-  // Desired output is
-  // 1. The transform that the user would put into the source tab
-  // if they were putting the information there instead
-  // That means we need to take the transform for scale 0
-  // And remove the scaling part of that transform
-  // 2. At each scale, we provide an affine transform matrix
-  // to get applied on top of the above base transformation matrix
-  // This matrix should apply the per path scaling for moving between
-  // LODs as well as the per-lod offset in translations (for voxel center)
-
   // The unscaled inverse of the base transform is used in the per-scale
   // calculation of the affine transform to apply on top of the base transform.
   const inverseBaseTransformUnscaled = new Float64Array(baseTransform.length);
@@ -660,6 +650,9 @@ function parseOmeMultiscale(
     rank + 1,
   );
 
+  // The base transform with scaling removed is used
+  // to provide a default transform in the layer source tab
+  // and for the bounding box transformation
   const baseTransformScaled = new Float64Array(baseTransform.length);
   matrix.copy(
     baseTransformScaled,
@@ -676,12 +669,10 @@ function parseOmeMultiscale(
   }
 
   for (const scale of scales) {
-    // In OME's coordinate space, the origin of a voxel is its center, while in Neuroglancer it is
-    // the "lower" (in coordinates) corner.
-    // For general transformations, we compute the offset by applying the linear part of the
-    // transformation to the vector [0.5, 0.5, ..., 0.5] and subtracting the result from the
-    // translation component.
     const t = scale.transform;
+    // In OME's coordinate space, the origin of a voxel is its center, while in Neuroglancer it is
+    // the "lower" (in coordinates) corner. Translate by the physical size of half a voxel in the
+    // current scale.
     for (let i = 0; i < rank; ++i) {
       let offset = 0;
       for (let j = 0; j < rank; ++j) {
@@ -689,6 +680,14 @@ function parseOmeMultiscale(
       }
       t[rank * (rank + 1) + i] -= offset;
     }
+
+    // At each scale, we provide an affine transform matrix
+    // to get applied on top of the base transformation matrix
+    // This matrix should apply the per path scaling for moving between
+    // LODs as well as the per-lod offset in translations (for voxel center)
+    // In theory, if the transform at that path describes a different rotation
+    // shear etc, to the base transform that would be captured here as well
+    // though the common case is just scaling + translation differences
     scale.transform = makeAffineRelativeToBaseTransform(
       scale.transform,
       inverseBaseTransformUnscaled,
