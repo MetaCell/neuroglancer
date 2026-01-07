@@ -178,4 +178,29 @@ describe("extractScalesFromAffineMatrix", () => {
     expect(scalesWithGlobalBasis[1]).toBeCloseTo(Math.sqrt(2 * 4 + 4.5 * 9));
     expect(scalesWithGlobalBasis[2]).toBeCloseTo(1.5 * 4.0);
   });
+
+  it("does not add +1 and -1 components to get zero", () => {
+    const matrix = new Float64Array([
+      1.0,
+      -1.0,
+      0.0,
+      0.0, // first column: [1, -1, 0, 0]
+      1.0,
+      2.0,
+      0.0,
+      0.0, // second column: [1, 2, 0, 0]
+      0.0,
+      0.0,
+      1.0,
+      0.0, // third column: [0, 0, 1, 0]
+      0.0,
+      0.0,
+      0.0,
+      1.0, // fourth column: [0, 0, 0, 1])
+    ]);
+    const scales = extractScalesFromAffineMatrix(matrix, 3);
+    expect(scales[0]).toBeCloseTo(Math.sqrt(2));
+    expect(scales[1]).toBeCloseTo(Math.sqrt(5));
+    expect(scales[2]).toEqual(1.0);
+  });
 });
