@@ -358,12 +358,12 @@ function parseSequenceTransform(rank: number, obj: unknown) {
 }
 
 const coordinateTransformParsers = new Map([
-  ["scale", parseScaleTransform],
   ["identity", parseIdentityTransform],
+  ["scale", parseScaleTransform],
   ["translation", parseTranslationTransform],
-  ["affine", parseAffineTransform],
   ["rotation", parseRotationTransform],
   ["mapAxis", parseMapAxisTransform],
+  ["affine", parseAffineTransform],
   ["sequence", parseSequenceTransform],
 ]);
 
