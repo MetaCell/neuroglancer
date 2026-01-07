@@ -354,20 +354,15 @@ function parseMapAxisTransform(rank: number, obj: unknown) {
     seen.add(val);
   }
 
-  const transform = matrix.createIdentity(Float64Array, rank + 1);
-  // Reset the top-left rank*rank part to 0
-  for (let i = 0; i < rank; ++i) {
-    for (let j = 0; j < rank; ++j) {
-      transform[j * (rank + 1) + i] = 0;
-    }
-  }
+  const transform = new Float64Array((rank + 1) * (rank + 1));
+  // Set the bottom right value of the matrix to 1
+  transform[transform.length - 1] = 1;
 
-  // Set the 1s
   // The value at position `i` in the array indicates which input axis becomes the `i`-th output axis.
   // Output[i] = Input[mapAxis[i]]
   // So Row i has a 1 at Column mapAxis[i]
   for (let i = 0; i < rank; ++i) {
-    transform[i * (rank + 1) + mapAxis[i]] = 1;
+    transform[mapAxis[i] * (rank + 1) + i] = 1;
   }
   return transform;
 }

@@ -409,7 +409,8 @@ def test_ome_zarr_0_6_map_axis(static_file_server, webdriver):
     model_space = _assert_renders(webdriver, "mapAxis")
     vol = model_space["volume"]
 
-    permuted_voxel = (TEST_VOXEL[1], TEST_VOXEL[2], TEST_VOXEL[0])
+    # The real map axis transform permutes axes (0, 1, 2) -> (1, 2, 0). The inverse of this is (2, 0, 1).
+    permuted_voxel = (TEST_VOXEL[2], TEST_VOXEL[0], TEST_VOXEL[1])
     _verify_data_at_point(vol, permuted_voxel, EXPECTED_VALUE)
 
 
