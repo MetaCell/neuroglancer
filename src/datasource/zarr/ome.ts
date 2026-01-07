@@ -291,45 +291,6 @@ function parseRotationTransform(rank: number, obj: unknown) {
   return transform;
 }
 
-const coordinateTransformParsers = new Map([
-  ["scale", parseScaleTransform],
-  ["identity", parseIdentityTransform],
-  ["translation", parseTranslationTransform],
-  ["affine", parseAffineTransform],
-  ["rotation", parseRotationTransform],
-  ["mapAxis", parseMapAxisTransform],
-  ["sequence", parseSequenceTransform],
-]);
-
-function parseSequenceTransform(rank: number, obj: unknown) {
-  verifyObject(obj);
-
-  const transformations = verifyObjectProperty(
-    obj,
-    "transformations",
-    (x) => x,
-  );
-
-  // Validate that inner transformations don't contain nested sequences
-  if (Array.isArray(transformations)) {
-    parseArray(transformations, (innerTransform) => {
-      verifyObject(innerTransform);
-      const innerType = verifyObjectProperty(
-        innerTransform,
-        "type",
-        verifyString,
-      );
-      if (innerType === "sequence") {
-        throw new Error(
-          "A sequence transformation MUST NOT be part of another sequence transformation",
-        );
-      }
-    });
-  }
-
-  return parseOmeCoordinateTransforms(rank, transformations);
-}
-
 function parseMapAxisTransform(rank: number, obj: unknown) {
   const mapAxis = verifyObjectProperty(obj, "mapAxis", (values) =>
     parseFixedLengthArray(new Float64Array(rank), values, (x) => {
@@ -366,6 +327,45 @@ function parseMapAxisTransform(rank: number, obj: unknown) {
   }
   return transform;
 }
+
+function parseSequenceTransform(rank: number, obj: unknown) {
+  verifyObject(obj);
+
+  const transformations = verifyObjectProperty(
+    obj,
+    "transformations",
+    (x) => x,
+  );
+
+  // Validate that inner transformations don't contain nested sequences
+  if (Array.isArray(transformations)) {
+    parseArray(transformations, (innerTransform) => {
+      verifyObject(innerTransform);
+      const innerType = verifyObjectProperty(
+        innerTransform,
+        "type",
+        verifyString,
+      );
+      if (innerType === "sequence") {
+        throw new Error(
+          "A sequence transformation MUST NOT be part of another sequence transformation",
+        );
+      }
+    });
+  }
+
+  return parseOmeCoordinateTransforms(rank, transformations);
+}
+
+const coordinateTransformParsers = new Map([
+  ["scale", parseScaleTransform],
+  ["identity", parseIdentityTransform],
+  ["translation", parseTranslationTransform],
+  ["affine", parseAffineTransform],
+  ["rotation", parseRotationTransform],
+  ["mapAxis", parseMapAxisTransform],
+  ["sequence", parseSequenceTransform],
+]);
 
 function parseOmeCoordinateTransform(
   rank: number,

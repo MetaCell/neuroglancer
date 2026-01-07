@@ -346,13 +346,10 @@ async function resolveOmeMultiscale(
   const upperBounds = new Float64Array(rank);
   const baseScale = multiscale.scales[0];
   const baseZarrMetadata = scaleZarrMetadata[0];
-
-  // Initialize bounds with extreme values
   for (let i = 0; i < rank; ++i) {
     const lower = (lowerBounds[i] = baseScale.transform[(rank + 1) * rank + i]);
     upperBounds[i] = lower + baseZarrMetadata.shape[i];
   }
-
   const boundingBox = makeIdentityTransformedBoundingBox({
     lowerBounds,
     upperBounds,

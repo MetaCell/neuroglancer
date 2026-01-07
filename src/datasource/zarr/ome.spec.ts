@@ -17,8 +17,17 @@
 import { describe, it, expect } from "vitest";
 import { parseOmeMetadata } from "#src/datasource/zarr/ome.js";
 
+const regularCoordinateSystem = {
+  name: "physical",
+  axes: [
+    { type: "space", name: "z", unit: "micrometer" },
+    { type: "space", name: "y", unit: "micrometer" },
+    { type: "space", name: "x", unit: "micrometer" },
+  ],
+};
+
 describe("OME-Zarr 0.6 coordinate transformations", () => {
-  it("should validate sequence transform with correct input/output", () => {
+  it("should use the last coordinate system if multiple provided", () => {
     const attrs = {
       ome: {
         version: "0.6",
@@ -27,14 +36,45 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
             name: "multiscales",
             coordinateSystems: [
               {
-                name: "physical",
-                axes: [
-                  { type: "space", name: "z", unit: "micrometer" },
-                  { type: "space", name: "y", unit: "micrometer" },
-                  { type: "space", name: "x", unit: "micrometer" },
+                name: "first_system",
+                axes: [{ type: "space", name: "x", unit: "micrometer" }],
+              },
+              regularCoordinateSystem,
+            ],
+            datasets: [
+              {
+                path: "array",
+                coordinateTransformations: [
+                  {
+                    type: "identity",
+                    output: "physical",
+                  },
                 ],
               },
             ],
+          },
+        ],
+      },
+    };
+
+    const metadata = parseOmeMetadata("test://", attrs, 3);
+    const space = metadata!.multiscale.coordinateSpace;
+    expect(space.names).toStrictEqual(["z", "y", "x"]);
+    expect(space.units).toStrictEqual(["m", "m", "m"]);
+  });
+
+  it("should parse a scale transformation");
+});
+
+describe("OME-Zarr 0.6 sequence transformations", () => {
+  it("should validate sequence transform with correct input/output", () => {
+    const attrs = {
+      ome: {
+        version: "0.6",
+        multiscales: [
+          {
+            name: "multiscales",
+            coordinateSystems: [regularCoordinateSystem],
             datasets: [
               {
                 path: "array",
@@ -67,16 +107,7 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
         multiscales: [
           {
             name: "multiscales",
-            coordinateSystems: [
-              {
-                name: "physical",
-                axes: [
-                  { type: "space", name: "z", unit: "micrometer" },
-                  { type: "space", name: "y", unit: "micrometer" },
-                  { type: "space", name: "x", unit: "micrometer" },
-                ],
-              },
-            ],
+            coordinateSystems: [regularCoordinateSystem],
             datasets: [
               {
                 path: "s0",
@@ -106,16 +137,7 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
         multiscales: [
           {
             name: "multiscales",
-            coordinateSystems: [
-              {
-                name: "physical",
-                axes: [
-                  { type: "space", name: "z", unit: "micrometer" },
-                  { type: "space", name: "y", unit: "micrometer" },
-                  { type: "space", name: "x", unit: "micrometer" },
-                ],
-              },
-            ],
+            coordinateSystems: [regularCoordinateSystem],
             datasets: [
               {
                 path: "array",
@@ -147,16 +169,7 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
         multiscales: [
           {
             name: "multiscales",
-            coordinateSystems: [
-              {
-                name: "physical",
-                axes: [
-                  { type: "space", name: "z", unit: "micrometer" },
-                  { type: "space", name: "y", unit: "micrometer" },
-                  { type: "space", name: "x", unit: "micrometer" },
-                ],
-              },
-            ],
+            coordinateSystems: [regularCoordinateSystem],
             datasets: [
               {
                 path: "array",
@@ -188,16 +201,7 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
         multiscales: [
           {
             name: "multiscales",
-            coordinateSystems: [
-              {
-                name: "physical",
-                axes: [
-                  { type: "space", name: "z", unit: "micrometer" },
-                  { type: "space", name: "y", unit: "micrometer" },
-                  { type: "space", name: "x", unit: "micrometer" },
-                ],
-              },
-            ],
+            coordinateSystems: [regularCoordinateSystem],
             datasets: [
               {
                 path: "array",
@@ -243,14 +247,7 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
                   { type: "space", name: "x", unit: "micrometer" },
                 ],
               },
-              {
-                name: "physical",
-                axes: [
-                  { type: "space", name: "z", unit: "micrometer" },
-                  { type: "space", name: "y", unit: "micrometer" },
-                  { type: "space", name: "x", unit: "micrometer" },
-                ],
-              },
+              regularCoordinateSystem,
             ],
             datasets: [
               {
@@ -303,14 +300,7 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
                   { type: "space", name: "x", unit: "micrometer" },
                 ],
               },
-              {
-                name: "physical",
-                axes: [
-                  { type: "space", name: "z", unit: "micrometer" },
-                  { type: "space", name: "y", unit: "micrometer" },
-                  { type: "space", name: "x", unit: "micrometer" },
-                ],
-              },
+              regularCoordinateSystem,
             ],
             datasets: [
               {
