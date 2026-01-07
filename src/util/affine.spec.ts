@@ -18,7 +18,25 @@ import { describe, it, expect } from "vitest";
 import { extractScalesFromAffineMatrix } from "#src/util/affine.js";
 
 describe("extractScalesFromAffineMatrix", () => {
-  it("pure scale transform", () => {
+  it("correctly handles identity transform", () => {
+    // 4D homogenous identity matrix
+    const identityMatrix = new Float64Array([
+      1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
+      1.0,
+    ]);
+
+    const scales = extractScalesFromAffineMatrix(identityMatrix, 3);
+    expect(scales).toEqual(new Float64Array([1.0, 1.0, 1.0]));
+
+    const scalesWithGlobalBasis = extractScalesFromAffineMatrix(
+      identityMatrix,
+      3,
+      new Float64Array([2.0, 3.0, 4.0]),
+    );
+    expect(scalesWithGlobalBasis).toEqual(new Float64Array([2.0, 3.0, 4.0]));
+  });
+
+  it("extracts scales from pure scale transform", () => {
     const scaleMatrix = new Float64Array([
       2.0,
       0.0,
@@ -42,7 +60,7 @@ describe("extractScalesFromAffineMatrix", () => {
     expect(scales).toEqual(new Float64Array([2.0, 3.0, 4.0]));
   });
 
-  it("pure rotation transform", () => {
+  it("extracts scales from pure rotation transform", () => {
     const rotationMatrix = new Float64Array([
       0.0,
       1.0,
@@ -66,7 +84,7 @@ describe("extractScalesFromAffineMatrix", () => {
     expect(scales).toEqual(new Float64Array([1.0, 1.0, 1.0]));
   });
 
-  it("pure shear transform", () => {
+  it("extracts scales from pure shear transform", () => {
     const shearMatrix = new Float64Array([
       1.0,
       0.0,
@@ -95,7 +113,33 @@ describe("extractScalesFromAffineMatrix", () => {
     expect(scales[2]).toEqual(1.0);
   });
 
-  it("complex affine transform combining scale, rotation, and shear", () => {
+  it("extracts scales from affine representing a scale transform", () => {
+    const anisotropicMatrix = new Float64Array([
+      0.001,
+      0.0,
+      0.0,
+      0.0, // first column: [0.001, 0, 0, 0]
+      0.0,
+      1000.0,
+      0.0,
+      0.0, // second column: [0, 1000, 0, 0]
+      0.0,
+      0.0,
+      1.0,
+      0.0, // third column: [0, 0, 1, 0]
+      0.0,
+      0.0,
+      0.0,
+      1.0, // fourth column: [0, 0, 0, 1]
+    ]);
+
+    const scales = extractScalesFromAffineMatrix(anisotropicMatrix, 3);
+    expect(scales[0]).toBeCloseTo(0.001);
+    expect(scales[1]).toBeCloseTo(1000.0);
+    expect(scales[2]).toBeCloseTo(1.0);
+  });
+
+  it("extracts scales from affine transform combining scale, rotation, and shear", () => {
     const complexMatrix = new Float64Array([
       1.414,
       2.121,
@@ -133,49 +177,5 @@ describe("extractScalesFromAffineMatrix", () => {
     expect(scalesWithGlobalBasis[0]).toBeCloseTo(Math.sqrt(2 * 4 + 4.5 * 9));
     expect(scalesWithGlobalBasis[1]).toBeCloseTo(Math.sqrt(2 * 4 + 4.5 * 9));
     expect(scalesWithGlobalBasis[2]).toBeCloseTo(1.5 * 4.0);
-  });
-
-  it("identity transform", () => {
-    // 4D homogenous identity matrix
-    const identityMatrix = new Float64Array([
-      1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
-      1.0,
-    ]);
-
-    const scales = extractScalesFromAffineMatrix(identityMatrix, 3);
-    expect(scales).toEqual(new Float64Array([1.0, 1.0, 1.0]));
-
-    const scalesWithGlobalBasis = extractScalesFromAffineMatrix(
-      identityMatrix,
-      3,
-      new Float64Array([2.0, 3.0, 4.0]),
-    );
-    expect(scalesWithGlobalBasis).toEqual(new Float64Array([2.0, 3.0, 4.0]));
-  });
-
-  it("anisotropic scaling with different scale factors", () => {
-    const anisotropicMatrix = new Float64Array([
-      0.001,
-      0.0,
-      0.0,
-      0.0, // first column: [0.001, 0, 0, 0]
-      0.0,
-      1000.0,
-      0.0,
-      0.0, // second column: [0, 1000, 0, 0]
-      0.0,
-      0.0,
-      1.0,
-      0.0, // third column: [0, 0, 1, 0]
-      0.0,
-      0.0,
-      0.0,
-      1.0, // fourth column: [0, 0, 0, 1]
-    ]);
-
-    const scales = extractScalesFromAffineMatrix(anisotropicMatrix, 3);
-    expect(scales[0]).toBeCloseTo(0.001);
-    expect(scales[1]).toBeCloseTo(1000.0);
-    expect(scales[2]).toBeCloseTo(1.0);
   });
 });
