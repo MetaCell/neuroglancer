@@ -339,7 +339,6 @@ describe("OME-Zarr 0.6 multiscale parsing", () => {
       },
     };
     const metadata = parseOmeMetadata("test://", attrs.attributes, 3);
-    console.log(metadata!.multiscale.scales);
     // The base transform should just be the identity
     expect(metadata!.multiscale.baseInfo.baseTransform).toStrictEqual(
       createIdentity(Float64Array, 6),
