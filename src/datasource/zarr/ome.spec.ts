@@ -16,6 +16,7 @@
 
 import { describe, it, expect } from "vitest";
 import { parseOmeMetadata } from "#src/datasource/zarr/ome.js";
+import { createIdentity } from "#src/util/matrix.js";
 
 const regularCoordinateSystem = {
   name: "physical",
@@ -255,6 +256,144 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
     expect(() => parseOmeMetadata("test://", attrs, 3)).toThrow(
       'Error parsing "datasets" property: Unsupported coordinate transform type: "non_existent_transform"',
     );
+  });
+});
+
+describe("OME-Zarr 0.6 multiscale parsing", () => {
+  it("should parse multiscale with multiple datasets", () => {
+    // Example from https://ngff.openmicroscopy.org/rfc/5
+    const attrs = {
+      zarr_format: 3,
+      node_type: "group",
+      attributes: {
+        ome: {
+          version: "0.5",
+          multiscales: [
+            {
+              name: "example",
+              coordinateSystems: [
+                {
+                  name: "intrinsic",
+                  axes: [
+                    { name: "t", type: "time", unit: "millisecond" },
+                    { name: "c", type: "channel" },
+                    { name: "z", type: "space", unit: "micrometer" },
+                    { name: "y", type: "space", unit: "micrometer" },
+                    { name: "x", type: "space", unit: "micrometer" },
+                  ],
+                },
+              ],
+              datasets: [
+                {
+                  path: "0",
+                  coordinateTransformations: [
+                    {
+                      // the voxel size for the first scale level (0.5 micrometer)
+                      // and the time unit (0.1 milliseconds), which is the same for each scale level
+                      type: "scale",
+                      scale: [0.1, 1.0, 0.5, 0.5, 0.5],
+                      input: "0",
+                      output: "intrinsic",
+                    },
+                  ],
+                },
+                {
+                  path: "1",
+                  coordinateTransformations: [
+                    {
+                      // the voxel size for the second scale level (downscaled by a factor of 2 -> 1 micrometer)
+                      // and the time unit (0.1 milliseconds), which is the same for each scale level
+                      type: "scale",
+                      scale: [0.1, 1.0, 1.0, 1.0, 1.0],
+                      input: "1",
+                      output: "intrinsic",
+                    },
+                  ],
+                },
+                {
+                  path: "2",
+                  coordinateTransformations: [
+                    {
+                      // the voxel size for the third scale level (downscaled by a factor of 4 -> 2 micrometer)
+                      // and the time unit (0.1 milliseconds), which is the same for each scale level
+                      type: "scale",
+                      scale: [0.1, 1.0, 2.0, 2.0, 2.0],
+                      input: "2",
+                      output: "intrinsic",
+                    },
+                  ],
+                },
+              ],
+              type: "gaussian",
+              metadata: {
+                description:
+                  "the fields in metadata depend on the downscaling implementation. Here, the parameters passed to the skimage function are given",
+                method: "skimage.transform.pyramid_gaussian",
+                version: "0.16.1",
+                args: "[true]",
+                kwargs: { multichannel: true },
+              },
+            },
+          ],
+        },
+      },
+    };
+    const metadata = parseOmeMetadata("test://", attrs.attributes, 3);
+    console.log(metadata!.multiscale.scales);
+    // The base transform should just be the identity
+    expect(metadata!.multiscale.baseInfo.baseTransform).toStrictEqual(
+      createIdentity(Float64Array, 6),
+    );
+    // The scales should be extracted from the base transform
+    const expectedScales = [
+      1e-4, // 0.1 millisecond in seconds
+      1, // channel has no unit
+      5e-7, // 0.5 micrometer in meters
+      5e-7, // 0.5 micrometer in meters
+      5e-7, // 0.5 micrometer in meters
+    ];
+    const scales = metadata!.multiscale.coordinateSpace.scales;
+    expect(scales).toHaveLength(5);
+    for (let i = 0; i < scales.length; i++) {
+      expect(scales[i]).toBeCloseTo(expectedScales[i]);
+    }
+
+    // Now for the scale transforms in the multiscales
+    // The first level should be essentially the identity,
+    // but with the half voxel shift in the translation
+    const scaleTransforms = metadata!.multiscale.scales;
+    expect(scaleTransforms).toHaveLength(3);
+    const firstLevelTransform = createIdentity(Float64Array, 6);
+    for (let i = 0; i < 5; i++) {
+      firstLevelTransform[30 + i] = -0.5;
+    }
+    expect(scaleTransforms[0].transform).toStrictEqual(firstLevelTransform);
+
+    // The second level needs to account for the 2x downsampling in spatial dims
+    // The first two columns are unchanged (time and channel), the rest are scaled by 2.0
+    const secondLevelTransform = createIdentity(Float64Array, 6);
+    for (let i = 0; i < 5; i++) {
+      secondLevelTransform[30 + i] = -0.5;
+    }
+    for (let i = 2; i < 6; i++) {
+      for (let j = 2; j < 5; j++) {
+        secondLevelTransform[6 * i + j] *= 2.0;
+      }
+    }
+    expect(scaleTransforms[1].transform).toStrictEqual(secondLevelTransform);
+
+    // The third level needs to account for the 4x downsampling in spatial dims
+    // The first two columns are unchanged (time and channel), the rest are scaled by 4.0
+    const thirdLevelTransform = createIdentity(Float64Array, 6);
+    for (let i = 0; i < 5; i++) {
+      thirdLevelTransform[30 + i] = -0.5;
+    }
+    for (let i = 2; i < 6; i++) {
+      for (let j = 2; j < 5; j++) {
+        thirdLevelTransform[6 * i + j] *= 4.0;
+      }
+    }
+    expect(scaleTransforms[2].transform).toStrictEqual(thirdLevelTransform);
   });
 });
 
