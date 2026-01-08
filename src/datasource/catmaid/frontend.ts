@@ -213,6 +213,13 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
             chunkLayout,
         };
 
+        console.info('CATMAID Spatially Indexed Skeleton Source:', {
+            chunkSize: { x: chunkDataSize[0], y: chunkDataSize[1], z: chunkDataSize[2] },
+            resolution: { x: resolution.x, y: resolution.y, z: resolution.z, unit: 'nm' },
+            totalDimension: dimensions,
+            totalNumberOfSkeletons: skeletonIds.length
+        });
+
         const source = options.registry.chunkManager.getChunkSource(
             CatmaidSpatiallyIndexedSkeletonSource,
             { parameters, spec, credentialsProvider }
