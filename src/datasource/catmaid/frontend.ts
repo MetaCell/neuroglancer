@@ -19,7 +19,7 @@ import {
     makeIdentityTransform,
 } from "#src/coordinate_transform.js";
 import { makeDataBoundsBoundingBoxAnnotationSet } from "#src/annotation/index.js";
-import { SpatiallyIndexedSkeletonSource } from "#src/skeleton/frontend.js";
+import { SpatiallyIndexedSkeletonSource, SkeletonSource } from "#src/skeleton/frontend.js";
 import { WithParameters } from "#src/chunk_manager/frontend.js";
 import {
     DataSource,
@@ -28,6 +28,7 @@ import {
 } from "#src/datasource/index.js";
 import {
     CatmaidSkeletonSourceParameters,
+    CatmaidCompleteSkeletonSourceParameters,
     CatmaidDataSourceParameters,
 } from "#src/datasource/catmaid/base.js";
 import { mat4, vec3 } from "#src/util/geom.js";
@@ -51,6 +52,22 @@ export class CatmaidSpatiallyIndexedSkeletonSource extends WithParameters(
 ) {
     getChunk(chunkData: any) {
         return super.getChunk(chunkData);
+    }
+    static encodeOptions(options: any) {
+        return super.encodeOptions(options);
+    }
+}
+
+export class CatmaidSkeletonSource extends WithParameters(
+    WithCredentialsProvider<CatmaidToken>()(SkeletonSource),
+    CatmaidCompleteSkeletonSourceParameters
+) {
+    get vertexAttributes() {
+        return this.parameters.metadata.vertexAttributes;
+    }
+    
+    getChunk(objectId: bigint) {
+        return super.getChunk(objectId);
     }
     static encodeOptions(options: any) {
         return super.encodeOptions(options);
@@ -201,6 +218,25 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
             { parameters, spec, credentialsProvider }
         );
 
+        // Create complete skeleton source (non-chunked)
+        const completeSkeletonParameters = new CatmaidCompleteSkeletonSourceParameters();
+        completeSkeletonParameters.catmaidParameters = new CatmaidDataSourceParameters();
+        completeSkeletonParameters.catmaidParameters.url = baseUrl;
+        completeSkeletonParameters.catmaidParameters.projectId = projectId;
+        completeSkeletonParameters.url = providerUrl;
+        completeSkeletonParameters.metadata = {
+            transform: mat4.create(),
+            vertexAttributes: new Map([
+                ["segment", { dataType: DataType.FLOAT32, numComponents: 1 }],
+            ]),
+            sharding: undefined
+        };
+
+        const completeSkeletonSource = options.registry.chunkManager.getChunkSource(
+            CatmaidSkeletonSource,
+            { parameters: completeSkeletonParameters, credentialsProvider }
+        );
+
         // Create SegmentPropertyMap
         const ids = new BigUint64Array(skeletonIds.length);
         const labels = new Array<string>(skeletonIds.length);
@@ -224,9 +260,14 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
 
         const subsources = [
             {
+                id: "skeletons-chunked",
+                default: false,
+                subsource: { mesh: source },
+            },
+            {
                 id: "skeletons",
                 default: true,
-                subsource: { mesh: source },
+                subsource: { mesh: completeSkeletonSource },
             },
             {
                 id: "properties",

@@ -902,7 +902,6 @@ export class SpatiallyIndexedSkeletonChunk extends SliceViewChunk implements Ske
     this.numVertices = chunkData.numVertices;
     this.numIndices = indices.length;
     this.vertexAttributeOffsets = chunkData.vertexAttributeOffsets;
-    console.log(`[SKELETON-FRONTEND] SpatiallyIndexedSkeletonChunk created with ${this.numVertices} vertices and ${this.numIndices / 2} edges`);
 
     const gl = source.gl;
     this.indexBuffer = GLBuffer.fromData(
@@ -1130,19 +1129,6 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
         for (const [segmentId, segmentIndicesList] of segmentIndicesMap) {
           const bigintId = BigInt(segmentId);
           const color = getBaseObjectColor(displayState, bigintId, tempColor);
-          
-          // Log verification info for first vertex of this segment
-          const firstVertexIdx = segmentIndicesList[0];
-          const positionOffset = chunk.vertexAttributeOffsets[0];
-          const vertexPositions = new Float32Array(
-            chunk.vertexAttributes.buffer,
-            chunk.vertexAttributes.byteOffset + positionOffset,
-            chunk.numVertices * 3,
-          );
-          const x = vertexPositions[firstVertexIdx * 3];
-          const y = vertexPositions[firstVertexIdx * 3 + 1];
-          const z = vertexPositions[firstVertexIdx * 3 + 2];
-          console.log(`[SKELETON] Segment ${segmentId} at (${x.toFixed(0)}, ${y.toFixed(0)}, ${z.toFixed(0)}) -> RGB(${(color[0]*255).toFixed(0)}, ${(color[1]*255).toFixed(0)}, ${(color[2]*255).toFixed(0)})`);
           
           // Set color for this segment
           edgeShader.bind();
