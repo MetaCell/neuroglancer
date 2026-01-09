@@ -1,3 +1,27 @@
+#!/usr/bin/env python
+
+"""Example of an interactive linear registration workflow using point annotations.
+
+General workflow:
+    1. Start from a neuroglancer viewer with all the reference data and the data to register as layers.
+    2. Pass this state to the script by either providing a url via --url or dumping the JSON state to a file and passing the file via --json. For example:
+        python -i example_linear_registration.py --url 'https://neuroglancer.demo.appspot/com/...'
+    3. The default assumption is that the last layer in the viewer from step 2 is the moving data to be registered, and all other layers are fixed (reference) data. The script will launch with two layer groups side by side, left is fixed, right is moving. You can move layers between the groups such that all fixed layers are in the first group (left panel) and all moving layers are in the second group (right panel). Once you have done this, press 't' to continue.
+    4. At this point, the viewer will:
+        a. Create a copy of each dimension in with a "2" suffix for the moving layers. E.g. x -> x2, y -> y2, z -> z2. This allows the moving layers to have a different coordinate space.
+        b. Create copies of the moving layers in the fixed panel with "_registered" suffixes. These layers will show the registered result.
+        c. Create a shared annotation layer between the two panels for placing registration points. Each point will be 2 * N dimensions, where the first N dimensions correspond to the fixed data, and the second N dimensions correspond to the moving data.
+    5. You can now place point annotations to inform the registration. The workflow is to:
+        a. Move the center position in one of the panels to the desired location for the fixed or moving part of the point annotation.
+        b. Place a point annotation with ctrl+left click in the other panel.
+        c. This annotation will now have both fixed and moving coordinates, but be represented by a single point.
+        d. The fixed and moving coordinates can be adjusted later by moving the annotation as normal (alt + left click the point). This will only move the point in the panel you are currently focused on, so to adjust both fixed and moving coordinates you need to switch panels.
+    6. As you add points, the estimated affine transform will be updated and applied to the moving layers. The registered layers can be toggled visible/invisible by pressing 't'.
+    7. If an issue happens, the viewer state can go out of sync. To help with this, the python console will regularly print that viewer states are syncing with a timestamp. If you do not see this message for a while, consider continuing the workflow again from a saved state.
+    8. To continue from a saved state, dump the viewer state to a file using either the viewer UI or the dump_info method in the python console, and then pass this file via --json when starting the script again. You should also pass --continue-workflow (or -c) to skip the initial setup steps. If you renamed the annotation layer containing the registration points, you should also pass --annotations-name (or -a) with the new name. For example:
+        python -i example_linear_registration.py --json saved_state.json -c -a registration_points
+"""
+
 import argparse
 import threading
 import webbrowser
@@ -306,7 +330,7 @@ class LinearRegistrationWorkflow:
             # TODO consider allowing to dump to disk
             self._set_status_message(
                 "help",
-                "Place points to inform registration by first placing the crosshair in the left/right panel to the correct place for the fixed/moving data, and then placing an actual annotation with ctrl+right click in the other panel. You can move the annotations afterwards if needed. Press 't' to toggle visibility of the registered layer.",
+                "Place points to inform registration by first placing the centre position in the left/right panel to the correct place for the fixed/moving data, and then placing a point annotation with ctrl+left click in the other panel. You can move the annotations afterwards if needed with alt+left click. Press 't' to toggle visibility of the registered layer.",
             )
             # self._clear_status_messages()
 
