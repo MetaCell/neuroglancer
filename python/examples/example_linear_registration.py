@@ -25,7 +25,7 @@ General workflow:
 import argparse
 import threading
 import webbrowser
-from copy import deepcopy
+from copy import deepcopy, copy
 from enum import Enum
 from time import ctime, time
 from typing import Union
@@ -413,6 +413,31 @@ class LinearRegistrationWorkflow:
                 full_matrix[i, -1] = affine[moving_i, -1]
         return full_matrix
 
+    def combine_local_channels_with_transform(self, existing_transform: neuroglancer.CoordinateSpaceTransform, transform: list):
+        local_channel_indices = [
+            i
+            for i, name in enumerate(existing_transform.outputDimensions.names)
+            if name.endswith(("'", "^", "#"))
+        ]
+        if not local_channel_indices:
+            return transform
+        final_transform = []
+        num_local_count = 0
+        for i, name in enumerate(existing_transform.outputDimensions.names):
+            is_local = i in local_channel_indices
+            if is_local:
+                local_channel_row = [0 for _ in range(len(existing_transform.outputDimensions.names) + 1)]
+                local_channel_row[i] = 1
+                final_transform.append(local_channel_row)
+                num_local_count += 1
+            else:
+                row = copy(transform[i - num_local_count])
+                # At the indices corresponding to local channels, insert 0s
+                for j in local_channel_indices:
+                    row.insert(j, 0.0)
+                final_transform.append(row)
+        return final_transform
+
     def has_two_coord_spaces(self, s: neuroglancer.ViewerState):
         fixed_dims, moving_dims = self.get_fixed_and_moving_dims(s)
         return len(fixed_dims) == len(moving_dims)
@@ -565,20 +590,25 @@ class LinearRegistrationWorkflow:
             transform = self.affine.tolist()
             # TODO handle layer being renamed
             for k, v in self.stored_map_moving_name_to_data_coords.items():
-                # TODO not sure if need to handle local channels here
-                # keeping code below just in case
-                for source in s.layers[k].source:
-                    source.transform = neuroglancer.CoordinateSpaceTransform(
+                for i, source in enumerate(s.layers[k].source):
+                    fixed_to_moving_transform_with_locals = self.combine_local_channels_with_transform(
+                        source.transform, transform
+                    )
+                    fixed_dims_to_moving_dims_transform = neuroglancer.CoordinateSpaceTransform(
                         input_dimensions=v,
                         output_dimensions=new_coord_space_names(v, "2"),
-                        matrix=transform,
+                        matrix=fixed_to_moving_transform_with_locals,
                     )
-                for source in s.layers[k + "_registered"].source:
-                    source.transform = neuroglancer.CoordinateSpaceTransform(
+                    source.transform = fixed_dims_to_moving_dims_transform
+
+                    registered_source = s.layers[k + "_registered"].source[i]
+                    fixed_dims_to_fixed_dims_transform = neuroglancer.CoordinateSpaceTransform(
                         input_dimensions=v,
                         output_dimensions=v,
-                        matrix=transform,
+                        matrix=fixed_to_moving_transform_with_locals,
                     )
+                    registered_source.transform = fixed_dims_to_fixed_dims_transform
+                    breakpoint()
             s.layers[self.annotations_name].source[
                 0
             ].transform = neuroglancer.CoordinateSpaceTransform(
@@ -587,35 +617,7 @@ class LinearRegistrationWorkflow:
                 matrix=self.combine_affine_across_dims(s, self.affine).tolist(),
             )
 
-            # print(s.layers["registered"].source[0].transform.matrix)
-            # TODO this is where that mapping needs to happen of affine dims
-            # overall this is a bit awkward right now, we need a lot of
-            # mapping info which we just don't have
-            # right now you can't input it from the command line
-            # if s.layers["registered"].source[0].transform is not None:
-            #     final_transform = []
-            #     layer_transform = s.layers["registered"].source[0].transform
-            #     local_channel_indices = [
-            #         i
-            #         for i, name in enumerate(layer_transform.outputDimensions.names)
-            #         if name.endswith(("'", "^", "#"))
-            #     ]
-            #     num_local_count = 0
-            #     for i, name in enumerate(layer_transform.outputDimensions.names):
-            #         is_local = i in local_channel_indices
-            #         if is_local:
-            #             final_transform.append(layer_transform.matrix[i].tolist())
-            #             num_local_count += 1
-            #         else:
-            #             row = transform[i - num_local_count]
-            #             # At the indices corresponding to local channels, insert 0s
-            #             for j in local_channel_indices:
-            #                 row.insert(j, 0)
-            #             final_transform.append(row)
-            # else:
-            #     final_transform = transform
-            print("Updated affine transform:", transform)
-            print(s.layers["registered"].source[0].transform)
+            print("Updated affine transform (without channel dimensions):", transform)
 
     def estimate_affine(self, s: neuroglancer.ViewerState):
         annotations = s.layers[self.annotations_name].annotations
