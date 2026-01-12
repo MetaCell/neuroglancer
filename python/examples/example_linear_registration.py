@@ -3,10 +3,10 @@
 """Example of an interactive linear registration workflow using point annotations.
 
 General workflow:
-    1. Start from a neuroglancer viewer with all the reference data and the data to register as layers.
+    1. Start from a neuroglancer viewer with all the reference data and the data to register as layers. If the script is provided no data, it will create demo data for you to try.
     2. Pass this state to the script by either providing a url via --url or dumping the JSON state to a file and passing the file via --json. For example:
         python -i example_linear_registration.py --url 'https://neuroglancer.demo.appspot/com/...'
-    3. The default assumption is that the last layer in the viewer from step 2 is the moving data to be registered, and all other layers are fixed (reference) data. The script will launch with two layer groups side by side, left is fixed, right is moving. You can move layers between the groups such that all fixed layers are in the first group (left panel) and all moving layers are in the second group (right panel). Once you have done this, press 't' to continue.
+    3. The default assumption is that the last layer in the viewer from step 2 is the moving data to be registered, and all other layers are fixed (reference) data. There must be at least two layers. The script will launch with two layer groups side by side, left is fixed, right is moving. You can move layers between the groups such that all fixed layers are in the first group (left panel) and all moving layers are in the second group (right panel). Once you have done this, press 't' to continue.
     4. At this point, the viewer will:
         a. Create a copy of each dimension in with a "2" suffix for the moving layers. E.g. x -> x2, y -> y2, z -> z2. This allows the moving layers to have a different coordinate space.
         b. Create copies of the moving layers in the fixed panel with "_registered" suffixes. These layers will show the registered result.
@@ -93,47 +93,6 @@ def fit_model(fixed_points: np.ndarray, moving_points: np.ndarray):
     return affine_fit(fixed_points, moving_points)
 
 
-# See https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem
-# and https://math.nist.gov/~JBernal/kujustf.pdf
-def rigid_or_similarity_fit(
-    fixed_points: np.ndarray, moving_points: np.ndarray, rigid: bool = True
-):
-    N, D = fixed_points.shape
-
-    # Remove translation aspect to first determine rotation/scale
-    X = fixed_points - fixed_points.mean(axis=0)
-    Y = moving_points - moving_points.mean(axis=0)
-
-    # Cross-covariance
-    sigma = (Y.T @ X) / N
-
-    # SVD - Unitary matrix, Diagonal, conjugate transpose of unitary matrix
-    U, S, Vt = np.linalg.svd(sigma)  # Sigma ≈ U diag(S) V*
-
-    d = np.ones(D)
-    if np.linalg.det(U @ Vt) < 0:
-        d[-1] = -1
-    R = U @ np.diag(d) @ Vt
-
-    # Scale
-    if rigid:
-        s = 1.0
-    else:
-        var_src = (X**2).sum() / N  # sum of variances across dims
-        s = (S * d).sum() / var_src
-
-    # Translation
-    t = Y - s * (R @ X)
-
-    # Homogeneous (D+1)x(D+1)
-    T = np.zeros((D, D + 1))
-    T[:D, :D] = s * R
-    T[:, -1] = -1 * np.diagonal(t)
-
-    affine = np.round(T, decimals=AFFINE_NUM_DECIMALS)
-    return affine
-
-
 def translation_fit(fixed_points: np.ndarray, moving_points: np.ndarray):
     N, D = fixed_points.shape
 
@@ -144,6 +103,51 @@ def translation_fit(fixed_points: np.ndarray, moving_points: np.ndarray):
     affine[:, -1] = estimated_translation
 
     affine = np.round(affine, decimals=AFFINE_NUM_DECIMALS)
+    return affine
+
+# See https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem
+# and https://math.nist.gov/~JBernal/kujustf.pdf
+# Follows the Kabsch algorithm https://en.wikipedia.org/wiki/Kabsch_algorithm
+def rigid_or_similarity_fit(fixed_points, moving_points, rigid=True):
+    N, D = fixed_points.shape # N = number of points, D = number of dimensions
+
+    # Find transform from Q to P
+    mu_q = moving_points.mean(axis=0)
+    mu_p = fixed_points.mean(axis=0)
+
+    # Step 1, translate points so their origin is their centroids
+    Q = moving_points - mu_q
+    P = fixed_points  - mu_p
+
+    # Covariance matrix, D x D
+    H = (P.T @ Q) / N
+
+    # SVD of covariance matrix
+    U, Sigma, Vt = np.linalg.svd(H)
+
+    # Record if the matrices contain a reflection
+    d = np.ones(D)
+    if np.linalg.det(U @ Vt) < 0:
+        d[-1] = -1.0
+    # Rotation matrix
+    R = U @ np.diag(d) @ Vt
+
+    # Scale depending on rigid or similarity
+    # Extended from 2D to 3D from https://github.com/AllenInstitute/render-python/blob/master/renderapi/transform/leaf/affine_models.py
+    if rigid:
+        s = 1.0
+    else:
+        var_x = (Q**2).sum() / N
+        s = (Sigma * d).sum() / var_x
+
+    t = mu_p - s * (R @ mu_q)
+
+    # Homogeneous (D+1)x(D+1)
+    T = np.zeros((D, D + 1))
+    T[:D, :D] = s * R
+    T[:, -1] = t
+
+    affine = np.round(T, decimals=AFFINE_NUM_DECIMALS)
     return affine
 
 
@@ -284,6 +288,7 @@ class LinearRegistrationWorkflow:
         self.ready_state = (
             ReadyState.READY if args.continue_workflow else ReadyState.NOT_READY
         )
+        self.unlink_scales = args.unlink_scales
 
         self.stored_points = ([], [])
         self.stored_map_moving_name_to_data_coords = {}
@@ -380,9 +385,9 @@ class LinearRegistrationWorkflow:
             s.layout.children[1].crossSectionOrientation.link = "unlinked"
             s.layout.children[1].projectionOrientation.link = "unlinked"
 
-            # Can also unlink scales if desired
-            # s.layout.children[1].crossSectionScale.link = "unlinked"
-            # s.layout.children[1].projectionScale.link = "unlinked"
+            if self.unlink_scales:
+                s.layout.children[1].crossSectionScale.link = "unlinked"
+                s.layout.children[1].projectionScale.link = "unlinked"
 
     def setup_second_coord_space(self):
         """Set up the second coordinate space for the moving layers."""
@@ -608,7 +613,6 @@ class LinearRegistrationWorkflow:
                         matrix=fixed_to_moving_transform_with_locals,
                     )
                     registered_source.transform = fixed_dims_to_fixed_dims_transform
-                    breakpoint()
             s.layers[self.annotations_name].source[
                 0
             ].transform = neuroglancer.CoordinateSpaceTransform(
@@ -731,6 +735,12 @@ def add_mapping_args(ap: argparse.ArgumentParser):
         "-c",
         action="store_true",
         help="Indicates that we are continuing the workflow from a previously saved state. This will skip the inital setup steps and resume from the affine estimation step directly.",
+    )
+    ap.add_argument(
+        "--unlink-scales",
+        "-us",
+        action="store_true",
+        help="If set, the scales of the two panels will be unlinked when setting up the initial two panel layout.",
     )
 
 
