@@ -119,7 +119,7 @@ def rigid_or_similarity_fit(fixed_points, moving_points, rigid=True):
     Q = moving_points - mu_q
     P = fixed_points  - mu_p
 
-    # Covariance matrix, D x D
+    # Cross covariance matrix, D x D
     H = (P.T @ Q) / N
 
     # SVD of covariance matrix
@@ -742,6 +742,12 @@ def add_mapping_args(ap: argparse.ArgumentParser):
         action="store_true",
         help="If set, the scales of the two panels will be unlinked when setting up the initial two panel layout.",
     )
+    ap.add_argument(
+        "--test",
+        "-t",
+        action="store_true",
+        help="If set, run the tests and exit.",
+    )
 
 
 def handle_args():
@@ -753,9 +759,136 @@ def handle_args():
     neuroglancer.cli.handle_server_arguments(args)
     return args
 
+### Some testing code ###
+class TestTransforms:
+    def test_translation_fit(self):
+        # Simple 2D translation, +4 in y, +1 in x
+        fixed = np.array([[1, 4], [2, 5], [3, 6]])
+        moving = np.array([[0, 0], [1, 1], [2, 2]])
+        affine = translation_fit(fixed, moving)
+        expected = np.array([[1, 0, 1], [0, 1, 4]])
+        assert np.allclose(affine, expected)
+
+    def test_rigid_fit_2d(self):
+        # Simple 90 degree rotation
+        fixed = np.array([[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1]])
+        moving = np.array([[0, 0], [0, 1], [-1, 0], [0, -1], [1, 0]])
+        affine = rigid_or_similarity_fit(fixed, moving, rigid=True)
+        expected = np.array([[0, 1, 0], [-1, 0, 0]])
+        assert np.allclose(affine, expected)
+
+    def test_rigid_fit_3d(self):
+        # Test 1: Simple 90-degree rotation around Z-axis
+        fixed = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [-1, 0, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]])
+        moving = np.array([[0, 0, 0], [0, 1, 0], [-1, 0, 0], [0, -1, 0], [1, 0, 0], [0, 0, 1], [0, 0, -1]])
+        affine = rigid_or_similarity_fit(fixed, moving, rigid=True)
+        expected = np.array([[0, 1, 0, 0], [-1, 0, 0, 0], [0, 0, 1, 0]])
+        assert np.allclose(affine, expected)
+
+
+    def test_2d_dipper(self):
+        big = np.array([
+            [ 0.0,  0.0],
+            [ 1.0,  0.2],
+            [ 1.2, -0.8],
+            [ 0.2, -1.0],
+            [-0.5, -1.2],
+            [-1.1, -1.6],
+            [-1.8, -2.1],
+        ], dtype=float)
+
+        s = 1.7
+        R = np.array([
+            [ 0.866, -0.500],
+            [ 0.354,  0.612],
+        ])
+        t = np.array([3.2, 1.4])
+
+        little = (big @ R.T) * s + t
+
+        affine = rigid_or_similarity_fit(big, little, rigid=False)
+
+        # Optional plot to visualize
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots()
+        ax.plot(big[:,0], big[:,1], 'o', label='big')
+        ax.plot(little[:,0], little[:,1], 'o', label='little')
+        ax.plot(
+            transform_points(affine, little)[:,0],
+            transform_points(affine, little)[:,1],
+            'x', label='transformed little'
+        )
+        ax.legend()
+        fig.savefig("dipper.png", dpi=200)
+
+        transformed_points = transform_points(affine, little)
+        assert np.allclose(transformed_points, big, atol=0.3)
+
+        # While the transform is really a similarity transform,
+        # we can also try an affine fit here
+        affine2 = affine_fit(big, little)
+        transformed_points2 = transform_points(affine2, little)
+        assert np.allclose(transformed_points2, big, atol=1e-2)
+
+    def test_similarity_3d_dipper(self):
+        big = np.array([
+            [ 0.0,  0.0,  0.0],
+            [ 1.0,  0.2,  0.1],
+            [ 1.2, -0.8,  0.3],
+            [ 0.2, -1.0,  0.2],
+            [-0.5, -1.2,  0.0],
+            [-1.1, -1.6, -0.2],
+            [-1.8, -2.1, -0.4],
+        ], dtype=float)
+
+        s = 1.7
+        R = np.array([
+            [ 0.866, -0.500,  0.000],
+            [ 0.354,  0.612, -0.707],
+            [ 0.354,  0.612,  0.707],
+        ])
+        t = np.array([3.2, 1.4, 2.0])
+
+        little = (big @ R.T) * s + t
+
+        affine = rigid_or_similarity_fit(big, little, rigid=False)
+
+        # Optional plot to visualize
+        import matplotlib.pyplot as plt
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection="3d")
+        ax.scatter(big[:,0], big[:,1], big[:,2], label="big", marker="o")
+        ax.scatter(little[:,0], little[:,1], little[:,2], label="little", marker="o")
+        tl = transform_points(affine, little)
+        ax.scatter(tl[:,0], tl[:,1], tl[:,2], label="transformed little", marker="x")
+        ax.legend()
+        fig.savefig("dipper_3d.png", dpi=200)
+
+        transformed_points = transform_points(affine, little)
+        assert np.allclose(transformed_points, big, atol=1e-2)
+
+        # While the transform is really a similarity transform,
+        # we can also try an affine fit here
+        affine2 = affine_fit(big, little)
+        transformed_points2 = transform_points(affine2, little)
+        assert np.allclose(transformed_points2, big, atol=1e-2)
+
+    def test_affine_fit_2d(self):
+        fixed = np.array([[0, 0], [1, 0], [0, 1]])
+        moving = np.array([[1, 1], [2, 1], [1, 2]])
+        affine = affine_fit(fixed, moving)
+        expected = np.array([[1, 0, -1], [0, 1, -1]])
+        assert np.allclose(affine, expected)
+
 
 if __name__ == "__main__":
     args = handle_args()
+
+    if args.test:
+        import pytest
+
+        pytest.main([__file__])
+        exit(0)
 
     demo = LinearRegistrationWorkflow(args)
 
