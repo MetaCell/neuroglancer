@@ -96,7 +96,7 @@ def fit_model(fixed_points: np.ndarray, moving_points: np.ndarray):
 def translation_fit(fixed_points: np.ndarray, moving_points: np.ndarray):
     N, D = fixed_points.shape
 
-    estimated_translation = np.mean(moving_points - fixed_points, axis=0)
+    estimated_translation = np.mean(fixed_points - moving_points, axis=0)
 
     affine = np.zeros((D, D + 1))
     affine[:, :D] = np.eye(D)
