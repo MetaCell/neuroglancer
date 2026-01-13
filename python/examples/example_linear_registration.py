@@ -23,6 +23,7 @@ General workflow:
 """
 
 import argparse
+import logging
 import threading
 import webbrowser
 from copy import deepcopy, copy
@@ -35,9 +36,16 @@ import neuroglancer.cli
 import numpy as np
 import scipy.ndimage
 
+# Debug flag to enable detailed logging of registration process
+# Set to True to log fixed points, moving points, transform, and transformed points
+DEBUG = True
+
+# Configure logging for debug output
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+
 MESSAGE_DURATION = 5  # seconds
-NUM_DEMO_DIMS = 3  # Currently can be 2D or 3D
-AFFINE_NUM_DECIMALS = 4
+NUM_DEMO_DIMS = 2  # Currently can be 2D or 3D
+AFFINE_NUM_DECIMALS = 6
 
 MARKERS_SHADER = """
 #uicontrol vec3 fixedPointColor color(default="#00FF00")
@@ -402,7 +410,7 @@ class LinearRegistrationWorkflow:
         applies to all dims so we need to create a larger matrix
         """
         all_dims = s.dimensions.names
-        moving_dims = self.get_fixed_and_moving_dims(None, all_dims)
+        _, moving_dims = self.get_fixed_and_moving_dims(None, all_dims)
         full_matrix = np.zeros((len(all_dims), len(all_dims) + 1))
 
         for i, dim in enumerate(all_dims):
@@ -593,7 +601,6 @@ class LinearRegistrationWorkflow:
     def update_registered_layers(self, s: neuroglancer.ViewerState):
         if self.affine is not None:
             transform = self.affine.tolist()
-            # TODO handle layer being renamed
             for k, v in self.stored_map_moving_name_to_data_coords.items():
                 for i, source in enumerate(s.layers[k].source):
                     fixed_to_moving_transform_with_locals = self.combine_local_channels_with_transform(
@@ -613,13 +620,12 @@ class LinearRegistrationWorkflow:
                         matrix=fixed_to_moving_transform_with_locals,
                     )
                     registered_source.transform = fixed_dims_to_fixed_dims_transform
-            s.layers[self.annotations_name].source[
-                0
-            ].transform = neuroglancer.CoordinateSpaceTransform(
+            annotation_transform = neuroglancer.CoordinateSpaceTransform(
                 input_dimensions=create_coord_space_matching_global_dims(s.dimensions),
                 output_dimensions=create_coord_space_matching_global_dims(s.dimensions),
                 matrix=self.combine_affine_across_dims(s, self.affine).tolist(),
             )
+            s.layers[self.annotations_name].source[0].transform = annotation_transform
 
             print("Updated affine transform (without channel dimensions):", transform)
 
@@ -652,6 +658,25 @@ class LinearRegistrationWorkflow:
             ):
                 return False
         self.affine = fit_model(fixed_points, moving_points)
+
+        # Debug logging for registration process
+        if DEBUG:
+            print("\n=== DEBUG: Registration Transform Details ===")
+            print(f"Fixed points:\n{fixed_points}")
+            print(f"Moving points:\n{moving_points}")
+            print(f"Computed transform:\n{self.affine}")
+
+            # Apply transform to moving points and log results
+            transformed_points = transform_points(self.affine, moving_points)
+            print(f"Transformed moving points:\n{transformed_points}")
+
+            print("\nPoint-by-point comparison:")
+            for i in range(len(moving_points)):
+                print(f"{i+1}. Moving point ({', '.join(f'{x:.3f}' for x in moving_points[i])}), "
+                        f"Fixed point ({', '.join(f'{x:.3f}' for x in fixed_points[i])}), "
+                        f"Transformed point ({', '.join(f'{x:.3f}' for x in transformed_points[i])})")
+            print("=" * 50)
+
         self.update_registered_layers(s)
 
         self._set_status_message(
