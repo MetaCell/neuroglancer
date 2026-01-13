@@ -73,6 +73,7 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
             vertexAttributes[i] = node.skeleton_id;
         }
 
+        const missingConnections: Array<{ nodeId: number; parentId: number; vertexIndex: number; skeletonId: number }> = [];
 
         for (let i = 0; i < numVertices; ++i) {
             const node = nodes[i];
@@ -80,6 +81,14 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
                 const parentIndex = nodeMap.get(node.parent_id);
                 if (parentIndex !== undefined) {
                     indices.push(i, parentIndex);
+                } else {
+                    // Parent is in a different chunk - store for later resolution
+                    missingConnections.push({
+                        nodeId: node.id,
+                        parentId: node.parent_id,
+                        vertexIndex: i,
+                        skeletonId: node.skeleton_id
+                    });
                 }
             }
         }
@@ -90,6 +99,8 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
 
         // Pack only segment IDs into vertexAttributes (positions are in vertexPositions)
         chunk.vertexAttributes = [vertexAttributes];
+        chunk.missingConnections = missingConnections;
+        chunk.nodeMap = nodeMap;
     }
 }
 

@@ -889,6 +889,8 @@ export class SpatiallyIndexedSkeletonChunk extends SliceViewChunk implements Ske
   numVertices: number;
   vertexAttributeOffsets: Uint32Array;
   vertexAttributeTextures: (WebGLTexture | null)[];
+  missingConnections: Array<{ nodeId: number; parentId: number; vertexIndex: number; skeletonId: number }> = [];
+  nodeMap: Map<number, number> = new Map(); // Maps node ID to vertex index
 
   // Filtering support
   filteredIndexBuffer: GLBuffer | undefined;
@@ -902,6 +904,15 @@ export class SpatiallyIndexedSkeletonChunk extends SliceViewChunk implements Ske
     this.numVertices = chunkData.numVertices;
     this.numIndices = indices.length;
     this.vertexAttributeOffsets = chunkData.vertexAttributeOffsets;
+    this.missingConnections = (chunkData as any).missingConnections || [];
+
+    // Deserialize nodeMap from array format [nodeId, vertexIndex, ...]
+    const nodeMapData = (chunkData as any).nodeMap;
+    if (Array.isArray(nodeMapData) && nodeMapData.length > 0) {
+      this.nodeMap = new Map(nodeMapData);
+    } else {
+      this.nodeMap = new Map();
+    }
 
     const gl = source.gl;
     this.indexBuffer = GLBuffer.fromData(
@@ -1091,12 +1102,28 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     const chunks = source.chunks;
     const tempColor = new Float32Array(4);
     tempColor[3] = 1.0; // Set alpha to 1.0
-    
+
+    // Build global node map for inter-chunk connections
+    const globalNodeMap = new Map<number, { chunk: SpatiallyIndexedSkeletonChunk; vertexIndex: number }>();
+
+    for (const chunk of chunks.values()) {
+      if (chunk.state === ChunkState.GPU_MEMORY) {
+        // Populate global map with all nodes from this chunk
+        for (const [nodeId, vertexIndex] of chunk.nodeMap.entries()) {
+          globalNodeMap.set(nodeId, { chunk, vertexIndex });
+        }
+      }
+    }
+
+    // Collect all missing parent node IDs for segment 390714 across all chunks
+    const missingParentIds390714 = new Set<number>();
+
+    // Render chunks with intra-chunk and inter-chunk connections
     for (const chunk of chunks.values()) {
       if (chunk.state === ChunkState.GPU_MEMORY && chunk.numIndices > 0) {
         // Extract segment IDs from vertex attributes
-        const attrOffset = chunk.vertexAttributeOffsets && chunk.vertexAttributeOffsets.length > 1 
-          ? chunk.vertexAttributeOffsets[1] 
+        const attrOffset = chunk.vertexAttributeOffsets && chunk.vertexAttributeOffsets.length > 1
+          ? chunk.vertexAttributeOffsets[1]
           : 0;
         const segmentIds = new Float32Array(
           chunk.vertexAttributes.buffer,
@@ -1113,12 +1140,12 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
         // Group indices by segment ID
         const segmentIndicesMap = new Map<number, number[]>();
         const indices = chunk.indices;
-        
+
         for (let i = 0; i < chunk.numIndices; i += 2) {
           const idx0 = indices[i];
           const idx1 = indices[i + 1];
           const segmentId = Math.round(segmentIds[idx0]);
-          
+
           if (!segmentIndicesMap.has(segmentId)) {
             segmentIndicesMap.set(segmentId, []);
           }
@@ -1129,13 +1156,13 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
         for (const [segmentId, segmentIndicesList] of segmentIndicesMap) {
           const bigintId = BigInt(segmentId);
           const color = getBaseObjectColor(displayState, bigintId, tempColor);
-          
+
           // Set color for this segment
           edgeShader.bind();
           renderHelper.setColor(gl, edgeShader, <vec3>(<Float32Array>color));
           nodeShader.bind();
           renderHelper.setColor(gl, nodeShader, <vec3>(<Float32Array>color));
-          
+
           // Create a temporary buffer for this segment's indices
           const segmentIndexBuffer = GLBuffer.fromData(
             gl,
@@ -1143,13 +1170,13 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
             WebGL2RenderingContext.ARRAY_BUFFER,
             WebGL2RenderingContext.STATIC_DRAW,
           );
-          
+
           // Temporarily swap the index buffer
           const originalIndexBuffer = chunk.indexBuffer;
           const originalNumIndices = chunk.numIndices;
           chunk.indexBuffer = segmentIndexBuffer;
           chunk.numIndices = segmentIndicesList.length;
-          
+
           // Render this segment
           renderHelper.drawSkeleton(
             gl,
@@ -1158,15 +1185,49 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
             chunk,
             renderContext.projectionParameters,
           );
-          
+
           // Restore original buffer
           chunk.indexBuffer = originalIndexBuffer;
           chunk.numIndices = originalNumIndices;
-          
+
           // Clean up temporary buffer
           segmentIndexBuffer.dispose();
         }
+
+        // Handle inter-chunk connections
+        if (chunk.missingConnections.length > 0) {
+          const interChunkEdges: Array<{ segmentId: number; childIdx: number; parentChunk: SpatiallyIndexedSkeletonChunk; parentIdx: number }> = [];
+
+          for (const conn of chunk.missingConnections) {
+            const parentNode = globalNodeMap.get(conn.parentId);
+            if (parentNode) {
+              // We found the parent in another chunk, store edge info
+              interChunkEdges.push({
+                segmentId: conn.skeletonId,
+                childIdx: conn.vertexIndex,
+                parentChunk: parentNode.chunk,
+                parentIdx: parentNode.vertexIndex,
+              });
+            }
+            else {
+              if (conn.skeletonId == 390714) {
+                missingParentIds390714.add(conn.parentId);
+              }
+            }
+          }
+
+          if (interChunkEdges.length > 0) {
+            console.log(`Found ${interChunkEdges.length} inter-chunk connections in chunk`);
+            // TODO: Render inter-chunk edges by creating combined vertex buffers
+            // This requires combining vertex data from different chunks
+          }
+        }
       }
+    }
+
+    // Print complete set of missing parent IDs for segment 390714
+    if (missingParentIds390714.size > 0) {
+      console.log(`Segment 390714: Total missing parent node IDs (${missingParentIds390714.size}):`, Array.from(missingParentIds390714));
     }
 
     renderHelper.endLayer(gl, edgeShader);

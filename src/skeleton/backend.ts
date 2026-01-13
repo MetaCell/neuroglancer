@@ -173,6 +173,8 @@ export class SpatiallyIndexedSkeletonChunk extends SliceViewChunk implements Ske
   vertexPositions: Float32Array | null = null;
   vertexAttributes: TypedNumberArray[] | null = null;
   indices: Uint32Array | null = null;
+  missingConnections: Array<{ nodeId: number; parentId: number; vertexIndex: number; skeletonId: number }> = [];
+  nodeMap: Map<number, number> = new Map(); // Maps node ID to vertex index
 
   freeSystemMemory() {
     freeSkeletonChunkSystemMemory(this);
