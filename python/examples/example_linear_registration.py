@@ -29,6 +29,7 @@ import webbrowser
 from copy import deepcopy, copy
 from enum import Enum
 from time import ctime, time
+from datetime import datetime
 from typing import Union
 
 import neuroglancer
@@ -341,10 +342,9 @@ class LinearRegistrationWorkflow:
             )
         elif self.ready_state == ReadyState.READY:
             self.update_affine()
-            # TODO consider allowing to dump to disk
             self._set_status_message(
                 "help",
-                "Place points to inform registration by first placing the centre position in the left/right panel to the correct place for the fixed/moving data, and then placing a point annotation with ctrl+left click in the other panel. You can move the annotations afterwards if needed with alt+left click. Press 't' to toggle visibility of the registered layer.",
+                "Place points to inform registration by first placing the centre position in the left/right panel to the correct place for the fixed/moving data, and then placing a point annotation with ctrl+left click in the other panel. You can move the annotations afterwards if needed with alt+left click. Press 't' to toggle visibility of the registered layer. Press 'd' to dump current state for later resumption.",
             )
             # self._clear_status_messages()
 
@@ -369,10 +369,7 @@ class LinearRegistrationWorkflow:
         """Called when the user indicates they have placed layers in the two panels."""
         self.copy_moving_layers_to_left_panel()
         self.setup_second_coord_space()
-        self._set_status_message(
-            "help",
-            "Place markers in pairs, starting with the fixed, and then the moving. The registered layer will automatically update as you add markers. Press 't' to toggle visiblity of the registered layer.",
-        )
+
 
     def setup_initial_two_panel_layout(self):
         """Set up a two panel layout if not already present."""
@@ -551,8 +548,12 @@ class LinearRegistrationWorkflow:
         name = "continueLinearRegistrationWorkflow"
         viewer.actions.add(name, self.continue_workflow)
 
+        dump_name = "dumpCurrentState"
+        viewer.actions.add(dump_name, self.dump_current_state)
+
         with viewer.config_state.txn() as s:
             s.input_event_bindings.viewer["keyt"] = name
+            s.input_event_bindings.viewer["keyd"] = dump_name
 
     def on_state_changed(self):
         self.viewer.defer_callback(self.update)
@@ -714,6 +715,22 @@ class LinearRegistrationWorkflow:
         info = self.get_registration_info()
         with open(path, "w") as f:
             json.dump(info, f, indent=4)
+
+    def dump_current_state(self, _):
+        import json
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"neuroglancer_state_{timestamp}.json"
+
+        state_dict = self.get_state().to_json()
+
+        with open(filename, "w") as f:
+            json.dump(state_dict, f, indent=4)
+
+        print(f"Current state dumped to: {filename}")
+        self._set_status_message("dump", f"State saved to {filename}")
+
+        return filename
 
     def get_state(self):
         with self.viewer.txn() as s:
