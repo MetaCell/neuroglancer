@@ -850,6 +850,7 @@ export class SegmentationUserLayer extends Base {
           const displayState = {
             ...this.displayState,
             transform: loadedSubsource.getRenderLayerTransform(),
+            localPosition: this.localPosition,
           };
           if (skeleton instanceof SpatiallyIndexedSkeletonSource) {
             const base = new SpatiallyIndexedSkeletonLayer(

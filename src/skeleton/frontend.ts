@@ -19,7 +19,11 @@ import { uploadVertexAttributesToGPU } from "#src/skeleton/gpu_upload_utils.js";
 
 import { ChunkState, LayerChunkProgressInfo } from "#src/chunk_manager/base.js";
 import type { ChunkManager } from "#src/chunk_manager/frontend.js";
-import { Chunk, ChunkSource } from "#src/chunk_manager/frontend.js";
+import {
+  Chunk,
+  ChunkRenderLayerFrontend,
+  ChunkSource,
+} from "#src/chunk_manager/frontend.js";
 import type { LayerView, VisibleLayerInfo } from "#src/layer/index.js";
 import type { PerspectivePanel } from "#src/perspective_view/panel.js";
 import type { PerspectiveViewRenderContext } from "#src/perspective_view/render_layer.js";
@@ -41,8 +45,19 @@ import {
   SegmentationLayerSharedObject,
 } from "#src/segmentation_display_state/frontend.js";
 import type { VertexAttributeInfo } from "#src/skeleton/base.js";
-import { SKELETON_LAYER_RPC_ID } from "#src/skeleton/base.js";
+import {
+  SKELETON_LAYER_RPC_ID,
+  SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_RPC_ID,
+  SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_UPDATE_SOURCES_RPC_ID,
+} from "#src/skeleton/base.js";
+import { RENDERED_VIEW_ADD_LAYER_RPC_ID } from "#src/render_layer_common.js";
 import type { SliceViewPanel } from "#src/sliceview/panel.js";
+import { SharedWatchableValue } from "#src/shared_watchable_value.js";
+import type { RPC } from "#src/worker_rpc.js";
+import {
+  getVolumetricTransformedSources,
+  serializeAllTransformedSources,
+} from "#src/sliceview/frontend.js";
 import {
   SliceViewPanelRenderLayer,
   SliceViewPanelRenderContext,
@@ -55,7 +70,12 @@ import {
 } from "#src/sliceview/frontend.js";
 import type { SliceViewChunkSpecification } from "#src/sliceview/base.js";
 import { ChunkLayout } from "#src/sliceview/chunk_layout.js";
-import { TrackableValue, WatchableValue, registerNested } from "#src/trackable_value.js";
+import {
+  TrackableValue,
+  WatchableValue,
+  WatchableValueInterface,
+  registerNested,
+} from "#src/trackable_value.js";
 import { DataType } from "#src/util/data_type.js";
 import { RefCounted } from "#src/util/disposable.js";
 import type { vec3 } from "#src/util/geom.js";
@@ -1006,6 +1026,9 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
   fallbackShaderParameters = new WatchableValue(
     getFallbackBuilderState(parseShaderUiControls(DEFAULT_FRAGMENT_MAIN)),
   );
+  backend: ChunkRenderLayerFrontend;
+  localPosition: WatchableValueInterface<Float32Array>;
+  rpc: RPC | undefined;
 
   private generation = 0;
 
@@ -1016,9 +1039,12 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
   constructor(
     public chunkManager: ChunkManager,
     public source: SpatiallyIndexedSkeletonSource,
-    public displayState: SkeletonLayerDisplayState,
+    public displayState: SkeletonLayerDisplayState & {
+      localPosition: WatchableValueInterface<Float32Array>;
+    },
   ) {
     super();
+    this.localPosition = displayState.localPosition;
     registerRedrawWhenSegmentationDisplayState3DChanged(displayState, this);
     this.displayState.shaderError.value = undefined;
     const { skeletonRenderingOptions: renderingOptions } = displayState;
@@ -1041,6 +1067,30 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
         );
       }, this.displayState.segmentationGroupState)
     );
+
+    // Create backend for perspective view chunk management
+    const sharedObject = this.registerDisposer(
+      new ChunkRenderLayerFrontend(this.layerChunkProgressInfo),
+    );
+    const rpc = chunkManager.rpc!;
+    this.rpc = rpc;
+    sharedObject.RPC_TYPE_ID = SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_RPC_ID;
+    
+    const renderScaleTargetWatchable = this.registerDisposer(
+      SharedWatchableValue.makeFromExisting(rpc, displayState.renderScaleTarget),
+    );
+    
+    sharedObject.initializeCounterpart(rpc, {
+      chunkManager: chunkManager.rpcId,
+      localPosition: this.registerDisposer(
+        SharedWatchableValue.makeFromExisting(
+          rpc,
+          this.localPosition,
+        ),
+      ).rpcId,
+      renderScaleTarget: renderScaleTargetWatchable.rpcId,
+    });
+    this.backend = sharedObject;
   }
 
   get gl() {
@@ -1336,7 +1386,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
           }
 
           if (interChunkEdges.length > 0) {
-            console.log(`Found ${interChunkEdges.length} inter-chunk connections in chunk`);
+            // console.log(`Found ${interChunkEdges.length} inter-chunk connections in chunk`);
             // TODO: Render inter-chunk edges by creating combined vertex buffers
             // This requires combining vertex data from different chunks
           }
@@ -1403,8 +1453,11 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
 export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveViewRenderLayer {
   private renderHelper: RenderHelper;
   private renderOptions: ViewSpecificSkeletonRenderingOptions;
+  backend: ChunkRenderLayerFrontend;
+  
   constructor(public base: SpatiallyIndexedSkeletonLayer) {
     super();
+    this.backend = base.backend;
     this.renderHelper = this.registerDisposer(new RenderHelper(base, false));
     this.renderOptions = base.displayState.skeletonRenderingOptions.params3d;
 
@@ -1419,6 +1472,65 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
       renderOptions.lineWidth.changed.add(this.redrawNeeded.dispatch),
     );
   }
+
+  attach(
+    attachment: VisibleLayerInfo<
+      PerspectivePanel,
+      ThreeDimensionalRenderLayerAttachmentState
+    >,
+  ) {
+    super.attach(attachment);
+    
+    // Manually add layer to backend
+    const backend = this.backend;
+    if (backend && backend.rpc) {
+      backend.rpc.invoke(RENDERED_VIEW_ADD_LAYER_RPC_ID, {
+        layer: backend.rpcId,
+        view: attachment.view.rpcId,
+      });
+    }
+    
+    // Capture references to avoid losing 'this' context in callback
+    const baseLayer = this.base;
+    const redrawNeeded = this.redrawNeeded;
+    
+    attachment.registerDisposer(
+      registerNested(
+        (context, transform, displayDimensionRenderInfo) => {
+          const transformedSources = getVolumetricTransformedSources(
+            displayDimensionRenderInfo,
+            transform,
+            () => [[{
+              chunkSource: baseLayer.source,
+              chunkToMultiscaleTransform: mat4.create(),
+            }]],
+            attachment.messages,
+            this,
+          );
+          for (const scales of transformedSources) {
+            for (const tsource of scales) {
+              context.registerDisposer(tsource.source);
+            }
+          }
+          attachment.view.flushBackendProjectionParameters();
+          baseLayer.rpc!.invoke(
+            SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_UPDATE_SOURCES_RPC_ID,
+            {
+              layer: baseLayer.backend.rpcId,
+              view: attachment.view.rpcId,
+              displayDimensionRenderInfo,
+              sources: serializeAllTransformedSources(transformedSources),
+            },
+          );
+          redrawNeeded.dispatch();
+          return transformedSources;
+        },
+        baseLayer.displayState.transform,
+        attachment.view.displayDimensionRenderInfo,
+      ),
+    );
+  }
+
   get gl() {
     return this.base.gl;
   }

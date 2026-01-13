@@ -27,7 +27,11 @@ import {
   forEachVisibleSegment,
   getObjectKey,
 } from "#src/segmentation_display_state/base.js";
-import { SKELETON_LAYER_RPC_ID } from "#src/skeleton/base.js";
+import {
+  SKELETON_LAYER_RPC_ID,
+  SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_RPC_ID,
+  SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_UPDATE_SOURCES_RPC_ID,
+} from "#src/skeleton/base.js";
 import type { TypedNumberArray } from "#src/util/array.js";
 import type { Endianness } from "#src/util/endian.js";
 import {
@@ -40,22 +44,57 @@ import {
   SliceViewChunk,
   SliceViewChunkSourceBackend,
 } from "#src/sliceview/backend.js";
-import { SliceViewChunkSpecification } from "#src/sliceview/base.js";
+import {
+  SliceViewChunkSpecification,
+  forEachVisibleVolumetricChunk,
+  type TransformedSource,
+} from "#src/sliceview/base.js";
+import { SCALE_PRIORITY_MULTIPLIER } from "#src/sliceview/backend.js";
+import type { RenderLayerBackendAttachment } from "#src/render_layer_backend.js";
+import { RenderLayerBackend } from "#src/render_layer_backend.js";
+import type { RenderedViewBackend } from "#src/render_layer_backend.js";
+import type { SharedWatchableValue } from "#src/shared_watchable_value.js";
+import {
+  type DisplayDimensionRenderInfo,
+  validateDisplayDimensionRenderInfoProperty,
+} from "#src/navigation_state.js";
 import {
   freeSkeletonChunkSystemMemory,
   getVertexAttributeBytes,
   serializeSkeletonChunkData,
   type SkeletonChunkData,
 } from "#src/skeleton/skeleton_chunk_serialization.js";
-
+import type { RPC } from "#src/worker_rpc.js";
+import { registerRPC, registerSharedObject } from "#src/worker_rpc.js";
+import { deserializeTransformedSources } from "#src/sliceview/backend.js";
 
 export interface SpatiallyIndexedSkeletonChunkSpecification extends SliceViewChunkSpecification {
   chunkLayout: any;
 }
-import type { RPC } from "#src/worker_rpc.js";
-import { registerSharedObject } from "#src/worker_rpc.js";
 
 const SKELETON_CHUNK_PRIORITY = 60;
+
+registerRPC(
+  SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_UPDATE_SOURCES_RPC_ID,
+  function (x) {
+    const view = this.get(x.view) as RenderedViewBackend;
+    const layer = this.get(
+      x.layer,
+    ) as SpatiallyIndexedSkeletonRenderLayerBackend;
+    const attachment = layer.attachments.get(
+      view,
+    )! as RenderLayerBackendAttachment<
+      RenderedViewBackend,
+      SpatiallyIndexedSkeletonRenderLayerAttachmentState
+    >;
+    attachment.state!.transformedSources = deserializeTransformedSources<
+      SpatiallyIndexedSkeletonSourceBackend,
+      SpatiallyIndexedSkeletonRenderLayerBackend
+    >(this, x.sources, layer);
+    attachment.state!.displayDimensionRenderInfo = x.displayDimensionRenderInfo;
+    layer.chunkManager.scheduleUpdateChunkPriorities();
+  },
+);
 
 // Chunk that contains the skeleton of a single object.
 export class SkeletonChunk extends Chunk implements SkeletonChunkData {
@@ -195,4 +234,117 @@ export class SpatiallyIndexedSkeletonChunk extends SliceViewChunk implements Ske
 
 export class SpatiallyIndexedSkeletonSourceBackend extends SliceViewChunkSourceBackend<SpatiallyIndexedSkeletonChunkSpecification, SpatiallyIndexedSkeletonChunk> {
   chunkConstructor = SpatiallyIndexedSkeletonChunk;
+}
+
+interface SpatiallyIndexedSkeletonRenderLayerAttachmentState {
+  displayDimensionRenderInfo: DisplayDimensionRenderInfo;
+  transformedSources: TransformedSource<SpatiallyIndexedSkeletonRenderLayerBackend, SpatiallyIndexedSkeletonSourceBackend>[][];
+}
+
+@registerSharedObject(SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_RPC_ID)
+export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager(
+  RenderLayerBackend,
+) {
+  localPosition: SharedWatchableValue<Float32Array>;
+  renderScaleTarget: SharedWatchableValue<number>;
+
+  constructor(rpc: RPC, options: any) {
+    super(rpc, options);
+    this.renderScaleTarget = rpc.get(options.renderScaleTarget);
+    this.localPosition = rpc.get(options.localPosition);
+    const scheduleUpdateChunkPriorities = () =>
+      this.chunkManager.scheduleUpdateChunkPriorities();
+    this.registerDisposer(
+      this.localPosition.changed.add(scheduleUpdateChunkPriorities),
+    );
+    this.registerDisposer(
+      this.renderScaleTarget.changed.add(scheduleUpdateChunkPriorities),
+    );
+    this.registerDisposer(
+      this.chunkManager.recomputeChunkPriorities.add(() =>
+        this.recomputeChunkPriorities(),
+      ),
+    );
+  }
+
+  attach(
+    attachment: RenderLayerBackendAttachment<
+      RenderedViewBackend,
+      SpatiallyIndexedSkeletonRenderLayerAttachmentState
+    >,
+  ) {
+    const scheduleUpdateChunkPriorities = () =>
+      this.chunkManager.scheduleUpdateChunkPriorities();
+    const { view } = attachment;
+    attachment.registerDisposer(scheduleUpdateChunkPriorities);
+    attachment.registerDisposer(
+      view.projectionParameters.changed.add(scheduleUpdateChunkPriorities),
+    );
+    attachment.registerDisposer(
+      view.visibility.changed.add(scheduleUpdateChunkPriorities),
+    );
+    attachment.state = {
+      displayDimensionRenderInfo:
+        view.projectionParameters.value.displayDimensionRenderInfo,
+      transformedSources: [],
+    };
+  }
+
+  private recomputeChunkPriorities() {
+    this.chunkManager.registerLayer(this);
+    for (const attachment of this.attachments.values()) {
+      const { view } = attachment;
+      const visibility = view.visibility.value;
+      if (visibility === Number.NEGATIVE_INFINITY) {
+        continue;
+      }
+      const attachmentState =
+        attachment.state! as SpatiallyIndexedSkeletonRenderLayerAttachmentState;
+      const { transformedSources } = attachmentState;
+      if (
+        transformedSources.length === 0 ||
+        !validateDisplayDimensionRenderInfoProperty(
+          attachmentState,
+          view.projectionParameters.value.displayDimensionRenderInfo,
+        )
+      ) {
+        continue;
+      }
+      const priorityTier = getPriorityTier(visibility);
+      const basePriority = getBasePriority(visibility);
+
+      const projectionParameters = view.projectionParameters.value;
+      const { chunkManager } = this;
+
+      for (
+        let scaleIndex = transformedSources.length - 1;
+        scaleIndex >= 0;
+        --scaleIndex
+      ) {
+        const scales = transformedSources[scaleIndex];
+        for (const tsource of scales) {
+          forEachVisibleVolumetricChunk(
+            projectionParameters,
+            this.localPosition.value,
+            tsource,
+            () => {
+              const chunk = (
+                tsource.source as SpatiallyIndexedSkeletonSourceBackend
+              ).getChunk(tsource.curPositionInChunks);
+              ++this.numVisibleChunksNeeded;
+              if (chunk.state === ChunkState.GPU_MEMORY) {
+                ++this.numVisibleChunksAvailable;
+              }
+              const priority = 0;
+              chunkManager.requestChunk(
+                chunk,
+                priorityTier,
+                basePriority + priority + SCALE_PRIORITY_MULTIPLIER * scaleIndex,
+              );
+            },
+          );
+        }
+      }
+    }
+  }
 }

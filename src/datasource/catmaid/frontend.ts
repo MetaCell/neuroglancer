@@ -268,12 +268,12 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
         const subsources = [
             {
                 id: "skeletons-chunked",
-                default: false,
+                default: true,
                 subsource: { mesh: source },
             },
             {
                 id: "skeletons",
-                default: true,
+                default: false,
                 subsource: { mesh: completeSkeletonSource },
             },
             {
