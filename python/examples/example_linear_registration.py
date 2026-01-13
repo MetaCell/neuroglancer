@@ -297,6 +297,7 @@ class LinearRegistrationWorkflow:
             ReadyState.READY if args.continue_workflow else ReadyState.NOT_READY
         )
         self.unlink_scales = args.unlink_scales
+        self.output_name = args.output_name
 
         self.stored_points = ([], [])
         self.stored_map_moving_name_to_data_coords = {}
@@ -627,7 +628,10 @@ class LinearRegistrationWorkflow:
             )
             s.layers[self.annotations_name].source[0].transform = annotation_transform
 
-            print("Updated affine transform (without channel dimensions):", transform)
+            print(f"Updated affine transform (without channel dimensions): {transform}, written to {self.output_name}")
+
+            # Save affine matrix to file
+            np.savetxt(self.output_name, self.affine, fmt='%.6f')
 
     def estimate_affine(self, s: neuroglancer.ViewerState):
         annotations = s.layers[self.annotations_name].annotations
@@ -766,6 +770,14 @@ def add_mapping_args(ap: argparse.ArgumentParser):
         "-us",
         action="store_true",
         help="If set, the scales of the two panels will be unlinked when setting up the initial two panel layout.",
+    )
+    ap.add_argument(
+        "--output-name",
+        "-o",
+        type=str,
+        help="Output filename for the affine matrix (default is affine.txt)",
+        default="affine.txt",
+        required=False,
     )
     ap.add_argument(
         "--test",
