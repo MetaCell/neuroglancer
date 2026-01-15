@@ -735,7 +735,9 @@ export class SegmentationUserLayer extends Base {
             x instanceof MeshLayer ||
             x instanceof MultiscaleMeshLayer ||
             x instanceof PerspectiveViewSkeletonLayer ||
-            x instanceof SliceViewPanelSkeletonLayer,
+            x instanceof SliceViewPanelSkeletonLayer ||
+            x instanceof PerspectiveViewSpatiallyIndexedSkeletonLayer ||
+            x instanceof SliceViewPanelSpatiallyIndexedSkeletonLayer,
         ),
       { changed: this.layersChanged, value: this.renderLayers },
     ),
@@ -743,7 +745,12 @@ export class SegmentationUserLayer extends Base {
 
   readonly hasSkeletonsLayer = this.registerDisposer(
     makeCachedLazyDerivedWatchableValue(
-      (layers) => layers.some((x) => x instanceof PerspectiveViewSkeletonLayer),
+      (layers) =>
+        layers.some(
+          (x) =>
+            x instanceof PerspectiveViewSkeletonLayer ||
+            x instanceof PerspectiveViewSpatiallyIndexedSkeletonLayer,
+        ),
       { changed: this.layersChanged, value: this.renderLayers },
     ),
   );
@@ -751,6 +758,9 @@ export class SegmentationUserLayer extends Base {
   readonly getSkeletonLayer = () => {
     for (const layer of this.renderLayers) {
       if (layer instanceof PerspectiveViewSkeletonLayer) {
+        return layer.base;
+      }
+      if (layer instanceof PerspectiveViewSpatiallyIndexedSkeletonLayer) {
         return layer.base;
       }
     }
