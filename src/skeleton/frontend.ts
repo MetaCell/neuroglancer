@@ -78,7 +78,6 @@ import {
 } from "#src/trackable_value.js";
 import { DataType } from "#src/util/data_type.js";
 import { RefCounted } from "#src/util/disposable.js";
-import type { vec3 } from "#src/util/geom.js";
 import { mat4 } from "#src/util/geom.js";
 import { verifyFinitePositiveFloat } from "#src/util/json.js";
 import { NullarySignal } from "#src/util/signal.js";
@@ -235,10 +234,12 @@ vec4 segmentColor() {
   return uColor;
 }
 void emitRGB(vec3 color) {
-  emit(vec4(color * uColor.a, uColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()}), uPickID);
+  highp float alpha = uColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()};
+  emit(vec4(color * alpha, alpha), uPickID);
 }
 void emitDefault() {
-  emit(vec4(uColor.rgb, uColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()}), uPickID);
+  highp float alpha = uColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()};
+  emit(vec4(uColor.rgb * alpha, alpha), uPickID);
 }
 `);
           builder.addFragmentCode(glsl_COLORMAPS);
@@ -300,7 +301,8 @@ vec4 segmentColor() {
 }
 void emitRGBA(vec4 color) {
   vec4 borderColor = color;
-  emit(getCircleColor(color, borderColor), uPickID);
+  vec4 circleColor = getCircleColor(color, borderColor);
+  emit(vec4(circleColor.rgb * circleColor.a, circleColor.a), uPickID);
 }
 void emitRGB(vec3 color) {
   emitRGBA(vec4(color, 1.0));
@@ -378,8 +380,17 @@ void emitDefault() {
     this.vertexIdHelper.enable();
   }
 
-  setColor(gl: GL, shader: ShaderProgram, color: vec3) {
-    gl.uniform4fv(shader.uniform("uColor"), color);
+  setColor(gl: GL, shader: ShaderProgram, color: Float32Array | number[]) {
+    const a = (color as Float32Array).length >= 4
+      ? (color as Float32Array)[3]
+      : this.base.displayState.objectAlpha.value;
+    gl.uniform4f(
+      shader.uniform("uColor"),
+      (color as Float32Array)[0],
+      (color as Float32Array)[1],
+      (color as Float32Array)[2],
+      a,
+    );
   }
 
   setPickID(gl: GL, shader: ShaderProgram, pickID: number) {
@@ -674,9 +685,9 @@ export class SkeletonLayer extends RefCounted {
         }
         if (color !== undefined) {
           edgeShader.bind();
-          renderHelper.setColor(gl, edgeShader, <vec3>(<Float32Array>color));
+          renderHelper.setColor(gl, edgeShader, color as Float32Array);
           nodeShader.bind();
-          renderHelper.setColor(gl, nodeShader, <vec3>(<Float32Array>color));
+          renderHelper.setColor(gl, nodeShader, color as Float32Array);
         }
         if (pickIndex !== undefined) {
           edgeShader.bind();
@@ -1215,12 +1226,16 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
         for (const [segmentId, segmentIndicesList] of segmentIndicesMap) {
           const bigintId = BigInt(segmentId);
           const color = getBaseObjectColor(displayState, bigintId, tempColor);
+          const alphaForSegment = displayState.objectAlpha.value;
+          color[0] *= alphaForSegment;
+          color[1] *= alphaForSegment;
+          color[2] *= alphaForSegment;
 
           // Set color for this segment
           edgeShader.bind();
-          renderHelper.setColor(gl, edgeShader, <vec3>(<Float32Array>color));
+          renderHelper.setColor(gl, edgeShader, color as Float32Array);
           nodeShader.bind();
-          renderHelper.setColor(gl, nodeShader, <vec3>(<Float32Array>color));
+          renderHelper.setColor(gl, nodeShader, color as Float32Array);
 
           // Build per-segment vertex list and remap indices (2D only optimization)
           let originalIndexBuffer = chunk.indexBuffer;
