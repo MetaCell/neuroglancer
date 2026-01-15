@@ -66,6 +66,7 @@ import { NullarySignal } from "#src/util/signal.js";
 import type { Trackable } from "#src/util/trackable.js";
 import { optionallyRestoreFromJsonMember } from "#src/util/trackable.js";
 import { WatchableMap } from "#src/util/watchable_map.js";
+import type { TrackableClipDimensionsWeight } from "#src/viewer.js";
 import type { VisibilityPrioritySpecification } from "#src/viewer_state.js";
 import { DisplayDimensionsWidget } from "#src/widget/display_dimensions_widget.js";
 import type { ScaleBarOptions } from "#src/widget/scale_bar.js";
@@ -101,6 +102,7 @@ export interface ViewerUIState
   crossSectionBackgroundColor: TrackableRGB;
   perspectiveViewBackgroundColor: TrackableRGB;
   hideCrossSectionBackground3D: TrackableBoolean;
+  clipDimensionsWeight: TrackableClipDimensionsWeight;
 }
 
 export interface DataDisplayLayout extends RefCounted {
@@ -179,6 +181,7 @@ export function getCommonViewerState(viewer: ViewerUIState) {
     wireFrame: viewer.wireFrame,
     enableAdaptiveDownsampling: viewer.enableAdaptiveDownsampling,
     visibleLayerRoles: viewer.visibleLayerRoles,
+    clipDimensionsWeight: viewer.clipDimensionsWeight,
     selectedLayer: viewer.selectedLayer,
     visibility: viewer.visibility,
     scaleBarOptions: viewer.scaleBarOptions,

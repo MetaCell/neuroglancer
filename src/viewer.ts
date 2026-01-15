@@ -116,8 +116,10 @@ import {
   parseFixedLengthArray,
   verifyFinitePositiveFloat,
   verifyObject,
+  verifyObjectAsMap,
   verifyOptionalObjectProperty,
   verifyString,
+  verifyFloat,
 } from "#src/util/json.js";
 import {
   EventActionMap,
@@ -125,6 +127,7 @@ import {
 } from "#src/util/keyboard_bindings.js";
 import { ScreenshotManager } from "#src/util/screenshot_manager.js";
 import { NullarySignal } from "#src/util/signal.js";
+import type { Trackable } from "#src/util/trackable.js";
 import {
   CompoundTrackable,
   optionallyRestoreFromJsonMember,
@@ -232,6 +235,81 @@ const defaultViewerOptions =
         resetStateWhenEmpty: true,
       };
 
+/**
+ * Trackable state for annotation clipping dimension weights per layer.
+ * Maps layer names to maps of dimension names to weight values (0.0 to 1.0).
+ * A weight of 0.0 means no clipping for that dimension, 1.0 means full clipping.
+ */
+export class TrackableClipDimensionsWeight implements Trackable {
+  changed = new NullarySignal();
+
+  // Map from layer name to map of dimension name to weight
+  private value_ = new Map<string, Map<string, number>>();
+
+  get value() {
+    return this.value_;
+  }
+
+  reset() {
+    if (this.value_.size === 0) return;
+    this.value_.clear();
+    this.changed.dispatch();
+  }
+
+  restoreState(obj: any) {
+    if (obj === undefined) {
+      this.reset();
+      return;
+    }
+    verifyObject(obj);
+    const newValue = verifyObjectAsMap(obj, (layerObj) =>
+      verifyObjectAsMap(layerObj, verifyFloat),
+    );
+
+    // Check if the value has actually changed
+    let changed = this.value_.size !== newValue.size;
+    if (!changed) {
+      for (const [layerName, dimWeights] of newValue) {
+        const oldDimWeights = this.value_.get(layerName);
+        if (!oldDimWeights || oldDimWeights.size !== dimWeights.size) {
+          changed = true;
+          break;
+        }
+        for (const [dimName, weight] of dimWeights) {
+          if (oldDimWeights.get(dimName) !== weight) {
+            changed = true;
+            break;
+          }
+        }
+        if (changed) break;
+      }
+    }
+
+    if (changed) {
+      this.value_.clear();
+      for (const [layerName, dimWeights] of newValue) {
+        this.value_.set(layerName, new Map(dimWeights));
+      }
+      this.changed.dispatch();
+    }
+  }
+
+  toJSON() {
+    if (this.value_.size === 0) return undefined;
+    const obj: any = {};
+    for (const [layerName, dimWeights] of this.value_) {
+      if (dimWeights.size > 0) {
+        const layerObj: any = {};
+        for (const [dimName, weight] of dimWeights) {
+          layerObj[dimName] = weight;
+        }
+        obj[layerName] = layerObj;
+      }
+    }
+    return Object.keys(obj).length > 0 ? obj : undefined;
+  }
+}
+
 class TrackableViewerState extends CompoundTrackable {
   constructor(public viewer: Borrowed<Viewer>) {
     super();
@@ -253,6 +331,7 @@ class TrackableViewerState extends CompoundTrackable {
     this.add("enableAdaptiveDownsampling", viewer.enableAdaptiveDownsampling);
     this.add("showScaleBar", viewer.showScaleBar);
     this.add("showDefaultAnnotations", viewer.showDefaultAnnotations);
+    this.add("clipDimensionsWeight", viewer.clipDimensionsWeight);
 
     this.add("showSlices", viewer.showPerspectiveSliceViews);
     this.add(
@@ -436,6 +515,7 @@ export class Viewer extends RefCounted implements ViewerState {
   perspectiveViewBackgroundColor = new TrackableRGB(vec3.fromValues(0, 0, 0));
   scaleBarOptions = new TrackableScaleBarOptions();
   partialViewport = new TrackableWindowedViewport();
+  clipDimensionsWeight = new TrackableClipDimensionsWeight();
   statisticsDisplayState = new StatisticsDisplayState();
   helpPanelState = new HelpPanelState();
   settingsPanelState = new ViewerSettingsPanelState();
