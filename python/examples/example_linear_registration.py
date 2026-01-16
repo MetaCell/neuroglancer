@@ -47,7 +47,7 @@ AFFINE_NUM_DECIMALS = 6
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 
-def estimate_transform(fixed_points: np.ndarray, moving_points: np.ndarray):
+def estimate_transform(fixed_points: np.ndarray, moving_points: np.ndarray, force_non_affine=False):
     """
     Choose the appropriate model based on number of points and dimensions.
 
@@ -61,6 +61,8 @@ def estimate_transform(fixed_points: np.ndarray, moving_points: np.ndarray):
         The points to try and map the moving_points to.
     moving_points: np.ndarray
         The points apply the transformation on.
+    force_non_affine: bool
+        Force max of similarity transform.
 
     Returns
     -------
@@ -73,11 +75,11 @@ def estimate_transform(fixed_points: np.ndarray, moving_points: np.ndarray):
 
     if N == 1:
         return translation_fit(fixed_points, moving_points)
-    if N == 2:
+    elif N == 2:
         return rigid_or_similarity_fit(fixed_points, moving_points, rigid=True)
-    if N == 3 and D == 2:
+    elif N == 3 and D == 2:
         return affine_fit(fixed_points, moving_points)
-    if N == 3 and D > 2:
+    elif (N == 3 and D > 2) or force_non_affine:
         return rigid_or_similarity_fit(fixed_points, moving_points, rigid=False)
     return affine_fit(fixed_points, moving_points)
 
@@ -176,6 +178,11 @@ def affine_fit(fixed_points: np.ndarray, moving_points: np.ndarray):
     # and there will be D * (D + 1) of them
     # Format is x1, x2, ..., b1, b2, ...
     tvec, res, rank, sd = np.linalg.lstsq(Q, P)
+
+    print(rank)
+    if rank < D*(D+1):
+        # planar/degenerate -> fall back
+        return rigid_or_similarity_fit(fixed_points, moving_points, rigid=False)
 
     # Put the flattened version back into the matrix
     affine = np.zeros((D, D + 1))
@@ -325,7 +332,7 @@ class LinearRegistrationWorkflow:
         self.unlink_scales = args.unlink_scales
         self.output_name = args.output_name
 
-        self.stored_points = ([], [])
+        self.stored_points = ([], [], False)
         self.stored_map_moving_name_to_data_coords = {}
         self.stored_map_moving_name_to_viewer_coords = {}
         self.affine = None
@@ -338,6 +345,7 @@ class LinearRegistrationWorkflow:
         self._status_timers = {}
         self._current_moving_layer_idx = 0
         self._cached_moving_layer_names = []
+        self._force_non_affine = False
 
         if starting_ng_state is None:
             self._add_demo_data_to_viewer()
@@ -515,7 +523,7 @@ class LinearRegistrationWorkflow:
                 s.layers[registered_name].visible = not is_registered_visible
 
     def _show_help_message(self):
-        in_prog_message = "Place registration points by moving the centre position of one panel and then putting an annotation with ctrl+left click in the other panel. Annotations can be adjusted if needed with alt+left click. Press 't' to toggle visibility of the registered layer. Press 'd' to dump current state for later resumption. Press 'y' to show or hide this help message."
+        in_prog_message = "Place registration points by moving the centre position of one panel and then putting an annotation with ctrl+left click in the other panel. Annotations can be adjusted if needed with alt+left click. Press 't' to toggle visibility of the registered layer. Press 'f' to force at most a similarity transform estimation. Press 'd' to dump current state for later resumption. Press 'y' to show or hide this help message."
         setup_message = "Place fixed (reference) layers in the left hand panel, and moving layers (to be registered) in the right hand panel. Then press 't' once you have completed this setup. Press 'y' to show/hide this message."
         error_message = f"There was an error in setup. Please try again. {setup_message}"
         waiting_message = "Please wait while setup is completed"
@@ -539,6 +547,10 @@ class LinearRegistrationWorkflow:
         else:
             self._show_help_message()
 
+    def toggle_force_non_affine(self, _):
+        self._force_non_affine = not self._force_non_affine
+        self.update_affine()
+
     def _setup_viewer_actions(self):
         viewer = self.viewer
         continue_name = "continueLinearRegistrationWorkflow"
@@ -550,10 +562,14 @@ class LinearRegistrationWorkflow:
         toggle_help_name = "toggleHelpMessage"
         viewer.actions.add(toggle_help_name, self.toggle_help_message)
 
+        force_name = "forceNonAffine"
+        viewer.actions.add(force_name, self.toggle_force_non_affine)
+
         with viewer.config_state.txn() as s:
             s.input_event_bindings.viewer["keyt"] = continue_name
             s.input_event_bindings.viewer["keyd"] = dump_name
             s.input_event_bindings.viewer["keyy"] = toggle_help_name
+            s.input_event_bindings.viewer["keyf"] = force_name
 
     def get_moving_layer_names(self, s: neuroglancer.ViewerState):
         """Get all layers in right panel that are not the registration point annotation"""
@@ -754,7 +770,7 @@ class LinearRegistrationWorkflow:
                 for i in range(n_dims):
                     affine[i][i] = 1
                 self.affine = affine
-                self.stored_points = ([], [])
+                self.stored_points = ([], [], False)
                 return True
             return False
 
@@ -766,13 +782,13 @@ class LinearRegistrationWorkflow:
         # Cached last points estimated with, if similar to current, don't estimate
         if len(self.stored_points[0]) == len(fixed_points) and len(
             self.stored_points[1]
-        ) == len(moving_points):
+        ) == len(moving_points) and self.stored_points[-1] == self._force_non_affine:
             if np.all(np.isclose(self.stored_points[0], fixed_points)) and np.all(
                 np.isclose(self.stored_points[1], moving_points)
             ):
                 return False
-        self.affine = estimate_transform(fixed_points, moving_points)
-        self.stored_points = [fixed_points, moving_points]
+        self.affine = estimate_transform(fixed_points, moving_points, self._force_non_affine)
+        self.stored_points = [fixed_points, moving_points, self._force_non_affine]
 
         return True
 
@@ -797,7 +813,8 @@ class LinearRegistrationWorkflow:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"neuroglancer_state_{timestamp}.json"
 
-        state_dict = self.get_state().to_json()
+        state = self.get_state()
+        state_dict = state.to_json()
 
         with open(filename, "w") as f:
             json.dump(state_dict, f, indent=4)
@@ -805,7 +822,7 @@ class LinearRegistrationWorkflow:
         registration_log_filename = f"registration_log_{timestamp}.json"
 
         with open(registration_log_filename, "w") as f:
-            json.dump(self.get_registration_info(), f, indent=4)
+            json.dump(self.get_registration_info(state), f, indent=4)
 
         print(
             f"Current state dumped to: {filename}, registration log saved to {registration_log_filename}"
