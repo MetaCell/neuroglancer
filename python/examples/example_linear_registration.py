@@ -20,6 +20,11 @@ General workflow:
     7. If an issue happens, the viewer state can go out of sync. To help with this, the python console will regularly print that viewer states are syncing with a timestamp. If you do not see this message for a while, consider continuing the workflow again from a saved state.
     8. To continue from a saved state, dump the viewer state to a file using either the viewer UI or the dump_current_state method in the python console, and then pass this file via --json when starting the script again. You should also pass --continue-workflow (or -c) to skip the initial setup steps. If you renamed the annotation layer containing the registration points, you should also pass --annotations-name (or -a) with the new name. For example:
         python -i example_linear_registration.py --json saved_state.json -c -a registration_points
+
+Known issues:
+    1. Channel dimensions that are store as c' get switched to c^ and then need to have
+    their shaders updated.
+    2. If the layer info fails to be parsed from Python the workflow can't launch past the setup step.
 """
 
 import argparse
@@ -184,8 +189,6 @@ def affine_fit(fixed_points: np.ndarray, moving_points: np.ndarray):
     # Format is x1, x2, ..., b1, b2, ...
     tvec, res, rank, sd = np.linalg.lstsq(Q, P)
 
-    # TODO check if rank works
-    print(rank)
     if rank < D*(D+1):
         # planar/degenerate -> fall back
         return rigid_or_similarity_fit(fixed_points, moving_points, rigid=False)
@@ -478,6 +481,8 @@ class LinearRegistrationWorkflow:
             print(
                 "Try matching the global dimensions to the moving dimension units."
             )
+            # TODO allow recovery from this failure by allowing the user
+            # to enter particular layer name co-ordinate spaces manually
             exit(-1)
         else:
             self.stored_map_moving_name_to_data_coords[self.moving_name] = (
@@ -673,7 +678,6 @@ class LinearRegistrationWorkflow:
                 final_transform.append(row)
         return final_transform
 
-    # TODO ensure this works ok with t
     def has_two_coord_spaces(self, s: neuroglancer.ViewerState):
         """Check if the two coord space setup is complete"""
         fixed_dims, moving_dims = self.get_fixed_and_moving_dims(s)
@@ -694,7 +698,6 @@ class LinearRegistrationWorkflow:
                 if DEBUG:
                     pprint(self.get_registration_info(s))
 
-    # TODO ensure works with t
     def get_fixed_and_moving_dims(
         self, s: Union[neuroglancer.ViewerState, None], dim_names: list | tuple = ()
     ):
@@ -871,15 +874,22 @@ class LinearRegistrationWorkflow:
 
         registration_log_filename = f"registration_log_{timestamp}.json"
 
-        with open(registration_log_filename, "w") as f:
-            json.dump(self.get_registration_info(state), f, indent=4)
+        reg_log_message = f", registration log saved to {registration_log_filename}"
+        try:
+            with open(registration_log_filename, "w") as f:
+                info = self.get_registration_info(state)
+                info.pop("annotations", None)
+                json.dump(info, f, indent=4)
+        except:
+            reg_log_message = ""
+            print("Error saving registration log")
 
         print(
-            f"Current state dumped to: {filename}, registration log saved to {registration_log_filename}"
+            f"Current state dumped to: {filename}{reg_log_message}"
         )
         self._set_status_message(
             "dump",
-            f"State saved to {filename}, registration log saved to {registration_log_filename}",
+            f"State saved to {filename}{reg_log_message}",
         )
 
         return filename
