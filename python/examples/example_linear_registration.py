@@ -40,9 +40,10 @@ import numpy as np
 import scipy.ndimage
 
 DEBUG = True  # print debug info during execution
-MESSAGE_DURATION = 5  # seconds
+MESSAGE_DURATION = 4  # seconds
 NUM_DEMO_DIMS = 3  # Currently can be 2D or 3D
 AFFINE_NUM_DECIMALS = 6
+NUM_NEAREST_POINTS = 4
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
@@ -179,6 +180,7 @@ def affine_fit(fixed_points: np.ndarray, moving_points: np.ndarray):
     # Format is x1, x2, ..., b1, b2, ...
     tvec, res, rank, sd = np.linalg.lstsq(Q, P)
 
+    # TODO check if rank works
     print(rank)
     if rank < D*(D+1):
         # planar/degenerate -> fall back
@@ -321,6 +323,11 @@ class PipelineState(Enum):
     READY = 2
     ERROR = 3
 
+class PointFilter(Enum):
+    """How to filter annotation points."""
+
+    NONE = 0
+    NEAREST = 1
 
 class LinearRegistrationWorkflow:
     def __init__(self, args):
@@ -346,6 +353,7 @@ class LinearRegistrationWorkflow:
         self._current_moving_layer_idx = 0
         self._cached_moving_layer_names = []
         self._force_non_affine = False
+        self._annotation_filter_method = PointFilter.NONE
 
         if starting_ng_state is None:
             self._add_demo_data_to_viewer()
@@ -523,7 +531,7 @@ class LinearRegistrationWorkflow:
                 s.layers[registered_name].visible = not is_registered_visible
 
     def _show_help_message(self):
-        in_prog_message = "Place registration points by moving the centre position of one panel and then putting an annotation with ctrl+left click in the other panel. Annotations can be adjusted if needed with alt+left click. Press 't' to toggle visibility of the registered layer. Press 'f' to force at most a similarity transform estimation. Press 'd' to dump current state for later resumption. Press 'y' to show or hide this help message."
+        in_prog_message = "Place registration points by moving the centre position of one panel and then putting an annotation with ctrl+left click in the other panel. Annotations can be adjusted if needed with alt+left click. Press 't' to toggle visibility of the registered layer. Press 'f' to toggle forcing at most a similarity transform estimation. Press 'g' to toggle between a local affine estimation and a global one. Press 'd' to dump current state for later resumption. Press 'y' to show or hide this help message."
         setup_message = "Place fixed (reference) layers in the left hand panel, and moving layers (to be registered) in the right hand panel. Then press 't' once you have completed this setup. Press 'y' to show/hide this message."
         error_message = f"There was an error in setup. Please try again. {setup_message}"
         waiting_message = "Please wait while setup is completed"
@@ -549,6 +557,17 @@ class LinearRegistrationWorkflow:
 
     def toggle_force_non_affine(self, _):
         self._force_non_affine = not self._force_non_affine
+        message = "Estimating max of similarity transformation" if self._force_non_affine else "Estimating most appropriate transformation"
+        self._set_status_message("transform", message)
+        self.update_affine()
+
+    def toggle_global_estimate(self, _):
+        if self._annotation_filter_method == PointFilter.NONE:
+            self._annotation_filter_method = PointFilter.NEAREST
+            self._set_status_message("global", f"Using nearest {NUM_NEAREST_POINTS} points in transform estimation")
+        elif self._annotation_filter_method == PointFilter.NEAREST:
+            self._annotation_filter_method = PointFilter.NONE
+            self._set_status_message("global", "Using all points in transform estimation")
         self.update_affine()
 
     def _setup_viewer_actions(self):
@@ -565,11 +584,15 @@ class LinearRegistrationWorkflow:
         force_name = "forceNonAffine"
         viewer.actions.add(force_name, self.toggle_force_non_affine)
 
+        global_name = "toggleGlobalEstimate"
+        viewer.actions.add(global_name, self.toggle_global_estimate)
+
         with viewer.config_state.txn() as s:
             s.input_event_bindings.viewer["keyt"] = continue_name
             s.input_event_bindings.viewer["keyd"] = dump_name
             s.input_event_bindings.viewer["keyy"] = toggle_help_name
             s.input_event_bindings.viewer["keyf"] = force_name
+            s.input_event_bindings.viewer["keyg"] = global_name
 
     def get_moving_layer_names(self, s: neuroglancer.ViewerState):
         """Get all layers in right panel that are not the registration point annotation"""
@@ -688,12 +711,12 @@ class LinearRegistrationWorkflow:
                 fixed_dims.append(dim)
         return fixed_dims, moving_dims
 
-    def split_points_into_pairs(self, annotations, dim_names):
+    def split_points_into_pairs(self, annotations, dim_names, current_position = None):
         """In the simple case, each point contains fixed dim coords then moving dim coords
-        but in case the coords are interleaved more complicated, we pull out the
-        relevant info here."""
+        but in case that is the other way around, we handle that here.
+        Right now we can't handle interleaved co-ordinate spaces."""
         if len(annotations) == 0:
-            return np.zeros((0, 0)), np.zeros((0, 0))
+            return np.zeros((0, 0)), np.zeros((0, 0)), None
         first_name = dim_names[0]
         fixed_dims, _ = self.get_fixed_and_moving_dims(None, dim_names)
         real_dims_last = first_name not in fixed_dims
@@ -707,7 +730,11 @@ class LinearRegistrationWorkflow:
                 moving_index = j if real_dims_last else j + num_dims
                 fixed_points[i, j] = a.point[fixed_index]
                 moving_points[i, j] = a.point[moving_index]
-        return np.array(fixed_points), np.array(moving_points)
+        if current_position is not None:
+            dim_add = num_dims if real_dims_last else 0
+            fixed_position_indices = [i + dim_add for i in range(num_dims)]
+            return np.array(fixed_points), np.array(moving_points), current_position[fixed_position_indices]
+        return np.array(fixed_points), np.array(moving_points), current_position
 
     def update_registered_layers(self, s: neuroglancer.ViewerState):
         """When the affine updates, update the relevant transform in all layers
@@ -775,9 +802,10 @@ class LinearRegistrationWorkflow:
             return False
 
         dim_names = s.dimensions.names
-        fixed_points, moving_points = self.split_points_into_pairs(
-            annotations, dim_names
+        fixed_points, moving_points, current_position = self.split_points_into_pairs(
+            annotations, dim_names, s.position
         )
+        fixed_points, moving_points = self._filter_annotations(fixed_points, moving_points, current_position)
 
         # Cached last points estimated with, if similar to current, don't estimate
         if len(self.stored_points[0]) == len(fixed_points) and len(
@@ -792,12 +820,28 @@ class LinearRegistrationWorkflow:
 
         return True
 
+    def _filter_annotations(self, fixed_points: np.ndarray, moving_points: np.ndarray, position):
+        """To allow local estimations e.g. from the nearest points"""
+        if self._annotation_filter_method == PointFilter.NONE:
+            return fixed_points, moving_points
+        elif self._annotation_filter_method == PointFilter.NEAREST:
+            # if less than desired points, return them all
+            if len(fixed_points) <= NUM_NEAREST_POINTS:
+                return fixed_points, moving_points
+            # Find the X nearest fixed point indices
+            nearest_indices = []
+            diff = fixed_points - np.asarray(position)
+            d2 = np.sum(diff * diff, axis=1)
+            nearest_indices = np.argpartition(d2, NUM_NEAREST_POINTS-1)[ :NUM_NEAREST_POINTS]
+            return fixed_points[nearest_indices], moving_points[nearest_indices]
+        return fixed_points, moving_points
+
     def get_registration_info(self, state: neuroglancer.ViewerState):
         """Return dict of fixed points, moving points, affine, and transformed points."""
         info = {}
         annotations = state.layers[self.annotations_name].annotations
         dim_names = state.dimensions.names
-        fixed_points, moving_points = self.split_points_into_pairs(
+        fixed_points, moving_points, _ = self.split_points_into_pairs(
             annotations, dim_names
         )
         info["annotations"] = annotations
