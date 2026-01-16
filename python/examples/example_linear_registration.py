@@ -45,6 +45,10 @@ NUM_DEMO_DIMS = 3  # Currently can be 2D or 3D
 AFFINE_NUM_DECIMALS = 6
 NUM_NEAREST_POINTS = 4
 
+# We make a copy of all the physical dimensions, but to avoid
+# expecting a copy of dimensions like t, or time, they are listed here
+NON_PHYSICAL_DIM_NAMES = ["t", "time"]
+
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 
@@ -374,10 +378,7 @@ class LinearRegistrationWorkflow:
         if self.ready_state == PipelineState.COORDS_READY:
             self.setup_registration_point_layer()
         elif self.ready_state == PipelineState.ERROR:
-            self._set_status_message(
-                "help",
-                "Please manually enter second coordinate space information for the moving layers.",
-            )
+            return
         elif self.ready_state == PipelineState.READY:
             self.update_affine()
         self._clear_status_messages()
@@ -427,6 +428,7 @@ class LinearRegistrationWorkflow:
             if self.ready_state == PipelineState.ERROR or not self.has_two_coord_spaces(
                 s
             ):
+                self._show_help_message()
                 return
 
             # Also setup the new layer to clip differently on non display dims
@@ -474,8 +476,9 @@ class LinearRegistrationWorkflow:
                 f"ERROR: Could not parse volume info for {self.moving_name}: {e} {info_future}"
             )
             print(
-                "Please manually enter the coordinate space information as a second co-ordinate space."
+                "Try matching the global dimensions to the moving dimension units."
             )
+            exit(-1)
         else:
             self.stored_map_moving_name_to_data_coords[self.moving_name] = (
                 result.dimensions
@@ -496,6 +499,7 @@ class LinearRegistrationWorkflow:
                     layer_name, None
                 )
                 if output_dims is None:
+                    print(f"ERROR: could not get output dims for a moving layer {layer_name}")
                     self.ready_state = PipelineState.ERROR
                     continue
                 self.stored_map_moving_name_to_viewer_coords[layer_name] = []
@@ -534,7 +538,7 @@ class LinearRegistrationWorkflow:
         in_prog_message = "Place registration points by moving the centre position of one panel and then putting an annotation with ctrl+left click in the other panel. Annotations can be adjusted if needed with alt+left click. Press 't' to toggle visibility of the registered layer. Press 'f' to toggle forcing at most a similarity transform estimation. Press 'g' to toggle between a local affine estimation and a global one. Press 'd' to dump current state for later resumption. Press 'y' to show or hide this help message."
         setup_message = "Place fixed (reference) layers in the left hand panel, and moving layers (to be registered) in the right hand panel. Then press 't' once you have completed this setup. Press 'y' to show/hide this message."
         error_message = f"There was an error in setup. Please try again. {setup_message}"
-        waiting_message = "Please wait while setup is completed"
+        waiting_message = "Please wait while setup is completed. In case it seems to be stuck, try pressing 't' again."
 
         help_message = ""
         if self.ready_state == PipelineState.READY:
@@ -694,7 +698,7 @@ class LinearRegistrationWorkflow:
     def get_fixed_and_moving_dims(
         self, s: Union[neuroglancer.ViewerState, None], dim_names: list | tuple = ()
     ):
-        """Extract the fixed and moving dim names from the state"""
+        """Extract the fixed and moving dim names from the state or list of names"""
         if s is None:
             dimensions = dim_names
         else:
@@ -705,6 +709,8 @@ class LinearRegistrationWorkflow:
         moving_dims = []
         fixed_dims = []
         for dim in dimensions:
+            if dim in NON_PHYSICAL_DIM_NAMES:
+                continue
             if dim[:-1] in dimensions:
                 moving_dims.append(dim)
             else:
