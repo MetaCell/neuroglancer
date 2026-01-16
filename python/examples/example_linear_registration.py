@@ -22,8 +22,9 @@ General workflow:
         python -i example_linear_registration.py --json saved_state.json -c -a registration_points
 
 Known issues:
-    1. Channel dimensions that are store as c' get switched to c^ and then need to have
-    their shaders updated.
+    1. Channel dimensions that are stored as c' get switched to c^ and then need to have
+    their shaders updated. Once the update is done though they will stay as c^ so this
+    is a one time setup.
     2. If the layer info fails to be parsed from Python the workflow can't launch past the setup step.
 """
 
