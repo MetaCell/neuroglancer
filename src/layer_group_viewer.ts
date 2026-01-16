@@ -77,6 +77,7 @@ import {
   CompoundTrackable,
   optionallyRestoreFromJsonMember,
 } from "#src/util/trackable.js";
+import type { TrackableClipDimensionsWeight } from "#src/viewer.js";
 import type { WatchableVisibilityPriority } from "#src/visibility_priority/frontend.js";
 import { EnumSelectWidget } from "#src/widget/enum_widget.js";
 import type { TrackableScaleBarOptions } from "#src/widget/scale_bar.js";
@@ -103,6 +104,7 @@ export interface LayerGroupViewerState {
   crossSectionBackgroundColor: TrackableRGB;
   perspectiveViewBackgroundColor: TrackableRGB;
   hideCrossSectionBackground3D: TrackableBoolean;
+  clipDimensionsWeight: TrackableClipDimensionsWeight;
 }
 
 export interface LayerGroupViewerOptions {
@@ -384,6 +386,9 @@ export class LayerGroupViewer extends RefCounted {
   }
   get scaleBarOptions() {
     return this.viewerState.scaleBarOptions;
+  }
+  get clipDimensionsWeight() {
+    return this.viewerState.clipDimensionsWeight;
   }
   layerPanel: LayerBar | undefined;
   layout: DataPanelLayoutContainer;
