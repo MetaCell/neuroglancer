@@ -81,7 +81,6 @@ def debounce(wait: float):
     return decorator
 
 
-# TODO further test these fits, 2 point fit not right at the moment
 def fit_model(fixed_points: np.ndarray, moving_points: np.ndarray):
     """
     Choose the appropriate model based on number of points and dimensions.
@@ -346,7 +345,7 @@ class LinearRegistrationWorkflow:
                 "help",
                 "Place points to inform registration by first placing the centre position in the left/right panel to the correct place for the fixed/moving data, and then placing a point annotation with ctrl+left click in the other panel. You can move the annotations afterwards if needed with alt+left click. Press 't' to toggle visibility of the registered layer. Press 'd' to dump current state for later resumption.",
             )
-            # self._clear_status_messages()
+        self._clear_status_messages()
 
     def get_moving_layer_names(self, s: neuroglancer.ViewerState):
         right_panel_layers = [
@@ -505,6 +504,7 @@ class LinearRegistrationWorkflow:
         # If we get here we have all the coord spaces ready and can update viewer
         self.ready_state = ReadyState.COORDS_READY
         with self.viewer.txn() as s:
+            self._ignore_non_display_dims()
             for layer_name in self._cached_moving_layer_names:
                 output_dims = self.stored_map_moving_name_to_data_coords.get(
                     layer_name, None
@@ -693,7 +693,6 @@ class LinearRegistrationWorkflow:
 
     def get_registration_info(self):
         info = {}
-        # TODO consider also dumping the full viewer state
         with self.viewer.txn() as s:
             annotations = s.layers[self.annotations_name].annotations
             dim_names = s.dimensions.names
@@ -765,6 +764,16 @@ class LinearRegistrationWorkflow:
         with self.viewer.txn() as s:
             s.layers["fixed"] = fixed_layer
             s.layers["moving"] = moving_layer
+
+    def _ignore_non_display_dims(self):
+        with self.viewer.txn() as s:
+            dim_names = s.dimensions.names
+            dim_map = {k: 0 for k in dim_names if k not in ["t", "time", "t1"]}
+            layer_map = {
+                self.annotations_name: dim_map
+            }
+            s.clip_dimensions_weight = layer_map
+
 
 
 def add_mapping_args(ap: argparse.ArgumentParser):

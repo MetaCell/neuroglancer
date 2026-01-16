@@ -1879,6 +1879,10 @@ class ViewerState(JsonObjectWrapper):
     tool_palettes = toolPalettes = wrapped_property(
         "toolPalettes", typed_map(key_type=str, value_type=ToolPalette)
     )
+    clip_dimensions_weight = clipDimensionsWeight = wrapped_property(
+        "clipDimensionsWeight",
+        optional(typed_map(key_type=str, value_type=typed_map(key_type=str, value_type=float)))
+    )
 
     @staticmethod
     def interpolate(a, b, t):
