@@ -568,8 +568,8 @@ class LinearRegistrationWorkflow:
     def toggle_help_message(self, _):
         help_shown = "help" in self._status_timers
         if help_shown:
-            with self.viewer.config_state.txn() as s:
-                self._clear_status_message("help", s)
+            with self.viewer.config_state.txn() as cs:
+                self._clear_status_message("help", cs)
         else:
             self._show_help_message()
 
@@ -605,12 +605,12 @@ class LinearRegistrationWorkflow:
         global_name = "toggleGlobalEstimate"
         viewer.actions.add(global_name, self.toggle_global_estimate)
 
-        with viewer.config_state.txn() as s:
-            s.input_event_bindings.viewer["keyt"] = continue_name
-            s.input_event_bindings.viewer["keyd"] = dump_name
-            s.input_event_bindings.viewer["keyy"] = toggle_help_name
-            s.input_event_bindings.viewer["keyf"] = force_name
-            s.input_event_bindings.viewer["keyg"] = global_name
+        with viewer.config_state.txn() as cs:
+            cs.input_event_bindings.viewer["keyt"] = continue_name
+            cs.input_event_bindings.viewer["keyd"] = dump_name
+            cs.input_event_bindings.viewer["keyy"] = toggle_help_name
+            cs.input_event_bindings.viewer["keyf"] = force_name
+            cs.input_event_bindings.viewer["keyg"] = global_name
 
     def get_moving_layer_names(self, s: neuroglancer.ViewerState):
         """Get all layers in right panel that are not the registration point annotation"""
@@ -919,17 +919,17 @@ class LinearRegistrationWorkflow:
                 continue
             if time() - v > MESSAGE_DURATION:
                 to_pop.append(k)
-        with self.viewer.config_state.txn() as s:
+        with self.viewer.config_state.txn() as cs:
             for k in to_pop:
-                self._clear_status_message(k, s)
+                self._clear_status_message(k, cs)
 
     def _clear_status_message(self, key: str, config):
         config.status_messages.pop(key, None)
         return self._status_timers.pop(key, None)
 
     def _set_status_message(self, key: str, message: str):
-        with self.viewer.config_state.txn() as s:
-            s.status_messages[key] = message
+        with self.viewer.config_state.txn() as cs:
+            cs.status_messages[key] = message
         self._status_timers[key] = time()
 
     def _transform_points_with_affine(self, points: np.ndarray):
