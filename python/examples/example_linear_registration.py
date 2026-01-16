@@ -348,6 +348,7 @@ class LinearRegistrationWorkflow:
 
         self.stored_points = ([], [], False)
         self.stored_map_moving_name_to_data_coords = {}
+        # currently unused, keeping to parallel the above map
         self.stored_map_moving_name_to_viewer_coords = {}
         self.affine = None
         self.viewer = neuroglancer.Viewer()
@@ -369,8 +370,15 @@ class LinearRegistrationWorkflow:
 
         self._setup_viewer_actions()
         self._show_help_message()
-        if self.ready_state != PipelineState.READY:
+
+        if self.ready_state == PipelineState.NOT_READY:
             self.setup_initial_two_panel_layout()
+        elif args.continue_workflow:
+            self._cached_moving_layer_names = self.get_moving_layer_names(self.get_state())
+            with open(args.reg_path, "r") as f:
+                info = json.load(f)
+            self.stored_map_moving_name_to_data_coords = {k: neuroglancer.CoordinateSpace(json=v) for k, v in info["layer_cache"].items()}
+            self.stored_map_moving_name_to_viewer_coords = {k: neuroglancer.CoordinateSpace(json=v) for k, v in info["viewer_layer_cache"].items()}
 
     def update(self):
         """Primary update loop, called whenever the viewer state changes."""
@@ -879,6 +887,8 @@ class LinearRegistrationWorkflow:
             with open(registration_log_filename, "w") as f:
                 info = self.get_registration_info(state)
                 info.pop("annotations", None)
+                info["layer_cache"] = {k: v.to_json() for k, v in self.stored_map_moving_name_to_data_coords.items()}
+                info["viewer_layer_cache"] = {k: v.to_json() for k, v in self.stored_map_moving_name_to_viewer_coords.items()}
                 json.dump(info, f, indent=4)
         except:
             reg_log_message = ""
@@ -955,7 +965,7 @@ def add_mapping_args(ap: argparse.ArgumentParser):
         "--continue-workflow",
         "-c",
         action="store_true",
-        help="Indicates that we are continuing the workflow from a previously saved state. This will skip the inital setup steps and resume from the affine estimation step directly.",
+        help="Indicates that we are continuing the workflow from a previously saved state. This will skip the inital setup steps and resume from the affine estimation step directly. You must provide both a state (--url or --json) and the registration info dumped at the same time by this script (-r)",
     )
     ap.add_argument(
         "--unlink-scales",
@@ -976,6 +986,12 @@ def add_mapping_args(ap: argparse.ArgumentParser):
         "-t",
         action="store_true",
         help="If set, run the tests and exit.",
+    )
+    ap.add_argument(
+        "--reg-path",
+        "-r",
+        type=str,
+        help="Path to a JSON dump of registration info for continuing from. Required with the -c flag."
     )
 
 
@@ -1146,6 +1162,8 @@ class TestTransforms:
 
 if __name__ == "__main__":
     args = handle_args()
+    if args.continue_workflow and not args.reg_path:
+        raise ValueError("The continue flag requires a registration dump.")
 
     if args.test:
         import pytest
