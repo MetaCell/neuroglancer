@@ -53,6 +53,7 @@ import {
 import type { RenderLayerRole } from "#src/renderlayer.js";
 import { TrackableBoolean } from "#src/trackable_boolean.js";
 import type {
+  TrackableValue,
   WatchableSet,
   WatchableValueInterface,
 } from "#src/trackable_value.js";
@@ -105,6 +106,7 @@ export interface LayerGroupViewerState {
   perspectiveViewBackgroundColor: TrackableRGB;
   hideCrossSectionBackground3D: TrackableBoolean;
   clipDimensionsWeight: TrackableClipDimensionsWeight;
+  pickRadius: TrackableValue<number>;
 }
 
 export interface LayerGroupViewerOptions {
@@ -374,6 +376,9 @@ export class LayerGroupViewer extends RefCounted {
   }
   get visibility() {
     return this.viewerState.visibility;
+  }
+  get pickRadius() {
+    return this.viewerState.pickRadius;
   }
   get visibleLayerRoles() {
     return this.viewerState.visibleLayerRoles;
