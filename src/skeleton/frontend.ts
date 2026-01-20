@@ -36,6 +36,7 @@ import { update3dRenderLayerAttachment } from "#src/renderlayer.js";
 import {
   forEachVisibleSegment,
   getObjectKey,
+  getVisibleSegments,
 } from "#src/segmentation_display_state/base.js";
 import type { SegmentationDisplayState3D } from "#src/segmentation_display_state/frontend.js";
 import {
@@ -1128,6 +1129,18 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       attachment,
     );
     if (modelMatrix === undefined) return;
+    
+    // Check if a regular SkeletonLayer is also active (both sources active)
+    let hasRegularSkeletonLayer = false;
+    if (_layer.userLayer) {
+      for (const renderLayer of _layer.userLayer.renderLayers) {
+        if (renderLayer instanceof PerspectiveViewSkeletonLayer || 
+            renderLayer instanceof SliceViewPanelSkeletonLayer) {
+          hasRegularSkeletonLayer = true;
+          break;
+        }
+      }
+    }
     let pointDiameter: number;
     if (renderOptions.mode.value === SkeletonRenderMode.LINES_AND_POINTS) {
       pointDiameter = Math.max(5, lineWidth * 2);
@@ -1225,6 +1238,15 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
         // Render each segment with its own color
         for (const [segmentId, segmentIndicesList] of segmentIndicesMap) {
           const bigintId = BigInt(segmentId);
+          
+          // Skip visible segments if regular skeleton layer is also active
+          if (hasRegularSkeletonLayer) {
+            const visibleSegments = getVisibleSegments(displayState.segmentationGroupState.value);
+            if (visibleSegments.has(bigintId)) {
+              continue; // Skip this segment, let regular skeleton layer render it
+            }
+          }
+          
           const color = getBaseObjectColor(displayState, bigintId, tempColor);
           const alphaForSegment = displayState.objectAlpha.value;
           color[0] *= alphaForSegment;
