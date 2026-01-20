@@ -1239,16 +1239,20 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
         for (const [segmentId, segmentIndicesList] of segmentIndicesMap) {
           const bigintId = BigInt(segmentId);
           
+          // Determine if this segment is visible
+          const visibleSegments = getVisibleSegments(displayState.segmentationGroupState.value);
+          const isSegmentVisible = visibleSegments.has(bigintId);
+          
           // Skip visible segments if regular skeleton layer is also active
-          if (hasRegularSkeletonLayer) {
-            const visibleSegments = getVisibleSegments(displayState.segmentationGroupState.value);
-            if (visibleSegments.has(bigintId)) {
-              continue; // Skip this segment, let regular skeleton layer render it
-            }
+          if (hasRegularSkeletonLayer && isSegmentVisible) {
+            continue; // Skip this segment, let regular skeleton layer render it
           }
           
           const color = getBaseObjectColor(displayState, bigintId, tempColor);
-          const alphaForSegment = displayState.objectAlpha.value;
+          // Use hiddenObjectAlpha for non-visible segments, objectAlpha for visible ones
+          const alphaForSegment = isSegmentVisible ? 
+            displayState.objectAlpha.value : 
+            (displayState.hiddenObjectAlpha?.value ?? 0);
           color[0] *= alphaForSegment;
           color[1] *= alphaForSegment;
           color[2] *= alphaForSegment;

@@ -535,6 +535,7 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
     0,
   );
   objectAlpha = trackableAlphaValue(1.0);
+  hiddenObjectAlpha = trackableAlphaValue(0.0);
   ignoreNullVisibleSet = new TrackableBoolean(true, true);
   skeletonRenderingOptions = new SkeletonRenderingOptions();
   shaderError = makeWatchableShaderError();
@@ -663,6 +664,9 @@ export class SegmentationUserLayer extends Base {
     this.displayState.objectAlpha.changed.add(
       this.specificationChanged.dispatch,
     );
+    this.displayState.hiddenObjectAlpha.changed.add(
+      this.specificationChanged.dispatch,
+    );
     this.displayState.hoverHighlight.changed.add(
       this.specificationChanged.dispatch,
     );
@@ -750,6 +754,18 @@ export class SegmentationUserLayer extends Base {
           (x) =>
             x instanceof PerspectiveViewSkeletonLayer ||
             x instanceof PerspectiveViewSpatiallyIndexedSkeletonLayer,
+        ),
+      { changed: this.layersChanged, value: this.renderLayers },
+    ),
+  );
+
+  readonly hasSpatiallyIndexedSkeletonsLayer = this.registerDisposer(
+    makeCachedLazyDerivedWatchableValue(
+      (layers) =>
+        layers.some(
+          (x) =>
+            x instanceof PerspectiveViewSpatiallyIndexedSkeletonLayer ||
+            x instanceof SliceViewPanelSpatiallyIndexedSkeletonLayer,
         ),
       { changed: this.layersChanged, value: this.renderLayers },
     ),
@@ -1061,6 +1077,9 @@ export class SegmentationUserLayer extends Base {
     this.displayState.objectAlpha.restoreState(
       specification[json_keys.OBJECT_ALPHA_JSON_KEY],
     );
+    this.displayState.hiddenObjectAlpha.restoreState(
+      specification[json_keys.HIDDEN_OPACITY_3D_JSON_KEY],
+    );
     this.displayState.baseSegmentColoring.restoreState(
       specification[json_keys.BASE_SEGMENT_COLORING_JSON_KEY],
     );
@@ -1124,6 +1143,7 @@ export class SegmentationUserLayer extends Base {
       this.displayState.notSelectedAlpha.toJSON();
     x[json_keys.SATURATION_JSON_KEY] = this.displayState.saturation.toJSON();
     x[json_keys.OBJECT_ALPHA_JSON_KEY] = this.displayState.objectAlpha.toJSON();
+    x[json_keys.HIDDEN_OPACITY_3D_JSON_KEY] = this.displayState.hiddenObjectAlpha.toJSON();
     x[json_keys.HOVER_HIGHLIGHT_JSON_KEY] =
       this.displayState.hoverHighlight.toJSON();
     x[json_keys.BASE_SEGMENT_COLORING_JSON_KEY] =

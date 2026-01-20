@@ -77,6 +77,15 @@ export const LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
     })),
   },
   {
+    label: "Hidden Opacity (3d)",
+    toolJson: json_keys.HIDDEN_OPACITY_3D_JSON_KEY,
+    isValid: (layer) => layer.hasSpatiallyIndexedSkeletonsLayer,
+    title: "Opacity of hidden (non-visible) skeleton nodes in 3D views",
+    ...rangeLayerControl((layer) => ({
+      value: layer.displayState.hiddenObjectAlpha,
+    })),
+  },
+  {
     label: "Silhouette (3d)",
     toolJson: json_keys.MESH_SILHOUETTE_RENDERING_JSON_KEY,
     isValid: (layer) => layer.has3dLayer,

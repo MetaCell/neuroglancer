@@ -1,6 +1,7 @@
 export const SELECTED_ALPHA_JSON_KEY = "selectedAlpha";
 export const NOT_SELECTED_ALPHA_JSON_KEY = "notSelectedAlpha";
 export const OBJECT_ALPHA_JSON_KEY = "objectAlpha";
+export const HIDDEN_OPACITY_3D_JSON_KEY = "hiddenObjectAlpha";
 export const SATURATION_JSON_KEY = "saturation";
 export const HOVER_HIGHLIGHT_JSON_KEY = "hoverHighlight";
 export const HIDE_SEGMENT_ZERO_JSON_KEY = "hideSegmentZero";
