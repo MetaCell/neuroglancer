@@ -56,6 +56,7 @@ export interface CatmaidSource {
 
 import { fetchOkWithCredentials } from "#src/credentials_provider/http_request.js";
 import type { CredentialsProvider } from "#src/credentials_provider/index.js";
+import { Unpackr } from "msgpackr";
 
 export interface CatmaidToken {
     token?: string;
@@ -109,6 +110,7 @@ export class CatmaidClient implements CatmaidSource {
     private async fetch(
         endpoint: string,
         options: RequestInit = {},
+        expectMsgpack: boolean = false,
     ): Promise<any> {
         // Ensure baseUrl doesn't have trailing slash and endpoint doesn't have leading slash
         const baseUrl = this.baseUrl.replace(/\/$/, "");
@@ -131,6 +133,16 @@ export class CatmaidClient implements CatmaidSource {
                 throw new Error(`CATMAID request failed: ${response.statusText}`);
             }
         }
+        
+        if (expectMsgpack) {
+            const buffer = await response.arrayBuffer();
+            const unpackr = new Unpackr({
+                mapsAsObjects: false,
+                int64AsType: "number",
+            });
+            return unpackr.unpack(new Uint8Array(buffer));
+        }
+        
         return response.json();
     }
 
@@ -239,19 +251,19 @@ export class CatmaidClient implements CatmaidSource {
             max: { x: number; y: number; z: number };
         },
     ): Promise<CatmaidNode[]> {
-        const body = new URLSearchParams({
+        const params = new URLSearchParams({
             left: boundingBox.min.x.toString(),
             top: boundingBox.min.y.toString(),
             z1: boundingBox.min.z.toString(),
             right: boundingBox.max.x.toString(),
             bottom: boundingBox.max.y.toString(),
             z2: boundingBox.max.z.toString(),
+            lod_type: 'percent',
+            lod: '0',
+            format: 'msgpack',
         });
 
-        const data = await this.fetch("nodes/", {
-            method: "POST",
-            body: body,
-        });
+        const data = await this.fetch(`node/list?${params.toString()}`, {}, true);
 
         return data[0].map((n: any[]) => ({
             id: n[0],
