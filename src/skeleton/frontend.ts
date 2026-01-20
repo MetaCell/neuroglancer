@@ -1091,6 +1091,10 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       SharedWatchableValue.makeFromExisting(rpc, displayState.renderScaleTarget),
     );
     
+    const skeletonLodWatchable = this.registerDisposer(
+      SharedWatchableValue.makeFromExisting(rpc, (displayState as any).skeletonLod),
+    );
+    
     sharedObject.initializeCounterpart(rpc, {
       chunkManager: chunkManager.rpcId,
       localPosition: this.registerDisposer(
@@ -1100,6 +1104,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
         ),
       ).rpcId,
       renderScaleTarget: renderScaleTargetWatchable.rpcId,
+      skeletonLod: skeletonLodWatchable.rpcId,
     });
     this.backend = sharedObject;
   }

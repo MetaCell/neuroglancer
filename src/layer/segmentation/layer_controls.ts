@@ -86,6 +86,16 @@ export const LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
     })),
   },
   {
+    label: "LOD",
+    toolJson: json_keys.SKELETON_LOD_JSON_KEY,
+    isValid: (layer) => layer.hasSpatiallyIndexedSkeletonsLayer,
+    title: "Level of detail for spatially indexed skeletons (0-1)",
+    ...rangeLayerControl((layer) => ({
+      value: layer.displayState.skeletonLod,
+      options: { min: 0, max: 1, step: 0.01 },
+    })),
+  },
+  {
     label: "Silhouette (3d)",
     toolJson: json_keys.MESH_SILHOUETTE_RENDERING_JSON_KEY,
     isValid: (layer) => layer.has3dLayer,

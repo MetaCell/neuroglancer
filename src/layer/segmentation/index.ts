@@ -92,6 +92,7 @@ import { SegmentationRenderLayer } from "#src/sliceview/volume/segmentation_rend
 import { StatusMessage } from "#src/status.js";
 import { trackableAlphaValue } from "#src/trackable_alpha.js";
 import { TrackableBoolean } from "#src/trackable_boolean.js";
+import { trackableFiniteFloat } from "#src/trackable_finite_float.js";
 import type {
   TrackableValueInterface,
   WatchableValueInterface,
@@ -536,6 +537,7 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
   );
   objectAlpha = trackableAlphaValue(1.0);
   hiddenObjectAlpha = trackableAlphaValue(0.0);
+  skeletonLod = trackableFiniteFloat(0.0);
   ignoreNullVisibleSet = new TrackableBoolean(true, true);
   skeletonRenderingOptions = new SkeletonRenderingOptions();
   shaderError = makeWatchableShaderError();
@@ -665,6 +667,9 @@ export class SegmentationUserLayer extends Base {
       this.specificationChanged.dispatch,
     );
     this.displayState.hiddenObjectAlpha.changed.add(
+      this.specificationChanged.dispatch,
+    );
+    this.displayState.skeletonLod.changed.add(
       this.specificationChanged.dispatch,
     );
     this.displayState.hoverHighlight.changed.add(
@@ -1080,6 +1085,9 @@ export class SegmentationUserLayer extends Base {
     this.displayState.hiddenObjectAlpha.restoreState(
       specification[json_keys.HIDDEN_OPACITY_3D_JSON_KEY],
     );
+    this.displayState.skeletonLod.restoreState(
+      specification[json_keys.SKELETON_LOD_JSON_KEY],
+    );
     this.displayState.baseSegmentColoring.restoreState(
       specification[json_keys.BASE_SEGMENT_COLORING_JSON_KEY],
     );
@@ -1144,6 +1152,7 @@ export class SegmentationUserLayer extends Base {
     x[json_keys.SATURATION_JSON_KEY] = this.displayState.saturation.toJSON();
     x[json_keys.OBJECT_ALPHA_JSON_KEY] = this.displayState.objectAlpha.toJSON();
     x[json_keys.HIDDEN_OPACITY_3D_JSON_KEY] = this.displayState.hiddenObjectAlpha.toJSON();
+    x[json_keys.SKELETON_LOD_JSON_KEY] = this.displayState.skeletonLod.toJSON();
     x[json_keys.HOVER_HIGHLIGHT_JSON_KEY] =
       this.displayState.hoverHighlight.toJSON();
     x[json_keys.BASE_SEGMENT_COLORING_JSON_KEY] =

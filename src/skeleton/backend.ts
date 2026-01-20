@@ -67,6 +67,7 @@ import {
 import type { RPC } from "#src/worker_rpc.js";
 import { registerRPC, registerSharedObject } from "#src/worker_rpc.js";
 import { deserializeTransformedSources } from "#src/sliceview/backend.js";
+import { debounce } from "lodash-es";
 
 export interface SpatiallyIndexedSkeletonChunkSpecification extends SliceViewChunkSpecification {
   chunkLayout: any;
@@ -234,6 +235,7 @@ export class SpatiallyIndexedSkeletonChunk extends SliceViewChunk implements Ske
 
 export class SpatiallyIndexedSkeletonSourceBackend extends SliceViewChunkSourceBackend<SpatiallyIndexedSkeletonChunkSpecification, SpatiallyIndexedSkeletonChunk> {
   chunkConstructor = SpatiallyIndexedSkeletonChunk;
+  currentLod: number = 0;
 }
 
 interface SpatiallyIndexedSkeletonRenderLayerAttachmentState {
@@ -247,11 +249,13 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
 ) {
   localPosition: SharedWatchableValue<Float32Array>;
   renderScaleTarget: SharedWatchableValue<number>;
+  skeletonLod: SharedWatchableValue<number>;
 
   constructor(rpc: RPC, options: any) {
     super(rpc, options);
     this.renderScaleTarget = rpc.get(options.renderScaleTarget);
     this.localPosition = rpc.get(options.localPosition);
+    this.skeletonLod = rpc.get(options.skeletonLod);
     const scheduleUpdateChunkPriorities = () =>
       this.chunkManager.scheduleUpdateChunkPriorities();
     this.registerDisposer(
@@ -259,6 +263,45 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
     );
     this.registerDisposer(
       this.renderScaleTarget.changed.add(scheduleUpdateChunkPriorities),
+    );
+    
+    // Debounce LOD changes to avoid making requests for every slider value
+    const debouncedLodUpdate = debounce(() => {
+      const lodValue = this.skeletonLod.value;
+      // Update LOD value in all sources and invalidate all chunks when LOD changes
+      for (const attachment of this.attachments.values()) {
+        const attachmentState =
+          attachment.state! as SpatiallyIndexedSkeletonRenderLayerAttachmentState;
+        const { transformedSources } = attachmentState;
+        for (const scales of transformedSources) {
+          for (const tsource of scales) {
+            const source = tsource.source as SpatiallyIndexedSkeletonSourceBackend;
+            source.currentLod = lodValue;
+            this.chunkManager.queueManager.invalidateSourceCache(source);
+          }
+        }
+      }
+      scheduleUpdateChunkPriorities();
+    }, 300);
+    
+    this.registerDisposer(
+      this.skeletonLod.changed.add(() => {
+        // Update currentLod immediately so it's ready when debounce completes
+        const lodValue = this.skeletonLod.value;
+        for (const attachment of this.attachments.values()) {
+          const attachmentState =
+            attachment.state! as SpatiallyIndexedSkeletonRenderLayerAttachmentState;
+          const { transformedSources } = attachmentState;
+          for (const scales of transformedSources) {
+            for (const tsource of scales) {
+              const source = tsource.source as SpatiallyIndexedSkeletonSourceBackend;
+              source.currentLod = lodValue;
+            }
+          }
+        }
+        // Debounce the invalidation and chunk request
+        debouncedLodUpdate();
+      }),
     );
     this.registerDisposer(
       this.chunkManager.recomputeChunkPriorities.add(() =>

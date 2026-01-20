@@ -54,7 +54,10 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
             min: { x: localMin[0], y: localMin[1], z: localMin[2] },
             max: { x: localMax[0], y: localMax[1], z: localMax[2] },
         };
-        const nodes = await this.client.fetchNodes(bbox);
+        
+        // Use currentLod from the source backend
+        const lodValue = this.currentLod;
+        const nodes = await this.client.fetchNodes(bbox, lodValue);
 
         const numVertices = nodes.length;
         const vertexPositions = new Float32Array(numVertices * 3);

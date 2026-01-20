@@ -39,7 +39,7 @@ export interface CatmaidSource {
     getDimensions(): Promise<{ min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null>;
     getResolution(): Promise<{ x: number; y: number; z: number } | null>;
     getGridCellSize(): Promise<{ x: number; y: number; z: number }>;
-    fetchNodes(boundingBox: { min: { x: number, y: number, z: number }, max: { x: number, y: number, z: number } }): Promise<CatmaidNode[]>;
+    fetchNodes(boundingBox: { min: { x: number, y: number, z: number }, max: { x: number, y: number, z: number } }, lod?: number): Promise<CatmaidNode[]>;
     addNode(
         skeletonId: number,
         x: number,
@@ -250,6 +250,7 @@ export class CatmaidClient implements CatmaidSource {
             min: { x: number; y: number; z: number };
             max: { x: number; y: number; z: number };
         },
+        lod: number = 0,
     ): Promise<CatmaidNode[]> {
         const params = new URLSearchParams({
             left: boundingBox.min.x.toString(),
@@ -259,7 +260,7 @@ export class CatmaidClient implements CatmaidSource {
             bottom: boundingBox.max.y.toString(),
             z2: boundingBox.max.z.toString(),
             lod_type: 'percent',
-            lod: '0',
+            lod: lod.toString(),
             format: 'msgpack',
         });
 
