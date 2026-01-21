@@ -38,7 +38,7 @@ export interface CatmaidSource {
     getSkeleton(skeletonId: number): Promise<CatmaidNode[]>;
     getDimensions(): Promise<{ min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null>;
     getResolution(): Promise<{ x: number; y: number; z: number } | null>;
-    getGridCellSize(): Promise<{ x: number; y: number; z: number }>;
+    getGridCellSizes(): Promise<Array<{ x: number; y: number; z: number }>>;
     fetchNodes(boundingBox: { min: { x: number, y: number, z: number }, max: { x: number, y: number, z: number } }, lod?: number): Promise<CatmaidNode[]>;
     addNode(
         skeletonId: number,
@@ -204,30 +204,33 @@ export class CatmaidClient implements CatmaidSource {
         return info ? info.resolution : null;
     }
 
-    async getGridCellSize(): Promise<{ x: number; y: number; z: number }> {
+    async getGridCellSizes(): Promise<Array<{ x: number; y: number; z: number }>> {
         const info = await this.getMetadataInfo();
+        const gridSizes: Array<{ x: number; y: number; z: number }> = [];
         
-        // Try to get grid cell size from metadata
+        // Try to get all grid cell sizes from metadata
         if (info?.metadata?.cache_configurations) {
-            const gridConfig = info.metadata.cache_configurations.find(
-                (config: CatmaidCacheConfiguration) => config.cache_type === "grid"
-            );
-            
-            if (gridConfig) {
-                return {
-                    x: gridConfig.cell_width,
-                    y: gridConfig.cell_height,
-                    z: gridConfig.cell_depth,
-                };
+            for (const config of info.metadata.cache_configurations) {
+                if (config.cache_type === "grid") {
+                    gridSizes.push({
+                        x: config.cell_width,
+                        y: config.cell_height,
+                        z: config.cell_depth,
+                    });
+                }
             }
         }
         
-        // Fall back to default values
-        return {
-            x: DEFAULT_CACHE_GRID_CELL_WIDTH,
-            y: DEFAULT_CACHE_GRID_CELL_HEIGHT,
-            z: DEFAULT_CACHE_GRID_CELL_DEPTH,
-        };
+        // If no grid configs found, use default
+        if (gridSizes.length === 0) {
+            gridSizes.push({
+                x: DEFAULT_CACHE_GRID_CELL_WIDTH,
+                y: DEFAULT_CACHE_GRID_CELL_HEIGHT,
+                z: DEFAULT_CACHE_GRID_CELL_DEPTH,
+            });
+        }
+        
+        return gridSizes;
     }
 
     async getSkeleton(skeletonId: number): Promise<CatmaidNode[]> {

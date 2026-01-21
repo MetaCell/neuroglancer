@@ -38,7 +38,7 @@ import {
   getObjectKey,
   getVisibleSegments,
 } from "#src/segmentation_display_state/base.js";
-import type { SegmentationDisplayState3D } from "#src/segmentation_display_state/frontend.js";
+import type { SegmentationDisplayState3D, SegmentationDisplayState } from "#src/segmentation_display_state/frontend.js";
 import {
   forEachVisibleSegmentToDraw,
   getBaseObjectColor,
@@ -58,6 +58,7 @@ import type { RPC } from "#src/worker_rpc.js";
 import {
   getVolumetricTransformedSources,
   serializeAllTransformedSources,
+  SliceViewSingleResolutionSource,
 } from "#src/sliceview/frontend.js";
 import {
   SliceViewPanelRenderLayer,
@@ -68,6 +69,7 @@ import {
 import {
   SliceViewChunk,
   SliceViewChunkSource,
+  MultiscaleSliceViewChunkSource,
 } from "#src/sliceview/frontend.js";
 import type { SliceViewChunkSpecification } from "#src/sliceview/base.js";
 import { ChunkLayout } from "#src/sliceview/chunk_layout.js";
@@ -613,7 +615,7 @@ export class SkeletonLayer extends RefCounted {
     >,
   ) {
     const lineWidth = renderOptions.lineWidth.value;
-    const { gl, source, displayState } = this;
+    const { gl, displayState, source } = this;
     if (displayState.objectAlpha.value <= 0.0) {
       // Skip drawing.
       return;
@@ -1030,6 +1032,43 @@ export class SpatiallyIndexedSkeletonSource extends SliceViewChunkSource<
   }
 }
 
+export abstract class MultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleSliceViewChunkSource<SpatiallyIndexedSkeletonSource> {}
+
+export class MultiscaleSliceViewSpatiallyIndexedSkeletonLayer extends SliceViewRenderLayer<
+  SpatiallyIndexedSkeletonSource
+> {
+  private renderOptions: ViewSpecificSkeletonRenderingOptions;
+  constructor(
+    public chunkManager: ChunkManager,
+    public multiscaleSource: MultiscaleSpatiallyIndexedSkeletonSource,
+    public displayState: SegmentationDisplayState
+  ) {
+    super(chunkManager, multiscaleSource, {
+      transform: (displayState as any).transform,
+      localPosition: (displayState as any).localPosition,
+      renderScaleTarget: (displayState as any).renderScaleTarget,
+    });
+    this.renderOptions = (displayState as any).skeletonRenderingOptions.params2d;
+    this.registerDisposer(
+      this.renderOptions.mode.changed.add(
+        this.redrawNeeded.dispatch,
+      ),
+    );
+    this.registerDisposer(
+      this.renderOptions.lineWidth.changed.add(this.redrawNeeded.dispatch),
+    );
+    this.initializeCounterpart();
+  }
+
+  // Draw is no-op as per SliceViewSpatiallyIndexedSkeletonLayer pattern
+  draw(renderContext: SliceViewRenderContext) {
+    renderContext;
+  }
+}
+
+type SpatiallyIndexedSkeletonSourceEntry =
+  SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>;
+
 export class SpatiallyIndexedSkeletonLayer extends RefCounted implements SkeletonLayerInterface {
   layerChunkProgressInfo = new LayerChunkProgressInfo();
   redrawNeeded = new NullarySignal();
@@ -1047,14 +1086,29 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     return this.displayState.objectAlpha;
   }
 
+  sources: SpatiallyIndexedSkeletonSourceEntry[];
+  source: SpatiallyIndexedSkeletonSource;
+
   constructor(
     public chunkManager: ChunkManager,
-    public source: SpatiallyIndexedSkeletonSource,
+    sources: SpatiallyIndexedSkeletonSourceEntry[] | SpatiallyIndexedSkeletonSource,
     public displayState: SkeletonLayerDisplayState & {
       localPosition: WatchableValueInterface<Float32Array>;
     },
   ) {
     super();
+    if (Array.isArray(sources)) {
+      this.sources = sources;
+      this.source = sources[0].chunkSource;
+    } else {
+      this.sources = [
+        {
+          chunkSource: sources,
+          chunkToMultiscaleTransform: mat4.create(),
+        },
+      ];
+      this.source = sources;
+    }
     this.localPosition = displayState.localPosition;
     registerRedrawWhenSegmentationDisplayState3DChanged(displayState, this);
     this.displayState.shaderError.value = undefined;
@@ -1066,7 +1120,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       }),
     );
 
-    this.vertexAttributes = source.vertexAttributes;
+    this.vertexAttributes = this.source.vertexAttributes;
     // Monitor visible segments changes to update generation
     this.registerDisposer(
       registerNested((context, segmentationGroup) => {
@@ -1124,7 +1178,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     >,
   ) {
     const lineWidth = renderOptions.lineWidth.value;
-    const { gl, source, displayState } = this;
+    const { gl, displayState } = this;
     if (displayState.objectAlpha.value <= 0.0) {
       return;
     }
@@ -1190,313 +1244,319 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     );
 
     // Render all chunks with proper segment colors
-    const chunks = source.chunks;
     const tempColor = new Float32Array(4);
     tempColor[3] = 1.0; // Set alpha to 1.0
 
     // Build global node map for inter-chunk connections
     const globalNodeMap = new Map<number, { chunk: SpatiallyIndexedSkeletonChunk; vertexIndex: number }>();
 
-    for (const chunk of chunks.values()) {
-      if (chunk.state === ChunkState.GPU_MEMORY) {
-        // Populate global map with all nodes from this chunk
-        for (const [nodeId, vertexIndex] of chunk.nodeMap.entries()) {
-          globalNodeMap.set(nodeId, { chunk, vertexIndex });
+    for (const sourceEntry of this.sources) {
+      const chunks = sourceEntry.chunkSource.chunks;
+      for (const chunk of chunks.values()) {
+        if (chunk.state === ChunkState.GPU_MEMORY) {
+          // Populate global map with all nodes from this chunk
+          for (const [nodeId, vertexIndex] of chunk.nodeMap.entries()) {
+            globalNodeMap.set(nodeId, { chunk, vertexIndex });
+          }
         }
       }
     }
 
     // Render chunks with intra-chunk and inter-chunk connections
-    for (const chunk of chunks.values()) {
-      if (chunk.state === ChunkState.GPU_MEMORY && chunk.numIndices > 0) {
-        // Extract segment IDs from vertex attributes
-        const attrOffset = chunk.vertexAttributeOffsets && chunk.vertexAttributeOffsets.length > 1
-          ? chunk.vertexAttributeOffsets[1]
-          : 0;
-        const segmentIds = new Float32Array(
-          chunk.vertexAttributes.buffer,
-          chunk.vertexAttributes.byteOffset + attrOffset,
-          chunk.numVertices,
-        );
+    for (const sourceEntry of this.sources) {
+      const source = sourceEntry.chunkSource;
+      const chunks = source.chunks;
+      for (const chunk of chunks.values()) {
+        if (chunk.state === ChunkState.GPU_MEMORY && chunk.numIndices > 0) {
+          // Extract segment IDs from vertex attributes
+          const attrOffset = chunk.vertexAttributeOffsets && chunk.vertexAttributeOffsets.length > 1
+            ? chunk.vertexAttributeOffsets[1]
+            : 0;
+          const segmentIds = new Float32Array(
+            chunk.vertexAttributes.buffer,
+            chunk.vertexAttributes.byteOffset + attrOffset,
+            chunk.numVertices,
+          );
 
-        // Get unique segment IDs in this chunk for color verification
-        const uniqueSegmentIds = new Set<number>();
-        for (let i = 0; i < chunk.numVertices; ++i) {
-          uniqueSegmentIds.add(Math.round(segmentIds[i]));
-        }
-
-        // Group indices by segment ID
-        const segmentIndicesMap = new Map<number, number[]>();
-        const indices = chunk.indices;
-
-        for (let i = 0; i < chunk.numIndices; i += 2) {
-          const idx0 = indices[i];
-          const idx1 = indices[i + 1];
-          const segmentId = Math.round(segmentIds[idx0]);
-
-          if (!segmentIndicesMap.has(segmentId)) {
-            segmentIndicesMap.set(segmentId, []);
+          // Get unique segment IDs in this chunk for color verification
+          const uniqueSegmentIds = new Set<number>();
+          for (let i = 0; i < chunk.numVertices; ++i) {
+            uniqueSegmentIds.add(Math.round(segmentIds[i]));
           }
-          segmentIndicesMap.get(segmentId)!.push(idx0, idx1);
-        }
 
-        // Render each segment with its own color
-        for (const [segmentId, segmentIndicesList] of segmentIndicesMap) {
-          const bigintId = BigInt(segmentId);
-          
-          // Determine if this segment is visible
-          const visibleSegments = getVisibleSegments(displayState.segmentationGroupState.value);
-          const isSegmentVisible = visibleSegments.has(bigintId);
-          
-          // Skip visible segments if regular skeleton layer is also active
-          if (hasRegularSkeletonLayer && isSegmentVisible) {
-            continue; // Skip this segment, let regular skeleton layer render it
-          }
-          
-          const color = getBaseObjectColor(displayState, bigintId, tempColor);
-          // Use hiddenObjectAlpha for non-visible segments, objectAlpha for visible ones
-          const alphaForSegment = isSegmentVisible ? 
-            displayState.objectAlpha.value : 
-            (displayState.hiddenObjectAlpha?.value ?? 0);
-          color[0] *= alphaForSegment;
-          color[1] *= alphaForSegment;
-          color[2] *= alphaForSegment;
+          // Group indices by segment ID
+          const segmentIndicesMap = new Map<number, number[]>();
+          const indices = chunk.indices;
 
-          // Set color for this segment
-          edgeShader.bind();
-          renderHelper.setColor(gl, edgeShader, color as Float32Array);
-          nodeShader.bind();
-          renderHelper.setColor(gl, nodeShader, color as Float32Array);
+          for (let i = 0; i < chunk.numIndices; i += 2) {
+            const idx0 = indices[i];
+            const idx1 = indices[i + 1];
+            const segmentId = Math.round(segmentIds[idx0]);
 
-          // Build per-segment vertex list and remap indices (2D only optimization)
-          let originalIndexBuffer = chunk.indexBuffer;
-          let originalNumIndices = chunk.numIndices;
-          let originalTextures = chunk.vertexAttributeTextures;
-          let originalNumVertices = chunk.numVertices;
-
-          // Collect all vertex indices belonging to this segment
-          const vertexList: number[] = [];
-          const oldToNew = new Map<number, number>();
-          for (let v = 0; v < chunk.numVertices; ++v) {
-            if (Math.round(segmentIds[v]) === segmentId) {
-              oldToNew.set(v, vertexList.length);
-              vertexList.push(v);
+            if (!segmentIndicesMap.has(segmentId)) {
+              segmentIndicesMap.set(segmentId, []);
             }
+            segmentIndicesMap.get(segmentId)!.push(idx0, idx1);
           }
 
-          // Remap the edge indices to the compact index space for this segment
-          const remappedIndices: number[] = [];
-          for (let i = 0; i < segmentIndicesList.length; i += 2) {
-            const aOld = segmentIndicesList[i];
-            const bOld = segmentIndicesList[i + 1];
-            const aNew = oldToNew.get(aOld);
-            const bNew = oldToNew.get(bOld);
-            if (aNew !== undefined && bNew !== undefined) {
-              remappedIndices.push(aNew, bNew);
+          // Render each segment with its own color
+          for (const [segmentId, segmentIndicesList] of segmentIndicesMap) {
+            const bigintId = BigInt(segmentId);
+            
+            // Determine if this segment is visible
+            const visibleSegments = getVisibleSegments(displayState.segmentationGroupState.value);
+            const isSegmentVisible = visibleSegments.has(bigintId);
+            
+            // Skip visible segments if regular skeleton layer is also active
+            if (hasRegularSkeletonLayer && isSegmentVisible) {
+              continue; // Skip this segment, let regular skeleton layer render it
             }
-          }
+            
+            const color = getBaseObjectColor(displayState, bigintId, tempColor);
+            // Use hiddenObjectAlpha for non-visible segments, objectAlpha for visible ones
+            const alphaForSegment = isSegmentVisible ? 
+              displayState.objectAlpha.value : 
+              (displayState.hiddenObjectAlpha?.value ?? 0);
+            color[0] *= alphaForSegment;
+            color[1] *= alphaForSegment;
+            color[2] *= alphaForSegment;
 
-          if (remappedIndices.length === 0 || vertexList.length === 0) {
-            continue;
-          }
+            // Set color for this segment
+            edgeShader.bind();
+            renderHelper.setColor(gl, edgeShader, color as Float32Array);
+            nodeShader.bind();
+            renderHelper.setColor(gl, nodeShader, color as Float32Array);
 
-          // Build or retrieve cached compacted vertex textures for this segment
-          if (renderHelper.targetIsSliceView) {
-            if (!chunk.filteredVertexTextureCache) {
-              chunk.filteredVertexTextureCache = new Map();
+            // Build per-segment vertex list and remap indices (2D only optimization)
+            let originalIndexBuffer = chunk.indexBuffer;
+            let originalNumIndices = chunk.numIndices;
+            let originalTextures = chunk.vertexAttributeTextures;
+            let originalNumVertices = chunk.numVertices;
+
+            // Collect all vertex indices belonging to this segment
+            const vertexList: number[] = [];
+            const oldToNew = new Map<number, number>();
+            for (let v = 0; v < chunk.numVertices; ++v) {
+              if (Math.round(segmentIds[v]) === segmentId) {
+                oldToNew.set(v, vertexList.length);
+                vertexList.push(v);
+              }
             }
-            let cacheEntry = chunk.filteredVertexTextureCache.get(segmentId);
-            if (!cacheEntry || cacheEntry.generation !== this.generation) {
-              // Create compacted attribute arrays: positions (vec3) + segment (float)
-              const posOffset = chunk.vertexAttributeOffsets ? chunk.vertexAttributeOffsets[0] : 0;
-              const posAll = new Float32Array(
-                chunk.vertexAttributes.buffer,
-                chunk.vertexAttributes.byteOffset + posOffset,
-                chunk.numVertices * 3,
+
+            // Remap the edge indices to the compact index space for this segment
+            const remappedIndices: number[] = [];
+            for (let i = 0; i < segmentIndicesList.length; i += 2) {
+              const aOld = segmentIndicesList[i];
+              const bOld = segmentIndicesList[i + 1];
+              const aNew = oldToNew.get(aOld);
+              const bNew = oldToNew.get(bOld);
+              if (aNew !== undefined && bNew !== undefined) {
+                remappedIndices.push(aNew, bNew);
+              }
+            }
+
+            if (remappedIndices.length === 0 || vertexList.length === 0) {
+              continue;
+            }
+
+            // Build or retrieve cached compacted vertex textures for this segment
+            if (renderHelper.targetIsSliceView) {
+              if (!chunk.filteredVertexTextureCache) {
+                chunk.filteredVertexTextureCache = new Map();
+              }
+              let cacheEntry = chunk.filteredVertexTextureCache.get(segmentId);
+              if (!cacheEntry || cacheEntry.generation !== this.generation) {
+                // Create compacted attribute arrays: positions (vec3) + segment (float)
+                const posOffset = chunk.vertexAttributeOffsets ? chunk.vertexAttributeOffsets[0] : 0;
+                const posAll = new Float32Array(
+                  chunk.vertexAttributes.buffer,
+                  chunk.vertexAttributes.byteOffset + posOffset,
+                  chunk.numVertices * 3,
+                );
+
+                const posFiltered = new Float32Array(vertexList.length * 3);
+                for (let j = 0; j < vertexList.length; ++j) {
+                  const vOld = vertexList[j];
+                  const srcStart = vOld * 3;
+                  const dstStart = j * 3;
+                  posFiltered[dstStart] = posAll[srcStart];
+                  posFiltered[dstStart + 1] = posAll[srcStart + 1];
+                  posFiltered[dstStart + 2] = posAll[srcStart + 2];
+                }
+
+                const segFiltered = new Float32Array(vertexList.length);
+                for (let j = 0; j < vertexList.length; ++j) {
+                  const vOld = vertexList[j];
+                  segFiltered[j] = segmentIds[vOld];
+                }
+                
+                // Concatenate into a single byte array with offsets [0, posBytes]
+                const posBytes = new Uint8Array(posFiltered.buffer.slice(0));
+                const segBytes = new Uint8Array(segFiltered.buffer.slice(0));
+                const vertexBytes = new Uint8Array(posBytes.byteLength + segBytes.byteLength);
+                vertexBytes.set(posBytes, 0);
+                vertexBytes.set(segBytes, posBytes.byteLength);
+                const vertexOffsets = new Uint32Array([0, posBytes.byteLength]);
+
+                const filteredTextures = uploadVertexAttributesToGPU(
+                  gl,
+                  vertexBytes,
+                  vertexOffsets,
+                  source.attributeTextureFormats,
+                );
+
+                cacheEntry = {
+                  textures: filteredTextures,
+                  numVertices: vertexList.length,
+                  generation: this.generation,
+                };
+                chunk.filteredVertexTextureCache.set(segmentId, cacheEntry);
+              }
+
+              // Create remapped index buffer for this segment
+              const segmentIndexBuffer = GLBuffer.fromData(
+                gl,
+                new Uint32Array(remappedIndices),
+                WebGL2RenderingContext.ARRAY_BUFFER,
+                WebGL2RenderingContext.STATIC_DRAW,
               );
 
-              const posFiltered = new Float32Array(vertexList.length * 3);
-              for (let j = 0; j < vertexList.length; ++j) {
-                const vOld = vertexList[j];
-                const srcStart = vOld * 3;
-                const dstStart = j * 3;
-                posFiltered[dstStart] = posAll[srcStart];
-                posFiltered[dstStart + 1] = posAll[srcStart + 1];
-                posFiltered[dstStart + 2] = posAll[srcStart + 2];
-              }
+              // Temporarily swap buffers and textures to filtered versions
+              originalIndexBuffer = chunk.indexBuffer;
+              originalNumIndices = chunk.numIndices;
+              originalTextures = chunk.vertexAttributeTextures;
+              originalNumVertices = chunk.numVertices;
 
-              const segFiltered = new Float32Array(vertexList.length);
-              for (let j = 0; j < vertexList.length; ++j) {
-                const vOld = vertexList[j];
-                segFiltered[j] = segmentIds[vOld];
-              }
+              chunk.indexBuffer = segmentIndexBuffer;
+              chunk.numIndices = remappedIndices.length;
+              chunk.vertexAttributeTextures = cacheEntry.textures;
+              chunk.numVertices = cacheEntry.numVertices;
+
+              // Render this segment (2D filtered)
+              renderHelper.drawSkeleton(
+                gl,
+                edgeShader,
+                nodeShader,
+                chunk,
+                renderContext.projectionParameters,
+              );
               
-              // Concatenate into a single byte array with offsets [0, posBytes]
-              const posBytes = new Uint8Array(posFiltered.buffer.slice(0));
-              const segBytes = new Uint8Array(segFiltered.buffer.slice(0));
-              const vertexBytes = new Uint8Array(posBytes.byteLength + segBytes.byteLength);
-              vertexBytes.set(posBytes, 0);
-              vertexBytes.set(segBytes, posBytes.byteLength);
-              const vertexOffsets = new Uint32Array([0, posBytes.byteLength]);
+              // Restore original state and dispose temp index buffer
+              chunk.indexBuffer = originalIndexBuffer;
+              chunk.numIndices = originalNumIndices;
+              chunk.vertexAttributeTextures = originalTextures;
+              chunk.numVertices = originalNumVertices;
+              segmentIndexBuffer.dispose();
+            } else {
+              // 3D path: also need to filter vertices per segment to ensure correct coloring
+              // Otherwise, shader colormap based on segment ID will override uColor
+              if (!chunk.filteredVertexTextureCache) {
+                chunk.filteredVertexTextureCache = new Map();
+              }
+              let cacheEntry = chunk.filteredVertexTextureCache.get(segmentId);
+              if (!cacheEntry || cacheEntry.generation !== this.generation) {
+                // Create compacted attribute arrays: positions (vec3) + segment (float)
+                const posOffset = chunk.vertexAttributeOffsets ? chunk.vertexAttributeOffsets[0] : 0;
+                const posAll = new Float32Array(
+                  chunk.vertexAttributes.buffer,
+                  chunk.vertexAttributes.byteOffset + posOffset,
+                  chunk.numVertices * 3,
+                );
 
-              const filteredTextures = uploadVertexAttributesToGPU(
-                gl,
-                vertexBytes,
-                vertexOffsets,
-                this.source.attributeTextureFormats,
-              );
+                const posFiltered = new Float32Array(vertexList.length * 3);
+                for (let j = 0; j < vertexList.length; ++j) {
+                  const vOld = vertexList[j];
+                  const srcStart = vOld * 3;
+                  const dstStart = j * 3;
+                  posFiltered[dstStart] = posAll[srcStart];
+                  posFiltered[dstStart + 1] = posAll[srcStart + 1];
+                  posFiltered[dstStart + 2] = posAll[srcStart + 2];
+                }
 
-              cacheEntry = {
-                textures: filteredTextures,
-                numVertices: vertexList.length,
-                generation: this.generation,
-              };
-              chunk.filteredVertexTextureCache.set(segmentId, cacheEntry);
-            }
+                const segFiltered = new Float32Array(vertexList.length);
+                for (let j = 0; j < vertexList.length; ++j) {
+                  const vOld = vertexList[j];
+                  segFiltered[j] = segmentIds[vOld];
+                }
 
-            // Create remapped index buffer for this segment
-            const segmentIndexBuffer = GLBuffer.fromData(
-              gl,
-              new Uint32Array(remappedIndices),
-              WebGL2RenderingContext.ARRAY_BUFFER,
-              WebGL2RenderingContext.STATIC_DRAW,
-            );
+                // Concatenate into a single byte array with offsets [0, posBytes]
+                const posBytes = new Uint8Array(posFiltered.buffer.slice(0));
+                const segBytes = new Uint8Array(segFiltered.buffer.slice(0));
+                const vertexBytes = new Uint8Array(posBytes.byteLength + segBytes.byteLength);
+                vertexBytes.set(posBytes, 0);
+                vertexBytes.set(segBytes, posBytes.byteLength);
+                const vertexOffsets = new Uint32Array([0, posBytes.byteLength]);
 
-            // Temporarily swap buffers and textures to filtered versions
-            originalIndexBuffer = chunk.indexBuffer;
-            originalNumIndices = chunk.numIndices;
-            originalTextures = chunk.vertexAttributeTextures;
-            originalNumVertices = chunk.numVertices;
+                const filteredTextures = uploadVertexAttributesToGPU(
+                  gl,
+                  vertexBytes,
+                  vertexOffsets,
+                  source.attributeTextureFormats,
+                );
 
-            chunk.indexBuffer = segmentIndexBuffer;
-            chunk.numIndices = remappedIndices.length;
-            chunk.vertexAttributeTextures = cacheEntry.textures;
-            chunk.numVertices = cacheEntry.numVertices;
-
-            // Render this segment (2D filtered)
-            renderHelper.drawSkeleton(
-              gl,
-              edgeShader,
-              nodeShader,
-              chunk,
-              renderContext.projectionParameters,
-            );
-            
-            // Restore original state and dispose temp index buffer
-            chunk.indexBuffer = originalIndexBuffer;
-            chunk.numIndices = originalNumIndices;
-            chunk.vertexAttributeTextures = originalTextures;
-            chunk.numVertices = originalNumVertices;
-            segmentIndexBuffer.dispose();
-          } else {
-            // 3D path: also need to filter vertices per segment to ensure correct coloring
-            // Otherwise, shader colormap based on segment ID will override uColor
-            if (!chunk.filteredVertexTextureCache) {
-              chunk.filteredVertexTextureCache = new Map();
-            }
-            let cacheEntry = chunk.filteredVertexTextureCache.get(segmentId);
-            if (!cacheEntry || cacheEntry.generation !== this.generation) {
-              // Create compacted attribute arrays: positions (vec3) + segment (float)
-              const posOffset = chunk.vertexAttributeOffsets ? chunk.vertexAttributeOffsets[0] : 0;
-              const posAll = new Float32Array(
-                chunk.vertexAttributes.buffer,
-                chunk.vertexAttributes.byteOffset + posOffset,
-                chunk.numVertices * 3,
-              );
-
-              const posFiltered = new Float32Array(vertexList.length * 3);
-              for (let j = 0; j < vertexList.length; ++j) {
-                const vOld = vertexList[j];
-                const srcStart = vOld * 3;
-                const dstStart = j * 3;
-                posFiltered[dstStart] = posAll[srcStart];
-                posFiltered[dstStart + 1] = posAll[srcStart + 1];
-                posFiltered[dstStart + 2] = posAll[srcStart + 2];
+                cacheEntry = {
+                  textures: filteredTextures,
+                  numVertices: vertexList.length,
+                  generation: this.generation,
+                };
+                chunk.filteredVertexTextureCache.set(segmentId, cacheEntry);
               }
 
-              const segFiltered = new Float32Array(vertexList.length);
-              for (let j = 0; j < vertexList.length; ++j) {
-                const vOld = vertexList[j];
-                segFiltered[j] = segmentIds[vOld];
-              }
-
-              // Concatenate into a single byte array with offsets [0, posBytes]
-              const posBytes = new Uint8Array(posFiltered.buffer.slice(0));
-              const segBytes = new Uint8Array(segFiltered.buffer.slice(0));
-              const vertexBytes = new Uint8Array(posBytes.byteLength + segBytes.byteLength);
-              vertexBytes.set(posBytes, 0);
-              vertexBytes.set(segBytes, posBytes.byteLength);
-              const vertexOffsets = new Uint32Array([0, posBytes.byteLength]);
-
-              const filteredTextures = uploadVertexAttributesToGPU(
+              const segmentIndexBuffer = GLBuffer.fromData(
                 gl,
-                vertexBytes,
-                vertexOffsets,
-                this.source.attributeTextureFormats,
+                new Uint32Array(remappedIndices),
+                WebGL2RenderingContext.ARRAY_BUFFER,
+                WebGL2RenderingContext.STATIC_DRAW,
               );
-
-              cacheEntry = {
-                textures: filteredTextures,
-                numVertices: vertexList.length,
-                generation: this.generation,
-              };
-              chunk.filteredVertexTextureCache.set(segmentId, cacheEntry);
-            }
-
-            const segmentIndexBuffer = GLBuffer.fromData(
-              gl,
-              new Uint32Array(remappedIndices),
-              WebGL2RenderingContext.ARRAY_BUFFER,
-              WebGL2RenderingContext.STATIC_DRAW,
-            );
-            const originalIndexBuffer3d = chunk.indexBuffer;
-            const originalNumIndices3d = chunk.numIndices;
-            const originalTextures3d = chunk.vertexAttributeTextures;
-            const originalNumVertices3d = chunk.numVertices;
-            
-            chunk.indexBuffer = segmentIndexBuffer;
-            chunk.numIndices = remappedIndices.length;
-            chunk.vertexAttributeTextures = cacheEntry.textures;
-            chunk.numVertices = cacheEntry.numVertices;
-            
-            renderHelper.drawSkeleton(
-              gl,
-              edgeShader,
-              nodeShader,
-              chunk,
-              renderContext.projectionParameters,
-            );
-            
-            
-            chunk.indexBuffer = originalIndexBuffer3d;
-            chunk.numIndices = originalNumIndices3d;
-            chunk.vertexAttributeTextures = originalTextures3d;
-            chunk.numVertices = originalNumVertices3d;
-            segmentIndexBuffer.dispose();
-          }
-        }
-
-        // Handle inter-chunk connections
-        if (chunk.missingConnections.length > 0) {
-          const interChunkEdges: Array<{ segmentId: number; childIdx: number; parentChunk: SpatiallyIndexedSkeletonChunk; parentIdx: number }> = [];
-
-          for (const conn of chunk.missingConnections) {
-            const parentNode = globalNodeMap.get(conn.parentId);
-            if (parentNode) {
-              // We found the parent in another chunk, store edge info
-              interChunkEdges.push({
-                segmentId: conn.skeletonId,
-                childIdx: conn.vertexIndex,
-                parentChunk: parentNode.chunk,
-                parentIdx: parentNode.vertexIndex,
-              });
+              const originalIndexBuffer3d = chunk.indexBuffer;
+              const originalNumIndices3d = chunk.numIndices;
+              const originalTextures3d = chunk.vertexAttributeTextures;
+              const originalNumVertices3d = chunk.numVertices;
+              
+              chunk.indexBuffer = segmentIndexBuffer;
+              chunk.numIndices = remappedIndices.length;
+              chunk.vertexAttributeTextures = cacheEntry.textures;
+              chunk.numVertices = cacheEntry.numVertices;
+              
+              renderHelper.drawSkeleton(
+                gl,
+                edgeShader,
+                nodeShader,
+                chunk,
+                renderContext.projectionParameters,
+              );
+              
+              
+              chunk.indexBuffer = originalIndexBuffer3d;
+              chunk.numIndices = originalNumIndices3d;
+              chunk.vertexAttributeTextures = originalTextures3d;
+              chunk.numVertices = originalNumVertices3d;
+              segmentIndexBuffer.dispose();
             }
           }
 
-          if (interChunkEdges.length > 0) {
-            // console.log(`Found ${interChunkEdges.length} inter-chunk connections in chunk`);
-            // TODO: Render inter-chunk edges by creating combined vertex buffers
-            // This requires combining vertex data from different chunks
+          // Handle inter-chunk connections
+          if (chunk.missingConnections.length > 0) {
+            const interChunkEdges: Array<{ segmentId: number; childIdx: number; parentChunk: SpatiallyIndexedSkeletonChunk; parentIdx: number }> = [];
+
+            for (const conn of chunk.missingConnections) {
+              const parentNode = globalNodeMap.get(conn.parentId);
+              if (parentNode) {
+                // We found the parent in another chunk, store edge info
+                interChunkEdges.push({
+                  segmentId: conn.skeletonId,
+                  childIdx: conn.vertexIndex,
+                  parentChunk: parentNode.chunk,
+                  parentIdx: parentNode.vertexIndex,
+                });
+              }
+            }
+
+            if (interChunkEdges.length > 0) {
+              // console.log(`Found ${interChunkEdges.length} inter-chunk connections in chunk`);
+              // TODO: Render inter-chunk edges by creating combined vertex buffers
+              // This requires combining vertex data from different chunks
+            }
           }
         }
       }
@@ -1608,10 +1668,13 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
           const transformedSources = getVolumetricTransformedSources(
             displayDimensionRenderInfo,
             transform,
-            () => [[{
-              chunkSource: baseLayer.source,
-              chunkToMultiscaleTransform: mat4.create(),
-            }]],
+            () => [
+              baseLayer.sources.map((sourceEntry) => ({
+                chunkSource: sourceEntry.chunkSource,
+                chunkToMultiscaleTransform:
+                  sourceEntry.chunkToMultiscaleTransform,
+              })),
+            ],
             attachment.messages,
             this,
           );

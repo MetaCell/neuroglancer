@@ -1360,9 +1360,9 @@ class GraphConnection extends SegmentationGraphSourceConnection {
 
   meshAddNewSegments(segments: bigint[]) {
     const meshSource = this.getMeshSource();
-    if (meshSource) {
+    if (meshSource && 'rpc' in meshSource && meshSource.rpc) {
       for (const segment of segments) {
-        meshSource.rpc!.invoke(GRAPHENE_MESH_NEW_SEGMENT_RPC_ID, {
+        meshSource.rpc.invoke(GRAPHENE_MESH_NEW_SEGMENT_RPC_ID, {
           rpcId: meshSource.rpcId!,
           segment,
         });

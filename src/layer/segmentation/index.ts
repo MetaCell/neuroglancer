@@ -85,7 +85,10 @@ import {
   SliceViewSpatiallyIndexedSkeletonLayer,
   SpatiallyIndexedSkeletonLayer,
   SpatiallyIndexedSkeletonSource,
+  MultiscaleSpatiallyIndexedSkeletonSource,
+  MultiscaleSliceViewSpatiallyIndexedSkeletonLayer,
 } from "#src/skeleton/frontend.js";
+import { CatmaidMultiscaleSpatiallyIndexedSkeletonSource } from "#src/datasource/catmaid/frontend.js";
 import { DataType, VolumeType } from "#src/sliceview/volume/base.js";
 import { MultiscaleVolumeChunkSource } from "#src/sliceview/volume/frontend.js";
 import { SegmentationRenderLayer } from "#src/sliceview/volume/segmentation_renderlayer.js";
@@ -845,6 +848,33 @@ export class SegmentationUserLayer extends Base {
                 displayState,
               ),
             );
+          } else if (mesh instanceof MultiscaleSpatiallyIndexedSkeletonSource) {
+            const base = new MultiscaleSliceViewSpatiallyIndexedSkeletonLayer(
+              this.manager.chunkManager,
+              mesh,
+              displayState,
+            );
+            loadedSubsource.addRenderLayer(base);
+
+            // Use the first source (finest resolution) for perspective and panel views
+            const allSources = mesh.getSources({} as any);
+            if (allSources.length > 0 && allSources[0].length > 0) {
+                const singleBase = new SpatiallyIndexedSkeletonLayer(
+                    this.manager.chunkManager,
+                    mesh instanceof CatmaidMultiscaleSpatiallyIndexedSkeletonSource
+                      ? allSources[0]
+                      : allSources[0][0].chunkSource,
+                    displayState,
+                );
+                loadedSubsource.addRenderLayer(
+                    new PerspectiveViewSpatiallyIndexedSkeletonLayer(singleBase.addRef()),
+                );
+                loadedSubsource.addRenderLayer(
+                    new SliceViewPanelSpatiallyIndexedSkeletonLayer(
+                    /* transfer ownership */ singleBase,
+                    ),
+                );
+            }
           } else if (mesh instanceof SpatiallyIndexedSkeletonSource) {
             const base = new SpatiallyIndexedSkeletonLayer(
               this.manager.chunkManager,

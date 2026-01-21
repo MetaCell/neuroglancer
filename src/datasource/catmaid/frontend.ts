@@ -19,7 +19,7 @@ import {
     makeIdentityTransform,
 } from "#src/coordinate_transform.js";
 import { makeDataBoundsBoundingBoxAnnotationSet } from "#src/annotation/index.js";
-import { SpatiallyIndexedSkeletonSource, SkeletonSource } from "#src/skeleton/frontend.js";
+import { SpatiallyIndexedSkeletonSource, SkeletonSource, MultiscaleSpatiallyIndexedSkeletonSource } from "#src/skeleton/frontend.js";
 import { WithParameters } from "#src/chunk_manager/frontend.js";
 import {
     DataSource,
@@ -44,6 +44,9 @@ import {
 import { CatmaidToken, credentialsKey } from "#src/datasource/catmaid/api.js";
 import { CredentialsProvider } from "#src/credentials_provider/index.js";
 import { WithCredentialsProvider } from "#src/credentials_provider/chunk_source_frontend.js";
+import { SliceViewSingleResolutionSource } from "#src/sliceview/frontend.js";
+import { ChunkManager } from "#src/chunk_manager/frontend.js";
+import { Borrowed } from "#src/util/disposable.js";
 import "#src/datasource/catmaid/register_credentials_provider.js";
 
 export class CatmaidSpatiallyIndexedSkeletonSource extends WithParameters(
@@ -71,6 +74,124 @@ export class CatmaidSkeletonSource extends WithParameters(
     }
     static encodeOptions(options: any) {
         return super.encodeOptions(options);
+    }
+}
+
+export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleSpatiallyIndexedSkeletonSource {
+    get rank(): number {
+        return 3;
+    }
+
+    private static readonly DEBUG_SCALE_SELECTION = true;
+
+    constructor(
+        chunkManager: Borrowed<ChunkManager>,
+        private baseUrl: string,
+        private projectId: number,
+        private credentialsProvider: CredentialsProvider<CatmaidToken>,
+        private scaleFactors: Float32Array,
+        private upperBounds: Float32Array,
+        private gridCellSizes: Array<{ x: number; y: number; z: number }>,
+    ) {
+        super(chunkManager);
+    }
+
+    getSources(): SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>[][] {
+        const sources: SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>[] = [];
+        
+        // Sort gridCellSizes by minimum dimension (Ascending: Small/Fine -> Large/Coarse)
+        const sortedGridSizes = [...this.gridCellSizes].sort(
+            (a, b) => Math.min(a.x, a.y, a.z) - Math.min(b.x, b.y, b.z)
+        );
+
+        // Calculate per-dimension min size for relative scaling
+        let minX = Number.MAX_VALUE;
+        let minY = Number.MAX_VALUE;
+        let minZ = Number.MAX_VALUE;
+        for (const s of sortedGridSizes) {
+            minX = Math.min(minX, s.x);
+            minY = Math.min(minY, s.y);
+            minZ = Math.min(minZ, s.z);
+        }
+
+        if (CatmaidMultiscaleSpatiallyIndexedSkeletonSource.DEBUG_SCALE_SELECTION) {
+            console.debug("[CATMAID] Spatially indexed skeleton scales", {
+                gridCellSizes: sortedGridSizes,
+                minGridCellSize: { x: minX, y: minY, z: minZ },
+            });
+        }
+
+        for (const gridCellSize of sortedGridSizes) {
+            const chunkDataSize = Uint32Array.from([
+                gridCellSize.x,
+                gridCellSize.y,
+                gridCellSize.z,
+            ]);
+
+            const chunkLayoutTransform = mat4.create();
+            mat4.fromScaling(chunkLayoutTransform, vec3.fromValues(
+                this.scaleFactors[0],
+                this.scaleFactors[1],
+                this.scaleFactors[2]
+            ));
+
+            const chunkLayout = new ChunkLayout(
+                vec3.fromValues(chunkDataSize[0], chunkDataSize[1], chunkDataSize[2]),
+                chunkLayoutTransform,
+                3
+            );
+
+            const spec = {
+                ...makeSliceViewChunkSpecification({
+                    rank: 3,
+                    chunkDataSize,
+                    upperVoxelBound: this.upperBounds,
+                }),
+                chunkLayout,
+            };
+
+            const parameters = new CatmaidSkeletonSourceParameters();
+            parameters.catmaidParameters = new CatmaidDataSourceParameters();
+            parameters.catmaidParameters.url = this.baseUrl;
+            parameters.catmaidParameters.projectId = this.projectId;
+            parameters.useChunkSizeForScaleSelection = true;
+            parameters.metadata = {
+                transform: mat4.create(),
+                vertexAttributes: new Map([
+                    ["segment", { dataType: DataType.FLOAT32, numComponents: 1 }],
+                ]),
+                sharding: undefined
+            };
+
+            const chunkSource = this.chunkManager.getChunkSource(
+                CatmaidSpatiallyIndexedSkeletonSource,
+                { parameters, spec, credentialsProvider: this.credentialsProvider }
+            );
+
+            // Calculate relative scale based on grid size vs minimum grid size
+            const relativeScaleX = gridCellSize.x / minX;
+            const relativeScaleY = gridCellSize.y / minY;
+            const relativeScaleZ = gridCellSize.z / minZ;
+            
+            const chunkToMultiscaleTransform = mat4.create();
+            mat4.fromScaling(
+                chunkToMultiscaleTransform,
+                vec3.fromValues(relativeScaleX, relativeScaleY, relativeScaleZ)
+            );
+            sources.push({
+                chunkSource,
+                chunkToMultiscaleTransform,
+            });
+
+            if (CatmaidMultiscaleSpatiallyIndexedSkeletonSource.DEBUG_SCALE_SELECTION) {
+                console.debug("[CATMAID] Spatially indexed skeleton scale", {
+                    gridCellSize,
+                    relativeScale: { x: relativeScaleX, y: relativeScaleY, z: relativeScaleZ },
+                });
+            }
+        }
+
+        return [sources];
     }
 }
 
@@ -116,10 +237,10 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
 
         const client = new CatmaidClient(baseUrl, projectId, undefined, credentialsProvider);
 
-        const [dimensions, resolution, gridCellSize, skeletonIds] = await Promise.all([
+        const [dimensions, resolution, gridCellSizes, skeletonIds] = await Promise.all([
             client.getDimensions(),
             client.getResolution(),
-            client.getGridCellSize(),
+            client.getGridCellSizes(),
             client.listSkeletons(),
         ]);
 
@@ -161,20 +282,6 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
             ]
         });
 
-        const parameters = new CatmaidSkeletonSourceParameters();
-        parameters.catmaidParameters = new CatmaidDataSourceParameters();
-        parameters.catmaidParameters.url = baseUrl;
-        parameters.catmaidParameters.projectId = projectId;
-        parameters.url = providerUrl;
-
-        parameters.metadata = {
-            transform: mat4.create(),
-            vertexAttributes: new Map([
-                ["segment", { dataType: DataType.FLOAT32, numComponents: 1 }],
-            ]),
-            sharding: undefined
-        };
-
         const rank = 3;
 
         const upperVoxelBound = new Float32Array(rank);
@@ -182,49 +289,24 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
             upperVoxelBound[i] = upperBounds[i];
         }
 
-        // Use CATMAID's grid cell size for chunking
-        const chunkDataSize = Uint32Array.from([
-            gridCellSize.x,
-            gridCellSize.y,
-            gridCellSize.z,
-        ]);
-
-        const chunkLayoutTransform = mat4.create();
-        mat4.fromScaling(chunkLayoutTransform, vec3.fromValues(
-            scaleFactors[0],
-            scaleFactors[1],
-            scaleFactors[2]
-        ));
-
-        // Create chunk layout
-        const chunkLayout = new ChunkLayout(
-            vec3.fromValues(chunkDataSize[0], chunkDataSize[1], chunkDataSize[2]),
-            chunkLayoutTransform,
-            rank
-        );
-
-        // Create chunk specification
-        const spec = {
-            ...makeSliceViewChunkSpecification({
-                rank,
-                chunkDataSize,
-                upperVoxelBound,
-            }),
-            chunkLayout,
-        };
-
-        console.info('CATMAID Spatially Indexed Skeleton Source:', {
-            chunkSize: { x: chunkDataSize[0], y: chunkDataSize[1], z: chunkDataSize[2] },
+        // Log information about available chunk sizes
+        console.info('CATMAID Multiscale Skeleton Source:', {
+            chunkSizes: gridCellSizes.map(size => ({ x: size.x, y: size.y, z: size.z })),
             resolution: { x: resolution.x, y: resolution.y, z: resolution.z, unit: 'nm' },
             totalDimension: dimensions,
             totalNumberOfSkeletons: skeletonIds.length
         });
 
-        const source = options.registry.chunkManager.getChunkSource(
-            CatmaidSpatiallyIndexedSkeletonSource,
-            { parameters, spec, credentialsProvider }
+        // Create multiscale skeleton source to get individual sources
+        const multiscaleSource = new CatmaidMultiscaleSpatiallyIndexedSkeletonSource(
+            options.registry.chunkManager,
+            baseUrl,
+            projectId,
+            credentialsProvider,
+            new Float32Array(scaleFactors),
+            upperVoxelBound,
+            gridCellSizes
         );
-
         // Create complete skeleton source (non-chunked)
         const completeSkeletonParameters = new CatmaidCompleteSkeletonSourceParameters();
         completeSkeletonParameters.catmaidParameters = new CatmaidDataSourceParameters();
@@ -269,7 +351,7 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
             {
                 id: "skeletons-chunked",
                 default: true,
-                subsource: { mesh: source },
+                subsource: { mesh: multiscaleSource },
             },
             {
                 id: "skeletons",

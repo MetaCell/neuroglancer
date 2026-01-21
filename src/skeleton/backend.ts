@@ -47,6 +47,7 @@ import {
 import {
   SliceViewChunkSpecification,
   forEachVisibleVolumetricChunk,
+  type SliceViewProjectionParameters,
   type TransformedSource,
 } from "#src/sliceview/base.js";
 import { SCALE_PRIORITY_MULTIPLIER } from "#src/sliceview/backend.js";
@@ -68,6 +69,8 @@ import type { RPC } from "#src/worker_rpc.js";
 import { registerRPC, registerSharedObject } from "#src/worker_rpc.js";
 import { deserializeTransformedSources } from "#src/sliceview/backend.js";
 import { debounce } from "lodash-es";
+
+const DEBUG_SPATIALLY_INDEXED_SKELETON_SCALES = true;
 
 export interface SpatiallyIndexedSkeletonChunkSpecification extends SliceViewChunkSpecification {
   chunkLayout: any;
@@ -358,14 +361,155 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
 
       const projectionParameters = view.projectionParameters.value;
       const { chunkManager } = this;
+      const sliceProjectionParameters =
+        projectionParameters as SliceViewProjectionParameters;
+      const pixelSize =
+        "pixelSize" in sliceProjectionParameters
+          ? sliceProjectionParameters.pixelSize
+          : undefined;
+      let resolvedPixelSize = pixelSize;
+      if (resolvedPixelSize === undefined) {
+        const voxelPhysicalScales =
+          projectionParameters.displayDimensionRenderInfo?.voxelPhysicalScales;
+        if (voxelPhysicalScales) {
+          let computedPixelSize = 0;
+          const { invViewMatrix } = projectionParameters;
+          for (let i = 0; i < 3; ++i) {
+            const s = voxelPhysicalScales[i];
+            const x = invViewMatrix[i];
+            computedPixelSize += (s * x) ** 2;
+          }
+          resolvedPixelSize = Math.sqrt(computedPixelSize);
+        }
+      }
+      const renderScaleTarget = this.renderScaleTarget.value;
 
-      for (
-        let scaleIndex = transformedSources.length - 1;
-        scaleIndex >= 0;
-        --scaleIndex
-      ) {
-        const scales = transformedSources[scaleIndex];
-        for (const tsource of scales) {
+      const selectScales = (
+        scales: TransformedSource<
+          SpatiallyIndexedSkeletonRenderLayerBackend,
+          SpatiallyIndexedSkeletonSourceBackend
+        >[],
+      ) => {
+        if (scales.length === 0) {
+          return { selected: [], useChunkSizeForScaleSelection: false };
+        }
+        if (resolvedPixelSize === undefined) {
+          return {
+            selected: scales.map((tsource, scaleIndex) => ({
+              tsource,
+              scaleIndex,
+            })),
+            useChunkSizeForScaleSelection: false,
+          };
+        }
+        const useChunkSizeForScaleSelection = scales.some(
+          (tsource) =>
+            (tsource.source as any).parameters?.useChunkSizeForScaleSelection ===
+            true,
+        );
+        let minChunkSize: Float32Array | undefined;
+        if (useChunkSizeForScaleSelection) {
+          minChunkSize = new Float32Array(3);
+          minChunkSize.fill(Number.POSITIVE_INFINITY);
+          for (const tsource of scales) {
+            const size = tsource.chunkLayout.size;
+            for (let i = 0; i < 3; ++i) {
+              minChunkSize[i] = Math.min(minChunkSize[i], size[i]);
+            }
+          }
+        }
+        const getSelectionVoxelSize = (
+          tsource: TransformedSource<
+            SpatiallyIndexedSkeletonRenderLayerBackend,
+            SpatiallyIndexedSkeletonSourceBackend
+          >,
+        ) => {
+          if (!useChunkSizeForScaleSelection || minChunkSize === undefined) {
+            return tsource.effectiveVoxelSize;
+          }
+          const selectionVoxelSize = new Float32Array(3);
+          const size = tsource.chunkLayout.size;
+          for (let i = 0; i < 3; ++i) {
+            const relativeScale =
+              minChunkSize[i] === 0 ? 1 : size[i] / minChunkSize[i];
+            selectionVoxelSize[i] =
+              tsource.effectiveVoxelSize[i] * relativeScale;
+          }
+          return selectionVoxelSize;
+        };
+        const pixelSizeWithMargin = resolvedPixelSize * 1.1;
+        const smallestVoxelSize = getSelectionVoxelSize(scales[0]);
+        const canImproveOnVoxelSize = (voxelSize: Float32Array) => {
+          const targetSize = pixelSizeWithMargin * renderScaleTarget;
+          for (let i = 0; i < 3; ++i) {
+            const size = voxelSize[i];
+            if (size > targetSize && size > 1.01 * smallestVoxelSize[i]) {
+              return true;
+            }
+          }
+          return false;
+        };
+        const improvesOnPrevVoxelSize = (
+          voxelSize: Float32Array,
+          prevVoxelSize: Float32Array,
+        ) => {
+          const targetSize = pixelSizeWithMargin * renderScaleTarget;
+          for (let i = 0; i < 3; ++i) {
+            const size = voxelSize[i];
+            const prevSize = prevVoxelSize[i];
+            if (
+              Math.abs(targetSize - size) < Math.abs(targetSize - prevSize) &&
+              size < 1.01 * prevSize
+            ) {
+              return true;
+            }
+          }
+          return false;
+        };
+
+        const selected: Array<{
+          tsource: TransformedSource<
+            SpatiallyIndexedSkeletonRenderLayerBackend,
+            SpatiallyIndexedSkeletonSourceBackend
+          >;
+          scaleIndex: number;
+        }> = [];
+        let scaleIndex = scales.length - 1;
+        let prevVoxelSize: Float32Array | undefined;
+        while (true) {
+          const tsource = scales[scaleIndex];
+          const selectionVoxelSize = getSelectionVoxelSize(tsource);
+          if (
+            prevVoxelSize !== undefined &&
+            !improvesOnPrevVoxelSize(selectionVoxelSize, prevVoxelSize)
+          ) {
+            break;
+          }
+          selected.push({ tsource, scaleIndex });
+          if (scaleIndex === 0) break;
+          if (!canImproveOnVoxelSize(selectionVoxelSize)) break;
+          prevVoxelSize = selectionVoxelSize;
+          --scaleIndex;
+        }
+        return { selected, useChunkSizeForScaleSelection };
+      };
+
+      for (const scales of transformedSources) {
+        const { selected: selectedScales, useChunkSizeForScaleSelection } =
+          selectScales(scales);
+        if (DEBUG_SPATIALLY_INDEXED_SKELETON_SCALES) {
+          console.debug("[SKELETON-SCALES] selection", {
+            pixelSize: resolvedPixelSize,
+            renderScaleTarget,
+            totalScales: scales.length,
+            useChunkSizeForScaleSelection,
+            selectedScaleIndices: selectedScales.map((s) => s.scaleIndex),
+            selectedChunkSizes: selectedScales.map(
+              (s) => s.tsource.chunkLayout.size,
+            ),
+          });
+        }
+        for (const { tsource, scaleIndex } of selectedScales) {
           forEachVisibleVolumetricChunk(
             projectionParameters,
             this.localPosition.value,
