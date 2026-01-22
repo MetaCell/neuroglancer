@@ -440,12 +440,12 @@ function getAnnotationProjectionParameters(
     const dimWeights = clipDimensionsWeight.get(layerName);
     if (dimWeights !== undefined && dimWeights.size > 0) {
       for (const [dimName, weight] of dimWeights) {
-        // TODO not sure if can directly use layer names
-        // TODO ensure not in chunk display dims
         const dimIndex = layerDimensionNames.indexOf(dimName);
-        if (dimIndex !== -1 && dimIndex < unpaddedRank) {
-          // Set the multiplier to the specified weight for this dimension
-          // Weight of 0.0 = no clipping, 1.0 = full clipping
+        if (
+          dimIndex !== -1 &&
+          dimIndex < unpaddedRank &&
+          !chunkDisplayDimensionIndices.includes(dimIndex)
+        ) {
           const newIndex = unpaddedRank + dimIndex;
           modelClipBounds[newIndex] = weight;
         }
@@ -583,16 +583,6 @@ function AnnotationRenderLayer<
         ] of trackableClipDimensionsWeight.value) {
           clipDimensionsWeight.set(layerName, new Map(dimWeights));
         }
-      }
-
-      // Listen for changes to clipDimensionsWeight
-      if (trackableClipDimensionsWeight) {
-        attachment.registerDisposer(
-          trackableClipDimensionsWeight.changed.add(() => {
-            this.updateAttachmentState(attachment);
-            this.redrawNeeded.dispatch();
-          }),
-        );
       }
 
       // Get the layer name
