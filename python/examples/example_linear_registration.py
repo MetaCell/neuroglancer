@@ -443,14 +443,13 @@ class LinearRegistrationWorkflow:
                 self._show_help_message()
                 return
 
-            # Also setup the new layer to clip differently on non display dims
-            self._ignore_non_display_dims(s)
-
             # Make the annotation layer if needed
             if s.layers.index(self.annotations_name) == -1:
                 s.layers[self.annotations_name] = neuroglancer.LocalAnnotationLayer(
                     dimensions=create_coord_space_matching_global_dims(s.dimensions)
                 )
+            # Also setup the new layer to clip differently on non display dims
+            self._ignore_non_display_dims(s)
 
             s.layers[self.annotations_name].tool = "annotatePoint"
             s.selected_layer.layer = self.annotations_name
@@ -949,8 +948,7 @@ class LinearRegistrationWorkflow:
         non-displayed dimensions"""
         dim_names = state.dimensions.names
         dim_map = {k: 0 for k in dim_names if k not in ["t", "time", "t1"]}
-        layer_map = {self.annotations_name: dim_map}
-        state.clip_dimensions_weight = layer_map
+        state.layers[self.annotations_name].clip_dimensions_weight = dim_map
 
 
 def add_mapping_args(ap: argparse.ArgumentParser):

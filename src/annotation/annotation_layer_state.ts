@@ -42,6 +42,13 @@ import { RefCounted } from "#src/util/disposable.js";
 import type { ValueOrError } from "#src/util/error.js";
 import { makeValueOrError, valueOrThrow } from "#src/util/error.js";
 import { vec3 } from "#src/util/geom.js";
+import {
+  verifyFloat,
+  verifyObject,
+  verifyObjectAsMap,
+} from "#src/util/json.js";
+import { NullarySignal } from "#src/util/signal.js";
+import type { Trackable } from "#src/util/trackable.js";
 import { WatchableMap } from "#src/util/watchable_map.js";
 import {
   makeTrackableFragmentMain,
@@ -159,6 +166,7 @@ export class AnnotationDisplayState extends RefCounted {
     new WatchableAnnotationRelationshipStates(),
   );
   ignoreNullSegmentFilter = new TrackableBoolean(true);
+  clipDimensionsWeight = new TrackableClipDimensionsWeight();
   disablePicking = new WatchableValue(false);
   displayUnfiltered = makeCachedLazyDerivedWatchableValue(
     (map, ignoreNullSegmentFilter) => {
@@ -240,5 +248,59 @@ export class AnnotationLayerState extends RefCounted {
   get sourceIndex() {
     const { dataSource } = this;
     return dataSource.layer.dataSources.indexOf(dataSource);
+  }
+}
+
+export class TrackableClipDimensionsWeight implements Trackable {
+  changed = new NullarySignal();
+
+  // Map of dimension name to weight
+  private value_ = new Map<string, number>();
+
+  get value() {
+    return this.value_;
+  }
+
+  reset() {
+    if (this.value_.size === 0) return;
+    this.value_.clear();
+    this.changed.dispatch();
+  }
+
+  restoreState(obj: any) {
+    if (obj === undefined) {
+      this.reset();
+      return;
+    }
+    verifyObject(obj);
+    const newValue = verifyObjectAsMap(obj, verifyFloat);
+
+    // Check if the value has actually changed
+    let changed = this.value_.size !== newValue.size;
+    if (!changed) {
+      for (const [dimName, weight] of newValue) {
+        if (this.value_.get(dimName) !== weight) {
+          changed = true;
+          break;
+        }
+      }
+    }
+
+    if (changed) {
+      this.value_.clear();
+      for (const [dimName, weight] of newValue) {
+        this.value_.set(dimName, weight);
+      }
+      this.changed.dispatch();
+    }
+  }
+
+  toJSON() {
+    if (this.value_.size === 0) return undefined;
+    const obj: any = {};
+    for (const [dimName, weight] of this.value_) {
+      obj[dimName] = weight;
+    }
+    return obj;
   }
 }

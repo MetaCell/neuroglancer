@@ -1179,6 +1179,9 @@ class AnnotationLayer(Layer, _AnnotationLayerOptions):
     ignore_null_segment_filter = ignoreNullSegmentFilter = wrapped_property(
         "ignoreNullSegmentFilter", optional(bool, True)
     )
+    clip_dimensions_weight = clipDimensionsWeight = wrapped_property(
+        "clipDimensionsWeight", optional(typed_map(key_type=str, value_type=float))
+    )
     shader = wrapped_property("shader", str)
     shader_controls = shaderControls = wrapped_property(
         "shaderControls", ShaderControls
@@ -1974,10 +1977,7 @@ class ViewerState(JsonObjectWrapper):
     tool_palettes = toolPalettes = wrapped_property(
         "toolPalettes", typed_map(key_type=str, value_type=ToolPalette)
     )
-    clip_dimensions_weight = clipDimensionsWeight = wrapped_property(
-        "clipDimensionsWeight",
-        optional(typed_map(key_type=str, value_type=typed_map(key_type=str, value_type=float)))
-    )
+
     selection = wrapped_property("selection", DataSelectionState)
 
     @staticmethod
