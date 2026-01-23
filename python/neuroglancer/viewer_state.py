@@ -1179,6 +1179,9 @@ class AnnotationLayer(Layer, _AnnotationLayerOptions):
     ignore_null_segment_filter = ignoreNullSegmentFilter = wrapped_property(
         "ignoreNullSegmentFilter", optional(bool, True)
     )
+    clip_dimensions_weight = clipDimensionsWeight = wrapped_property(
+        "clipDimensionsWeight", optional(typed_map(key_type=str, value_type=float))
+    )
     shader = wrapped_property("shader", str)
     shader_controls = shaderControls = wrapped_property(
         "shaderControls", ShaderControls
@@ -1513,6 +1516,14 @@ def make_linked_navigation_type(
 
     return Linked
 
+if typing.TYPE_CHECKING or _BUILDING_DOCS:
+    _LinkedDisplayDimensionsBase = LinkedType[list[str]]
+else:
+    _LinkedDisplayDimensionsBase = make_linked_navigation_type(typed_list(str), lambda x: x)
+
+@export
+class LinkedDisplayDimensions(_LinkedDisplayDimensionsBase):
+    __slots__ = ()
 
 if typing.TYPE_CHECKING or _BUILDING_DOCS:
     _LinkedPositionBase = LinkedType[np.typing.NDArray[np.float32]]
@@ -1741,6 +1752,9 @@ class LayerGroupViewer(JsonObjectWrapper):
     layers = wrapped_property("layers", typed_list(str))
     layout = wrapped_property("layout", data_panel_layout_wrapper("xy"))
     position = wrapped_property("position", LinkedPosition)
+    display_dimensions = displayDimensions = wrapped_property(
+        "displayDimensions", LinkedDisplayDimensions
+    )
     velocity = wrapped_property(
         "velocity", typed_map(key_type=str, value_type=DimensionPlaybackVelocity)
     )
@@ -1963,6 +1977,7 @@ class ViewerState(JsonObjectWrapper):
     tool_palettes = toolPalettes = wrapped_property(
         "toolPalettes", typed_map(key_type=str, value_type=ToolPalette)
     )
+
     selection = wrapped_property("selection", DataSelectionState)
 
     @staticmethod
