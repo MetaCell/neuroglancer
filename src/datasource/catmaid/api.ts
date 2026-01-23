@@ -269,7 +269,13 @@ export class CatmaidClient implements CatmaidSource {
 
         const data = await this.fetch(`node/list?${params.toString()}`, {}, true);
 
-        return data[0].map((n: any[]) => ({
+        // Check if limit was reached for the first LOD level
+        if (data[4]) {
+            console.warn("CATMAID node/list endpoint returned limit_reached=true. Some nodes may be missing.");
+        }
+
+        // Process first LOD level (data[0])
+        const nodes: CatmaidNode[] = data[0].map((n: any[]) => ({
             id: n[0],
             parent_id: n[1],
             x: n[2],
@@ -279,6 +285,34 @@ export class CatmaidClient implements CatmaidSource {
             radius: n[6],
             skeleton_id: n[7],
         }));
+
+        // Process additional LOD levels (data[5] - extraNodes)
+        const extraNodes = data[5];
+        if (Array.isArray(extraNodes)) {
+            for (const lodLevel of extraNodes) {
+                // Each lodLevel is [treenodes, connectors, labels, limit_reached, relations]
+                if (lodLevel[3]) {
+                    console.warn("CATMAID node/list endpoint returned limit_reached=true for an extra LOD level. Some nodes may be missing.");
+                }
+                const treenodes = lodLevel[0];
+                if (Array.isArray(treenodes)) {
+                    for (const n of treenodes) {
+                        nodes.push({
+                            id: n[0],
+                            parent_id: n[1],
+                            x: n[2],
+                            y: n[3],
+                            z: n[4],
+                            confidence: n[5],
+                            radius: n[6],
+                            skeleton_id: n[7],
+                        });
+                    }
+                }
+            }
+        }
+
+        return nodes;
     }
 
     async moveNode(
