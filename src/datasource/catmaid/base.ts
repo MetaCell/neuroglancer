@@ -21,6 +21,7 @@ export class CatmaidDataSourceParameters {
     url: string;
     projectId: number;
     token?: string;
+    cacheProvider?: string;
 }
 
 export class CatmaidAnnotationSourceParameters extends AnnotationSourceParameters {

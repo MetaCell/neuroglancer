@@ -32,7 +32,7 @@ import {
     CatmaidDataSourceParameters,
 } from "#src/datasource/catmaid/base.js";
 import { mat4, vec3 } from "#src/util/geom.js";
-import { CatmaidClient } from "#src/datasource/catmaid/api.js";
+import { CatmaidClient, type CatmaidStackInfo } from "#src/datasource/catmaid/api.js";
 import { DataType } from "#src/util/data_type.js";
 import { ChunkLayout } from "#src/sliceview/chunk_layout.js";
 import { makeSliceViewChunkSpecification } from "#src/sliceview/base.js";
@@ -92,6 +92,7 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
         private scaleFactors: Float32Array,
         private upperBounds: Float32Array,
         private gridCellSizes: Array<{ x: number; y: number; z: number }>,
+        private cacheProvider?: string,
     ) {
         super(chunkManager);
     }
@@ -154,6 +155,7 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
             parameters.catmaidParameters = new CatmaidDataSourceParameters();
             parameters.catmaidParameters.url = this.baseUrl;
             parameters.catmaidParameters.projectId = this.projectId;
+            parameters.catmaidParameters.cacheProvider = this.cacheProvider;
             parameters.useChunkSizeForScaleSelection = true;
             parameters.metadata = {
                 transform: mat4.create(),
@@ -237,15 +239,59 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
 
         const client = new CatmaidClient(baseUrl, projectId, undefined, credentialsProvider);
 
-        const [dimensions, resolution, gridCellSizes, skeletonIds] = await Promise.all([
-            client.getDimensions(),
-            client.getResolution(),
-            client.getGridCellSizes(),
-            client.listSkeletons(),
+        // Fetch metadata using memoized client methods to avoid duplicate requests
+        const [stackInfo, skeletonIds] = await Promise.all([
+            options.registry.chunkManager.memoize.getAsync(
+                { type: "catmaid:metadata", baseUrl, projectId },
+                options,
+                () => (client as any).getMetadataInfo() as Promise<CatmaidStackInfo | null>,
+            ),
+            options.registry.chunkManager.memoize.getAsync(
+                { type: "catmaid:skeletons", baseUrl, projectId },
+                options,
+                () => client.listSkeletons(),
+            ),
         ]);
 
-        if (!dimensions || !resolution) {
+        if (!stackInfo) {
             throw new Error("Failed to fetch CATMAID stack metadata");
+        }
+
+        // Extract dimensions from stack info
+        const { dimension, translation, resolution } = stackInfo;
+        const offX = translation?.x ?? 0;
+        const offY = translation?.y ?? 0;
+        const offZ = translation?.z ?? 0;
+
+        const dimensions = {
+            min: { x: offX, y: offY, z: offZ },
+            max: { x: offX + dimension.x, y: offY + dimension.y, z: offZ + dimension.z },
+        };
+
+        // Extract grid cell sizes from metadata
+        const gridCellSizes: Array<{ x: number; y: number; z: number }> = [];
+        if (stackInfo.metadata?.cache_configurations) {
+            for (const config of stackInfo.metadata.cache_configurations) {
+                if (config.cache_type === "grid") {
+                    gridCellSizes.push({
+                        x: config.cell_width,
+                        y: config.cell_height,
+                        z: config.cell_depth,
+                    });
+                }
+            }
+        }
+        
+        // If no grid configs found, use default
+        if (gridCellSizes.length === 0) {
+            const DEFAULT_CACHE_GRID_CELL_WIDTH = 25000;
+            const DEFAULT_CACHE_GRID_CELL_HEIGHT = 25000;
+            const DEFAULT_CACHE_GRID_CELL_DEPTH = 40;
+            gridCellSizes.push({
+                x: DEFAULT_CACHE_GRID_CELL_WIDTH,
+                y: DEFAULT_CACHE_GRID_CELL_HEIGHT,
+                z: DEFAULT_CACHE_GRID_CELL_DEPTH,
+            });
         }
 
         // Resolution is in nm per voxel, convert to meters
@@ -297,6 +343,9 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
             totalNumberOfSkeletons: skeletonIds.length
         });
 
+        // Extract cache provider from metadata
+        const cacheProvider = stackInfo.metadata?.cache_provider;
+
         // Create multiscale skeleton source to get individual sources
         const multiscaleSource = new CatmaidMultiscaleSpatiallyIndexedSkeletonSource(
             options.registry.chunkManager,
@@ -305,7 +354,8 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
             credentialsProvider,
             new Float32Array(scaleFactors),
             upperVoxelBound,
-            gridCellSizes
+            gridCellSizes,
+            cacheProvider
         );
         // Create complete skeleton source (non-chunked)
         const completeSkeletonParameters = new CatmaidCompleteSkeletonSourceParameters();

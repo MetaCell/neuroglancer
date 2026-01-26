@@ -1,5 +1,5 @@
 
-interface CatmaidCacheConfiguration {
+export interface CatmaidCacheConfiguration {
     cache_type: string;
     cell_width: number;
     cell_height: number;
@@ -7,12 +7,13 @@ interface CatmaidCacheConfiguration {
     [key: string]: any;
 }
 
-interface CatmaidStackInfo {
+export interface CatmaidStackInfo {
     dimension: { x: number; y: number; z: number };
     resolution: { x: number; y: number; z: number };
     translation: { x: number; y: number; z: number };
     title?: string;
     metadata?: {
+        cache_provider?: string;
         cache_configurations?: CatmaidCacheConfiguration[];
     };
 }
@@ -65,9 +66,6 @@ function fetchWithCatmaidCredentials(
 }
 
 export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
-    private stackInfoCache: { stackId: number; promise: Promise<CatmaidStackInfo | null> } | null = null;
-    private listStacksCache: Promise<{ id: number; title: string }[]> | null = null;
-    
     constructor(
         public baseUrl: string,
         public projectId: number,
@@ -119,10 +117,7 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
     }
 
     private async listStacks(): Promise<{ id: number; title: string }[]> {
-        if (this.listStacksCache === null) {
-            this.listStacksCache = this.fetch("stacks");
-        }
-        return this.listStacksCache;
+        return this.fetch("stacks");
     }
 
     private async getStackInfo(stackId: number): Promise<CatmaidStackInfo> {
@@ -130,12 +125,6 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
     }
 
     private async getMetadataInfo(stackId?: number): Promise<CatmaidStackInfo | null> {
-        // If no stackId is provided and we already have cached stack info,
-        // reuse it directly without listing stacks again.
-        if (stackId === undefined && this.stackInfoCache !== null) {
-            return this.stackInfoCache.promise;
-        }
-    
         let effectiveStackId: number;
     
         if (stackId !== undefined) {
@@ -151,17 +140,7 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
             }
         }
     
-        // Use cache only if it's for the same stackId
-        if (
-            this.stackInfoCache !== null &&
-            this.stackInfoCache.stackId === effectiveStackId
-        ) {
-            return this.stackInfoCache.promise;
-        }
-    
-        const promise = this.getStackInfo(effectiveStackId);
-        this.stackInfoCache = { stackId: effectiveStackId, promise };
-        return promise;
+        return this.getStackInfo(effectiveStackId);
     }
     
 
@@ -244,6 +223,7 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
             max: { x: number; y: number; z: number };
         },
         lod: number = 0,
+        cacheProvider?: string,
     ): Promise<SpatiallyIndexedSkeletonNode[]> {
         const params = new URLSearchParams({
             left: boundingBox.min.x.toString(),
@@ -257,10 +237,15 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
             format: 'msgpack',
         });
 
-        const data = await this.fetch(`node/list?${params.toString()}`, {}, true);
+        // Add cache provider if available
+        if (cacheProvider) {
+            params.append('src', cacheProvider);
+        }
+
+        const data: any = await this.fetch(`node/list?${params.toString()}`, {}, true);
 
         // Check if limit was reached for the first LOD level
-        if (data[4]) {
+        if (data[3]) {
             console.warn("CATMAID node/list endpoint returned limit_reached=true. Some nodes may be missing.");
         }
 
@@ -271,8 +256,6 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
             x: n[2],
             y: n[3],
             z: n[4],
-            confidence: n[5],
-            radius: n[6],
             skeleton_id: n[7],
         }));
 
@@ -293,8 +276,6 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
                             x: n[2],
                             y: n[3],
                             z: n[4],
-                            confidence: n[5],
-                            radius: n[6],
                             skeleton_id: n[7],
                         });
                     }

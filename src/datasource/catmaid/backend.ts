@@ -57,7 +57,9 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
         
         // Use currentLod from the source backend
         const lodValue = this.currentLod;
-        const nodes = await this.client.fetchNodes(bbox, lodValue);
+        // Get cache provider from parameters (passed from frontend)
+        const cacheProvider = this.parameters.catmaidParameters.cacheProvider;
+        const nodes = await this.client.fetchNodes(bbox, lodValue, cacheProvider);
 
         const numVertices = nodes.length;
         const vertexPositions = new Float32Array(numVertices * 3);
