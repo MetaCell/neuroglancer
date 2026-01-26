@@ -1,21 +1,5 @@
-export interface CatmaidNode {
-    id: number;
-    parent_id: number | null;
-    x: number;
-    y: number;
-    z: number;
-    radius: number;
-    confidence: number;
-    skeleton_id: number;
-}
 
-export interface SkeletonSummary {
-    skeleton_id: number;
-    num_nodes: number;
-    cable_length: number;
-}
-
-export interface CatmaidCacheConfiguration {
+interface CatmaidCacheConfiguration {
     cache_type: string;
     cell_width: number;
     cell_height: number;
@@ -23,7 +7,7 @@ export interface CatmaidCacheConfiguration {
     [key: string]: any;
 }
 
-export interface CatmaidStackInfo {
+interface CatmaidStackInfo {
     dimension: { x: number; y: number; z: number };
     resolution: { x: number; y: number; z: number };
     translation: { x: number; y: number; z: number };
@@ -33,29 +17,10 @@ export interface CatmaidStackInfo {
     };
 }
 
-export interface CatmaidSource {
-    listSkeletons(): Promise<number[]>;
-    getSkeleton(skeletonId: number): Promise<CatmaidNode[]>;
-    getDimensions(): Promise<{ min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null>;
-    getResolution(): Promise<{ x: number; y: number; z: number } | null>;
-    getGridCellSizes(): Promise<Array<{ x: number; y: number; z: number }>>;
-    fetchNodes(boundingBox: { min: { x: number, y: number, z: number }, max: { x: number, y: number, z: number } }, lod?: number): Promise<CatmaidNode[]>;
-    addNode(
-        skeletonId: number,
-        x: number,
-        y: number,
-        z: number,
-        parentId?: number,
-    ): Promise<number>;
-    moveNode(nodeId: number, x: number, y: number, z: number): Promise<void>;
-    deleteNode(nodeId: number): Promise<void>;
-
-    mergeSkeletons(skeletonId1: number, skeletonId2: number): Promise<void>;
-    splitSkeleton(nodeId: number): Promise<void>;
-}
 
 import { fetchOkWithCredentials } from "#src/credentials_provider/http_request.js";
 import type { CredentialsProvider } from "#src/credentials_provider/index.js";
+import { SpatiallyIndexedSkeletonNode, SpatiallyIndexedSkeletonSource } from "#src/skeleton/api.js";
 import { Unpackr } from "msgpackr";
 
 export interface CatmaidToken {
@@ -69,7 +34,7 @@ const DEFAULT_CACHE_GRID_CELL_WIDTH = 25000;
 const DEFAULT_CACHE_GRID_CELL_HEIGHT = 25000;
 const DEFAULT_CACHE_GRID_CELL_DEPTH = 40;
 
-export function fetchWithCatmaidCredentials(
+function fetchWithCatmaidCredentials(
     credentialsProvider: CredentialsProvider<CatmaidToken>,
     input: string,
     init: RequestInit,
@@ -99,7 +64,10 @@ export function fetchWithCatmaidCredentials(
     );
 }
 
-export class CatmaidClient implements CatmaidSource {
+export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
+    private stackInfoCache: { stackId: number; promise: Promise<CatmaidStackInfo | null> } | null = null;
+    private listStacksCache: Promise<{ id: number; title: string }[]> | null = null;
+    
     constructor(
         public baseUrl: string,
         public projectId: number,
@@ -150,28 +118,52 @@ export class CatmaidClient implements CatmaidSource {
         return this.fetch("skeletons/");
     }
 
-    async listStacks(): Promise<{ id: number; title: string }[]> {
-        return this.fetch("stacks");
+    private async listStacks(): Promise<{ id: number; title: string }[]> {
+        if (this.listStacksCache === null) {
+            this.listStacksCache = this.fetch("stacks");
+        }
+        return this.listStacksCache;
     }
 
-    async getStackInfo(stackId: number): Promise<CatmaidStackInfo> {
+    private async getStackInfo(stackId: number): Promise<CatmaidStackInfo> {
         return this.fetch(`stack/${stackId}/info`);
     }
 
     private async getMetadataInfo(stackId?: number): Promise<CatmaidStackInfo | null> {
+        // If no stackId is provided and we already have cached stack info,
+        // reuse it directly without listing stacks again.
+        if (stackId === undefined && this.stackInfoCache !== null) {
+            return this.stackInfoCache.promise;
+        }
+    
+        let effectiveStackId: number;
+    
         if (stackId !== undefined) {
-            return this.getStackInfo(stackId);
+            effectiveStackId = stackId;
+        } else {
+            try {
+                const stacks = await this.listStacks();
+                if (!stacks || stacks.length === 0) return null;
+                effectiveStackId = stacks[0].id;
+            } catch (e) {
+                console.warn("Failed to fetch stack info:", e);
+                return null;
+            }
         }
-        try {
-            const stacks = await this.listStacks();
-            if (!stacks || stacks.length === 0) return null;
-            const targetId = stacks[0].id;
-            return this.getStackInfo(targetId);
-        } catch (e) {
-            console.warn("Failed to fetch stack info:", e);
-            return null;
+    
+        // Use cache only if it's for the same stackId
+        if (
+            this.stackInfoCache !== null &&
+            this.stackInfoCache.stackId === effectiveStackId
+        ) {
+            return this.stackInfoCache.promise;
         }
+    
+        const promise = this.getStackInfo(effectiveStackId);
+        this.stackInfoCache = { stackId: effectiveStackId, promise };
+        return promise;
     }
+    
 
     async getDimensions(): Promise<{ min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null> {
         const info = await this.getMetadataInfo();
@@ -233,7 +225,7 @@ export class CatmaidClient implements CatmaidSource {
         return gridSizes;
     }
 
-    async getSkeleton(skeletonId: number): Promise<CatmaidNode[]> {
+    async getSkeleton(skeletonId: number): Promise<SpatiallyIndexedSkeletonNode[]> {
         const data = await this.fetch(`skeletons/${skeletonId}/compact-detail`);
         const nodes = data[0];
         return nodes.map((n: any[]) => ({
@@ -242,8 +234,6 @@ export class CatmaidClient implements CatmaidSource {
             x: n[3],
             y: n[4],
             z: n[5],
-            radius: n[6],
-            confidence: n[7],
             skeleton_id: skeletonId,
         }));
     }
@@ -254,7 +244,7 @@ export class CatmaidClient implements CatmaidSource {
             max: { x: number; y: number; z: number };
         },
         lod: number = 0,
-    ): Promise<CatmaidNode[]> {
+    ): Promise<SpatiallyIndexedSkeletonNode[]> {
         const params = new URLSearchParams({
             left: boundingBox.min.x.toString(),
             top: boundingBox.min.y.toString(),
@@ -275,7 +265,7 @@ export class CatmaidClient implements CatmaidSource {
         }
 
         // Process first LOD level (data[0])
-        const nodes: CatmaidNode[] = data[0].map((n: any[]) => ({
+        const nodes: SpatiallyIndexedSkeletonNode[] = data[0].map((n: any[]) => ({
             id: n[0],
             parent_id: n[1],
             x: n[2],
