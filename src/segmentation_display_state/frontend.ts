@@ -921,6 +921,7 @@ export function makeSegmentWidget(
 export interface SegmentationDisplayStateWithAlpha
   extends SegmentationDisplayState {
   objectAlpha: TrackableAlphaValue;
+  hiddenObjectAlpha?: TrackableAlphaValue;
 }
 
 export interface SegmentationDisplayState3D

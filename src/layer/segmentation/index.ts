@@ -80,13 +80,22 @@ import {
   SkeletonLayer,
   SkeletonRenderingOptions,
   SliceViewPanelSkeletonLayer,
+  PerspectiveViewSpatiallyIndexedSkeletonLayer,
+  SliceViewPanelSpatiallyIndexedSkeletonLayer,
+  SliceViewSpatiallyIndexedSkeletonLayer,
+  SpatiallyIndexedSkeletonLayer,
+  SpatiallyIndexedSkeletonSource,
+  MultiscaleSpatiallyIndexedSkeletonSource,
+  MultiscaleSliceViewSpatiallyIndexedSkeletonLayer,
 } from "#src/skeleton/frontend.js";
+import { CatmaidMultiscaleSpatiallyIndexedSkeletonSource } from "#src/datasource/catmaid/frontend.js";
 import { DataType, VolumeType } from "#src/sliceview/volume/base.js";
 import { MultiscaleVolumeChunkSource } from "#src/sliceview/volume/frontend.js";
 import { SegmentationRenderLayer } from "#src/sliceview/volume/segmentation_renderlayer.js";
 import { StatusMessage } from "#src/status.js";
 import { trackableAlphaValue } from "#src/trackable_alpha.js";
 import { TrackableBoolean } from "#src/trackable_boolean.js";
+import { trackableFiniteFloat } from "#src/trackable_finite_float.js";
 import type {
   TrackableValueInterface,
   WatchableValueInterface,
@@ -137,8 +146,7 @@ const MAX_LAYER_BAR_UI_INDICATOR_COLORS = 6;
 
 export class SegmentationUserLayerGroupState
   extends RefCounted
-  implements SegmentationGroupState
-{
+  implements SegmentationGroupState {
   specificationChanged = new Signal();
   constructor(public layer: SegmentationUserLayer) {
     super();
@@ -293,8 +301,7 @@ export class SegmentationUserLayerGroupState
 
 export class SegmentationUserLayerColorGroupState
   extends RefCounted
-  implements SegmentationColorGroupState
-{
+  implements SegmentationColorGroupState {
   specificationChanged = new Signal();
   constructor(public layer: SegmentationUserLayer) {
     super();
@@ -368,13 +375,12 @@ export class SegmentationUserLayerColorGroupState
 }
 
 class LinkedSegmentationGroupState<
-    State extends
-      | SegmentationUserLayerGroupState
-      | SegmentationUserLayerColorGroupState,
-  >
+  State extends
+  | SegmentationUserLayerGroupState
+  | SegmentationUserLayerColorGroupState,
+>
   extends RefCounted
-  implements WatchableValueInterface<State>
-{
+  implements WatchableValueInterface<State> {
   private curRoot: SegmentationUserLayer | undefined;
   private curGroupState: Owned<State> | undefined;
   get changed() {
@@ -533,6 +539,8 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
     0,
   );
   objectAlpha = trackableAlphaValue(1.0);
+  hiddenObjectAlpha = trackableAlphaValue(0.0);
+  skeletonLod = trackableFiniteFloat(0.0);
   ignoreNullVisibleSet = new TrackableBoolean(true, true);
   skeletonRenderingOptions = new SkeletonRenderingOptions();
   shaderError = makeWatchableShaderError();
@@ -661,6 +669,12 @@ export class SegmentationUserLayer extends Base {
     this.displayState.objectAlpha.changed.add(
       this.specificationChanged.dispatch,
     );
+    this.displayState.hiddenObjectAlpha.changed.add(
+      this.specificationChanged.dispatch,
+    );
+    this.displayState.skeletonLod.changed.add(
+      this.specificationChanged.dispatch,
+    );
     this.displayState.hoverHighlight.changed.add(
       this.specificationChanged.dispatch,
     );
@@ -733,7 +747,9 @@ export class SegmentationUserLayer extends Base {
             x instanceof MeshLayer ||
             x instanceof MultiscaleMeshLayer ||
             x instanceof PerspectiveViewSkeletonLayer ||
-            x instanceof SliceViewPanelSkeletonLayer,
+            x instanceof SliceViewPanelSkeletonLayer ||
+            x instanceof PerspectiveViewSpatiallyIndexedSkeletonLayer ||
+            x instanceof SliceViewPanelSpatiallyIndexedSkeletonLayer,
         ),
       { changed: this.layersChanged, value: this.renderLayers },
     ),
@@ -741,7 +757,24 @@ export class SegmentationUserLayer extends Base {
 
   readonly hasSkeletonsLayer = this.registerDisposer(
     makeCachedLazyDerivedWatchableValue(
-      (layers) => layers.some((x) => x instanceof PerspectiveViewSkeletonLayer),
+      (layers) =>
+        layers.some(
+          (x) =>
+            x instanceof PerspectiveViewSkeletonLayer ||
+            x instanceof PerspectiveViewSpatiallyIndexedSkeletonLayer,
+        ),
+      { changed: this.layersChanged, value: this.renderLayers },
+    ),
+  );
+
+  readonly hasSpatiallyIndexedSkeletonsLayer = this.registerDisposer(
+    makeCachedLazyDerivedWatchableValue(
+      (layers) =>
+        layers.some(
+          (x) =>
+            x instanceof PerspectiveViewSpatiallyIndexedSkeletonLayer ||
+            x instanceof SliceViewPanelSpatiallyIndexedSkeletonLayer,
+        ),
       { changed: this.layersChanged, value: this.renderLayers },
     ),
   );
@@ -749,6 +782,9 @@ export class SegmentationUserLayer extends Base {
   readonly getSkeletonLayer = () => {
     for (const layer of this.renderLayers) {
       if (layer instanceof PerspectiveViewSkeletonLayer) {
+        return layer.base;
+      }
+      if (layer instanceof PerspectiveViewSpatiallyIndexedSkeletonLayer) {
         return layer.base;
       }
     }
@@ -763,8 +799,14 @@ export class SegmentationUserLayer extends Base {
     let hasVolume = false;
     for (const loadedSubsource of subsources) {
       if (this.addStaticAnnotations(loadedSubsource)) continue;
-      const { volume, mesh, segmentPropertyMap, segmentationGraph, local } =
-        loadedSubsource.subsourceEntry.subsource;
+      const {
+        volume,
+        mesh,
+        skeleton,
+        segmentPropertyMap,
+        segmentationGraph,
+        local,
+      } = loadedSubsource.subsourceEntry.subsource as any;
       if (volume instanceof MultiscaleVolumeChunkSource) {
         switch (volume.dataType) {
           case DataType.FLOAT32:
@@ -792,6 +834,7 @@ export class SegmentationUserLayer extends Base {
           const displayState = {
             ...this.displayState,
             transform: loadedSubsource.getRenderLayerTransform(),
+            localPosition: this.localPosition,
           };
           if (mesh instanceof MeshSource) {
             loadedSubsource.addRenderLayer(
@@ -803,6 +846,50 @@ export class SegmentationUserLayer extends Base {
                 this.manager.chunkManager,
                 mesh,
                 displayState,
+              ),
+            );
+          } else if (mesh instanceof MultiscaleSpatiallyIndexedSkeletonSource) {
+            const base = new MultiscaleSliceViewSpatiallyIndexedSkeletonLayer(
+              this.manager.chunkManager,
+              mesh,
+              displayState,
+            );
+            loadedSubsource.addRenderLayer(base);
+
+            // Use the first source (finest resolution) for perspective and panel views
+            const allSources = mesh.getSources({} as any);
+            if (allSources.length > 0 && allSources[0].length > 0) {
+                const singleBase = new SpatiallyIndexedSkeletonLayer(
+                    this.manager.chunkManager,
+                    mesh instanceof CatmaidMultiscaleSpatiallyIndexedSkeletonSource
+                      ? allSources[0]
+                      : allSources[0][0].chunkSource,
+                    displayState,
+                );
+                loadedSubsource.addRenderLayer(
+                    new PerspectiveViewSpatiallyIndexedSkeletonLayer(singleBase.addRef()),
+                );
+                loadedSubsource.addRenderLayer(
+                    new SliceViewPanelSpatiallyIndexedSkeletonLayer(
+                    /* transfer ownership */ singleBase,
+                    ),
+                );
+            }
+          } else if (mesh instanceof SpatiallyIndexedSkeletonSource) {
+            const base = new SpatiallyIndexedSkeletonLayer(
+              this.manager.chunkManager,
+              mesh,
+              displayState,
+            );
+            loadedSubsource.addRenderLayer(
+              new PerspectiveViewSpatiallyIndexedSkeletonLayer(base.addRef()),
+            );
+            loadedSubsource.addRenderLayer(
+              new SliceViewSpatiallyIndexedSkeletonLayer(base.addRef()),
+            );
+            loadedSubsource.addRenderLayer(
+              new SliceViewPanelSpatiallyIndexedSkeletonLayer(
+                /* transfer ownership */ base,
               ),
             );
           } else {
@@ -819,13 +906,51 @@ export class SegmentationUserLayer extends Base {
             );
           }
         }, this.displayState.segmentationGroupState.value);
+      } else if (skeleton !== undefined) {
+        loadedSubsource.activate(() => {
+          const displayState = {
+            ...this.displayState,
+            transform: loadedSubsource.getRenderLayerTransform(),
+            localPosition: this.localPosition,
+          };
+          if (skeleton instanceof SpatiallyIndexedSkeletonSource) {
+            const base = new SpatiallyIndexedSkeletonLayer(
+              this.manager.chunkManager,
+              skeleton,
+              displayState,
+            );
+            loadedSubsource.addRenderLayer(
+              new PerspectiveViewSpatiallyIndexedSkeletonLayer(base.addRef()),
+            );
+            loadedSubsource.addRenderLayer(
+              new SliceViewSpatiallyIndexedSkeletonLayer(base.addRef()),
+            );
+            loadedSubsource.addRenderLayer(
+              new SliceViewPanelSpatiallyIndexedSkeletonLayer(
+                /* transfer ownership */ base,
+              ),
+            );
+          } else {
+            const base = new SkeletonLayer(
+              this.manager.chunkManager,
+              skeleton,
+              displayState,
+            );
+            loadedSubsource.addRenderLayer(
+              new PerspectiveViewSkeletonLayer(base.addRef()),
+            );
+            loadedSubsource.addRenderLayer(
+              new SliceViewPanelSkeletonLayer(/* transfer ownership */ base),
+            );
+          }
+        }, this.displayState.segmentationGroupState.value);
       } else if (segmentPropertyMap !== undefined) {
         if (!isGroupRoot) {
           loadedSubsource.deactivate(
             "Not supported on non-root linked segmentation layers",
           );
         } else {
-          loadedSubsource.activate(() => {});
+          loadedSubsource.activate(() => { });
           updatedSegmentPropertyMaps.push(segmentPropertyMap);
         }
       } else if (segmentationGraph !== undefined) {
@@ -953,7 +1078,7 @@ export class SegmentationUserLayer extends Base {
     if (
       layerSpec[json_keys.EQUIVALENCES_JSON_KEY] !== undefined &&
       explicitSpecs.find((spec) => spec.url === localEquivalencesUrl) ===
-        undefined
+      undefined
     ) {
       specs.push({
         url: localEquivalencesUrl,
@@ -986,6 +1111,12 @@ export class SegmentationUserLayer extends Base {
     );
     this.displayState.objectAlpha.restoreState(
       specification[json_keys.OBJECT_ALPHA_JSON_KEY],
+    );
+    this.displayState.hiddenObjectAlpha.restoreState(
+      specification[json_keys.HIDDEN_OPACITY_3D_JSON_KEY],
+    );
+    this.displayState.skeletonLod.restoreState(
+      specification[json_keys.SKELETON_LOD_JSON_KEY],
     );
     this.displayState.baseSegmentColoring.restoreState(
       specification[json_keys.BASE_SEGMENT_COLORING_JSON_KEY],
@@ -1050,6 +1181,8 @@ export class SegmentationUserLayer extends Base {
       this.displayState.notSelectedAlpha.toJSON();
     x[json_keys.SATURATION_JSON_KEY] = this.displayState.saturation.toJSON();
     x[json_keys.OBJECT_ALPHA_JSON_KEY] = this.displayState.objectAlpha.toJSON();
+    x[json_keys.HIDDEN_OPACITY_3D_JSON_KEY] = this.displayState.hiddenObjectAlpha.toJSON();
+    x[json_keys.SKELETON_LOD_JSON_KEY] = this.displayState.skeletonLod.toJSON();
     x[json_keys.HOVER_HIGHLIGHT_JSON_KEY] =
       this.displayState.hoverHighlight.toJSON();
     x[json_keys.BASE_SEGMENT_COLORING_JSON_KEY] =

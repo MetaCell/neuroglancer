@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2016 Google Inc.
+ * Copyright 2024 Google Inc.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -14,16 +14,7 @@
  * limitations under the License.
  */
 
-import type { DataType } from "#src/util/data_type.js";
+import { registerProvider } from "#src/datasource/default_provider.js";
+import { CatmaidDataSourceProvider } from "#src/datasource/catmaid/frontend.js";
 
-export const SKELETON_LAYER_RPC_ID = "skeleton/SkeletonLayer";
-
-export const SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_RPC_ID =
-  "skeleton/SpatiallyIndexedSkeletonRenderLayer";
-export const SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_UPDATE_SOURCES_RPC_ID =
-  "skeleton/SpatiallyIndexedSkeletonRenderLayer.updateSources";
-
-export interface VertexAttributeInfo {
-  dataType: DataType;
-  numComponents: number;
-}
+registerProvider(new CatmaidDataSourceProvider());
