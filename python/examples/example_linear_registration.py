@@ -5,7 +5,7 @@
 General workflow:
     1. Start from a neuroglancer viewer with all the reference data and the data to register as layers. If the script is provided no data, it will create demo data for you to try.
     2. Pass this state to the script by either providing a url via --url or dumping the JSON state to a file and passing the file via --json. For example:
-        python -i example_linear_registration.py --url 'https://neuroglancer.demo.appspot/com/...'
+        python -i example_linear_registration.py --url 'https://neuroglancer.demo.appspot.com/...'
     3. The default assumption is that the last layer in the viewer from step 2 is the moving data to be registered, and all other layers are fixed (reference) data. There must be at least two layers. The script will launch with two layer groups side by side, left is fixed, right is moving. You can move layers between the groups such that all fixed layers are in the first group (left panel) and all moving layers are in the second group (right panel). Once you have done this, press 't' to continue.
     4. At this point, the viewer will:
         a. Create a copy of each dimension in with a "2" suffix for the moving layers. E.g. x -> x2, y -> y2, z -> z2. This allows the moving layers to have a different coordinate space.
@@ -45,20 +45,23 @@ import neuroglancer.cli
 import numpy as np
 import scipy.ndimage
 
-DEBUG = True  # print debug info during execution
-MESSAGE_DURATION = 4  # seconds
-NUM_DEMO_DIMS = 3  # Currently can be 2D or 3D
-AFFINE_NUM_DECIMALS = 6
-NUM_NEAREST_POINTS = 4
+DEBUG = True  # Print debug info during execution
+MESSAGE_DURATION = 4  # How long to show help messages in seconds
+NUM_DEMO_DIMS = 3  # Only used if no data give, can be 2D or 3D
+NUM_NEAREST_POINTS = 4  # Number of nearest points to use in local estimation
+AFFINE_NUM_DECIMALS = 6  # Number of decimals to round affine matrix to
 
 # We make a copy of all the physical dimensions, but to avoid
 # expecting a copy of dimensions like t, or time, they are listed here
+# channel dimensions are already handled separately and don't need to be listed here
 NON_PHYSICAL_DIM_NAMES = ["t", "time"]
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 
-def estimate_transform(fixed_points: np.ndarray, moving_points: np.ndarray, force_non_affine=False):
+def estimate_transform(
+    fixed_points: np.ndarray, moving_points: np.ndarray, force_non_affine=False
+):
     """
     Choose the appropriate model based on number of points and dimensions.
 
@@ -109,9 +112,6 @@ def translation_fit(fixed_points: np.ndarray, moving_points: np.ndarray):
     return affine
 
 
-# See https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem
-# and https://math.nist.gov/~JBernal/kujustf.pdf
-# Follows the Kabsch algorithm https://en.wikipedia.org/wiki/Kabsch_algorithm
 def rigid_or_similarity_fit(
     fixed_points: np.ndarray, moving_points: np.ndarray, rigid=True
 ):
@@ -187,10 +187,9 @@ def affine_fit(fixed_points: np.ndarray, moving_points: np.ndarray):
 
     # The estimated affine transform params will be flattened
     # and there will be D * (D + 1) of them
-    # Format is x1, x2, ..., b1, b2, ...
     tvec, res, rank, sd = np.linalg.lstsq(Q, P)
 
-    if rank < D*(D+1):
+    if rank < D * (D + 1):
         # planar/degenerate -> fall back
         return rigid_or_similarity_fit(fixed_points, moving_points, rigid=False)
 
@@ -331,21 +330,25 @@ class PipelineState(Enum):
     READY = 2
     ERROR = 3
 
+
 class PointFilter(Enum):
     """How to filter annotation points."""
 
     NONE = 0
     NEAREST = 1
 
+
 class LinearRegistrationWorkflow:
-    def __init__(self, args):
-        starting_ng_state = args.state
-        self.annotations_name = args.annotations_name
-        self.ready_state = (
-            PipelineState.READY if args.continue_workflow else PipelineState.NOT_READY
+    def __init__(self, parsed_args):
+        starting_ng_state = parsed_args.state
+        self.annotations_name = parsed_args.annotations_name
+        self.pipeline_state = (
+            PipelineState.READY
+            if parsed_args.continue_workflow
+            else PipelineState.NOT_READY
         )
-        self.unlink_scales = args.unlink_scales
-        self.output_name = args.output_name
+        self.unlink_scales = parsed_args.unlink_scales
+        self.output_name = parsed_args.output_name
 
         self.stored_points = ([], [], False)
         self.stored_map_moving_name_to_data_coords = {}
@@ -364,22 +367,26 @@ class LinearRegistrationWorkflow:
         self._force_non_affine = False
         self._annotation_filter_method = PointFilter.NONE
 
+        linear_reg_pipeline_info = None
         if starting_ng_state is None:
             self._add_demo_data_to_viewer()
         else:
+            linear_reg_pipeline_info = starting_ng_state.get(
+                "linear_reg_pipeline_info", None
+            )
             self.viewer.set_state(starting_ng_state)
 
         self._setup_viewer_actions()
         self._show_help_message()
 
-        if self.ready_state == PipelineState.NOT_READY:
+        if self.pipeline_state == PipelineState.NOT_READY:
             self.setup_initial_two_panel_layout()
-        elif args.continue_workflow:
-            self._cached_moving_layer_names = self.get_moving_layer_names(self.get_state())
-            with open(args.reg_path, "r") as f:
-                info = json.load(f)
-            self.stored_map_moving_name_to_data_coords = {k: neuroglancer.CoordinateSpace(json=v) for k, v in info["layer_cache"].items()}
-            self.stored_map_moving_name_to_viewer_coords = {k: neuroglancer.CoordinateSpace(json=v) for k, v in info["viewer_layer_cache"].items()}
+        elif parsed_args.continue_workflow:
+            if linear_reg_pipeline_info is None:
+                raise ValueError(
+                    "To continue workflow from saved state, the state must contain linear_reg_pipeline_info"
+                )
+            self._restore_coord_maps(linear_reg_pipeline_info)
 
     def update(self):
         """Primary update loop, called whenever the viewer state changes."""
@@ -387,11 +394,11 @@ class LinearRegistrationWorkflow:
         if current_time - self._last_updated_print_time > 5:
             print(f"Viewer states are successfully syncing at {ctime()}")
             self._last_updated_print_time = current_time
-        if self.ready_state == PipelineState.COORDS_READY:
+        if self.pipeline_state == PipelineState.COORDS_READY:
             self.setup_registration_point_layer()
-        elif self.ready_state == PipelineState.ERROR:
+        elif self.pipeline_state == PipelineState.ERROR:
             return
-        elif self.ready_state == PipelineState.READY:
+        elif self.pipeline_state == PipelineState.READY:
             self.update_affine()
         self._clear_status_messages()
 
@@ -437,8 +444,9 @@ class LinearRegistrationWorkflow:
     def setup_registration_point_layer(self):
         """Establish information to store affine transform updates and place registration points."""
         with self.viewer.txn() as s:
-            if self.ready_state == PipelineState.ERROR or not self.has_two_coord_spaces(
-                s
+            if (
+                self.pipeline_state == PipelineState.ERROR
+                or not self.has_two_coord_spaces(s)
             ):
                 self._show_help_message()
                 return
@@ -457,7 +465,7 @@ class LinearRegistrationWorkflow:
             s.layout.children[0].layers.append(self.annotations_name)
             s.layout.children[1].layers.append(self.annotations_name)
             self.setup_panel_display_dims(s)
-            self.ready_state = PipelineState.READY
+            self.pipeline_state = PipelineState.READY
             self._show_help_message()
 
     def setup_panel_display_dims(self, s: neuroglancer.ViewerState):
@@ -486,9 +494,7 @@ class LinearRegistrationWorkflow:
             print(
                 f"ERROR: Could not parse volume info for {self.moving_name}: {e} {info_future}"
             )
-            print(
-                "Try matching the global dimensions to the moving dimension units."
-            )
+            print("Try matching the global dimensions to the moving dimension units.")
             # TODO allow recovery from this failure by allowing the user
             # to enter particular layer name co-ordinate spaces manually
             exit(-1)
@@ -505,15 +511,17 @@ class LinearRegistrationWorkflow:
             return self._create_second_coord_space()
 
     def _create_second_coord_space(self):
-        self.ready_state = PipelineState.COORDS_READY
+        self.pipeline_state = PipelineState.COORDS_READY
         with self.viewer.txn() as s:
             for layer_name in self._cached_moving_layer_names:
                 output_dims = self.stored_map_moving_name_to_data_coords.get(
                     layer_name, None
                 )
                 if output_dims is None:
-                    print(f"ERROR: could not get output dims for a moving layer {layer_name}")
-                    self.ready_state = PipelineState.ERROR
+                    print(
+                        f"ERROR: could not get output dims for a moving layer {layer_name}"
+                    )
+                    self.pipeline_state = PipelineState.ERROR
                     continue
                 self.stored_map_moving_name_to_viewer_coords[layer_name] = []
                 for source in s.layers[layer_name].source:
@@ -530,37 +538,40 @@ class LinearRegistrationWorkflow:
                         new_coord_space
                     )
                     source.transform = new_coord_space
-        return self.ready_state
+        return self.pipeline_state
 
     def continue_workflow(self, _):
         """When the user presses to continue, respond according to the state."""
-        if self.ready_state == PipelineState.NOT_READY:
+        if self.pipeline_state == PipelineState.NOT_READY:
             self.setup_viewer_after_user_ready()
             return
-        elif self.ready_state == PipelineState.COORDS_READY:
-            return
-        elif self.ready_state == PipelineState.ERROR:
+        elif self.pipeline_state == PipelineState.ERROR:
             self.setup_registration_point_layer()
-        with self.viewer.txn() as s:
-            for layer_name in self.get_moving_layer_names(s):
-                registered_name = layer_name + "_registered"
-                is_registered_visible = s.layers[registered_name].visible
-                s.layers[registered_name].visible = not is_registered_visible
+        elif self.pipeline_state == PipelineState.COORDS_READY:
+            return
+        elif self.pipeline_state == PipelineState.READY:
+            with self.viewer.txn() as s:
+                for layer_name in self.get_moving_layer_names(s):
+                    registered_name = layer_name + "_registered"
+                    is_registered_visible = s.layers[registered_name].visible
+                    s.layers[registered_name].visible = not is_registered_visible
 
     def _show_help_message(self):
         in_prog_message = "Place registration points by moving the centre position of one panel and then putting an annotation with ctrl+left click in the other panel. Annotations can be adjusted if needed with alt+left click. Press 't' to toggle visibility of the registered layer. Press 'f' to toggle forcing at most a similarity transform estimation. Press 'g' to toggle between a local affine estimation and a global one. Press 'd' to dump current state for later resumption. Press 'y' to show or hide this help message."
         setup_message = "Place fixed (reference) layers in the left hand panel, and moving layers (to be registered) in the right hand panel. Then press 't' once you have completed this setup. Press 'y' to show/hide this message."
-        error_message = f"There was an error in setup. Please try again. {setup_message}"
+        error_message = (
+            f"There was an error in setup. Please try again. {setup_message}"
+        )
         waiting_message = "Please wait while setup is completed. In case it seems to be stuck, try pressing 't' again."
 
         help_message = ""
-        if self.ready_state == PipelineState.READY:
+        if self.pipeline_state == PipelineState.READY:
             help_message = in_prog_message
-        elif self.ready_state == PipelineState.NOT_READY:
+        elif self.pipeline_state == PipelineState.NOT_READY:
             help_message = setup_message
-        elif self.ready_state == PipelineState.ERROR:
+        elif self.pipeline_state == PipelineState.ERROR:
             help_message = error_message
-        elif self.ready_state == PipelineState.COORDS_READY:
+        elif self.pipeline_state == PipelineState.COORDS_READY:
             help_message = waiting_message
         self._set_status_message("help", help_message)
 
@@ -574,17 +585,26 @@ class LinearRegistrationWorkflow:
 
     def toggle_force_non_affine(self, _):
         self._force_non_affine = not self._force_non_affine
-        message = "Estimating max of similarity transformation" if self._force_non_affine else "Estimating most appropriate transformation"
+        message = (
+            "Estimating max of similarity transformation"
+            if self._force_non_affine
+            else "Estimating most appropriate transformation"
+        )
         self._set_status_message("transform", message)
         self.update_affine()
 
     def toggle_global_estimate(self, _):
         if self._annotation_filter_method == PointFilter.NONE:
             self._annotation_filter_method = PointFilter.NEAREST
-            self._set_status_message("global", f"Using nearest {NUM_NEAREST_POINTS} points in transform estimation")
+            self._set_status_message(
+                "global",
+                f"Using nearest {NUM_NEAREST_POINTS} points in transform estimation",
+            )
         elif self._annotation_filter_method == PointFilter.NEAREST:
             self._annotation_filter_method = PointFilter.NONE
-            self._set_status_message("global", "Using all points in transform estimation")
+            self._set_status_message(
+                "global", "Using all points in transform estimation"
+            )
         self.update_affine()
 
     def _setup_viewer_actions(self):
@@ -628,6 +648,44 @@ class LinearRegistrationWorkflow:
                 copy.visible = False
                 s.layers[copy.name] = copy
                 s.layout.children[0].layers.append(copy.name)
+
+    def _restore_coord_maps(self, reg_info):
+        """Restore the coord space transforms from the stored maps.
+
+        This is used when continuing from a saved state.
+        """
+        self._cached_moving_layer_names = self.get_moving_layer_names(self.get_state())
+        self.stored_map_moving_name_to_data_coords = {
+            k: neuroglancer.CoordinateSpace(json=v)
+            for k, v in reg_info["layer_cache"].items()
+        }
+        self.stored_map_moving_name_to_viewer_coords = {
+            k: [neuroglancer.CoordinateSpaceTransform(json_data=t) for t in v]
+            for k, v in reg_info["viewer_layer_cache"].items()
+        }
+
+    def _handle_layer_names_changed(self, s: neuroglancer.ViewerState):
+        current_names = set(s.layers.keys())
+        cached_names = set(self.stored_map_moving_name_to_data_coords.keys())
+        if current_names == cached_names:
+            return
+        # The common case is that a layer was renamed
+        if len(current_names) == len(cached_names):
+            for old_name in cached_names:
+                if old_name not in current_names:
+                    new_name = list(current_names - cached_names)[0]
+                    self.stored_map_moving_name_to_data_coords[new_name] = (
+                        self.stored_map_moving_name_to_data_coords.pop(old_name)
+                    )
+                    self.stored_map_moving_name_to_viewer_coords[new_name] = (
+                        self.stored_map_moving_name_to_viewer_coords.pop(old_name)
+                    )
+                    break
+        else:
+            self._set_status_message(
+                "error",
+                "Layers have been added or removed, this may cause unexpected behaviour.",
+            )
 
     def combine_affine_across_dims(self, s: neuroglancer.ViewerState, affine):
         """
@@ -695,6 +753,8 @@ class LinearRegistrationWorkflow:
     def update_affine(self):
         """Estimate affine, with debouncing in case of rapid state updates"""
         with self.viewer.txn() as s:
+            # Need to check if layer names changed first
+            self._handle_layer_names_changed(s)
             updated = self.estimate_affine(s)
             if updated:
                 num_point_pairs = len(self.stored_points[0])
@@ -728,7 +788,7 @@ class LinearRegistrationWorkflow:
                 fixed_dims.append(dim)
         return fixed_dims, moving_dims
 
-    def split_points_into_pairs(self, annotations, dim_names, current_position = None):
+    def split_points_into_pairs(self, annotations, dim_names, current_position=None):
         """In the simple case, each point contains fixed dim coords then moving dim coords
         but in case that is the other way around, we handle that here.
         Right now we can't handle interleaved co-ordinate spaces."""
@@ -750,7 +810,11 @@ class LinearRegistrationWorkflow:
         if current_position is not None:
             dim_add = num_dims if real_dims_last else 0
             fixed_position_indices = [i + dim_add for i in range(num_dims)]
-            return np.array(fixed_points), np.array(moving_points), current_position[fixed_position_indices]
+            return (
+                np.array(fixed_points),
+                np.array(moving_points),
+                current_position[fixed_position_indices],
+            )
         return np.array(fixed_points), np.array(moving_points), current_position
 
     def update_registered_layers(self, s: neuroglancer.ViewerState):
@@ -822,22 +886,30 @@ class LinearRegistrationWorkflow:
         fixed_points, moving_points, current_position = self.split_points_into_pairs(
             annotations, dim_names, s.position
         )
-        fixed_points, moving_points = self._filter_annotations(fixed_points, moving_points, current_position)
+        fixed_points, moving_points = self._filter_annotations(
+            fixed_points, moving_points, current_position
+        )
 
         # Cached last points estimated with, if similar to current, don't estimate
-        if len(self.stored_points[0]) == len(fixed_points) and len(
-            self.stored_points[1]
-        ) == len(moving_points) and self.stored_points[-1] == self._force_non_affine:
+        if (
+            len(self.stored_points[0]) == len(fixed_points)
+            and len(self.stored_points[1]) == len(moving_points)
+            and self.stored_points[-1] == self._force_non_affine
+        ):
             if np.all(np.isclose(self.stored_points[0], fixed_points)) and np.all(
                 np.isclose(self.stored_points[1], moving_points)
             ):
                 return False
-        self.affine = estimate_transform(fixed_points, moving_points, self._force_non_affine)
+        self.affine = estimate_transform(
+            fixed_points, moving_points, self._force_non_affine
+        )
         self.stored_points = [fixed_points, moving_points, self._force_non_affine]
 
         return True
 
-    def _filter_annotations(self, fixed_points: np.ndarray, moving_points: np.ndarray, position):
+    def _filter_annotations(
+        self, fixed_points: np.ndarray, moving_points: np.ndarray, position
+    ):
         """To allow local estimations e.g. from the nearest points"""
         if self._annotation_filter_method == PointFilter.NONE:
             return fixed_points, moving_points
@@ -849,7 +921,9 @@ class LinearRegistrationWorkflow:
             nearest_indices = []
             diff = fixed_points - np.asarray(position)
             d2 = np.sum(diff * diff, axis=1)
-            nearest_indices = np.argpartition(d2, NUM_NEAREST_POINTS-1)[ :NUM_NEAREST_POINTS]
+            nearest_indices = np.argpartition(d2, NUM_NEAREST_POINTS - 1)[
+                :NUM_NEAREST_POINTS
+            ]
             return fixed_points[nearest_indices], moving_points[nearest_indices]
         return fixed_points, moving_points
 
@@ -877,31 +951,28 @@ class LinearRegistrationWorkflow:
         state = self.get_state()
         state_dict = state.to_json()
 
+        try:
+            info = self.get_registration_info(state)
+            info.pop("annotations", None)  # annotations are already in the state dump
+            info["layer_cache"] = {
+                k: v.to_json()
+                for k, v in self.stored_map_moving_name_to_data_coords.items()
+            }
+            info["viewer_layer_cache"] = {
+                k: [t.to_json() for t in v]
+                for k, v in self.stored_map_moving_name_to_viewer_coords.items()
+            }
+            info["timestamp"] = timestamp
+            state_dict["linear_reg_pipeline_info"] = info
+        except Exception:
+            print("Error saving registration log")
+
         with open(filename, "w") as f:
             json.dump(state_dict, f, indent=4)
 
-        registration_log_filename = f"registration_log_{timestamp}.json"
-
-        reg_log_message = f", registration log saved to {registration_log_filename}"
-        try:
-            with open(registration_log_filename, "w") as f:
-                info = self.get_registration_info(state)
-                info.pop("annotations", None)
-                info["layer_cache"] = {k: v.to_json() for k, v in self.stored_map_moving_name_to_data_coords.items()}
-                info["viewer_layer_cache"] = {k: v.to_json() for k, v in self.stored_map_moving_name_to_viewer_coords.items()}
-                json.dump(info, f, indent=4)
-        except:
-            reg_log_message = ""
-            print("Error saving registration log")
-
-        print(
-            f"Current state dumped to: {filename}{reg_log_message}"
-        )
         self._set_status_message(
-            "dump",
-            f"State saved to {filename}{reg_log_message}",
+            "dump", f"State saved to {filename} and can be used to continue later."
         )
-
         return filename
 
     def get_state(self):
@@ -914,7 +985,7 @@ class LinearRegistrationWorkflow:
     def _clear_status_messages(self):
         to_pop = []
         for k, v in self._status_timers.items():
-            if k == "help": # "help" is manually cleared
+            if k == "help":  # "help" is manually cleared
                 continue
             if time() - v > MESSAGE_DURATION:
                 to_pop.append(k)
@@ -986,12 +1057,6 @@ def add_mapping_args(ap: argparse.ArgumentParser):
         action="store_true",
         help="If set, run the tests and exit.",
     )
-    ap.add_argument(
-        "--reg-path",
-        "-r",
-        type=str,
-        help="Path to a JSON dump of registration info for continuing from. Required with the -c flag."
-    )
 
 
 def handle_args():
@@ -1053,7 +1118,7 @@ class TestTransforms:
     def test_2d_transform_fit(self):
         # Based on the idea of mapping the big and little dipper together
         # In reality any points would do here, but having a kind of known layout
-        # helps
+        # helps visuallize the result if needed
         little = np.array(
             [
                 [0.0, 0.0],
@@ -1161,8 +1226,8 @@ class TestTransforms:
 
 if __name__ == "__main__":
     args = handle_args()
-    if args.continue_workflow and not args.reg_path:
-        raise ValueError("The continue flag requires a registration dump.")
+    if args.continue_workflow and not args.json:
+        raise ValueError("The continue flag requires a registration state dump.")
 
     if args.test:
         import pytest
