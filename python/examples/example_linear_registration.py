@@ -545,7 +545,9 @@ class LinearRegistrationWorkflow:
     def continue_workflow(self, _):
         """When the user presses to continue, respond according to the state."""
         if self.pipeline_state == PipelineState.NOT_READY:
-            all_compatible = self._check_all_moving_layers_are_image_or_seg(self.get_state())
+            all_compatible = self._check_all_moving_layers_are_image_or_seg(
+                self.get_state()
+            )
             if not all_compatible:
                 return
             self.setup_viewer_after_user_ready()
