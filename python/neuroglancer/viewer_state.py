@@ -1516,14 +1516,19 @@ def make_linked_navigation_type(
 
     return Linked
 
+
 if typing.TYPE_CHECKING or _BUILDING_DOCS:
     _LinkedDisplayDimensionsBase = LinkedType[list[str]]
 else:
-    _LinkedDisplayDimensionsBase = make_linked_navigation_type(typed_list(str), lambda x: x)
+    _LinkedDisplayDimensionsBase = make_linked_navigation_type(
+        typed_list(str), lambda x: x
+    )
+
 
 @export
 class LinkedDisplayDimensions(_LinkedDisplayDimensionsBase):
     __slots__ = ()
+
 
 if typing.TYPE_CHECKING or _BUILDING_DOCS:
     _LinkedPositionBase = LinkedType[np.typing.NDArray[np.float32]]
