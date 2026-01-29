@@ -1159,14 +1159,27 @@ class TestTransforms:
         # ax.legend()
         # fig.savefig("dipper.png", dpi=200)
 
+        # In this case there is a little bit of shear in the fit
+        # so a simiarity transform won't be perfect, but should be close
         transformed_points = transform_points(affine, big)
         assert np.allclose(transformed_points, little, atol=0.3)
 
-        # While the transform is really a similarity transform,
-        # we can also try an affine fit here
+        # The affine fit should be very accurate
         affine2 = affine_fit(little, big)
         transformed_points2 = transform_points(affine2, big)
         assert np.allclose(transformed_points2, little, atol=1e-2)
+
+        # If we change R to have determinant 1, the similarity fit should be very accurate too
+        R_det1 = np.array(
+            [
+                [0.866, -0.500],
+                [0.500, 0.866],
+            ]
+        )
+        big2 = (little @ R_det1.T) * s + t
+        affine3 = rigid_or_similarity_fit(little, big2, rigid=False)
+        transformed_points3 = transform_points(affine3, big2)
+        assert np.allclose(transformed_points3, little, atol=1e-2)
 
     def test_3d_transform_fit(self):
         little = np.array(
@@ -1183,6 +1196,7 @@ class TestTransforms:
         )
 
         s = 1.7
+        # Determinant is close to 1
         R = np.array(
             [
                 [0.866, -0.500, 0.000],
