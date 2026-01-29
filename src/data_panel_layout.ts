@@ -180,6 +180,7 @@ export function getCommonViewerState(viewer: ViewerUIState) {
     wireFrame: viewer.wireFrame,
     enableAdaptiveDownsampling: viewer.enableAdaptiveDownsampling,
     visibleLayerRoles: viewer.visibleLayerRoles,
+    clipDimensionsWeight: viewer.clipDimensionsWeight,
     selectedLayer: viewer.selectedLayer,
     visibility: viewer.visibility,
     scaleBarOptions: viewer.scaleBarOptions,
