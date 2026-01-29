@@ -18,8 +18,8 @@ General workflow:
         d. The fixed and moving coordinates can be adjusted later by moving the annotation as normal (alt + left click the point). This will only move the point in the panel you are currently focused on, so to adjust both fixed and moving coordinates you need to switch panels.
     6. As you add points, the estimated affine transform will be updated and applied to the moving layers. The registered layers can be toggled visible/invisible by pressing 't'.
     7. If an issue happens, the viewer state can go out of sync. To help with this, the python console will regularly print that viewer states are syncing with a timestamp. If you do not see this message for a while, consider continuing the workflow again from a saved state.
-    8. To continue from a saved state, dump the viewer state to a file using either the viewer UI or the dump_current_state method in the python console, and then pass this file via --json when starting the script again. You should also pass --continue-workflow (or -c) to skip the initial setup steps. If you renamed the annotation layer containing the registration points, you should also pass --annotations-name (or -a) with the new name. For example:
-        python -i example_linear_registration.py --json saved_state.json -c -a registration_points
+    8. To continue from a saved state, dump the viewer state to a file using either the 'd' key. Then pass this json in the --json command line argument to skip the initial setup steps and use existing annotations. If you renamed the annotation layer containing the registration points, you should also pass --annotations-name (or -a) with the new name. For example:
+        python -i example_linear_registration.py --json saved_state.json -a registration_points
 
 Known issues:
     1. Channel dimensions that are stored as c' get switched to c^ and then need to have
@@ -339,11 +339,7 @@ class LinearRegistrationWorkflow:
     def __init__(self, parsed_args):
         starting_ng_state = parsed_args.state
         self.annotations_name = parsed_args.annotations_name
-        self.pipeline_state = (
-            PipelineState.READY
-            if parsed_args.continue_workflow
-            else PipelineState.NOT_READY
-        )
+        self.pipeline_state = PipelineState.NOT_READY
         self.unlink_scales = parsed_args.unlink_scales
         self.output_name = parsed_args.output_name
 
@@ -368,7 +364,7 @@ class LinearRegistrationWorkflow:
         if starting_ng_state is None:
             self._add_demo_data_to_viewer()
         else:
-            linear_reg_pipeline_info = starting_ng_state.get(
+            linear_reg_pipeline_info = starting_ng_state.to_json().get(
                 "linear_reg_pipeline_info", None
             )
             self.viewer.set_state(starting_ng_state)
@@ -376,14 +372,13 @@ class LinearRegistrationWorkflow:
         self._setup_viewer_actions()
         self._show_help_message()
 
+        if linear_reg_pipeline_info is not None:
+            breakpoint()
+            self._restore_coord_maps(linear_reg_pipeline_info)
+            self.pipeline_state = PipelineState.READY
+
         if self.pipeline_state == PipelineState.NOT_READY:
             self.setup_initial_two_panel_layout()
-        elif parsed_args.continue_workflow:
-            if linear_reg_pipeline_info is None:
-                raise ValueError(
-                    "To continue workflow from saved state, the state must contain linear_reg_pipeline_info"
-                )
-            self._restore_coord_maps(linear_reg_pipeline_info)
 
     def update(self):
         """Primary update loop, called whenever the viewer state changes."""
@@ -399,14 +394,20 @@ class LinearRegistrationWorkflow:
             self.update_affine()
         self._clear_status_messages()
 
+    def _reset(self):
+        self._cached_moving_layer_names = []
+        self._current_moving_layer_idx = 0
+        self.stored_map_moving_name_to_data_coords = {}
+        self.stored_map_moving_name_to_viewer_coords = {}
+
     def setup_initial_two_panel_layout(self):
         """Set up a two panel layout if not already present."""
         with self.viewer.txn() as s:
             all_layer_names = [layer.name for layer in s.layers]
             if len(all_layer_names) >= 2:
-                half_point = len(all_layer_names) // 2
-                group1_names = all_layer_names[:half_point]
-                group2_names = all_layer_names[half_point:]
+                last_layer_name = all_layer_names[-1]
+                group1_names = all_layer_names[:-1]
+                group2_names = [last_layer_name]
             else:
                 group1_names = all_layer_names
                 group2_names = all_layer_names
@@ -492,9 +493,11 @@ class LinearRegistrationWorkflow:
                 f"ERROR: Could not parse volume info for {self.moving_name}: {e} {info_future}"
             )
             print("Try matching the global dimensions to the moving dimension units.")
+            self.pipeline_state = PipelineState.ERROR
+            self._reset()
+            self._show_help_message()
             # TODO allow recovery from this failure by allowing the user
             # to enter particular layer name co-ordinate spaces manually
-            exit(-1)
         else:
             self.stored_map_moving_name_to_data_coords[self.moving_name] = (
                 result.dimensions
@@ -508,6 +511,8 @@ class LinearRegistrationWorkflow:
             return self._create_second_coord_space()
 
     def _create_second_coord_space(self):
+        if self.pipeline_state == PipelineState.ERROR:
+            return self.pipeline_state
         self.pipeline_state = PipelineState.COORDS_READY
         with self.viewer.txn() as s:
             for layer_name in self._cached_moving_layer_names:
@@ -540,10 +545,13 @@ class LinearRegistrationWorkflow:
     def continue_workflow(self, _):
         """When the user presses to continue, respond according to the state."""
         if self.pipeline_state == PipelineState.NOT_READY:
+            all_compatible = self._check_all_moving_layers_are_image_or_seg(self.get_state())
+            if not all_compatible:
+                return
             self.setup_viewer_after_user_ready()
             return
         elif self.pipeline_state == PipelineState.ERROR:
-            self.setup_registration_point_layer()
+            self.setup_viewer_after_user_ready()
         elif self.pipeline_state == PipelineState.COORDS_READY:
             return
         elif self.pipeline_state == PipelineState.READY:
@@ -552,6 +560,21 @@ class LinearRegistrationWorkflow:
                     registered_name = layer_name + "_registered"
                     is_registered_visible = s.layers[registered_name].visible
                     s.layers[registered_name].visible = not is_registered_visible
+
+    def _check_all_moving_layers_are_image_or_seg(self, s: neuroglancer.ViewerState):
+        all_images = True
+        for layer_name in self.get_moving_layer_names(s):
+            layer = s.layers[layer_name]
+            if not (layer.type == "image" or layer.type == "segmentation"):
+                all_images = False
+                break
+        if not all_images:
+            self._set_status_message(
+                "error",
+                "All moving layers must be image layers or seg layers for registration to work. Please correct this and try again.",
+            )
+            self._show_help_message()
+        return all_images
 
     def _show_help_message(self):
         in_prog_message = "Place registration points by moving the centre position of one panel and then putting an annotation with ctrl+left click in the other panel. Annotations can be adjusted if needed with alt+left click. Press 't' to toggle visibility of the registered layer. Press 'f' to toggle forcing at most a similarity transform estimation. Press 'g' to toggle between a local affine estimation and a global one. Press 'd' to dump current state for later resumption. Press 'y' to show or hide this help message."
@@ -662,7 +685,7 @@ class LinearRegistrationWorkflow:
         }
 
     def _handle_layer_names_changed(self, s: neuroglancer.ViewerState):
-        current_names = set(s.layers.keys())
+        current_names = set(self.get_moving_layer_names(s))
         cached_names = set(self.stored_map_moving_name_to_data_coords.keys())
         if current_names == cached_names:
             return
@@ -1023,15 +1046,9 @@ def add_mapping_args(ap: argparse.ArgumentParser):
         "--annotations-name",
         "-a",
         type=str,
-        help="Name of the annotation layer (default is annotations)",
+        help="Name of the annotation layer (default is annotations). This is relevant when passing a --json file with saved state to continue from.",
         default="annotation",
         required=False,
-    )
-    ap.add_argument(
-        "--continue-workflow",
-        "-c",
-        action="store_true",
-        help="Indicates that we are continuing the workflow from a previously saved state. This will skip the inital setup steps and resume from the affine estimation step directly. You must provide both a state (--url or --json) and the registration info dumped at the same time by this script (-r)",
     )
     ap.add_argument(
         "--unlink-scales",
@@ -1236,8 +1253,6 @@ class TestTransforms:
 
 if __name__ == "__main__":
     args = handle_args()
-    if args.continue_workflow and not args.json:
-        raise ValueError("The continue flag requires a registration state dump.")
 
     if args.test:
         import pytest
