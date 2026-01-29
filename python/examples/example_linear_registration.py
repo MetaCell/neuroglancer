@@ -38,7 +38,6 @@ from copy import deepcopy, copy
 from enum import Enum
 from time import ctime, time
 from datetime import datetime
-from typing import Union
 
 import neuroglancer
 import neuroglancer.cli
@@ -235,7 +234,7 @@ def debounce(wait: float):
     return decorator
 
 
-def _create_demo_data(size: Union[int, tuple] = 60, radius: float = 20):
+def _create_demo_data(size: int | tuple = 60, radius: float = 20):
     """Only used if no data is provided to the script"""
     data_size = (size,) * NUM_DEMO_DIMS if isinstance(size, int) else size
     data = np.zeros(data_size, dtype=np.uint8)
@@ -311,15 +310,13 @@ def create_coord_space_matching_global_dims(
     units = viewer_dims.units
     scales = viewer_dims.scales
     if indices is not None:
-        names = [names[i] for i in indices]
-        units = [units[i] for i in indices]
-        scales = [scales[i] for i in indices]
+        return neuroglancer.CoordinateSpace(
+            names=[names[i] for i in indices],
+            units=[units[i] for i in indices],
+            scales=np.array([scales[i] for i in indices]),
+        )
 
-    return neuroglancer.CoordinateSpace(
-        names=names,
-        units=units,
-        scales=scales,  # type: ignore
-    )
+    return neuroglancer.CoordinateSpace(names=names, units=units, scales=scales)
 
 
 class PipelineState(Enum):
@@ -767,7 +764,7 @@ class LinearRegistrationWorkflow:
                     pprint(self.get_registration_info(s))
 
     def get_fixed_and_moving_dims(
-        self, s: Union[neuroglancer.ViewerState, None], dim_names: list | tuple = ()
+        self, s: neuroglancer.ViewerState | None, dim_names: list | tuple = ()
     ):
         """Extract the fixed and moving dim names from the state or list of names"""
         if s is None:
@@ -918,7 +915,6 @@ class LinearRegistrationWorkflow:
             if len(fixed_points) <= NUM_NEAREST_POINTS:
                 return fixed_points, moving_points
             # Find the X nearest fixed point indices
-            nearest_indices = []
             diff = fixed_points - np.asarray(position)
             d2 = np.sum(diff * diff, axis=1)
             nearest_indices = np.argpartition(d2, NUM_NEAREST_POINTS - 1)[
