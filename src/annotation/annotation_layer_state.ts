@@ -42,11 +42,7 @@ import { RefCounted } from "#src/util/disposable.js";
 import type { ValueOrError } from "#src/util/error.js";
 import { makeValueOrError, valueOrThrow } from "#src/util/error.js";
 import { vec3 } from "#src/util/geom.js";
-import {
-  verifyFloat,
-  verifyObject,
-  verifyObjectAsMap,
-} from "#src/util/json.js";
+import { verifyFloat, verifyObjectAsMap } from "#src/util/json.js";
 import { NullarySignal } from "#src/util/signal.js";
 import type { Trackable } from "#src/util/trackable.js";
 import { WatchableMap } from "#src/util/watchable_map.js";
