@@ -421,7 +421,6 @@ function getCommonViewerState(viewer: Viewer) {
     crossSectionBackgroundColor: viewer.crossSectionBackgroundColor,
     perspectiveViewBackgroundColor: viewer.perspectiveViewBackgroundColor,
     hideCrossSectionBackground3D: viewer.hideCrossSectionBackground3D,
-    clipDimensionsWeight: viewer.clipDimensionsWeight,
     pickRadius: viewer.uiConfiguration.pickRadius,
   };
 }
