@@ -253,29 +253,13 @@ export class AnnotationLayerState extends RefCounted {
 
 export class TrackableClipDimensionsWeight implements Trackable {
   changed = new NullarySignal();
-
-  // Map of dimension name to weight
   private value_ = new Map<string, number>();
 
   get value() {
     return this.value_;
   }
 
-  reset() {
-    if (this.value_.size === 0) return;
-    this.value_.clear();
-    this.changed.dispatch();
-  }
-
-  restoreState(obj: any) {
-    if (obj === undefined) {
-      this.reset();
-      return;
-    }
-    verifyObject(obj);
-    const newValue = verifyObjectAsMap(obj, verifyFloat);
-
-    // Check if the value has actually changed
+  set value(newValue: Map<string, number>) {
     let changed = this.value_.size !== newValue.size;
     if (!changed) {
       for (const [dimName, weight] of newValue) {
@@ -293,6 +277,20 @@ export class TrackableClipDimensionsWeight implements Trackable {
       }
       this.changed.dispatch();
     }
+  }
+
+  reset() {
+    if (this.value_.size === 0) return;
+    this.value_.clear();
+    this.changed.dispatch();
+  }
+
+  restoreState(obj: any) {
+    if (obj === undefined) {
+      this.reset();
+      return;
+    }
+    this.value = verifyObjectAsMap(obj, verifyFloat);
   }
 
   toJSON() {

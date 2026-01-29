@@ -1977,7 +1977,6 @@ class ViewerState(JsonObjectWrapper):
     tool_palettes = toolPalettes = wrapped_property(
         "toolPalettes", typed_map(key_type=str, value_type=ToolPalette)
     )
-
     selection = wrapped_property("selection", DataSelectionState)
 
     @staticmethod

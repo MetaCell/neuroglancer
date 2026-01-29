@@ -425,7 +425,7 @@ function getAnnotationProjectionParameters(
   const { numChunkDisplayDims, chunkDisplayDimensionIndices } =
     chunkDisplayTransform;
 
-  // Set display dimensions to not clip (multiplier = 0)
+  // Set display dimensions to not clip by default (multiplier = 0)
   for (let i = 0; i < numChunkDisplayDims; ++i) {
     const chunkDim = chunkDisplayDimensionIndices[i];
     modelClipBounds[unpaddedRank + chunkDim] = 0;
@@ -563,8 +563,6 @@ function AnnotationRenderLayer<
       const { chunkTransform } = this;
       const displayDimensionRenderInfo =
         attachment.view.displayDimensionRenderInfo.value;
-
-      // Get clip dimensions weight from display state
       const clipDimensionsWeight =
         this.base.state.displayState.clipDimensionsWeight.value;
 
@@ -596,10 +594,8 @@ function AnnotationRenderLayer<
         return state.chunkRenderParameters;
       }
 
-      // Get clip dimensions weight from display state
       const clipDimensionsWeight =
         this.base.state.displayState.clipDimensionsWeight.value;
-
       state.chunkTransform = chunkTransform;
       state.displayDimensionRenderInfo = displayDimensionRenderInfo;
       const chunkRenderParameters = (state.chunkRenderParameters =
@@ -1044,11 +1040,6 @@ const SpatiallyIndexedAnnotationLayer = <
       >,
     ) {
       super.attach(attachment);
-
-      // Get clip dimensions weight from display state
-      const clipDimensionsWeight =
-        this.base.state.displayState.clipDimensionsWeight;
-
       attachment.state!.sources = attachment.registerDisposer(
         registerNested(
           (
@@ -1094,7 +1085,7 @@ const SpatiallyIndexedAnnotationLayer = <
           },
           this.base.state.transform,
           attachment.view.displayDimensionRenderInfo,
-          clipDimensionsWeight,
+          this.base.state.displayState.clipDimensionsWeight,
         ),
       );
     }
