@@ -66,6 +66,12 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
         const vertexAttributes = new Float32Array(numVertices);
         const indices: number[] = [];
         const nodeMap = new Map<number, number>();
+        const missingConnections: Array<{
+            nodeId: number;
+            parentId: number;
+            vertexIndex: number;
+            skeletonId: number;
+        }> = [];
 
 
         for (let i = 0; i < numVertices; ++i) {
@@ -84,6 +90,13 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
                 const parentIndex = nodeMap.get(node.parent_id);
                 if (parentIndex !== undefined) {
                     indices.push(i, parentIndex);
+                } else {
+                    missingConnections.push({
+                        nodeId: node.id,
+                        parentId: node.parent_id,
+                        vertexIndex: i,
+                        skeletonId: node.skeleton_id,
+                    });
                 }
             }
         }
@@ -94,6 +107,8 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
 
         // Pack only segment IDs into vertexAttributes (positions are in vertexPositions)
         chunk.vertexAttributes = [vertexAttributes];
+        chunk.missingConnections = missingConnections;
+        chunk.nodeMap = nodeMap;
     }
 }
 

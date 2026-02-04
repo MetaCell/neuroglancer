@@ -970,6 +970,7 @@ export class SpatiallyIndexedSkeletonChunk extends SliceViewChunk implements Ske
   filteredIndexBuffer: GLBuffer | undefined;
   filteredGeneration: number = -1;
   filteredSkipVisibleSegments = false;
+  filteredMissingConnectionsHash = 0;
   numFilteredIndices: number = 0;
   numFilteredVertices: number = 0;
   filteredVertexAttributeTextures?: (WebGLTexture | null)[];
@@ -1350,21 +1351,24 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     nodeShader.bind();
     renderHelper.setColor(gl, nodeShader, baseColor);
 
-    let globalNodeMap:
-      | Map<number, { chunk: SpatiallyIndexedSkeletonChunk; vertexIndex: number }>
-      | undefined;
-    if (DEBUG_SPATIALLY_INDEXED_SKELETON_RENDERING) {
-      globalNodeMap = new Map();
-      for (const sourceEntry of this.sources) {
-        const chunks = sourceEntry.chunkSource.chunks;
-        for (const chunk of chunks.values()) {
-          if (chunk.state === ChunkState.GPU_MEMORY) {
-            for (const [nodeId, vertexIndex] of chunk.nodeMap.entries()) {
-              globalNodeMap.set(nodeId, { chunk, vertexIndex });
-            }
+    const globalNodeMap = new Map<
+      number,
+      { chunk: SpatiallyIndexedSkeletonChunk; vertexIndex: number }
+    >();
+    for (const sourceEntry of this.sources) {
+      const chunks = sourceEntry.chunkSource.chunks;
+      for (const chunk of chunks.values()) {
+        if (chunk.state === ChunkState.GPU_MEMORY) {
+          for (const [nodeId, vertexIndex] of chunk.nodeMap.entries()) {
+            globalNodeMap.set(nodeId, { chunk, vertexIndex });
           }
         }
       }
+    }
+    if (DEBUG_SPATIALLY_INDEXED_SKELETON_RENDERING) {
+      console.debug(
+        `[SKELETON-RENDER] Global node map entries=${globalNodeMap.size}`,
+      );
     }
 
     for (const sourceEntry of this.sources) {
@@ -1377,6 +1381,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
           chunk,
           visibleSegments,
           hasRegularSkeletonLayer,
+          globalNodeMap,
         );
         if (filteredChunk === null) {
           continue;
@@ -1413,10 +1418,26 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     chunk: SpatiallyIndexedSkeletonChunk,
     visibleSegments: Uint64Set,
     skipVisibleSegments: boolean,
+    globalNodeMap?: Map<
+      number,
+      { chunk: SpatiallyIndexedSkeletonChunk; vertexIndex: number }
+    >,
   ): SkeletonChunkInterface | null {
+    let missingConnectionsHash = 0;
+    if (chunk.missingConnections.length > 0 && globalNodeMap) {
+      for (const conn of chunk.missingConnections) {
+        const parentNode = globalNodeMap.get(conn.parentId);
+        const parentMarker = parentNode ? parentNode.vertexIndex + 1 : 0;
+        missingConnectionsHash =
+          ((missingConnectionsHash * 1664525) ^
+            ((conn.parentId >>> 0) + parentMarker)) >>>
+          0;
+      }
+    }
     if (
       chunk.filteredGeneration === this.generation &&
       chunk.filteredSkipVisibleSegments === skipVisibleSegments &&
+      chunk.filteredMissingConnectionsHash === missingConnectionsHash &&
       chunk.filteredIndexBuffer &&
       chunk.filteredVertexAttributeTextures &&
       chunk.numFilteredIndices > 0 &&
@@ -1450,6 +1471,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       disposeFilteredTextures();
       chunk.filteredGeneration = this.generation;
       chunk.filteredSkipVisibleSegments = skipVisibleSegments;
+      chunk.filteredMissingConnectionsHash = missingConnectionsHash;
       chunk.numFilteredIndices = 0;
       chunk.numFilteredVertices = 0;
       return null;
@@ -1526,6 +1548,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       disposeFilteredTextures();
       chunk.filteredGeneration = this.generation;
       chunk.filteredSkipVisibleSegments = skipVisibleSegments;
+      chunk.filteredMissingConnectionsHash = missingConnectionsHash;
       chunk.numFilteredIndices = 0;
       chunk.numFilteredVertices = 0;
       if (DEBUG_SPATIALLY_INDEXED_SKELETON_RENDERING) {
@@ -1548,10 +1571,118 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       }
     }
 
+    const interChunkIndices: number[] = [];
+    const extraPositions: number[] = [];
+    const extraSegments: number[] = [];
+    const extraColors: number[] = [];
+    const extraVertexMap = new Map<number, number>();
+    let interEdgesAdded = 0;
+    let interVerticesAdded = 0;
+    let interEdgesMissingParent = 0;
+    let interEdgesSkippedHidden = 0;
+    let interEdgesSkippedChild = 0;
+    let interEdgesSkippedParentFiltered = 0;
+    let interEdgesMissingData = 0;
+    const chunkPositionCache = new Map<
+      SpatiallyIndexedSkeletonChunk,
+      Float32Array
+    >();
+    const getChunkPositions = (targetChunk: SpatiallyIndexedSkeletonChunk) => {
+      const cached = chunkPositionCache.get(targetChunk);
+      if (cached) return cached;
+      const offsets = targetChunk.vertexAttributeOffsets;
+      if (!offsets || offsets.length < 1) {
+        return null;
+      }
+      const positionArray = new Float32Array(
+        targetChunk.vertexAttributes.buffer,
+        targetChunk.vertexAttributes.byteOffset + offsets[0],
+        targetChunk.numVertices * 3,
+      );
+      chunkPositionCache.set(targetChunk, positionArray);
+      return positionArray;
+    };
+
+    if (chunk.missingConnections.length > 0 && globalNodeMap) {
+      for (const conn of chunk.missingConnections) {
+        const segmentId = Math.round(conn.skeletonId);
+        if (!Number.isFinite(segmentId)) {
+          if (DEBUG_SPATIALLY_INDEXED_SKELETON_RENDERING) {
+            console.warn(
+              `[SKELETON-RENDER] Non-finite missing connection segment id in chunk (${chunkLabel}): ${conn.skeletonId}`,
+            );
+          }
+          continue;
+        }
+        const info = getSegmentInfo(segmentId);
+        if (!info.include) {
+          interEdgesSkippedHidden++;
+          continue;
+        }
+        const childNew = oldToNew[conn.vertexIndex];
+        if (childNew < 0) {
+          interEdgesSkippedChild++;
+          continue;
+        }
+        const parentNode = globalNodeMap.get(conn.parentId);
+        if (!parentNode) {
+          interEdgesMissingParent++;
+          continue;
+        }
+        let parentNew = -1;
+        if (parentNode.chunk === chunk) {
+          const localParent = oldToNew[parentNode.vertexIndex];
+          if (localParent >= 0) {
+            parentNew = localParent;
+          } else {
+            interEdgesSkippedParentFiltered++;
+            continue;
+          }
+        } else {
+          const cached = extraVertexMap.get(conn.parentId);
+          if (cached !== undefined) {
+            parentNew = cached;
+          } else {
+            const parentPositions = getChunkPositions(parentNode.chunk);
+            if (!parentPositions) {
+              interEdgesMissingData++;
+              continue;
+            }
+            const posIndex = parentNode.vertexIndex * 3;
+            const extraIndex = extraPositions.length / 3;
+            parentNew = vertexList.length + extraIndex;
+            extraVertexMap.set(conn.parentId, parentNew);
+            extraPositions.push(
+              parentPositions[posIndex],
+              parentPositions[posIndex + 1],
+              parentPositions[posIndex + 2],
+            );
+            extraSegments.push(segmentId);
+            extraColors.push(
+              info.color[0],
+              info.color[1],
+              info.color[2],
+              info.color[3],
+            );
+            interVerticesAdded++;
+          }
+        }
+        if (parentNew >= 0) {
+          interChunkIndices.push(childNew, parentNew);
+          interEdgesAdded++;
+        }
+      }
+    }
+
+    if (interChunkIndices.length > 0) {
+      filteredIndices.push(...interChunkIndices);
+    }
+
     if (filteredIndices.length === 0) {
       disposeFilteredTextures();
       chunk.filteredGeneration = this.generation;
       chunk.filteredSkipVisibleSegments = skipVisibleSegments;
+      chunk.filteredMissingConnectionsHash = missingConnectionsHash;
       chunk.numFilteredIndices = 0;
       chunk.numFilteredVertices = 0;
       if (DEBUG_SPATIALLY_INDEXED_SKELETON_RENDERING) {
@@ -1562,9 +1693,11 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       return null;
     }
 
-    const filteredPositions = new Float32Array(vertexList.length * 3);
-    const filteredSegments = new Float32Array(vertexList.length);
-    const filteredColors = new Float32Array(vertexList.length * 4);
+    const extraVertexCount = extraPositions.length / 3;
+    const totalVertexCount = vertexList.length + extraVertexCount;
+    const filteredPositions = new Float32Array(totalVertexCount * 3);
+    const filteredSegments = new Float32Array(totalVertexCount);
+    const filteredColors = new Float32Array(totalVertexCount * 4);
     for (let i = 0; i < vertexList.length; ++i) {
       const oldIndex = vertexList[i];
       const srcStart = oldIndex * 3;
@@ -1579,6 +1712,20 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       if (info) {
         filteredColors.set(info.color, i * 4);
       }
+    }
+    for (let i = 0; i < extraVertexCount; ++i) {
+      const dstVertex = vertexList.length + i;
+      const posStart = i * 3;
+      const dstStart = dstVertex * 3;
+      filteredPositions[dstStart] = extraPositions[posStart];
+      filteredPositions[dstStart + 1] = extraPositions[posStart + 1];
+      filteredPositions[dstStart + 2] = extraPositions[posStart + 2];
+      filteredSegments[dstVertex] = extraSegments[i];
+      const colorStart = i * 4;
+      filteredColors[dstVertex * 4] = extraColors[colorStart];
+      filteredColors[dstVertex * 4 + 1] = extraColors[colorStart + 1];
+      filteredColors[dstVertex * 4 + 2] = extraColors[colorStart + 2];
+      filteredColors[dstVertex * 4 + 3] = extraColors[colorStart + 3];
     }
 
     const posBytes = new Uint8Array(filteredPositions.buffer);
@@ -1613,13 +1760,25 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     chunk.filteredIndexBuffer.setData(new Uint32Array(filteredIndices));
     chunk.filteredGeneration = this.generation;
     chunk.filteredSkipVisibleSegments = skipVisibleSegments;
+    chunk.filteredMissingConnectionsHash = missingConnectionsHash;
     chunk.numFilteredIndices = filteredIndices.length;
-    chunk.numFilteredVertices = vertexList.length;
+    chunk.numFilteredVertices = totalVertexCount;
 
     if (DEBUG_SPATIALLY_INDEXED_SKELETON_RENDERING) {
       console.debug(
-        `[SKELETON-RENDER] Filtered chunk (${chunkLabel}) vertices=${chunk.numFilteredVertices} indices=${chunk.numFilteredIndices} segments=${segmentInfo.size} included=${includedSegments} skipped=${skippedSegments}`,
+        `[SKELETON-RENDER] Filtered chunk (${chunkLabel}) vertices=${chunk.numFilteredVertices} indices=${chunk.numFilteredIndices} segments=${segmentInfo.size} included=${includedSegments} skipped=${skippedSegments} interEdges=${interEdgesAdded} interVertices=${interVerticesAdded}`,
       );
+      if (
+        interEdgesMissingParent ||
+        interEdgesSkippedHidden ||
+        interEdgesSkippedChild ||
+        interEdgesSkippedParentFiltered ||
+        interEdgesMissingData
+      ) {
+        console.debug(
+          `[SKELETON-RENDER] Chunk (${chunkLabel}) inter-edge skips missingParent=${interEdgesMissingParent} hidden=${interEdgesSkippedHidden} childFiltered=${interEdgesSkippedChild} parentFiltered=${interEdgesSkippedParentFiltered} missingData=${interEdgesMissingData}`,
+        );
+      }
     }
 
     return {
