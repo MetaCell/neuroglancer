@@ -35,6 +35,7 @@ import { mat4, vec3 } from "#src/util/geom.js";
 import { CatmaidClient, type CatmaidStackInfo } from "#src/datasource/catmaid/api.js";
 import { DataType } from "#src/util/data_type.js";
 import { ChunkLayout } from "#src/sliceview/chunk_layout.js";
+import type { SliceViewSourceOptions } from "#src/sliceview/base.js";
 import { makeSliceViewChunkSpecification } from "#src/sliceview/base.js";
 import {
     InlineSegmentPropertyMap,
@@ -83,6 +84,7 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
     }
 
     private static readonly DEBUG_SCALE_SELECTION = true;
+    private sortedGridCellSizes: Array<{ x: number; y: number; z: number }>;
 
     constructor(
         chunkManager: Borrowed<ChunkManager>,
@@ -91,19 +93,41 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
         private credentialsProvider: CredentialsProvider<CatmaidToken>,
         private scaleFactors: Float32Array,
         private upperBounds: Float32Array,
-        private gridCellSizes: Array<{ x: number; y: number; z: number }>,
+        gridCellSizes: Array<{ x: number; y: number; z: number }>,
         private cacheProvider?: string,
     ) {
         super(chunkManager);
+        this.sortedGridCellSizes = [...gridCellSizes].sort(
+            (a, b) => Math.min(b.x, b.y, b.z) - Math.min(a.x, a.y, a.z)
+        );
     }
 
-    getSources(): SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>[][] {
+    getGridCellSizes(): Array<{ x: number; y: number; z: number }> {
+        return this.sortedGridCellSizes;
+    }
+
+    getSpatialSkeletonGridSizes(): Array<{ x: number; y: number; z: number }> {
+        return this.sortedGridCellSizes;
+    }
+
+    getPerspectiveSources(): SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>[] {
+        const sources = this.getSources({ view: "3d" } as any);
+        return sources.length > 0 ? sources[0] : [];
+    }
+
+    getSliceViewPanelSources(): SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>[] {
+        const sources = this.getSources({ view: "2d" } as any);
+        return sources.length > 0 ? sources[0] : [];
+    }
+
+    getSources(
+        options: SliceViewSourceOptions,
+    ): SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>[][] {
         const sources: SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>[] = [];
+        const view = (options as { view?: string } | undefined)?.view ?? "2d";
         
-        // Sort gridCellSizes by minimum dimension (Ascending: Small/Fine -> Large/Coarse)
-        const sortedGridSizes = [...this.gridCellSizes].sort(
-            (a, b) => Math.min(a.x, a.y, a.z) - Math.min(b.x, b.y, b.z)
-        );
+        // Sorted by minimum dimension (Descending: Large/Coarse -> Small/Fine)
+        const sortedGridSizes = this.sortedGridCellSizes;
 
         // Calculate per-dimension min size for relative scaling
         let minX = Number.MAX_VALUE;
@@ -122,7 +146,7 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
             });
         }
 
-        for (const gridCellSize of sortedGridSizes) {
+        for (const [gridIndex, gridCellSize] of sortedGridSizes.entries()) {
             const chunkDataSize = Uint32Array.from([
                 gridCellSize.x,
                 gridCellSize.y,
@@ -156,7 +180,8 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
             parameters.catmaidParameters.url = this.baseUrl;
             parameters.catmaidParameters.projectId = this.projectId;
             parameters.catmaidParameters.cacheProvider = this.cacheProvider;
-            parameters.useChunkSizeForScaleSelection = true;
+            parameters.gridIndex = gridIndex;
+            parameters.view = view;
             parameters.metadata = {
                 transform: mat4.create(),
                 vertexAttributes: new Map([

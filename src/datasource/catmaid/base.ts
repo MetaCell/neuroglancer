@@ -37,7 +37,8 @@ export class CatmaidAnnotationGeometryChunkSourceParameters {
 
 export class CatmaidSkeletonSourceParameters extends SkeletonSourceParameters {
     catmaidParameters: CatmaidDataSourceParameters;
-    useChunkSizeForScaleSelection?: boolean;
+    gridIndex?: number;
+    view?: string;
     static RPC_ID = "catmaid/SkeletonSource";
 }
 

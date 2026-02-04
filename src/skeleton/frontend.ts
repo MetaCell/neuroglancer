@@ -50,6 +50,7 @@ import {
   SKELETON_LAYER_RPC_ID,
   SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_RPC_ID,
   SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_UPDATE_SOURCES_RPC_ID,
+  SPATIALLY_INDEXED_SKELETON_SLICEVIEW_RENDER_LAYER_RPC_ID,
 } from "#src/skeleton/base.js";
 import { RENDERED_VIEW_ADD_LAYER_RPC_ID } from "#src/render_layer_common.js";
 import type { SliceViewPanel } from "#src/sliceview/panel.js";
@@ -71,7 +72,11 @@ import {
   SliceViewChunkSource,
   MultiscaleSliceViewChunkSource,
 } from "#src/sliceview/frontend.js";
-import type { SliceViewChunkSpecification } from "#src/sliceview/base.js";
+import type {
+  SliceViewBase,
+  SliceViewChunkSpecification,
+  TransformedSource,
+} from "#src/sliceview/base.js";
 import { ChunkLayout } from "#src/sliceview/chunk_layout.js";
 import {
   TrackableValue,
@@ -1071,12 +1076,32 @@ export class SpatiallyIndexedSkeletonSource extends SliceViewChunkSource<
   }
 }
 
-export abstract class MultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleSliceViewChunkSource<SpatiallyIndexedSkeletonSource> {}
+export abstract class MultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleSliceViewChunkSource<SpatiallyIndexedSkeletonSource> {
+  getPerspectiveSources(): SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>[] {
+    const sources = this.getSources({ view: "3d" } as any);
+    const flattened: SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>[] = [];
+    for (const scale of sources) {
+      if (scale.length > 0) {
+        flattened.push(scale[0]);
+      }
+    }
+    return flattened;
+  }
+
+  getSliceViewPanelSources(): SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>[] {
+    return this.getPerspectiveSources();
+  }
+
+  getSpatialSkeletonGridSizes(): { x: number; y: number; z: number }[] | undefined {
+    return undefined;
+  }
+}
 
 export class MultiscaleSliceViewSpatiallyIndexedSkeletonLayer extends SliceViewRenderLayer<
   SpatiallyIndexedSkeletonSource
 > {
   private renderOptions: ViewSpecificSkeletonRenderingOptions;
+  RPC_TYPE_ID = SPATIALLY_INDEXED_SKELETON_SLICEVIEW_RENDER_LAYER_RPC_ID;
   constructor(
     public chunkManager: ChunkManager,
     public multiscaleSource: MultiscaleSpatiallyIndexedSkeletonSource,
@@ -1096,7 +1121,72 @@ export class MultiscaleSliceViewSpatiallyIndexedSkeletonLayer extends SliceViewR
     this.registerDisposer(
       this.renderOptions.lineWidth.changed.add(this.redrawNeeded.dispatch),
     );
+    const rpc = this.chunkManager.rpc!;
+    const gridLevel2d = (displayState as any).spatialSkeletonGridLevel2d;
+    const lod2d = (displayState as any).spatialSkeletonLod2d;
+    if (gridLevel2d !== undefined && lod2d !== undefined) {
+      this.rpcTransfer = {
+        ...this.rpcTransfer,
+        chunkManager: this.chunkManager.rpcId,
+        skeletonGridLevel: this.registerDisposer(
+          SharedWatchableValue.makeFromExisting(rpc, gridLevel2d),
+        ).rpcId,
+        skeletonLod: this.registerDisposer(
+          SharedWatchableValue.makeFromExisting(rpc, lod2d),
+        ).rpcId,
+      };
+    }
     this.initializeCounterpart();
+  }
+
+  filterVisibleSources(
+    sliceView: SliceViewBase,
+    sources: readonly TransformedSource[],
+  ): Iterable<TransformedSource> {
+    const gridLevel = (this.displayState as any).spatialSkeletonGridLevel2d
+      ?.value as number | undefined;
+    if (gridLevel !== undefined && sources.length > 0) {
+      const gridIndexedSources = sources
+        .map((tsource, scaleIndex) => ({
+          tsource,
+          scaleIndex,
+          gridIndex: (tsource.source as any).parameters?.gridIndex as
+            | number
+            | undefined,
+        }))
+        .filter((entry) => entry.gridIndex !== undefined);
+      if (gridIndexedSources.length === sources.length) {
+        let minGridIndex = Number.POSITIVE_INFINITY;
+        let maxGridIndex = Number.NEGATIVE_INFINITY;
+        for (const entry of gridIndexedSources) {
+          const index = entry.gridIndex as number;
+          minGridIndex = Math.min(minGridIndex, index);
+          maxGridIndex = Math.max(maxGridIndex, index);
+        }
+        const clampedGridLevel = Math.min(
+          Math.max(gridLevel, minGridIndex),
+          maxGridIndex,
+        );
+        let selectedEntry =
+          gridIndexedSources.find(
+            (entry) => entry.gridIndex === clampedGridLevel,
+          ) ?? gridIndexedSources[0];
+        if (selectedEntry.gridIndex !== clampedGridLevel) {
+          let bestDistance = Number.POSITIVE_INFINITY;
+          for (const entry of gridIndexedSources) {
+            const distance = Math.abs(
+              (entry.gridIndex as number) - clampedGridLevel,
+            );
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              selectedEntry = entry;
+            }
+          }
+        }
+        return [selectedEntry.tsource];
+      }
+    }
+    return super.filterVisibleSources(sliceView, sources);
   }
 
   // Draw is no-op as per SliceViewSpatiallyIndexedSkeletonLayer pattern
@@ -1107,6 +1197,11 @@ export class MultiscaleSliceViewSpatiallyIndexedSkeletonLayer extends SliceViewR
 
 type SpatiallyIndexedSkeletonSourceEntry =
   SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>;
+
+interface SpatiallyIndexedSkeletonLayerOptions {
+  gridLevel?: WatchableValueInterface<number>;
+  lod?: WatchableValueInterface<number>;
+}
 
 export class SpatiallyIndexedSkeletonLayer extends RefCounted implements SkeletonLayerInterface {
   layerChunkProgressInfo = new LayerChunkProgressInfo();
@@ -1125,6 +1220,8 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     segmentTextureFormat,
     segmentColorTextureFormat,
   ];
+  gridLevel: WatchableValueInterface<number>;
+  lod: WatchableValueInterface<number>;
 
   private markFilteredDataDirty(reason: string) {
     this.generation++;
@@ -1149,6 +1246,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     public displayState: SkeletonLayerDisplayState & {
       localPosition: WatchableValueInterface<Float32Array>;
     },
+    options: SpatiallyIndexedSkeletonLayerOptions = {},
   ) {
     super();
     if (Array.isArray(sources)) {
@@ -1164,6 +1262,12 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       this.source = sources;
     }
     this.localPosition = displayState.localPosition;
+    this.gridLevel =
+      options.gridLevel ??
+      (displayState as any).spatialSkeletonGridLevel3d ??
+      new WatchableValue(0);
+    this.lod =
+      options.lod ?? (displayState as any).skeletonLod ?? new WatchableValue(0);
     registerRedrawWhenSegmentationDisplayState3DChanged(displayState, this);
     this.displayState.shaderError.value = undefined;
     const { skeletonRenderingOptions: renderingOptions } = displayState;
@@ -1224,6 +1328,13 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
         markDirty("objectAlpha"),
       ),
     );
+    if (this.gridLevel !== undefined) {
+      this.registerDisposer(
+        this.gridLevel.changed.add(() =>
+          markDirty("spatialSkeletonGridLevel"),
+        ),
+      );
+    }
     if (displayState.hiddenObjectAlpha) {
       this.registerDisposer(
         displayState.hiddenObjectAlpha.changed.add(() =>
@@ -1245,7 +1356,14 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     );
     
     const skeletonLodWatchable = this.registerDisposer(
-      SharedWatchableValue.makeFromExisting(rpc, (displayState as any).skeletonLod),
+      SharedWatchableValue.makeFromExisting(rpc, this.lod),
+    );
+
+    const skeletonGridLevelWatchable = this.registerDisposer(
+      SharedWatchableValue.makeFromExisting(
+        rpc,
+        this.gridLevel,
+      ),
     );
     
     sharedObject.initializeCounterpart(rpc, {
@@ -1258,6 +1376,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       ).rpcId,
       renderScaleTarget: renderScaleTargetWatchable.rpcId,
       skeletonLod: skeletonLodWatchable.rpcId,
+      skeletonGridLevel: skeletonGridLevelWatchable.rpcId,
     });
     this.backend = sharedObject;
   }

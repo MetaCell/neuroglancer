@@ -5,7 +5,11 @@ import { registerLayerControl } from "#src/widget/layer_control.js";
 import { checkboxLayerControl } from "#src/widget/layer_control_checkbox.js";
 import { enumLayerControl } from "#src/widget/layer_control_enum.js";
 import { rangeLayerControl } from "#src/widget/layer_control_range.js";
-import { renderScaleLayerControl } from "#src/widget/render_scale_widget.js";
+import { makeCachedDerivedWatchableValue } from "#src/trackable_value.js";
+import {
+  renderScaleLayerControl,
+  spatialSkeletonGridResolutionLayerControl,
+} from "#src/widget/render_scale_widget.js";
 import {
   colorSeedLayerControl,
   fixedColorLayerControl,
@@ -68,6 +72,44 @@ export const LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
     })),
   },
   {
+    label: "Resolution (skeleton grid 2D)",
+    toolJson: json_keys.SPATIAL_SKELETON_GRID_LEVEL_2D_JSON_KEY,
+    isValid: (layer) =>
+      makeCachedDerivedWatchableValue(
+        (levels, hasSpatialSkeletons) =>
+          hasSpatialSkeletons && levels.length > 0,
+        [
+          layer.displayState.spatialSkeletonGridLevels,
+          layer.hasSpatiallyIndexedSkeletonsLayer,
+        ],
+      ),
+    title:
+      "Select the grid size level for spatially indexed skeletons in 2D views",
+    ...spatialSkeletonGridResolutionLayerControl((layer) => ({
+      levels: layer.displayState.spatialSkeletonGridLevels,
+      target: layer.displayState.spatialSkeletonGridLevel2d,
+    })),
+  },
+  {
+    label: "Resolution (skeleton grid 3D)",
+    toolJson: json_keys.SPATIAL_SKELETON_GRID_LEVEL_3D_JSON_KEY,
+    isValid: (layer) =>
+      makeCachedDerivedWatchableValue(
+        (levels, hasSpatialSkeletons) =>
+          hasSpatialSkeletons && levels.length > 0,
+        [
+          layer.displayState.spatialSkeletonGridLevels,
+          layer.hasSpatiallyIndexedSkeletonsLayer,
+        ],
+      ),
+    title:
+      "Select the grid size level for spatially indexed skeletons in 3D views",
+    ...spatialSkeletonGridResolutionLayerControl((layer) => ({
+      levels: layer.displayState.spatialSkeletonGridLevels,
+      target: layer.displayState.spatialSkeletonGridLevel3d,
+    })),
+  },
+  {
     label: "Opacity (3d)",
     toolJson: json_keys.OBJECT_ALPHA_JSON_KEY,
     isValid: (layer) => layer.has3dLayer,
@@ -83,16 +125,6 @@ export const LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
     title: "Opacity of hidden (non-visible) skeleton nodes in 3D views",
     ...rangeLayerControl((layer) => ({
       value: layer.displayState.hiddenObjectAlpha,
-    })),
-  },
-  {
-    label: "LOD",
-    toolJson: json_keys.SKELETON_LOD_JSON_KEY,
-    isValid: (layer) => layer.hasSpatiallyIndexedSkeletonsLayer,
-    title: "Level of detail for spatially indexed skeletons (0-1)",
-    ...rangeLayerControl((layer) => ({
-      value: layer.displayState.skeletonLod,
-      options: { min: 0, max: 1, step: 0.01 },
     })),
   },
   {

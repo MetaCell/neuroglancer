@@ -31,6 +31,7 @@ import {
   SKELETON_LAYER_RPC_ID,
   SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_RPC_ID,
   SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_UPDATE_SOURCES_RPC_ID,
+  SPATIALLY_INDEXED_SKELETON_SLICEVIEW_RENDER_LAYER_RPC_ID,
 } from "#src/skeleton/base.js";
 import type { TypedNumberArray } from "#src/util/array.js";
 import type { Endianness } from "#src/util/endian.js";
@@ -43,10 +44,12 @@ import {
 import {
   SliceViewChunk,
   SliceViewChunkSourceBackend,
+  SliceViewRenderLayerBackend,
 } from "#src/sliceview/backend.js";
 import {
   SliceViewChunkSpecification,
   forEachVisibleVolumetricChunk,
+  type SliceViewBase,
   type SliceViewProjectionParameters,
   type TransformedSource,
 } from "#src/sliceview/base.js";
@@ -253,12 +256,14 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
   localPosition: SharedWatchableValue<Float32Array>;
   renderScaleTarget: SharedWatchableValue<number>;
   skeletonLod: SharedWatchableValue<number>;
+  skeletonGridLevel: SharedWatchableValue<number>;
 
   constructor(rpc: RPC, options: any) {
     super(rpc, options);
     this.renderScaleTarget = rpc.get(options.renderScaleTarget);
     this.localPosition = rpc.get(options.localPosition);
     this.skeletonLod = rpc.get(options.skeletonLod);
+    this.skeletonGridLevel = rpc.get(options.skeletonGridLevel);
     const scheduleUpdateChunkPriorities = () =>
       this.chunkManager.scheduleUpdateChunkPriorities();
     this.registerDisposer(
@@ -266,6 +271,9 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
     );
     this.registerDisposer(
       this.renderScaleTarget.changed.add(scheduleUpdateChunkPriorities),
+    );
+    this.registerDisposer(
+      this.skeletonGridLevel.changed.add(scheduleUpdateChunkPriorities),
     );
     
     // Debounce LOD changes to avoid making requests for every slider value
@@ -383,62 +391,75 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
         }
       }
       const renderScaleTarget = this.renderScaleTarget.value;
+      const skeletonGridLevel = this.skeletonGridLevel.value;
 
       const selectScales = (
         scales: TransformedSource<
           SpatiallyIndexedSkeletonRenderLayerBackend,
           SpatiallyIndexedSkeletonSourceBackend
         >[],
-      ) => {
+      ): Array<{
+        tsource: TransformedSource<
+          SpatiallyIndexedSkeletonRenderLayerBackend,
+          SpatiallyIndexedSkeletonSourceBackend
+        >;
+        scaleIndex: number;
+      }> => {
         if (scales.length === 0) {
-          return { selected: [], useChunkSizeForScaleSelection: false };
+          return [];
         }
-        if (resolvedPixelSize === undefined) {
-          return {
-            selected: scales.map((tsource, scaleIndex) => ({
-              tsource,
-              scaleIndex,
-            })),
-            useChunkSizeForScaleSelection: false,
-          };
-        }
-        const useChunkSizeForScaleSelection = scales.some(
-          (tsource) =>
-            (tsource.source as any).parameters?.useChunkSizeForScaleSelection ===
-            true,
-        );
-        let minChunkSize: Float32Array | undefined;
-        if (useChunkSizeForScaleSelection) {
-          minChunkSize = new Float32Array(3);
-          minChunkSize.fill(Number.POSITIVE_INFINITY);
-          for (const tsource of scales) {
-            const size = tsource.chunkLayout.size;
-            for (let i = 0; i < 3; ++i) {
-              minChunkSize[i] = Math.min(minChunkSize[i], size[i]);
+        const gridIndexedScales = scales
+          .map((tsource, scaleIndex) => ({
+            tsource,
+            scaleIndex,
+            gridIndex: (tsource.source as any).parameters?.gridIndex as
+              | number
+              | undefined,
+          }))
+          .filter((entry) => entry.gridIndex !== undefined);
+        if (gridIndexedScales.length === scales.length) {
+          let minGridIndex = Number.POSITIVE_INFINITY;
+          let maxGridIndex = Number.NEGATIVE_INFINITY;
+          for (const entry of gridIndexedScales) {
+            const gridIndex = entry.gridIndex as number;
+            minGridIndex = Math.min(minGridIndex, gridIndex);
+            maxGridIndex = Math.max(maxGridIndex, gridIndex);
+          }
+          const clampedGridLevel = Math.min(
+            Math.max(skeletonGridLevel, minGridIndex),
+            maxGridIndex,
+          );
+          let selectedEntry =
+            gridIndexedScales.find(
+              (entry) => entry.gridIndex === clampedGridLevel,
+            ) ?? gridIndexedScales[0];
+          if (selectedEntry.gridIndex !== clampedGridLevel) {
+            let bestDistance = Number.POSITIVE_INFINITY;
+            for (const entry of gridIndexedScales) {
+              const distance = Math.abs(
+                (entry.gridIndex as number) - clampedGridLevel,
+              );
+              if (distance < bestDistance) {
+                bestDistance = distance;
+                selectedEntry = entry;
+              }
             }
           }
+          return [
+            {
+              tsource: selectedEntry.tsource,
+              scaleIndex: selectedEntry.scaleIndex,
+            },
+          ];
         }
-        const getSelectionVoxelSize = (
-          tsource: TransformedSource<
-            SpatiallyIndexedSkeletonRenderLayerBackend,
-            SpatiallyIndexedSkeletonSourceBackend
-          >,
-        ) => {
-          if (!useChunkSizeForScaleSelection || minChunkSize === undefined) {
-            return tsource.effectiveVoxelSize;
-          }
-          const selectionVoxelSize = new Float32Array(3);
-          const size = tsource.chunkLayout.size;
-          for (let i = 0; i < 3; ++i) {
-            const relativeScale =
-              minChunkSize[i] === 0 ? 1 : size[i] / minChunkSize[i];
-            selectionVoxelSize[i] =
-              tsource.effectiveVoxelSize[i] * relativeScale;
-          }
-          return selectionVoxelSize;
-        };
+        if (resolvedPixelSize === undefined) {
+          return scales.map((tsource, scaleIndex) => ({
+            tsource,
+            scaleIndex,
+          }));
+        }
         const pixelSizeWithMargin = resolvedPixelSize * 1.1;
-        const smallestVoxelSize = getSelectionVoxelSize(scales[0]);
+        const smallestVoxelSize = scales[0].effectiveVoxelSize;
         const canImproveOnVoxelSize = (voxelSize: Float32Array) => {
           const targetSize = pixelSizeWithMargin * renderScaleTarget;
           for (let i = 0; i < 3; ++i) {
@@ -478,7 +499,7 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
         let prevVoxelSize: Float32Array | undefined;
         while (true) {
           const tsource = scales[scaleIndex];
-          const selectionVoxelSize = getSelectionVoxelSize(tsource);
+          const selectionVoxelSize = tsource.effectiveVoxelSize;
           if (
             prevVoxelSize !== undefined &&
             !improvesOnPrevVoxelSize(selectionVoxelSize, prevVoxelSize)
@@ -491,18 +512,16 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
           prevVoxelSize = selectionVoxelSize;
           --scaleIndex;
         }
-        return { selected, useChunkSizeForScaleSelection };
+        return selected;
       };
 
       for (const scales of transformedSources) {
-        const { selected: selectedScales, useChunkSizeForScaleSelection } =
-          selectScales(scales);
+        const selectedScales = selectScales(scales);
         if (DEBUG_SPATIALLY_INDEXED_SKELETON_SCALES) {
           console.debug("[SKELETON-SCALES] selection", {
             pixelSize: resolvedPixelSize,
             renderScaleTarget,
             totalScales: scales.length,
-            useChunkSizeForScaleSelection,
             selectedScaleIndices: selectedScales.map((s) => s.scaleIndex),
             selectedChunkSizes: selectedScales.map(
               (s) => s.tsource.chunkLayout.size,
@@ -533,5 +552,89 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
         }
       }
     }
+  }
+}
+
+@registerSharedObject(SPATIALLY_INDEXED_SKELETON_SLICEVIEW_RENDER_LAYER_RPC_ID)
+export class SpatiallyIndexedSkeletonSliceViewRenderLayerBackend extends SliceViewRenderLayerBackend {
+  skeletonGridLevel: SharedWatchableValue<number>;
+  skeletonLod: SharedWatchableValue<number>;
+  private lastSources: SpatiallyIndexedSkeletonSourceBackend[] = [];
+
+  constructor(rpc: RPC, options: any) {
+    super(rpc, options);
+    this.skeletonGridLevel = rpc.get(options.skeletonGridLevel);
+    this.skeletonLod = rpc.get(options.skeletonLod);
+    const chunkManager = rpc.get(options.chunkManager);
+    const scheduleUpdateChunkPriorities = () =>
+      chunkManager.scheduleUpdateChunkPriorities();
+    this.registerDisposer(
+      this.skeletonGridLevel.changed.add(scheduleUpdateChunkPriorities),
+    );
+    this.registerDisposer(
+      this.skeletonLod.changed.add(() => {
+        const lodValue = this.skeletonLod.value;
+        for (const source of this.lastSources) {
+          source.currentLod = lodValue;
+          chunkManager.queueManager.invalidateSourceCache(source);
+        }
+        scheduleUpdateChunkPriorities();
+      }),
+    );
+  }
+
+  filterVisibleSources(
+    sliceView: SliceViewBase,
+    sources: readonly TransformedSource[],
+  ): Iterable<TransformedSource> {
+    const lodValue = this.skeletonLod.value;
+    const uniqueSources = new Set<SpatiallyIndexedSkeletonSourceBackend>();
+    for (const tsource of sources) {
+      const source = tsource.source as SpatiallyIndexedSkeletonSourceBackend;
+      source.currentLod = lodValue;
+      uniqueSources.add(source);
+    }
+    this.lastSources = Array.from(uniqueSources);
+
+    const gridIndexedSources = sources
+      .map((tsource, scaleIndex) => ({
+        tsource,
+        scaleIndex,
+        gridIndex: (tsource.source as any).parameters?.gridIndex as
+          | number
+          | undefined,
+      }))
+      .filter((entry) => entry.gridIndex !== undefined);
+    if (gridIndexedSources.length === sources.length && sources.length > 0) {
+      let minGridIndex = Number.POSITIVE_INFINITY;
+      let maxGridIndex = Number.NEGATIVE_INFINITY;
+      for (const entry of gridIndexedSources) {
+        const gridIndex = entry.gridIndex as number;
+        minGridIndex = Math.min(minGridIndex, gridIndex);
+        maxGridIndex = Math.max(maxGridIndex, gridIndex);
+      }
+      const clampedGridLevel = Math.min(
+        Math.max(this.skeletonGridLevel.value, minGridIndex),
+        maxGridIndex,
+      );
+      let selectedEntry =
+        gridIndexedSources.find(
+          (entry) => entry.gridIndex === clampedGridLevel,
+        ) ?? gridIndexedSources[0];
+      if (selectedEntry.gridIndex !== clampedGridLevel) {
+        let bestDistance = Number.POSITIVE_INFINITY;
+        for (const entry of gridIndexedSources) {
+          const distance = Math.abs(
+            (entry.gridIndex as number) - clampedGridLevel,
+          );
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            selectedEntry = entry;
+          }
+        }
+      }
+      return [selectedEntry.tsource];
+    }
+    return super.filterVisibleSources(sliceView, sources);
   }
 }

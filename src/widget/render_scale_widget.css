@@ -42,3 +42,16 @@
 .neuroglancer-render-scale-widget-legend > div {
   height: 12px;
 }
+
+.neuroglancer-spatial-skeleton-grid-widget
+  .neuroglancer-render-scale-widget-legend {
+  width: 22ch;
+}
+
+.neuroglancer-spatial-skeleton-grid-widget
+  .neuroglancer-render-scale-widget-legend
+  > div {
+  height: 14px;
+  line-height: 14px;
+  white-space: nowrap;
+}

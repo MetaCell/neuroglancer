@@ -3,6 +3,10 @@ export const NOT_SELECTED_ALPHA_JSON_KEY = "notSelectedAlpha";
 export const OBJECT_ALPHA_JSON_KEY = "objectAlpha";
 export const HIDDEN_OPACITY_3D_JSON_KEY = "hiddenObjectAlpha";
 export const SKELETON_LOD_JSON_KEY = "skeletonLod";
+export const SPATIAL_SKELETON_GRID_LEVEL_2D_JSON_KEY =
+  "spatialSkeletonGridLevel2d";
+export const SPATIAL_SKELETON_GRID_LEVEL_3D_JSON_KEY =
+  "spatialSkeletonGridLevel3d";
 export const SATURATION_JSON_KEY = "saturation";
 export const HOVER_HIGHLIGHT_JSON_KEY = "hoverHighlight";
 export const HIDE_SEGMENT_ZERO_JSON_KEY = "hideSegmentZero";
