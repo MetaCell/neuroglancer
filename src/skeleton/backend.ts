@@ -219,6 +219,7 @@ export class SpatiallyIndexedSkeletonChunk extends SliceViewChunk implements Ske
   vertexPositions: Float32Array | null = null;
   vertexAttributes: TypedNumberArray[] | null = null;
   indices: Uint32Array | null = null;
+  lod: number = 0;
   missingConnections: Array<{ nodeId: number; parentId: number; vertexIndex: number; skeletonId: number }> = [];
   nodeMap: Map<number, number> = new Map(); // Maps node ID to vertex index
 
@@ -242,6 +243,19 @@ export class SpatiallyIndexedSkeletonChunk extends SliceViewChunk implements Ske
 export class SpatiallyIndexedSkeletonSourceBackend extends SliceViewChunkSourceBackend<SpatiallyIndexedSkeletonChunkSpecification, SpatiallyIndexedSkeletonChunk> {
   chunkConstructor = SpatiallyIndexedSkeletonChunk;
   currentLod: number = 0;
+
+  getChunk(chunkGridPosition: Float32Array) {
+    const lodValue = this.currentLod;
+    const key = `${chunkGridPosition.join()}:${lodValue}`;
+    let chunk = this.chunks.get(key);
+    if (chunk === undefined) {
+      chunk = this.getNewChunk_(this.chunkConstructor) as SpatiallyIndexedSkeletonChunk;
+      chunk.initializeVolumeChunk(key, chunkGridPosition);
+      chunk.lod = lodValue;
+      this.addChunk(chunk);
+    }
+    return chunk;
+  }
 }
 
 interface SpatiallyIndexedSkeletonRenderLayerAttachmentState {
@@ -278,39 +292,12 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
     
     // Debounce LOD changes to avoid making requests for every slider value
     const debouncedLodUpdate = debounce(() => {
-      const lodValue = this.skeletonLod.value;
-      // Update LOD value in all sources and invalidate all chunks when LOD changes
-      for (const attachment of this.attachments.values()) {
-        const attachmentState =
-          attachment.state! as SpatiallyIndexedSkeletonRenderLayerAttachmentState;
-        const { transformedSources } = attachmentState;
-        for (const scales of transformedSources) {
-          for (const tsource of scales) {
-            const source = tsource.source as SpatiallyIndexedSkeletonSourceBackend;
-            source.currentLod = lodValue;
-            this.chunkManager.queueManager.invalidateSourceCache(source);
-          }
-        }
-      }
       scheduleUpdateChunkPriorities();
     }, 300);
     
     this.registerDisposer(
       this.skeletonLod.changed.add(() => {
-        // Update currentLod immediately so it's ready when debounce completes
-        const lodValue = this.skeletonLod.value;
-        for (const attachment of this.attachments.values()) {
-          const attachmentState =
-            attachment.state! as SpatiallyIndexedSkeletonRenderLayerAttachmentState;
-          const { transformedSources } = attachmentState;
-          for (const scales of transformedSources) {
-            for (const tsource of scales) {
-              const source = tsource.source as SpatiallyIndexedSkeletonSourceBackend;
-              source.currentLod = lodValue;
-            }
-          }
-        }
-        // Debounce the invalidation and chunk request
+        // Trigger a reschedule; LOD-specific chunks are keyed by LOD.
         debouncedLodUpdate();
       }),
     );
@@ -367,7 +354,7 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
       const priorityTier = getPriorityTier(visibility);
       const basePriority = getBasePriority(visibility);
 
-      const projectionParameters = view.projectionParameters.value;
+    const projectionParameters = view.projectionParameters.value;
       const { chunkManager } = this;
       const sliceProjectionParameters =
         projectionParameters as SliceViewProjectionParameters;
@@ -515,6 +502,7 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
         return selected;
       };
 
+      const lodValue = this.skeletonLod.value;
       for (const scales of transformedSources) {
         const selectedScales = selectScales(scales);
         if (DEBUG_SPATIALLY_INDEXED_SKELETON_SCALES) {
@@ -529,14 +517,15 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
           });
         }
         for (const { tsource, scaleIndex } of selectedScales) {
+          const source =
+            tsource.source as SpatiallyIndexedSkeletonSourceBackend;
+          source.currentLod = lodValue;
           forEachVisibleVolumetricChunk(
             projectionParameters,
             this.localPosition.value,
             tsource,
             () => {
-              const chunk = (
-                tsource.source as SpatiallyIndexedSkeletonSourceBackend
-              ).getChunk(tsource.curPositionInChunks);
+              const chunk = source.getChunk(tsource.curPositionInChunks);
               ++this.numVisibleChunksNeeded;
               if (chunk.state === ChunkState.GPU_MEMORY) {
                 ++this.numVisibleChunksAvailable;
@@ -559,7 +548,6 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
 export class SpatiallyIndexedSkeletonSliceViewRenderLayerBackend extends SliceViewRenderLayerBackend {
   skeletonGridLevel: SharedWatchableValue<number>;
   skeletonLod: SharedWatchableValue<number>;
-  private lastSources: SpatiallyIndexedSkeletonSourceBackend[] = [];
 
   constructor(rpc: RPC, options: any) {
     super(rpc, options);
@@ -573,14 +561,13 @@ export class SpatiallyIndexedSkeletonSliceViewRenderLayerBackend extends SliceVi
     );
     this.registerDisposer(
       this.skeletonLod.changed.add(() => {
-        const lodValue = this.skeletonLod.value;
-        for (const source of this.lastSources) {
-          source.currentLod = lodValue;
-          chunkManager.queueManager.invalidateSourceCache(source);
-        }
         scheduleUpdateChunkPriorities();
       }),
     );
+  }
+
+  prepareChunkSourceForRequest(source: SpatiallyIndexedSkeletonSourceBackend) {
+    source.currentLod = this.skeletonLod.value;
   }
 
   filterVisibleSources(
@@ -588,13 +575,10 @@ export class SpatiallyIndexedSkeletonSliceViewRenderLayerBackend extends SliceVi
     sources: readonly TransformedSource[],
   ): Iterable<TransformedSource> {
     const lodValue = this.skeletonLod.value;
-    const uniqueSources = new Set<SpatiallyIndexedSkeletonSourceBackend>();
     for (const tsource of sources) {
       const source = tsource.source as SpatiallyIndexedSkeletonSourceBackend;
       source.currentLod = lodValue;
-      uniqueSources.add(source);
     }
-    this.lastSources = Array.from(uniqueSources);
 
     const gridIndexedSources = sources
       .map((tsource, scaleIndex) => ({

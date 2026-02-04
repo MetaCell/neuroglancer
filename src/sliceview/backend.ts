@@ -158,6 +158,7 @@ export class SliceViewBackend extends SliceViewIntermediateBase {
         ++i
       ) {
         const tsource = visibleSources[i];
+        layer.prepareChunkSourceForRequest(tsource.source);
         const prefetchOffsets = chunkManager.queueManager.enablePrefetch.value
           ? getPrefetchChunkOffsets(this.velocityEstimator, tsource)
           : [];
@@ -430,6 +431,10 @@ export class SliceViewRenderLayerBackend
     this.numPrefetchChunksAvailable = 0;
     this.numPrefetchChunksNeeded = 0;
     this.chunkManagerGeneration = -1;
+  }
+
+  prepareChunkSourceForRequest(_source: SliceViewChunkSourceBackend) {
+    // Override in subclasses to set per-request source state (e.g. LOD).
   }
 
   filterVisibleSources(

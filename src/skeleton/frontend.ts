@@ -970,6 +970,7 @@ export class SpatiallyIndexedSkeletonChunk extends SliceViewChunk implements Ske
   vertexAttributeTextures: (WebGLTexture | null)[];
   missingConnections: Array<{ nodeId: number; parentId: number; vertexIndex: number; skeletonId: number }> = [];
   nodeMap: Map<number, number> = new Map(); // Maps node ID to vertex index
+  lod: number | undefined;
 
   // Filtering support
   filteredIndexBuffer: GLBuffer | undefined;
@@ -988,6 +989,7 @@ export class SpatiallyIndexedSkeletonChunk extends SliceViewChunk implements Ske
     this.numIndices = indices.length;
     this.vertexAttributeOffsets = chunkData.vertexAttributeOffsets;
     this.missingConnections = (chunkData as any).missingConnections || [];
+    this.lod = (chunkData as any).lod;
 
     // Deserialize nodeMap from array format [nodeId, vertexIndex, ...]
     const nodeMapData = (chunkData as any).nodeMap;
@@ -1201,7 +1203,10 @@ type SpatiallyIndexedSkeletonSourceEntry =
 interface SpatiallyIndexedSkeletonLayerOptions {
   gridLevel?: WatchableValueInterface<number>;
   lod?: WatchableValueInterface<number>;
+  sources2d?: SpatiallyIndexedSkeletonSourceEntry[];
 }
+
+type SpatiallyIndexedSkeletonView = "2d" | "3d";
 
 export class SpatiallyIndexedSkeletonLayer extends RefCounted implements SkeletonLayerInterface {
   layerChunkProgressInfo = new LayerChunkProgressInfo();
@@ -1238,6 +1243,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
   }
 
   sources: SpatiallyIndexedSkeletonSourceEntry[];
+  sources2d: SpatiallyIndexedSkeletonSourceEntry[];
   source: SpatiallyIndexedSkeletonSource;
 
   constructor(
@@ -1249,18 +1255,30 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     options: SpatiallyIndexedSkeletonLayerOptions = {},
   ) {
     super();
+    let sources3d: SpatiallyIndexedSkeletonSourceEntry[];
+    let sources2d = options.sources2d ?? [];
     if (Array.isArray(sources)) {
-      this.sources = sources;
-      this.source = sources[0].chunkSource;
+      sources3d = sources;
     } else {
-      this.sources = [
+      sources3d = [
         {
           chunkSource: sources,
           chunkToMultiscaleTransform: mat4.create(),
         },
       ];
-      this.source = sources;
     }
+    if (sources3d.length === 0 && sources2d.length > 0) {
+      sources3d = sources2d;
+    }
+    if (sources2d.length === 0) {
+      sources2d = sources3d;
+    }
+    if (sources3d.length === 0) {
+      throw new Error("SpatiallyIndexedSkeletonLayer requires at least one source.");
+    }
+    this.sources = sources3d;
+    this.sources2d = sources2d;
+    this.source = sources3d[0].chunkSource;
     this.localPosition = displayState.localPosition;
     this.gridLevel =
       options.gridLevel ??
@@ -1385,6 +1403,65 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     return this.chunkManager.chunkQueueManager.gl;
   }
 
+  getSources(view: SpatiallyIndexedSkeletonView) {
+    return view === "2d" ? this.sources2d : this.sources;
+  }
+
+  private selectSourcesForViewAndGrid(
+    view: SpatiallyIndexedSkeletonView,
+    gridLevel: number | undefined,
+  ) {
+    const sources = this.getSources(view);
+    if (sources.length === 0) return sources;
+    const viewFiltered = sources.filter((entry) => {
+      const params = (entry.chunkSource as any).parameters;
+      const sourceView = params?.view as string | undefined;
+      return sourceView === undefined || sourceView === view;
+    });
+    if (gridLevel === undefined || viewFiltered.length === 0) {
+      return viewFiltered;
+    }
+    const gridIndexedSources = viewFiltered
+      .map((entry) => ({
+        entry,
+        gridIndex: (entry.chunkSource as any).parameters?.gridIndex as
+          | number
+          | undefined,
+      }))
+      .filter((entry) => entry.gridIndex !== undefined);
+    if (gridIndexedSources.length !== viewFiltered.length) {
+      return viewFiltered;
+    }
+    let minGridIndex = Number.POSITIVE_INFINITY;
+    let maxGridIndex = Number.NEGATIVE_INFINITY;
+    for (const entry of gridIndexedSources) {
+      const index = entry.gridIndex as number;
+      minGridIndex = Math.min(minGridIndex, index);
+      maxGridIndex = Math.max(maxGridIndex, index);
+    }
+    const clampedGridLevel = Math.min(
+      Math.max(gridLevel, minGridIndex),
+      maxGridIndex,
+    );
+    let selectedEntry =
+      gridIndexedSources.find(
+        (entry) => entry.gridIndex === clampedGridLevel,
+      ) ?? gridIndexedSources[0];
+    if (selectedEntry.gridIndex !== clampedGridLevel) {
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (const entry of gridIndexedSources) {
+        const distance = Math.abs(
+          (entry.gridIndex as number) - clampedGridLevel,
+        );
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          selectedEntry = entry;
+        }
+      }
+    }
+    return [selectedEntry.entry];
+  }
+
   draw(
     renderContext: SliceViewPanelRenderContext | PerspectiveViewRenderContext,
     _layer: RenderLayer,
@@ -1394,6 +1471,11 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       LayerView,
       ThreeDimensionalRenderLayerAttachmentState
     >,
+    drawOptions?: {
+      view?: SpatiallyIndexedSkeletonView;
+      gridLevel?: number;
+      lod?: number;
+    },
   ) {
     const lineWidth = renderOptions.lineWidth.value;
     const { gl, displayState } = this;
@@ -1470,16 +1552,31 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     nodeShader.bind();
     renderHelper.setColor(gl, nodeShader, baseColor);
 
+    const targetLod = drawOptions?.lod;
+    const lodMatches = (chunk: SpatiallyIndexedSkeletonChunk) => {
+      if (targetLod === undefined || chunk.lod === undefined) {
+        return true;
+      }
+      return Math.abs(chunk.lod - targetLod) < 1e-6;
+    };
+
     const globalNodeMap = new Map<
       number,
       { chunk: SpatiallyIndexedSkeletonChunk; vertexIndex: number }
     >();
-    for (const sourceEntry of this.sources) {
+    const view = drawOptions?.view ?? "3d";
+    const selectedSources = this.selectSourcesForViewAndGrid(
+      view,
+      drawOptions?.gridLevel,
+    );
+    for (const sourceEntry of selectedSources) {
       const chunks = sourceEntry.chunkSource.chunks;
       for (const chunk of chunks.values()) {
-        if (chunk.state === ChunkState.GPU_MEMORY) {
-          for (const [nodeId, vertexIndex] of chunk.nodeMap.entries()) {
-            globalNodeMap.set(nodeId, { chunk, vertexIndex });
+        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
+        if (!lodMatches(typedChunk)) continue;
+        if (typedChunk.state === ChunkState.GPU_MEMORY) {
+          for (const [nodeId, vertexIndex] of typedChunk.nodeMap.entries()) {
+            globalNodeMap.set(nodeId, { chunk: typedChunk, vertexIndex });
           }
         }
       }
@@ -1490,14 +1587,16 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       );
     }
 
-    for (const sourceEntry of this.sources) {
+    for (const sourceEntry of selectedSources) {
       const chunks = sourceEntry.chunkSource.chunks;
       for (const chunk of chunks.values()) {
-        if (chunk.state !== ChunkState.GPU_MEMORY || chunk.numIndices === 0) {
+        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
+        if (!lodMatches(typedChunk)) continue;
+        if (typedChunk.state !== ChunkState.GPU_MEMORY || typedChunk.numIndices === 0) {
           continue;
         }
         const filteredChunk = this.updateChunkFilteredBuffer(
-          chunk,
+          typedChunk,
           visibleSegments,
           hasRegularSkeletonLayer,
           globalNodeMap,
@@ -1970,7 +2069,7 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
             displayDimensionRenderInfo,
             transform,
             () => [
-              baseLayer.sources.map((sourceEntry) => ({
+              baseLayer.getSources("3d").map((sourceEntry) => ({
                 chunkSource: sourceEntry.chunkSource,
                 chunkToMultiscaleTransform:
                   sourceEntry.chunkToMultiscaleTransform,
@@ -2051,6 +2150,14 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
       this.renderHelper,
       this.renderOptions,
       attachment,
+      {
+        view: "3d",
+        gridLevel: (this.base.displayState as any).spatialSkeletonGridLevel3d
+          ?.value as number | undefined,
+        lod: (this.base.displayState as any).skeletonLod?.value as
+          | number
+          | undefined,
+      },
     );
   }
 
@@ -2115,6 +2222,18 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
     this.registerDisposer(
       renderOptions.lineWidth.changed.add(this.redrawNeeded.dispatch),
     );
+    const gridLevel2d = (base.displayState as any).spatialSkeletonGridLevel2d;
+    if (gridLevel2d?.changed) {
+      this.registerDisposer(
+        gridLevel2d.changed.add(this.redrawNeeded.dispatch),
+      );
+    }
+    const lod2d = (base.displayState as any).spatialSkeletonLod2d;
+    if (lod2d?.changed) {
+      this.registerDisposer(
+        lod2d.changed.add(this.redrawNeeded.dispatch),
+      );
+    }
     this.registerDisposer(base.redrawNeeded.add(this.redrawNeeded.dispatch));
   }
   get gl() {
@@ -2144,6 +2263,14 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
       this.renderHelper,
       this.renderOptions,
       attachment,
+      {
+        view: "2d",
+        gridLevel: (this.base.displayState as any).spatialSkeletonGridLevel2d
+          ?.value as number | undefined,
+        lod: (this.base.displayState as any).spatialSkeletonLod2d?.value as
+          | number
+          | undefined,
+      },
     );
   }
 

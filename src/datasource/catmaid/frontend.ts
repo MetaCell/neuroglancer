@@ -111,20 +111,20 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
     }
 
     getPerspectiveSources(): SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>[] {
-        const sources = this.getSources({ view: "3d" } as any);
+        const sources = this.getSources({} as any);
         return sources.length > 0 ? sources[0] : [];
     }
 
     getSliceViewPanelSources(): SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>[] {
-        const sources = this.getSources({ view: "2d" } as any);
+        const sources = this.getSources({} as any);
         return sources.length > 0 ? sources[0] : [];
     }
 
     getSources(
-        options: SliceViewSourceOptions,
+        _options: SliceViewSourceOptions,
     ): SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>[][] {
+        void _options;
         const sources: SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>[] = [];
-        const view = (options as { view?: string } | undefined)?.view ?? "2d";
         
         // Sorted by minimum dimension (Descending: Large/Coarse -> Small/Fine)
         const sortedGridSizes = this.sortedGridCellSizes;
@@ -181,7 +181,6 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
             parameters.catmaidParameters.projectId = this.projectId;
             parameters.catmaidParameters.cacheProvider = this.cacheProvider;
             parameters.gridIndex = gridIndex;
-            parameters.view = view;
             parameters.metadata = {
                 transform: mat4.create(),
                 vertexAttributes: new Map([

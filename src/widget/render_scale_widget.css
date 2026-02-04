@@ -43,6 +43,16 @@
   height: 12px;
 }
 
+.neuroglancer-render-scale-widget-grid .neuroglancer-render-scale-widget-legend {
+  width: auto;
+  min-width: 22ch;
+  flex: 0 0 auto;
+}
+
+.neuroglancer-render-scale-widget-grid .neuroglancer-render-scale-widget-legend > div {
+  white-space: nowrap;
+}
+
 .neuroglancer-render-scale-widget-relative {
   display: inline-flex;
   align-items: center;

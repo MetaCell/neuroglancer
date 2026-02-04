@@ -20,6 +20,7 @@ export interface SkeletonChunkData {
   vertexPositions: Float32Array | null;
   vertexAttributes: TypedNumberArray[] | null;
   indices: Uint32Array | null;
+  lod?: number;
   missingConnections?: Array<{ nodeId: number; parentId: number; vertexIndex: number; skeletonId: number }>;
   nodeMap?: Map<number, number>;
 }
@@ -47,6 +48,9 @@ export function serializeSkeletonChunkData(
   msg: any,
   transfers: any[],
 ): void {
+  if (data.lod !== undefined) {
+    msg.lod = data.lod;
+  }
   const vertexPositions = data.vertexPositions!;
   const indices = data.indices!;
   msg.numVertices = vertexPositions.length / 3;

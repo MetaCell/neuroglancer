@@ -55,8 +55,8 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
             max: { x: localMax[0], y: localMax[1], z: localMax[2] },
         };
         
-        // Use currentLod from the source backend
-        const lodValue = this.currentLod;
+        // Use LOD stored on the chunk to support per-view LODs on shared sources.
+        const lodValue = chunk.lod ?? this.currentLod;
         // Get cache provider from parameters (passed from frontend)
         const cacheProvider = this.parameters.catmaidParameters.cacheProvider;
         const nodes = await this.client.fetchNodes(bbox, lodValue, cacheProvider);

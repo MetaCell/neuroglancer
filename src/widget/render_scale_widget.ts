@@ -447,6 +447,7 @@ export class SpatialSkeletonGridResolutionWidget extends RefCounted {
     } = this;
     label.className = "neuroglancer-render-scale-widget-prompt";
     element.className = "neuroglancer-render-scale-widget";
+    element.classList.add("neuroglancer-render-scale-widget-grid");
     element.title = gridInputEventMap.describe();
     legend.className = "neuroglancer-render-scale-widget-legend";
     element.appendChild(label);
@@ -481,6 +482,14 @@ export class SpatialSkeletonGridResolutionWidget extends RefCounted {
       this.hoverSpacing.changed.add(this.debouncedUpdateView),
     );
     this.registerDisposer(new MouseEventBinder(canvas, gridInputEventMap));
+    this.registerEventListener(element, "click", (event: MouseEvent) => {
+      if (event.target === relativeCheckbox.element) {
+        return;
+      }
+      // Prevent the layer-control <label> from toggling the relative checkbox
+      // when interacting with the widget outside the checkbox itself.
+      event.preventDefault();
+    });
 
     const getSpacingFromEvent = (event: MouseEvent) => {
       const position =
