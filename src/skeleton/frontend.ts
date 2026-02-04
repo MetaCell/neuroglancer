@@ -2018,6 +2018,30 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
       ThreeDimensionalRenderLayerAttachmentState
     >,
   ) {
+    const pixelSizeWatchable = (this.base.displayState as any)
+      .spatialSkeletonGridPixelSize3d as WatchableValueInterface<number>
+      | undefined;
+    if (pixelSizeWatchable !== undefined) {
+      const voxelPhysicalScales =
+        renderContext.projectionParameters.displayDimensionRenderInfo
+          ?.voxelPhysicalScales;
+      if (voxelPhysicalScales !== undefined) {
+        const { invViewMatrix } = renderContext.projectionParameters;
+        let computedPixelSize = 0;
+        for (let i = 0; i < 3; ++i) {
+          const s = voxelPhysicalScales[i];
+          const x = invViewMatrix[i];
+          computedPixelSize += (s * x) ** 2;
+        }
+        const pixelSize = Math.sqrt(computedPixelSize);
+        if (
+          Number.isFinite(pixelSize) &&
+          pixelSizeWatchable.value !== pixelSize
+        ) {
+          pixelSizeWatchable.value = pixelSize;
+        }
+      }
+    }
     if (!renderContext.emitColor && renderContext.alreadyEmittedPickID) {
       return;
     }
@@ -2104,6 +2128,16 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
       ThreeDimensionalRenderLayerAttachmentState
     >,
   ) {
+    const pixelSizeWatchable = (this.base.displayState as any)
+      .spatialSkeletonGridPixelSize2d as WatchableValueInterface<number>
+      | undefined;
+    if (pixelSizeWatchable !== undefined) {
+      const pixelSize =
+        renderContext.sliceView.projectionParameters.value.pixelSize;
+      if (Number.isFinite(pixelSize) && pixelSizeWatchable.value !== pixelSize) {
+        pixelSizeWatchable.value = pixelSize;
+      }
+    }
     this.base.draw(
       renderContext,
       this,

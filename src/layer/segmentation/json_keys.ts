@@ -7,6 +7,14 @@ export const SPATIAL_SKELETON_GRID_LEVEL_2D_JSON_KEY =
   "spatialSkeletonGridLevel2d";
 export const SPATIAL_SKELETON_GRID_LEVEL_3D_JSON_KEY =
   "spatialSkeletonGridLevel3d";
+export const SPATIAL_SKELETON_GRID_RESOLUTION_TARGET_2D_JSON_KEY =
+  "spatialSkeletonGridResolutionTarget2d";
+export const SPATIAL_SKELETON_GRID_RESOLUTION_TARGET_3D_JSON_KEY =
+  "spatialSkeletonGridResolutionTarget3d";
+export const SPATIAL_SKELETON_GRID_RESOLUTION_RELATIVE_2D_JSON_KEY =
+  "spatialSkeletonGridResolutionRelative2d";
+export const SPATIAL_SKELETON_GRID_RESOLUTION_RELATIVE_3D_JSON_KEY =
+  "spatialSkeletonGridResolutionRelative3d";
 export const SATURATION_JSON_KEY = "saturation";
 export const HOVER_HIGHLIGHT_JSON_KEY = "hoverHighlight";
 export const HIDE_SEGMENT_ZERO_JSON_KEY = "hideSegmentZero";

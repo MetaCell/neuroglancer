@@ -73,7 +73,7 @@ export const LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
   },
   {
     label: "Resolution (skeleton grid 2D)",
-    toolJson: json_keys.SPATIAL_SKELETON_GRID_LEVEL_2D_JSON_KEY,
+    toolJson: json_keys.SPATIAL_SKELETON_GRID_RESOLUTION_TARGET_2D_JSON_KEY,
     isValid: (layer) =>
       makeCachedDerivedWatchableValue(
         (levels, hasSpatialSkeletons) =>
@@ -87,12 +87,16 @@ export const LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
       "Select the grid size level for spatially indexed skeletons in 2D views",
     ...spatialSkeletonGridResolutionLayerControl((layer) => ({
       levels: layer.displayState.spatialSkeletonGridLevels,
-      target: layer.displayState.spatialSkeletonGridLevel2d,
+      target: layer.displayState.spatialSkeletonGridResolutionTarget2d,
+      relative: layer.displayState.spatialSkeletonGridResolutionRelative2d,
+      pixelSize: layer.displayState.spatialSkeletonGridPixelSize2d,
+      relativeTooltip:
+        "Interpret the 2D skeleton grid resolution target as relative to zoom",
     })),
   },
   {
     label: "Resolution (skeleton grid 3D)",
-    toolJson: json_keys.SPATIAL_SKELETON_GRID_LEVEL_3D_JSON_KEY,
+    toolJson: json_keys.SPATIAL_SKELETON_GRID_RESOLUTION_TARGET_3D_JSON_KEY,
     isValid: (layer) =>
       makeCachedDerivedWatchableValue(
         (levels, hasSpatialSkeletons) =>
@@ -106,7 +110,11 @@ export const LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
       "Select the grid size level for spatially indexed skeletons in 3D views",
     ...spatialSkeletonGridResolutionLayerControl((layer) => ({
       levels: layer.displayState.spatialSkeletonGridLevels,
-      target: layer.displayState.spatialSkeletonGridLevel3d,
+      target: layer.displayState.spatialSkeletonGridResolutionTarget3d,
+      relative: layer.displayState.spatialSkeletonGridResolutionRelative3d,
+      pixelSize: layer.displayState.spatialSkeletonGridPixelSize3d,
+      relativeTooltip:
+        "Interpret the 3D skeleton grid resolution target as relative to zoom",
     })),
   },
   {

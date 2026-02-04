@@ -26,6 +26,7 @@ import {
   renderScaleHistogramBinSize,
   renderScaleHistogramOrigin,
 } from "#src/render_scale_statistics.js";
+import { TrackableBooleanCheckbox } from "#src/trackable_boolean.js";
 import type { TrackableValueInterface, WatchableValueInterface } from "#src/trackable_value.js";
 import { WatchableValue } from "#src/trackable_value.js";
 import { serializeColor } from "#src/util/color.js";
@@ -73,6 +74,10 @@ type SpatialSkeletonGridLevel = {
 export interface SpatialSkeletonGridResolutionWidgetOptions {
   levels: WatchableValueInterface<SpatialSkeletonGridLevel[]>;
   target: TrackableValueInterface<number>;
+  relative: WatchableValueInterface<boolean>;
+  pixelSize: WatchableValueInterface<number>;
+  relativeLabel?: string;
+  relativeTooltip?: string;
 }
 
 export class RenderScaleWidget extends RefCounted {
@@ -405,14 +410,11 @@ export class SpatialSkeletonGridResolutionWidget extends RefCounted {
   element = document.createElement("div");
   canvas = document.createElement("canvas");
   legend = document.createElement("div");
+  legendTarget = document.createElement("div");
   legendGrid = document.createElement("div");
-  legendSize = document.createElement("div");
   legendLod = document.createElement("div");
-  hoverIndex = new WatchableValue<number | undefined>(undefined);
+  hoverSpacing = new WatchableValue<number | undefined>(undefined);
   private ctx = this.canvas.getContext("2d")!;
-  private binOffsets: number[] = [];
-  private binBoundaries: number[] = [];
-  private lastLevelCount = -1;
   private throttledUpdateView = this.registerCancellable(
     throttle(() => this.debouncedUpdateView(), updateInterval, {
       leading: true,
@@ -426,58 +428,87 @@ export class SpatialSkeletonGridResolutionWidget extends RefCounted {
   constructor(
     public levels: WatchableValueInterface<SpatialSkeletonGridLevel[]>,
     public target: TrackableValueInterface<number>,
+    public relative: WatchableValueInterface<boolean>,
+    public pixelSize: WatchableValueInterface<number>,
+    options: {
+      relativeLabel?: string;
+      relativeTooltip?: string;
+    } = {},
   ) {
     super();
-    const { canvas, label, element, legend, legendGrid, legendSize, legendLod } =
-      this;
+    const {
+      canvas,
+      label,
+      element,
+      legend,
+      legendTarget,
+      legendGrid,
+      legendLod,
+    } = this;
     label.className = "neuroglancer-render-scale-widget-prompt";
     element.className = "neuroglancer-render-scale-widget";
-    element.classList.add("neuroglancer-spatial-skeleton-grid-widget");
     element.title = gridInputEventMap.describe();
     legend.className = "neuroglancer-render-scale-widget-legend";
     element.appendChild(label);
     element.appendChild(canvas);
     element.appendChild(legend);
+    const relativeTooltip =
+      options.relativeTooltip ??
+      "Interpret the skeleton grid resolution target as relative to zoom";
+    label.classList.add("neuroglancer-render-scale-widget-relative");
+    label.title = relativeTooltip;
+    const relativeCheckbox = this.registerDisposer(
+      new TrackableBooleanCheckbox(relative, {
+        enabledTitle: relativeTooltip,
+        disabledTitle: relativeTooltip,
+      }),
+    );
+    relativeCheckbox.element.classList.add(
+      "neuroglancer-render-scale-widget-relative-checkbox",
+    );
+    label.appendChild(relativeCheckbox.element);
+    const relativeLabel = document.createElement("span");
+    relativeLabel.textContent = options.relativeLabel ?? "Rel";
+    label.appendChild(relativeLabel);
+    legend.appendChild(legendTarget);
     legend.appendChild(legendGrid);
-    legend.appendChild(legendSize);
     legend.appendChild(legendLod);
     this.registerDisposer(levels.changed.add(this.throttledUpdateView));
     this.registerDisposer(target.changed.add(this.debouncedUpdateView));
-    this.registerDisposer(this.hoverIndex.changed.add(this.debouncedUpdateView));
+    this.registerDisposer(relative.changed.add(this.debouncedUpdateView));
+    this.registerDisposer(pixelSize.changed.add(this.debouncedUpdateView));
+    this.registerDisposer(
+      this.hoverSpacing.changed.add(this.debouncedUpdateView),
+    );
     this.registerDisposer(new MouseEventBinder(canvas, gridInputEventMap));
 
-    const getTargetIndex = (event: MouseEvent) => {
-      const levelCount = this.levels.value.length;
-      if (levelCount <= 0) return 0;
-      this.ensureBins(levelCount);
-      const binPosition =
+    const getSpacingFromEvent = (event: MouseEvent) => {
+      const position =
         (event.offsetX / canvas.width) * numRenderScaleHistogramBins;
-      for (let i = 0; i < levelCount; ++i) {
-        const start = this.binBoundaries[i];
-        const end = this.binBoundaries[i + 1];
-        if (binPosition >= start && binPosition < end) {
-          return i;
-        }
-      }
-      return levelCount - 1;
+      return getRenderScaleFromHistogramOffset(
+        position,
+        renderScaleHistogramOrigin,
+      );
     };
 
     this.registerEventListener(canvas, "pointermove", (event: MouseEvent) => {
-      const levelCount = this.levels.value.length;
-      if (levelCount === 0) {
-        this.hoverIndex.value = undefined;
+      if (this.levels.value.length === 0) {
+        this.hoverSpacing.value = undefined;
         return;
       }
-      this.hoverIndex.value = getTargetIndex(event);
+      this.hoverSpacing.value = getSpacingFromEvent(event);
     });
 
     this.registerEventListener(canvas, "pointerleave", () => {
-      this.hoverIndex.value = undefined;
+      this.hoverSpacing.value = undefined;
     });
 
     this.registerDisposer(
       registerActionListener<MouseEvent>(canvas, "set", (actionEvent) => {
-        this.target.value = getTargetIndex(actionEvent.detail);
+        const spacing = getSpacingFromEvent(actionEvent.detail);
+        const pixelSize = Math.max(this.pixelSize.value, 1e-6);
+        const value = this.relative.value ? spacing / pixelSize : spacing;
+        this.target.value = value;
       }),
     );
 
@@ -505,21 +536,16 @@ export class SpatialSkeletonGridResolutionWidget extends RefCounted {
   }
 
   adjustViaWheel(event: WheelEvent) {
-    const levelCount = this.levels.value.length;
-    if (levelCount === 0) return;
     const delta = Math.sign(event.deltaY);
     if (delta === 0) return;
     const current = this.target.value;
-    const next = Math.min(
-      Math.max(current + delta, 0),
-      levelCount - 1,
-    );
+    const next = Math.max(current * 2 ** delta, 1e-6);
     this.target.value = next;
     event.preventDefault();
   }
 
   reset() {
-    this.hoverIndex.value = undefined;
+    this.hoverSpacing.value = undefined;
     const target = this.target as TrackableValueInterface<number> & {
       reset?: () => void;
     };
@@ -528,29 +554,6 @@ export class SpatialSkeletonGridResolutionWidget extends RefCounted {
     } else {
       this.target.value = 0;
     }
-  }
-
-  private ensureBins(levelCount: number) {
-    if (levelCount === this.lastLevelCount) return;
-    this.lastLevelCount = levelCount;
-    this.binOffsets = [];
-    this.binBoundaries = [];
-    if (levelCount <= 0) return;
-    if (levelCount === 1) {
-      this.binOffsets = [(numRenderScaleHistogramBins - 1) / 2];
-      this.binBoundaries = [0, numRenderScaleHistogramBins];
-      return;
-    }
-    const scale = (numRenderScaleHistogramBins - 1) / (levelCount - 1);
-    for (let i = 0; i < levelCount; ++i) {
-      this.binOffsets.push(i * scale);
-    }
-    this.binBoundaries = new Array(levelCount + 1);
-    this.binBoundaries[0] = 0;
-    for (let i = 1; i < levelCount; ++i) {
-      this.binBoundaries[i] = (this.binOffsets[i - 1] + this.binOffsets[i]) / 2;
-    }
-    this.binBoundaries[levelCount] = numRenderScaleHistogramBins;
   }
 
   updateView() {
@@ -562,27 +565,51 @@ export class SpatialSkeletonGridResolutionWidget extends RefCounted {
     const levels = this.levels.value;
     const levelCount = levels.length;
     if (levelCount === 0) {
+      this.legendTarget.textContent = "target -";
       this.legendGrid.textContent = "grid -";
-      this.legendSize.textContent = "size -";
       this.legendLod.textContent = "lod -";
+      this.legendGrid.title = "";
       return;
     }
-    this.ensureBins(levelCount);
 
-    const selectedIndex = Math.min(
-      Math.max(Math.round(this.target.value), 0),
-      levelCount - 1,
+    const pixelSize = Math.max(this.pixelSize.value, 1e-6);
+    const targetValue = this.target.value;
+    const effectiveTargetSpacing = Math.max(
+      this.relative.value ? targetValue * pixelSize : targetValue,
+      1e-6,
     );
-    const hoverIndex =
-      this.hoverIndex.value !== undefined
-        ? Math.min(Math.max(this.hoverIndex.value, 0), levelCount - 1)
-        : undefined;
-    const displayIndex = hoverIndex ?? selectedIndex;
-    const level = levels[displayIndex];
-    this.legendGrid.textContent = `grid ${displayIndex + 1}/${levelCount}`;
-    this.legendSize.textContent = `size ${Math.round(level.size.x)}x${Math.round(
-      level.size.y,
-    )}x${Math.round(level.size.z)}`;
+    const displaySpacing = this.hoverSpacing.value ?? effectiveTargetSpacing;
+    let nearestIndex = 0;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < levelCount; ++i) {
+      const spacing = Math.min(
+        levels[i].size.x,
+        levels[i].size.y,
+        levels[i].size.z,
+      );
+      const distance = Math.abs(spacing - displaySpacing);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestIndex = i;
+      }
+    }
+    const level = levels[nearestIndex];
+    const unitLabel = this.relative.value ? "px" : "vx";
+    this.legendTarget.textContent = `target ${numberToStringFixed(
+      targetValue,
+      2,
+    )} ${unitLabel}`;
+    this.legendGrid.textContent = `grid ${nearestIndex + 1}/${levelCount}`;
+    const roundedSize = [
+      Math.round(level.size.x),
+      Math.round(level.size.y),
+      Math.round(level.size.z),
+    ];
+    const sizeLabel =
+      roundedSize[0] === roundedSize[1] && roundedSize[1] === roundedSize[2]
+        ? `${roundedSize[0]}^3`
+        : `${roundedSize[0]}x${roundedSize[1]}x${roundedSize[2]}`;
+    this.legendGrid.title = `grid size ${sizeLabel}`;
     this.legendLod.textContent = `lod ${level.lod.toFixed(2)}`;
 
     const tempColor = vec3.create();
@@ -591,32 +618,71 @@ export class SpatialSkeletonGridResolutionWidget extends RefCounted {
     const barTop = Math.round(height * 0.1);
     const barHeight = Math.max(4, height - barTop * 2);
 
-    for (let i = 0; i < levelCount; ++i) {
-      const spatialScale = Math.min(
-        levels[i].size.x,
-        levels[i].size.y,
-        levels[i].size.z,
-      );
-      const saturation = hoverIndex !== undefined && i === hoverIndex ? 0.5 : 1;
+    const entries = levels
+      .map((level, index) => {
+        const spacing = Math.max(
+          Math.min(level.size.x, level.size.y, level.size.z),
+          1e-6,
+        );
+        const offset = getRenderScaleHistogramOffset(
+          spacing,
+          renderScaleHistogramOrigin,
+        );
+        return { index, spacing, offset };
+      })
+      .sort((a, b) => a.offset - b.offset);
+    const boundaries = new Array(entries.length + 1);
+    boundaries[0] = 0;
+    for (let i = 1; i < entries.length; ++i) {
+      boundaries[i] = (entries[i - 1].offset + entries[i].offset) / 2;
+    }
+    boundaries[entries.length] = numRenderScaleHistogramBins;
+
+    const hoverSpacing = this.hoverSpacing.value;
+    let hoverIndex: number | undefined = undefined;
+    if (hoverSpacing !== undefined) {
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < levelCount; ++i) {
+        const spacing = Math.min(
+          levels[i].size.x,
+          levels[i].size.y,
+          levels[i].size.z,
+        );
+        const distance = Math.abs(spacing - hoverSpacing);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          hoverIndex = i;
+        }
+      }
+    }
+    for (let i = 0; i < entries.length; ++i) {
+      const { index, spacing } = entries[i];
+      const saturation = hoverIndex !== undefined && index === hoverIndex ? 0.5 : 1;
       let hue = 0;
-      if (Number.isFinite(spatialScale)) {
-        hue = (((Math.log2(spatialScale) * 0.1) % 1) + 1) % 1;
+      if (Number.isFinite(spacing)) {
+        hue = (((Math.log2(spacing) * 0.1) % 1) + 1) % 1;
       }
       hsvToRgb(tempColor, hue, saturation, 1);
       ctx.fillStyle = serializeColor(tempColor);
-      const xStart = Math.round(binToCanvasX(this.binBoundaries[i]));
-      const xEnd = Math.round(binToCanvasX(this.binBoundaries[i + 1]));
+      const xStart = Math.round(binToCanvasX(boundaries[i]));
+      const xEnd = Math.round(binToCanvasX(boundaries[i + 1]));
       ctx.fillRect(xStart, barTop, xEnd - xStart, barHeight);
     }
 
+    const targetOffset = getRenderScaleHistogramOffset(
+      effectiveTargetSpacing,
+      renderScaleHistogramOrigin,
+    );
     {
-      const targetOffset = this.binOffsets[selectedIndex];
       const x = Math.round(binToCanvasX(targetOffset));
       ctx.fillStyle = "#fff";
       ctx.fillRect(x, 0, 1, height);
     }
-    if (hoverIndex !== undefined) {
-      const hoverOffset = this.binOffsets[hoverIndex];
+    if (hoverSpacing !== undefined) {
+      const hoverOffset = getRenderScaleHistogramOffset(
+        hoverSpacing,
+        renderScaleHistogramOrigin,
+      );
       const x = Math.round(binToCanvasX(hoverOffset));
       ctx.fillStyle = "#888";
       ctx.fillRect(x, 0, 1, height);
@@ -680,9 +746,16 @@ export function spatialSkeletonGridResolutionLayerControl<
 ): LayerControlFactory<LayerType, SpatialSkeletonGridResolutionWidget> {
   return {
     makeControl: (layer, context) => {
-      const { levels, target } = getter(layer);
+      const { levels, target, relative, pixelSize, relativeLabel, relativeTooltip } =
+        getter(layer);
       const control = context.registerDisposer(
-        new SpatialSkeletonGridResolutionWidget(levels, target),
+        new SpatialSkeletonGridResolutionWidget(
+          levels,
+          target,
+          relative,
+          pixelSize,
+          { relativeLabel, relativeTooltip },
+        ),
       );
       return { control, controlElement: control.element };
     },
