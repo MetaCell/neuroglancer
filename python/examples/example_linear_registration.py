@@ -1086,6 +1086,43 @@ def handle_args():
 
 ### Some testing code for transform fitting ###
 class TestTransforms:
+    should_plot = False
+
+    @staticmethod
+    def plot_points(
+        fixed, moving, transformed, dims="2d", filename="test_transform.png"
+    ):
+        import matplotlib.pyplot as plt
+
+        if dims == "2d":
+            fig, ax = plt.subplots()
+            ax.plot(fixed[:, 0], fixed[:, 1], "o", label="fixed")
+            ax.plot(moving[:, 0], moving[:, 1], "o", label="moving")
+            ax.plot(
+                transformed[:, 0],
+                transformed[:, 1],
+                "x",
+                label="transformed moving",
+            )
+        elif dims == "3d":
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection="3d")
+            ax.scatter(fixed[:, 0], fixed[:, 1], fixed[:, 2], label="big", marker="o")
+            ax.scatter(
+                moving[:, 0], moving[:, 1], moving[:, 2], label="little", marker="o"
+            )
+            ax.scatter(
+                transformed[:, 0],
+                transformed[:, 1],
+                transformed[:, 2],
+                label="transformed little",
+                marker="x",
+            )
+        else:
+            raise ValueError("dims must be '2d' or '3d'")
+        ax.legend()
+        fig.savefig(filename, dpi=200)
+
     def test_translation_fit(self):
         # Simple 2D translation, +4 in y, +1 in x
         fixed = np.array([[1, 4], [2, 5], [3, 6]])
@@ -1156,33 +1193,19 @@ class TestTransforms:
         )
         t = np.array([3.2, 1.4])
 
-        big = (little @ R.T) * s + t
+        big_with_shear = (little @ R.T) * s + t
 
-        affine = rigid_or_similarity_fit(little, big, rigid=False)
-
-        # Optional plot to visualize
-        # import matplotlib.pyplot as plt
-        # fig, ax = plt.subplots()
-        # ax.plot(little[:, 0], little[:, 1], "o", label="big")
-        # ax.plot(big[:, 0], big[:, 1], "o", label="little")
-        # ax.plot(
-        #     transform_points(affine, big)[:, 0],
-        #     transform_points(affine, big)[:, 1],
-        #     "x",
-        #     label="transformed little",
-        # )
-        # ax.legend()
-        # fig.savefig("dipper.png", dpi=200)
+        similarity = rigid_or_similarity_fit(little, big_with_shear, rigid=False)
 
         # In this case there is a little bit of shear in the fit
         # so a simiarity transform won't be perfect, but should be close
-        transformed_points = transform_points(affine, big)
+        transformed_points = transform_points(similarity, big_with_shear)
         assert np.allclose(transformed_points, little, atol=0.3)
 
         # The affine fit should be very accurate
-        affine2 = affine_fit(little, big)
-        transformed_points2 = transform_points(affine2, big)
-        assert np.allclose(transformed_points2, little, atol=1e-2)
+        affine = affine_fit(little, big_with_shear)
+        transformed_points_affine = transform_points(affine, big_with_shear)
+        assert np.allclose(transformed_points_affine, little, atol=1e-2)
 
         # If we change R to have determinant 1, the similarity fit should be very accurate too
         R_det1 = np.array(
@@ -1191,10 +1214,24 @@ class TestTransforms:
                 [0.500, 0.866],
             ]
         )
-        big2 = (little @ R_det1.T) * s + t
-        affine3 = rigid_or_similarity_fit(little, big2, rigid=False)
-        transformed_points3 = transform_points(affine3, big2)
-        assert np.allclose(transformed_points3, little, atol=1e-2)
+        big = (little @ R_det1.T) * s + t
+        similarity = rigid_or_similarity_fit(little, big, rigid=False)
+        transformed_points_no_shear = transform_points(similarity, big)
+        assert np.allclose(transformed_points_no_shear, little, atol=1e-2)
+
+        if self.should_plot:
+            self.plot_points(
+                little,
+                big_with_shear,
+                transformed_points,
+                filename="dipper_2d_shear.png",
+            )
+            self.plot_points(
+                little,
+                big,
+                transformed_points_no_shear,
+                filename="dipper_2d_noshear.png",
+            )
 
     def test_3d_transform_fit(self):
         little = np.array(
@@ -1224,18 +1261,6 @@ class TestTransforms:
         big = (little @ R.T) * s + t
 
         affine = rigid_or_similarity_fit(little, big, rigid=False)
-
-        # Optional plot to visualize
-        # import matplotlib.pyplot as plt
-        # fig = plt.figure()
-        # ax = fig.add_subplot(111, projection="3d")
-        # ax.scatter(little[:, 0], little[:, 1], little[:, 2], label="big", marker="o")
-        # ax.scatter(big[:, 0], big[:, 1], big[:, 2], label="little", marker="o")
-        # tl = transform_points(affine, big)
-        # ax.scatter(tl[:, 0], tl[:, 1], tl[:, 2], label="transformed little", marker="x")
-        # ax.legend()
-        # fig.savefig("dipper_3d.png", dpi=200)
-
         transformed_points = transform_points(affine, big)
         assert np.allclose(transformed_points, little, atol=1e-2)
 
