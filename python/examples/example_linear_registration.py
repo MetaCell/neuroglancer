@@ -6,11 +6,11 @@ General workflow:
     1. Start from a neuroglancer viewer with all the reference data and the data to register as layers. If the script is provided no data, it will create demo data for you to try.
     2. Pass this state to the script by either providing a url via --url or dumping the JSON state to a file and passing the file via --json. For example:
         python -i example_linear_registration.py --url 'https://neuroglancer.demo.appspot.com/...'
-    3. The default assumption is that the last layer in the viewer from step 2 is the moving data to be registered, and all other layers are fixed (reference) data. There must be at least two layers. The script will launch with two layer groups side by side, left is fixed, right is moving. You can move layers between the groups such that all fixed layers are in the first group (left panel) and all moving layers are in the second group (right panel). Once you have done this, press 't' to continue.
+    3. The default assumption is that the last layer in the viewer from step 2 is the moving data to be registered, and all other layers are fixed (reference) data. The script will launch with two layer groups side by side, left is fixed, right is moving. You can move layers between the groups such that all fixed layers are in the first group (left panel) and all moving layers are in the second group (right panel). There must be at least two layers. Once you have done this, press 't' to continue.
     4. At this point, the viewer will:
         a. Create a copy of each dimension in with a "2" suffix for the moving layers. E.g. x -> x2, y -> y2, z -> z2. This allows the moving layers to have a different coordinate space.
         b. Create copies of the moving layers in the fixed panel with "_registered" suffixes. These layers will show the registered result.
-        c. Create a shared annotation layer between the two panels for placing registration points. Each point will be 2 * N dimensions, where the first N dimensions correspond to the fixed data, and the second N dimensions correspond to the moving data.
+        c. Create a shared annotation layer between the two panels for placing registration points. Each point will have 2 * N dimensions, where the first N dimensions correspond to the fixed data, and the second N dimensions correspond to the moving data.
     5. You can now place point annotations to inform the registration. The workflow is to:
         a. Move the center position in one of the panels to the desired location for the fixed or moving part of the point annotation.
         b. Place a point annotation with ctrl+left click in the other panel.
@@ -18,14 +18,14 @@ General workflow:
         d. The fixed and moving coordinates can be adjusted later by moving the annotation as normal (alt + left click the point). This will only move the point in the panel you are currently focused on, so to adjust both fixed and moving coordinates you need to switch panels.
     6. As you add points, the estimated affine transform will be updated and applied to the moving layers. The registered layers can be toggled visible/invisible by pressing 't'.
     7. If an issue happens, the viewer state can go out of sync. To help with this, the python console will regularly print that viewer states are syncing with a timestamp. If you do not see this message for a while, consider continuing the workflow again from a saved state.
-    8. To continue from a saved state, dump the viewer state to a file using either the 'd' key. Then pass this json in the --json command line argument to skip the initial setup steps and use existing annotations. If you renamed the annotation layer containing the registration points, you should also pass --annotations-name (or -a) with the new name. For example:
+    8. To continue from a saved state, dump the viewer state to a file using the 'd' key. Then pass this json in the --json command line argument to skip the initial setup steps and use existing annotations. If you renamed the annotation layer containing the registration points, you should also pass --annotations-name (or -a) with the new name. For example:
         python -i example_linear_registration.py --json saved_state.json -a registration_points
 
 Known issues:
     1. Channel dimensions that are stored as c' get switched to c^ and then need to have
     their shaders updated. Once the update is done though they will stay as c^ so this
     is a one time setup.
-    2. If the layer info fails to be parsed from Python the workflow can't launch past the setup step.
+    2. If the layer info fails to be parsed from Python the workflow can't launch past the setup step. This can be worked around by setting up the viewer in full as laid out above and the extra information required in the json file manually and then passing that in, but it does require some effort to do so. This essentially simulates dumping the state after setup in step 8 and then continuing from that state.
 """
 
 import argparse
@@ -44,9 +44,9 @@ import neuroglancer.cli
 import numpy as np
 import scipy.ndimage
 
-DEBUG = True  # Print debug info during execution
+DEBUG = False # Print debug info during execution
 MESSAGE_DURATION = 4  # How long to show help messages in seconds
-NUM_DEMO_DIMS = 3  # Only used if no data give, can be 2D or 3D
+NUM_DEMO_DIMS = 3  # Only used if no data given, can be 2D or 3D
 NUM_NEAREST_POINTS = 4  # Number of nearest points to use in local estimation
 AFFINE_NUM_DECIMALS = 6  # Number of decimals to round affine matrix to
 
