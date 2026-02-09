@@ -2,6 +2,9 @@
 
 """Example of an interactive linear registration workflow using point annotations.
 
+Requires scipy as an additional dependency in addition to the core neuroglancer python package.
+python -m pip install scipy
+
 General workflow:
     1. Start from a neuroglancer viewer with all the reference data and the data to register as layers. If the script is provided no data, it will create demo data for you to try.
     2. Pass this state to the script by either providing a url via --url or dumping the JSON state to a file and passing the file via --json. For example:
