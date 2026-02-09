@@ -373,7 +373,6 @@ class LinearRegistrationWorkflow:
         self._show_help_message()
 
         if linear_reg_pipeline_info is not None:
-            breakpoint()
             self._restore_coord_maps(linear_reg_pipeline_info)
             self.pipeline_state = PipelineState.READY
 
