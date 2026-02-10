@@ -32,7 +32,11 @@ import {
     CatmaidDataSourceParameters,
 } from "#src/datasource/catmaid/base.js";
 import { mat4, vec3 } from "#src/util/geom.js";
-import { CatmaidClient, type CatmaidStackInfo } from "#src/datasource/catmaid/api.js";
+import {
+    CatmaidClient,
+    getCatmaidProjectSpaceBounds,
+    type CatmaidStackInfo,
+} from "#src/datasource/catmaid/api.js";
 import { DataType } from "#src/util/data_type.js";
 import { ChunkLayout } from "#src/sliceview/chunk_layout.js";
 import type { SliceViewSourceOptions } from "#src/sliceview/base.js";
@@ -49,6 +53,11 @@ import { SliceViewSingleResolutionSource } from "#src/sliceview/frontend.js";
 import { ChunkManager } from "#src/chunk_manager/frontend.js";
 import { Borrowed } from "#src/util/disposable.js";
 import "#src/datasource/catmaid/register_credentials_provider.js";
+
+const METERS_PER_NANOMETER = 1e-9;
+const DEFAULT_CACHE_GRID_CELL_WIDTH = 25000;
+const DEFAULT_CACHE_GRID_CELL_HEIGHT = 25000;
+const DEFAULT_CACHE_GRID_CELL_DEPTH = 40;
 
 export class CatmaidSpatiallyIndexedSkeletonSource extends WithParameters(
     WithCredentialsProvider<CatmaidToken>()(SpatiallyIndexedSkeletonSource),
@@ -91,8 +100,9 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
         private baseUrl: string,
         private projectId: number,
         private credentialsProvider: CredentialsProvider<CatmaidToken>,
-        private scaleFactors: Float32Array,
-        private upperBounds: Float32Array,
+        private coordinateScaleFactorsInMeters: Float32Array,
+        private lowerBoundsInNanometers: Float32Array,
+        private upperBoundsInNanometers: Float32Array,
         gridCellSizes: Array<{ x: number; y: number; z: number }>,
         private cacheProvider?: string,
     ) {
@@ -155,9 +165,9 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
 
             const chunkLayoutTransform = mat4.create();
             mat4.fromScaling(chunkLayoutTransform, vec3.fromValues(
-                this.scaleFactors[0],
-                this.scaleFactors[1],
-                this.scaleFactors[2]
+                this.coordinateScaleFactorsInMeters[0],
+                this.coordinateScaleFactorsInMeters[1],
+                this.coordinateScaleFactorsInMeters[2]
             ));
 
             const chunkLayout = new ChunkLayout(
@@ -170,7 +180,8 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
                 ...makeSliceViewChunkSpecification({
                     rank: 3,
                     chunkDataSize,
-                    upperVoxelBound: this.upperBounds,
+                    lowerVoxelBound: this.lowerBoundsInNanometers,
+                    upperVoxelBound: this.upperBoundsInNanometers,
                 }),
                 chunkLayout,
             };
@@ -281,16 +292,10 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
             throw new Error("Failed to fetch CATMAID stack metadata");
         }
 
-        // Extract dimensions from stack info
+        // CATMAID node and grid-cache coordinates are in project-space nanometers.
+        // Convert stack dimensions (pixels) to project-space nanometer bounds.
         const { dimension, translation, resolution } = stackInfo;
-        const offX = translation?.x ?? 0;
-        const offY = translation?.y ?? 0;
-        const offZ = translation?.z ?? 0;
-
-        const dimensions = {
-            min: { x: offX, y: offY, z: offZ },
-            max: { x: offX + dimension.x, y: offY + dimension.y, z: offZ + dimension.z },
-        };
+        const projectBounds = getCatmaidProjectSpaceBounds(stackInfo);
 
         // Extract grid cell sizes from metadata
         const gridCellSizes: Array<{ x: number; y: number; z: number }> = [];
@@ -308,9 +313,6 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
         
         // If no grid configs found, use default
         if (gridCellSizes.length === 0) {
-            const DEFAULT_CACHE_GRID_CELL_WIDTH = 25000;
-            const DEFAULT_CACHE_GRID_CELL_HEIGHT = 25000;
-            const DEFAULT_CACHE_GRID_CELL_DEPTH = 40;
             gridCellSizes.push({
                 x: DEFAULT_CACHE_GRID_CELL_WIDTH,
                 y: DEFAULT_CACHE_GRID_CELL_HEIGHT,
@@ -318,29 +320,29 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
             });
         }
 
-        // Resolution is in nm per voxel, convert to meters
-        const scaleFactors = Float64Array.from([
-            resolution.x * 1e-9,
-            resolution.y * 1e-9,
-            resolution.z * 1e-9,
+        // The model-space coordinates we emit are in nanometers, converted to meters for Neuroglancer.
+        const coordinateScaleFactors = Float64Array.from([
+            METERS_PER_NANOMETER,
+            METERS_PER_NANOMETER,
+            METERS_PER_NANOMETER,
         ]);
 
-        // Dimensions are already in voxel coordinates from the API
+        // Bounds and chunk sizes are represented in project-space nanometers.
         const lowerBounds = Float64Array.from([
-            dimensions.min.x,
-            dimensions.min.y,
-            dimensions.min.z,
+            projectBounds.min.x,
+            projectBounds.min.y,
+            projectBounds.min.z,
         ]);
         const upperBounds = Float64Array.from([
-            dimensions.max.x,
-            dimensions.max.y,
-            dimensions.max.z,
+            projectBounds.max.x,
+            projectBounds.max.y,
+            projectBounds.max.z,
         ]);
 
         const modelSpace = makeCoordinateSpace({
             names: ["x", "y", "z"],
             units: ["m", "m", "m"],
-            scales: scaleFactors,
+            scales: coordinateScaleFactors,
             boundingBoxes: [
                 {
                     box: {
@@ -354,17 +356,30 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
 
         const rank = 3;
 
-        const upperVoxelBound = new Float32Array(rank);
+        const lowerCoordinateBound = new Float32Array(rank);
+        const upperCoordinateBound = new Float32Array(rank);
         for (let i = 0; i < rank; ++i) {
-            upperVoxelBound[i] = upperBounds[i];
+            lowerCoordinateBound[i] = lowerBounds[i];
+            upperCoordinateBound[i] = upperBounds[i];
         }
 
         // Log information about available chunk sizes
-        console.info('CATMAID Multiscale Skeleton Source:', {
-            chunkSizes: gridCellSizes.map(size => ({ x: size.x, y: size.y, z: size.z })),
-            resolution: { x: resolution.x, y: resolution.y, z: resolution.z, unit: 'nm' },
-            totalDimension: dimensions,
-            totalNumberOfSkeletons: skeletonIds.length
+        console.info("CATMAID Multiscale Skeleton Source:", {
+            chunkSizes: gridCellSizes.map((size) => ({
+                x: size.x,
+                y: size.y,
+                z: size.z,
+                unit: "nm",
+            })),
+            stackDimension: { ...dimension, unit: "px" },
+            stackResolution: { x: resolution.x, y: resolution.y, z: resolution.z, unit: "nm/px" },
+            stackTranslation: { x: translation?.x ?? 0, y: translation?.y ?? 0, z: translation?.z ?? 0, unit: "nm" },
+            projectBounds: {
+                min: projectBounds.min,
+                max: projectBounds.max,
+                unit: "nm",
+            },
+            totalNumberOfSkeletons: skeletonIds.length,
         });
 
         // Extract cache provider from metadata
@@ -376,8 +391,9 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
             baseUrl,
             projectId,
             credentialsProvider,
-            new Float32Array(scaleFactors),
-            upperVoxelBound,
+            new Float32Array(coordinateScaleFactors),
+            lowerCoordinateBound,
+            upperCoordinateBound,
             gridCellSizes,
             cacheProvider
         );

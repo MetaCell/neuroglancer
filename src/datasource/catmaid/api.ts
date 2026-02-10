@@ -11,6 +11,7 @@ export interface CatmaidStackInfo {
     dimension: { x: number; y: number; z: number };
     resolution: { x: number; y: number; z: number };
     translation: { x: number; y: number; z: number };
+    orientation?: number;
     title?: string;
     metadata?: {
         cache_provider?: string;
@@ -34,6 +35,43 @@ export const credentialsKey = "CATMAID";
 const DEFAULT_CACHE_GRID_CELL_WIDTH = 25000;
 const DEFAULT_CACHE_GRID_CELL_HEIGHT = 25000;
 const DEFAULT_CACHE_GRID_CELL_DEPTH = 40;
+
+export function getCatmaidProjectSpaceBounds(info: CatmaidStackInfo): {
+    min: { x: number; y: number; z: number };
+    max: { x: number; y: number; z: number };
+} {
+    const { dimension, resolution, translation } = info;
+    const offsetX = translation?.x ?? 0;
+    const offsetY = translation?.y ?? 0;
+    const offsetZ = translation?.z ?? 0;
+
+    // CATMAID treenode coordinates and grid cache cell sizes are in project-space nanometers.
+    return {
+        min: { x: offsetX, y: offsetY, z: offsetZ },
+        max: {
+            x: offsetX + dimension.x * resolution.x,
+            y: offsetY + dimension.y * resolution.y,
+            z: offsetZ + dimension.z * resolution.z,
+        },
+    };
+}
+
+function normalizeBoundingBoxForNodeList(boundingBox: {
+    min: { x: number; y: number; z: number };
+    max: { x: number; y: number; z: number };
+}) {
+    const left = Math.floor(boundingBox.min.x);
+    const top = Math.floor(boundingBox.min.y);
+    const z1 = Math.floor(boundingBox.min.z);
+
+    // CATMAID treats right/bottom as inclusive and z2 as exclusive for grid-cell index filtering.
+    // Use ceil and ensure a positive extent on each axis.
+    const right = Math.max(left + 1, Math.ceil(boundingBox.max.x));
+    const bottom = Math.max(top + 1, Math.ceil(boundingBox.max.y));
+    const z2 = Math.max(z1 + 1, Math.ceil(boundingBox.max.z));
+
+    return { left, top, z1, right, bottom, z2 };
+}
 
 function fetchWithCatmaidCredentials(
     credentialsProvider: CredentialsProvider<CatmaidToken>,
@@ -148,26 +186,7 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
         const info = await this.getMetadataInfo();
         if (!info) return null;
 
-        // Return voxel-space bounds (dimension from stack info)
-        // The "dimension" field in the stack info represents the size in voxels
-        const { dimension, translation } = info;
-
-        // Use translation if available, otherwise 0,0,0
-        const offX = translation?.x ?? 0;
-        const offY = translation?.y ?? 0;
-        const offZ = translation?.z ?? 0;
-
-        const min = {
-            x: offX,
-            y: offY,
-            z: offZ,
-        };
-        const max = {
-            x: offX + dimension.x,
-            y: offY + dimension.y,
-            z: offZ + dimension.z,
-        };
-        return { min, max };
+        return getCatmaidProjectSpaceBounds(info);
     }
 
     async getResolution(): Promise<{ x: number; y: number; z: number } | null> {
@@ -225,21 +244,22 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
         lod: number = 0,
         cacheProvider?: string,
     ): Promise<SpatiallyIndexedSkeletonNode[]> {
+        const normalizedBoundingBox = normalizeBoundingBoxForNodeList(boundingBox);
         const params = new URLSearchParams({
-            left: boundingBox.min.x.toString(),
-            top: boundingBox.min.y.toString(),
-            z1: boundingBox.min.z.toString(),
-            right: boundingBox.max.x.toString(),
-            bottom: boundingBox.max.y.toString(),
-            z2: boundingBox.max.z.toString(),
-            lod_type: 'percent',
+            left: normalizedBoundingBox.left.toString(),
+            top: normalizedBoundingBox.top.toString(),
+            z1: normalizedBoundingBox.z1.toString(),
+            right: normalizedBoundingBox.right.toString(),
+            bottom: normalizedBoundingBox.bottom.toString(),
+            z2: normalizedBoundingBox.z2.toString(),
+            lod_type: "percent",
             lod: lod.toString(),
-            format: 'msgpack',
+            format: "msgpack",
         });
 
         // Add cache provider if available
         if (cacheProvider) {
-            params.append('src', cacheProvider);
+            params.append("src", cacheProvider);
         }
 
         const data: any = await this.fetch(`node/list?${params.toString()}`, {}, true);
