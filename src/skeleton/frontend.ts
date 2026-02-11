@@ -1114,10 +1114,18 @@ export class MultiscaleSliceViewSpatiallyIndexedSkeletonLayer extends SliceViewR
     public multiscaleSource: MultiscaleSpatiallyIndexedSkeletonSource,
     public displayState: SegmentationDisplayState
   ) {
+    const renderScaleTarget = (displayState as any)
+      .renderScaleTarget as WatchableValueInterface<number>;
+    const gridLevel2d = (displayState as any).spatialSkeletonGridLevel2d as
+      | WatchableValueInterface<number>
+      | undefined;
+    const gridAwareRenderScaleTarget = new WatchableValue(
+      renderScaleTarget.value,
+    );
     super(chunkManager, multiscaleSource, {
       transform: (displayState as any).transform,
       localPosition: (displayState as any).localPosition,
-      renderScaleTarget: (displayState as any).renderScaleTarget,
+      renderScaleTarget: gridAwareRenderScaleTarget,
     });
     this.renderOptions = (displayState as any).skeletonRenderingOptions.params2d;
     this.registerDisposer(
@@ -1128,8 +1136,25 @@ export class MultiscaleSliceViewSpatiallyIndexedSkeletonLayer extends SliceViewR
     this.registerDisposer(
       this.renderOptions.lineWidth.changed.add(this.redrawNeeded.dispatch),
     );
+    this.registerDisposer(
+      renderScaleTarget.changed.add(() => {
+        gridAwareRenderScaleTarget.value = renderScaleTarget.value;
+      }),
+    );
+    if (gridLevel2d !== undefined) {
+      let gridInvalidationTick = 0;
+      this.registerDisposer(
+        gridLevel2d.changed.add(() => {
+          // Toggle a tiny offset so backend/front-end visible source caches are invalidated
+          // even when only the grid index changes.
+          const baseValue = renderScaleTarget.value;
+          gridInvalidationTick ^= 1;
+          gridAwareRenderScaleTarget.value =
+            baseValue + gridInvalidationTick * 1e-6;
+        }),
+      );
+    }
     const rpc = this.chunkManager.rpc!;
-    const gridLevel2d = (displayState as any).spatialSkeletonGridLevel2d;
     const lod2d = (displayState as any).spatialSkeletonLod2d;
     if (gridLevel2d !== undefined && lod2d !== undefined) {
       this.rpcTransfer = {
