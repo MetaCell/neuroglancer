@@ -23,6 +23,7 @@ export interface CatmaidStackInfo {
 import { fetchOkWithCredentials } from "#src/credentials_provider/http_request.js";
 import type { CredentialsProvider } from "#src/credentials_provider/index.js";
 import { SpatiallyIndexedSkeletonNode, SpatiallyIndexedSkeletonSource } from "#src/skeleton/api.js";
+import { HttpError } from "#src/util/http_request.js";
 import { Unpackr } from "msgpackr";
 
 export interface CatmaidToken {
@@ -35,6 +36,46 @@ export const credentialsKey = "CATMAID";
 const DEFAULT_CACHE_GRID_CELL_WIDTH = 25000;
 const DEFAULT_CACHE_GRID_CELL_HEIGHT = 25000;
 const DEFAULT_CACHE_GRID_CELL_DEPTH = 40;
+const CATMAID_NO_MATCHING_NODE_PROVIDER_ERROR = "Could not find matching node provider for request";
+
+function includesNoMatchingNodeProviderError(value: unknown): boolean {
+    return typeof value === "string" && value.includes(CATMAID_NO_MATCHING_NODE_PROVIDER_ERROR);
+}
+
+function isNoMatchingNodeProviderErrorPayload(payload: unknown): boolean {
+    if (payload === null || typeof payload !== "object") return false;
+    const value = payload as { error?: unknown; detail?: unknown };
+    return (
+        includesNoMatchingNodeProviderError(value.error) ||
+        includesNoMatchingNodeProviderError(value.detail)
+    );
+}
+
+async function tryReadJsonPayload(response: Response): Promise<unknown | undefined> {
+    try {
+        return await response.json();
+    } catch {
+        return undefined;
+    }
+}
+
+async function tryReadErrorPayload(response: Response): Promise<unknown | undefined> {
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+        return tryReadJsonPayload(response);
+    }
+    try {
+        const text = await response.text();
+        if (!text) return undefined;
+        try {
+            return JSON.parse(text);
+        } catch {
+            return { error: text };
+        }
+    } catch {
+        return undefined;
+    }
+}
 
 export function getCatmaidProjectSpaceBounds(info: CatmaidStackInfo): {
     min: { x: number; y: number; z: number };
@@ -134,20 +175,41 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
         } else {
             response = await fetch(url, { ...options, headers });
             if (!response.ok) {
-                throw new Error(`CATMAID request failed: ${response.statusText}`);
+                throw HttpError.fromResponse(response);
             }
         }
         
         if (expectMsgpack) {
+            const contentType = response.headers.get("content-type") ?? "";
+            if (contentType.includes("application/json")) {
+                return response.json();
+            }
             const buffer = await response.arrayBuffer();
             const unpackr = new Unpackr({
                 mapsAsObjects: false,
                 int64AsType: "number",
             });
-            return unpackr.unpack(new Uint8Array(buffer));
+            try {
+                return unpackr.unpack(new Uint8Array(buffer));
+            } catch (error) {
+                // Some CATMAID deployments return a JSON error body with a msgpack request.
+                try {
+                    return JSON.parse(new TextDecoder().decode(buffer));
+                } catch {
+                    throw error;
+                }
+            }
         }
         
         return response.json();
+    }
+
+    private async isNoMatchingNodeProviderHttpError(error: unknown): Promise<boolean> {
+        if (!(error instanceof HttpError) || error.response === undefined) {
+            return false;
+        }
+        const payload = await tryReadErrorPayload(error.response.clone());
+        return isNoMatchingNodeProviderErrorPayload(payload);
     }
 
     async listSkeletons(): Promise<number[]> {
@@ -262,7 +324,23 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
             params.append("src", cacheProvider);
         }
 
-        const data: any = await this.fetch(`node/list?${params.toString()}`, {}, true);
+        let data: any;
+        try {
+            data = await this.fetch(`node/list?${params.toString()}`, {}, true);
+        } catch (error) {
+            if (await this.isNoMatchingNodeProviderHttpError(error)) {
+                return [];
+            }
+            throw error;
+        }
+
+        if (isNoMatchingNodeProviderErrorPayload(data)) {
+            return [];
+        }
+
+        if (!Array.isArray(data) || !Array.isArray(data[0])) {
+            throw new Error("CATMAID node/list endpoint returned an unexpected response format.");
+        }
 
         // Check if limit was reached for the first LOD level
         if (data[3]) {
