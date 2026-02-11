@@ -43,6 +43,9 @@ import {
 } from "#src/mesh/frontend.js";
 import {
   RenderScaleHistogram,
+  numRenderScaleHistogramBins,
+  renderScaleHistogramBinSize,
+  renderScaleHistogramOrigin,
   trackableRenderScaleTarget,
 } from "#src/render_scale_statistics.js";
 import { getCssColor, SegmentColorHash } from "#src/segment_color.js";
@@ -467,6 +470,66 @@ function findClosestSpatialSkeletonGridLevelBySpacing(
   return bestIndex;
 }
 
+function getSpatialSkeletonGridHistogramConfig(
+  levels: SpatialSkeletonGridLevel[],
+) {
+  if (levels.length === 0) {
+    return {
+      origin: renderScaleHistogramOrigin,
+      binSize: renderScaleHistogramBinSize,
+    };
+  }
+  const logSpacings: number[] = [];
+  let minLogSpacing = Number.POSITIVE_INFINITY;
+  let maxLogSpacing = Number.NEGATIVE_INFINITY;
+  for (const level of levels) {
+    const spacing = Math.max(getSpatialSkeletonGridSpacing(level.size), 1e-6);
+    const logSpacing = Math.log2(spacing);
+    logSpacings.push(logSpacing);
+    minLogSpacing = Math.min(minLogSpacing, logSpacing);
+    maxLogSpacing = Math.max(maxLogSpacing, logSpacing);
+  }
+  if (!Number.isFinite(minLogSpacing) || !Number.isFinite(maxLogSpacing)) {
+    return {
+      origin: renderScaleHistogramOrigin,
+      binSize: renderScaleHistogramBinSize,
+    };
+  }
+  logSpacings.sort((a, b) => a - b);
+  let minDelta = Number.POSITIVE_INFINITY;
+  for (let i = 1; i < logSpacings.length; ++i) {
+    const delta = logSpacings[i] - logSpacings[i - 1];
+    if (delta > 0) minDelta = Math.min(minDelta, delta);
+  }
+  const span = maxLogSpacing - minLogSpacing;
+  const minBinSizeForCoverage = span / Math.max(numRenderScaleHistogramBins - 4, 1);
+  const lowerBound = Math.max(minBinSizeForCoverage, 0.05);
+  let binSize = lowerBound;
+  if (Number.isFinite(minDelta)) {
+    const maxBinSizeForDistinctBars = minDelta * 0.9;
+    if (maxBinSizeForDistinctBars >= lowerBound) {
+      binSize = maxBinSizeForDistinctBars;
+    }
+  }
+  if (!Number.isFinite(binSize) || binSize <= 0) {
+    binSize = renderScaleHistogramBinSize;
+  }
+
+  const range = numRenderScaleHistogramBins * binSize;
+  const desiredPadding = binSize * 2;
+  const minOrigin = maxLogSpacing + desiredPadding - range;
+  const maxOrigin = minLogSpacing - desiredPadding;
+  const centeredOrigin = (minLogSpacing + maxLogSpacing - range) / 2;
+  const clampedOrigin = Math.min(
+    Math.max(centeredOrigin, minOrigin),
+    maxOrigin,
+  );
+  const roundedBinSize = Math.max(binSize, 1e-3);
+  const roundedOrigin =
+    Math.round(clampedOrigin / roundedBinSize) * roundedBinSize;
+  return { origin: roundedOrigin, binSize: roundedBinSize };
+}
+
 class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
   constructor(public layer: SegmentationUserLayer) {
     // Even though `SegmentationUserLayer` assigns this to its `displayState` property, redundantly
@@ -688,6 +751,8 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
   spatialSkeletonGridResolutionRelative3d = new TrackableBoolean(false, false);
   spatialSkeletonGridPixelSize2d = new WatchableValue<number>(1);
   spatialSkeletonGridPixelSize3d = new WatchableValue<number>(1);
+  spatialSkeletonGridRenderScaleHistogram2d = new RenderScaleHistogram();
+  spatialSkeletonGridRenderScaleHistogram3d = new RenderScaleHistogram();
   spatialSkeletonLod2d = new WatchableValue<number>(0);
   private spatialSkeletonGridResolutionTarget2dExplicit = false;
   private spatialSkeletonGridResolutionTarget3dExplicit = false;
@@ -722,6 +787,32 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
       (a, b) => Math.min(b.x, b.y, b.z) - Math.min(a.x, a.y, a.z),
     );
     const levels = buildSpatialSkeletonGridLevels(sortedSizes);
+    const { origin: histogramOrigin, binSize: histogramBinSize } =
+      getSpatialSkeletonGridHistogramConfig(levels);
+    if (
+      this.spatialSkeletonGridRenderScaleHistogram2d.logScaleOrigin !==
+        histogramOrigin ||
+      this.spatialSkeletonGridRenderScaleHistogram2d.logScaleBinSize !==
+        histogramBinSize
+    ) {
+      this.spatialSkeletonGridRenderScaleHistogram2d.logScaleOrigin =
+        histogramOrigin;
+      this.spatialSkeletonGridRenderScaleHistogram2d.logScaleBinSize =
+        histogramBinSize;
+      this.spatialSkeletonGridRenderScaleHistogram2d.changed.dispatch();
+    }
+    if (
+      this.spatialSkeletonGridRenderScaleHistogram3d.logScaleOrigin !==
+        histogramOrigin ||
+      this.spatialSkeletonGridRenderScaleHistogram3d.logScaleBinSize !==
+        histogramBinSize
+    ) {
+      this.spatialSkeletonGridRenderScaleHistogram3d.logScaleOrigin =
+        histogramOrigin;
+      this.spatialSkeletonGridRenderScaleHistogram3d.logScaleBinSize =
+        histogramBinSize;
+      this.spatialSkeletonGridRenderScaleHistogram3d.changed.dispatch();
+    }
     this.spatialSkeletonGridLevels.value = levels;
     if (levels.length === 0) return;
     const target3dIndex = this.spatialSkeletonGridResolutionTarget3dExplicit

@@ -139,20 +139,9 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
         // Sorted by minimum dimension (Descending: Large/Coarse -> Small/Fine)
         const sortedGridSizes = this.sortedGridCellSizes;
 
-        // Calculate per-dimension min size for relative scaling
-        let minX = Number.MAX_VALUE;
-        let minY = Number.MAX_VALUE;
-        let minZ = Number.MAX_VALUE;
-        for (const s of sortedGridSizes) {
-            minX = Math.min(minX, s.x);
-            minY = Math.min(minY, s.y);
-            minZ = Math.min(minZ, s.z);
-        }
-
         if (CatmaidMultiscaleSpatiallyIndexedSkeletonSource.DEBUG_SCALE_SELECTION) {
             console.debug("[CATMAID] Spatially indexed skeleton scales", {
                 gridCellSizes: sortedGridSizes,
-                minGridCellSize: { x: minX, y: minY, z: minZ },
             });
         }
 
@@ -205,16 +194,10 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
                 { parameters, spec, credentialsProvider: this.credentialsProvider }
             );
 
-            // Calculate relative scale based on grid size vs minimum grid size
-            const relativeScaleX = gridCellSize.x / minX;
-            const relativeScaleY = gridCellSize.y / minY;
-            const relativeScaleZ = gridCellSize.z / minZ;
-            
+            // CATMAID grid cell sizes are already expressed in project-space nanometers.
+            // Use identity here; additional relative scaling would double-apply grid size
+            // and can skew per-grid visible chunk counts and requests.
             const chunkToMultiscaleTransform = mat4.create();
-            mat4.fromScaling(
-                chunkToMultiscaleTransform,
-                vec3.fromValues(relativeScaleX, relativeScaleY, relativeScaleZ)
-            );
             sources.push({
                 chunkSource,
                 chunkToMultiscaleTransform,
@@ -223,7 +206,7 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
             if (CatmaidMultiscaleSpatiallyIndexedSkeletonSource.DEBUG_SCALE_SELECTION) {
                 console.debug("[CATMAID] Spatially indexed skeleton scale", {
                     gridCellSize,
-                    relativeScale: { x: relativeScaleX, y: relativeScaleY, z: relativeScaleZ },
+                    chunkToMultiscaleTransform: "identity",
                 });
             }
         }
