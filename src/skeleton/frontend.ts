@@ -170,6 +170,7 @@ const segmentColorTextureFormat = computeTextureFormat(
 
 interface SkeletonLayerInterface {
   vertexAttributes: VertexAttributeRenderInfo[];
+  segmentColorAttributeIndex?: number;
   gl: GL;
   fallbackShaderParameters: WatchableValue<ShaderControlsBuilderState>;
   displayState: SkeletonLayerDisplayState;
@@ -227,11 +228,7 @@ class RenderHelper extends RefCounted {
   ) {
     super();
     this.vertexIdHelper = this.registerDisposer(VertexIdHelper.get(this.gl));
-    const segmentColorIndex = this.vertexAttributes.findIndex(
-      (info) => info.name === "segmentColorAttr",
-    );
-    this.segmentColorAttributeIndex =
-      segmentColorIndex > 0 ? segmentColorIndex : undefined;
+    this.segmentColorAttributeIndex = base.segmentColorAttributeIndex;
     this.edgeShaderGetter = parameterizedEmitterDependentShaderGetter(
       this,
       this.gl,
@@ -619,6 +616,7 @@ export class SkeletonLayer extends RefCounted {
   redrawNeeded = new NullarySignal();
   private sharedObject: SegmentationLayerSharedObject;
   vertexAttributes: VertexAttributeRenderInfo[];
+  segmentColorAttributeIndex: number | undefined = undefined;
   fallbackShaderParameters = new WatchableValue(
     getFallbackBuilderState(parseShaderUiControls(DEFAULT_FRAGMENT_MAIN)),
   );
@@ -1344,6 +1342,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
   layerChunkProgressInfo = new LayerChunkProgressInfo();
   redrawNeeded = new NullarySignal();
   vertexAttributes: VertexAttributeRenderInfo[];
+  segmentColorAttributeIndex: number | undefined;
   fallbackShaderParameters = new WatchableValue(
     getFallbackBuilderState(parseShaderUiControls(DEFAULT_FRAGMENT_MAIN)),
   );
@@ -1427,6 +1426,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       ...this.source.vertexAttributes,
       segmentColorAttribute,
     ];
+    this.segmentColorAttributeIndex = this.vertexAttributes.length - 1;
     const markDirty = () => this.markFilteredDataDirty();
     // Monitor visible segment changes to update filtered buffers.
     this.registerDisposer(
