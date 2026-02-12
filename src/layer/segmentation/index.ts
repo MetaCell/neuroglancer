@@ -1278,11 +1278,10 @@ export class SegmentationUserLayer extends Base {
       const {
         volume,
         mesh,
-        skeleton,
         segmentPropertyMap,
         segmentationGraph,
         local,
-      } = loadedSubsource.subsourceEntry.subsource as any;
+      } = loadedSubsource.subsourceEntry.subsource;
       if (volume instanceof MultiscaleVolumeChunkSource) {
         switch (volume.dataType) {
           case DataType.FLOAT32:
@@ -1403,59 +1402,6 @@ export class SegmentationUserLayer extends Base {
             const base = new SkeletonLayer(
               this.manager.chunkManager,
               mesh,
-              displayState,
-            );
-            loadedSubsource.addRenderLayer(
-              new PerspectiveViewSkeletonLayer(base.addRef()),
-            );
-            loadedSubsource.addRenderLayer(
-              new SliceViewPanelSkeletonLayer(/* transfer ownership */ base),
-            );
-          }
-        }, this.displayState.segmentationGroupState.value);
-      } else if (skeleton !== undefined) {
-        loadedSubsource.activate(() => {
-          const displayState = {
-            ...this.displayState,
-            transform: loadedSubsource.getRenderLayerTransform(),
-            localPosition: this.localPosition,
-          };
-          if (skeleton instanceof SpatiallyIndexedSkeletonSource) {
-            const base3d = new SpatiallyIndexedSkeletonLayer(
-              this.manager.chunkManager,
-              skeleton,
-              displayState,
-              {
-                gridLevel: displayState.spatialSkeletonGridLevel3d,
-                lod: displayState.skeletonLod,
-              },
-            );
-            loadedSubsource.addRenderLayer(
-              new PerspectiveViewSpatiallyIndexedSkeletonLayer(
-                /* transfer ownership */ base3d,
-              ),
-            );
-            const base2d = new SpatiallyIndexedSkeletonLayer(
-              this.manager.chunkManager,
-              skeleton,
-              displayState,
-              {
-                gridLevel: displayState.spatialSkeletonGridLevel2d,
-                lod: displayState.spatialSkeletonLod2d,
-              },
-            );
-            loadedSubsource.addRenderLayer(
-              new SliceViewSpatiallyIndexedSkeletonLayer(base2d.addRef()),
-            );
-            loadedSubsource.addRenderLayer(
-              new SliceViewPanelSpatiallyIndexedSkeletonLayer(
-                /* transfer ownership */ base2d,
-              ),
-            );
-          } else {
-            const base = new SkeletonLayer(
-              this.manager.chunkManager,
-              skeleton,
               displayState,
             );
             loadedSubsource.addRenderLayer(
