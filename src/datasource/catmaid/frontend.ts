@@ -34,8 +34,6 @@ import {
 import { mat4, vec3 } from "#src/util/geom.js";
 import {
     CatmaidClient,
-    getCatmaidProjectSpaceBounds,
-    type CatmaidStackInfo,
 } from "#src/datasource/catmaid/api.js";
 import { DataType } from "#src/util/data_type.js";
 import { ChunkLayout } from "#src/sliceview/chunk_layout.js";
@@ -55,9 +53,6 @@ import { Borrowed } from "#src/util/disposable.js";
 import "#src/datasource/catmaid/register_credentials_provider.js";
 
 const METERS_PER_NANOMETER = 1e-9;
-const DEFAULT_CACHE_GRID_CELL_WIDTH = 25000;
-const DEFAULT_CACHE_GRID_CELL_HEIGHT = 25000;
-const DEFAULT_CACHE_GRID_CELL_DEPTH = 40;
 
 export class CatmaidSpatiallyIndexedSkeletonSource extends WithParameters(
     WithCredentialsProvider<CatmaidToken>()(SpatiallyIndexedSkeletonSource),
@@ -109,10 +104,6 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
         this.sortedGridCellSizes = [...gridCellSizes].sort(
             (a, b) => Math.min(b.x, b.y, b.z) - Math.min(a.x, a.y, a.z)
         );
-    }
-
-    getGridCellSizes(): Array<{ x: number; y: number; z: number }> {
-        return this.sortedGridCellSizes;
     }
 
     getSpatialSkeletonGridSizes(): Array<{ x: number; y: number; z: number }> {
@@ -244,12 +235,27 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
 
         const client = new CatmaidClient(baseUrl, projectId, undefined, credentialsProvider);
 
-        // Fetch metadata using memoized client methods to avoid duplicate requests
-        const [stackInfo, skeletonIds] = await Promise.all([
+        // Fetch metadata-derived values through the generic source interface.
+        const [projectBounds, resolution, gridCellSizes, cacheProvider, skeletonIds] = await Promise.all([
             options.registry.chunkManager.memoize.getAsync(
-                { type: "catmaid:metadata", baseUrl, projectId },
+                { type: "catmaid:dimensions", baseUrl, projectId },
                 options,
-                () => (client as any).getMetadataInfo() as Promise<CatmaidStackInfo | null>,
+                () => client.getDimensions(),
+            ),
+            options.registry.chunkManager.memoize.getAsync(
+                { type: "catmaid:resolution", baseUrl, projectId },
+                options,
+                () => client.getResolution(),
+            ),
+            options.registry.chunkManager.memoize.getAsync(
+                { type: "catmaid:grid-cell-sizes", baseUrl, projectId },
+                options,
+                () => client.getGridCellSizes(),
+            ),
+            options.registry.chunkManager.memoize.getAsync(
+                { type: "catmaid:cache-provider", baseUrl, projectId },
+                options,
+                () => client.getCacheProvider(),
             ),
             options.registry.chunkManager.memoize.getAsync(
                 { type: "catmaid:skeletons", baseUrl, projectId },
@@ -258,35 +264,11 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
             ),
         ]);
 
-        if (!stackInfo) {
-            throw new Error("Failed to fetch CATMAID stack metadata");
+        if (!projectBounds) {
+            throw new Error("Failed to fetch CATMAID stack dimensions");
         }
-
-        // CATMAID node and grid-cache coordinates are in project-space nanometers.
-        // Convert stack dimensions (pixels) to project-space nanometer bounds.
-        const projectBounds = getCatmaidProjectSpaceBounds(stackInfo);
-
-        // Extract grid cell sizes from metadata
-        const gridCellSizes: Array<{ x: number; y: number; z: number }> = [];
-        if (stackInfo.metadata?.cache_configurations) {
-            for (const config of stackInfo.metadata.cache_configurations) {
-                if (config.cache_type === "grid") {
-                    gridCellSizes.push({
-                        x: config.cell_width,
-                        y: config.cell_height,
-                        z: config.cell_depth,
-                    });
-                }
-            }
-        }
-        
-        // If no grid configs found, use default
-        if (gridCellSizes.length === 0) {
-            gridCellSizes.push({
-                x: DEFAULT_CACHE_GRID_CELL_WIDTH,
-                y: DEFAULT_CACHE_GRID_CELL_HEIGHT,
-                z: DEFAULT_CACHE_GRID_CELL_DEPTH,
-            });
+        if (!resolution) {
+            throw new Error("Failed to fetch CATMAID stack resolution");
         }
 
         // The model-space coordinates we emit are in nanometers, converted to meters for Neuroglancer.
@@ -331,9 +313,6 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
             lowerCoordinateBound[i] = lowerBounds[i];
             upperCoordinateBound[i] = upperBounds[i];
         }
-
-        // Extract cache provider from metadata
-        const cacheProvider = stackInfo.metadata?.cache_provider;
 
         // Create multiscale skeleton source to get individual sources
         const multiscaleSource = new CatmaidMultiscaleSpatiallyIndexedSkeletonSource(

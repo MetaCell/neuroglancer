@@ -31,8 +31,6 @@ export interface CatmaidToken {
 }
 
 export const credentialsKey = "CATMAID";
-
-// Default CATMAID cache grid cell dimensions
 const DEFAULT_CACHE_GRID_CELL_WIDTH = 25000;
 const DEFAULT_CACHE_GRID_CELL_HEIGHT = 25000;
 const DEFAULT_CACHE_GRID_CELL_DEPTH = 40;
@@ -145,6 +143,8 @@ function fetchWithCatmaidCredentials(
 }
 
 export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
+    private metadataInfoPromiseByKey = new Map<string, Promise<CatmaidStackInfo | null>>();
+
     constructor(
         public baseUrl: string,
         public projectId: number,
@@ -224,7 +224,11 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
         return this.fetch(`stack/${stackId}/info`);
     }
 
-    private async getMetadataInfo(stackId?: number): Promise<CatmaidStackInfo | null> {
+    private getMetadataCacheKey(stackId?: number) {
+        return stackId === undefined ? "default" : `stack:${stackId}`;
+    }
+
+    private async loadMetadataInfo(stackId?: number): Promise<CatmaidStackInfo | null> {
         let effectiveStackId: number;
     
         if (stackId !== undefined) {
@@ -242,12 +246,25 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
     
         return this.getStackInfo(effectiveStackId);
     }
-    
+
+    private getMetadataInfo(stackId?: number): Promise<CatmaidStackInfo | null> {
+        const key = this.getMetadataCacheKey(stackId);
+        let promise = this.metadataInfoPromiseByKey.get(key);
+        if (promise === undefined) {
+            promise = this.loadMetadataInfo(stackId);
+            this.metadataInfoPromiseByKey.set(key, promise);
+            promise.catch(() => {
+                if (this.metadataInfoPromiseByKey.get(key) === promise) {
+                    this.metadataInfoPromiseByKey.delete(key);
+                }
+            });
+        }
+        return promise;
+    }
 
     async getDimensions(): Promise<{ min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null> {
         const info = await this.getMetadataInfo();
         if (!info) return null;
-
         return getCatmaidProjectSpaceBounds(info);
     }
 
@@ -283,6 +300,11 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
         }
         
         return gridSizes;
+    }
+
+    async getCacheProvider(): Promise<string | undefined> {
+        const info = await this.getMetadataInfo();
+        return info?.metadata?.cache_provider;
     }
 
     async getSkeleton(skeletonId: number): Promise<SpatiallyIndexedSkeletonNode[]> {
