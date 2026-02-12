@@ -270,18 +270,28 @@ highp uint vertexIndex = aVertexIndex.x * (1u - lineEndpointIndex) + aVertexInde
             this.segmentColorAttributeIndex === undefined
               ? "uColor.a"
               : `${segmentColorExpression}.a`;
+          const emitLineColorCode =
+            this.targetIsSliceView &&
+            this.segmentColorAttributeIndex !== undefined
+              ? "emit(vec4(color, alpha), uPickID);"
+              : "emit(vec4(color * alpha, alpha), uPickID);";
+          const emitDefaultLineColorCode =
+            this.targetIsSliceView &&
+            this.segmentColorAttributeIndex !== undefined
+              ? "emit(vec4(baseColor.rgb, alpha), uPickID);"
+              : "emit(vec4(baseColor.rgb * alpha, alpha), uPickID);";
           builder.addFragmentCode(`
 vec4 segmentColor() {
   return ${segmentColorExpression};
 }
 void emitRGB(vec3 color) {
   highp float alpha = ${segmentAlphaExpression} * getLineAlpha() * ${this.getCrossSectionFadeFactor()};
-  emit(vec4(color * alpha, alpha), uPickID);
+  ${emitLineColorCode}
 }
 void emitDefault() {
   vec4 baseColor = segmentColor();
   highp float alpha = baseColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()};
-  emit(vec4(baseColor.rgb * alpha, alpha), uPickID);
+  ${emitDefaultLineColorCode}
 }
 `);
           builder.addFragmentCode(glsl_COLORMAPS);
@@ -338,6 +348,11 @@ emitCircle(uProjection * vec4(vertexPosition, 1.0), uNodeDiameter, 0.0);
 `;
 
           const segmentColorExpression = this.getSegmentColorExpression();
+          const emitNodeColorCode =
+            this.targetIsSliceView &&
+            this.segmentColorAttributeIndex !== undefined
+              ? "emit(circleColor, uPickID);"
+              : "emit(vec4(circleColor.rgb * circleColor.a, circleColor.a), uPickID);";
           builder.addFragmentCode(`
 vec4 segmentColor() {
   return ${segmentColorExpression};
@@ -345,7 +360,7 @@ vec4 segmentColor() {
 void emitRGBA(vec4 color) {
   vec4 borderColor = color;
   vec4 circleColor = getCircleColor(color, borderColor);
-  emit(vec4(circleColor.rgb * circleColor.a, circleColor.a), uPickID);
+  ${emitNodeColorCode}
 }
 void emitRGB(vec3 color) {
   emitRGBA(vec4(color, 1.0));
