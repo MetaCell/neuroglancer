@@ -1359,10 +1359,12 @@ class GraphConnection extends SegmentationGraphSourceConnection {
   }
 
   meshAddNewSegments(segments: bigint[]) {
-    const meshSource = this.getMeshSource();
-    if (meshSource && 'rpc' in meshSource && meshSource.rpc) {
+    // `DataSubsource.mesh` is widened for spatial skeleton support, but Graphene
+    // segment updates still target mesh sources.
+    const meshSource = this.getMeshSource() as MeshSource | undefined;
+    if (meshSource) {
       for (const segment of segments) {
-        meshSource.rpc.invoke(GRAPHENE_MESH_NEW_SEGMENT_RPC_ID, {
+        meshSource.rpc!.invoke(GRAPHENE_MESH_NEW_SEGMENT_RPC_ID, {
           rpcId: meshSource.rpcId!,
           segment,
         });
