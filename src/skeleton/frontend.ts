@@ -1793,10 +1793,8 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
         skipVisibleSegments && isVisible ? 0 : alphaForSegment;
       const color = new Float32Array(4);
       getBaseObjectColor(this.displayState, segmentBigInt, color);
-      color[0] *= effectiveAlpha;
-      color[1] *= effectiveAlpha;
-      color[2] *= effectiveAlpha;
-      color[3] = 1.0;
+      // Encode effectiveAlpha into the alpha channel; do not pre-scale RGB here.
+      color[3] = effectiveAlpha;
       const include = effectiveAlpha > 0;
       info = { include, color };
       segmentInfo.set(segmentId, info);
