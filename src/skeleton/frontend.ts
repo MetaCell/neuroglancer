@@ -270,30 +270,36 @@ highp uint vertexIndex = aVertexIndex.x * (1u - lineEndpointIndex) + aVertexInde
             this.segmentColorAttributeIndex === undefined
               ? "uColor.a"
               : `${segmentColorExpression}.a`;
-          const emitLineColorCode =
-            this.targetIsSliceView &&
-            this.segmentColorAttributeIndex !== undefined
-              ? "emit(vec4(color, alpha), uPickID);"
-              : "emit(vec4(color * alpha, alpha), uPickID);";
-          const emitDefaultLineColorCode =
-            this.targetIsSliceView &&
-            this.segmentColorAttributeIndex !== undefined
-              ? "emit(vec4(baseColor.rgb, alpha), uPickID);"
-              : "emit(vec4(baseColor.rgb * alpha, alpha), uPickID);";
-          builder.addFragmentCode(`
+          if (this.segmentColorAttributeIndex === undefined) {
+            // Preserve legacy skeleton behavior where `uColor` is already
+            // premultiplied by `objectAlpha` in `getObjectColor`.
+            builder.addFragmentCode(`
+vec4 segmentColor() {
+  return ${segmentColorExpression};
+}
+void emitRGB(vec3 color) {
+  emit(vec4(color * uColor.a, uColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()}), uPickID);
+}
+void emitDefault() {
+  emit(vec4(uColor.rgb, uColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()}), uPickID);
+}
+`);
+          } else {
+            builder.addFragmentCode(`
 vec4 segmentColor() {
   return ${segmentColorExpression};
 }
 void emitRGB(vec3 color) {
   highp float alpha = ${segmentAlphaExpression} * getLineAlpha() * ${this.getCrossSectionFadeFactor()};
-  ${emitLineColorCode}
+  emit(vec4(color * alpha, alpha), uPickID);
 }
 void emitDefault() {
   vec4 baseColor = segmentColor();
   highp float alpha = baseColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()};
-  ${emitDefaultLineColorCode}
+  emit(vec4(baseColor.rgb * alpha, alpha), uPickID);
 }
 `);
+          }
           builder.addFragmentCode(glsl_COLORMAPS);
           const { vertexAttributes } = this;
           const numAttributes = vertexAttributes.length;
@@ -348,19 +354,32 @@ emitCircle(uProjection * vec4(vertexPosition, 1.0), uNodeDiameter, 0.0);
 `;
 
           const segmentColorExpression = this.getSegmentColorExpression();
-          const emitNodeColorCode =
-            this.targetIsSliceView &&
-            this.segmentColorAttributeIndex !== undefined
-              ? "emit(circleColor, uPickID);"
-              : "emit(vec4(circleColor.rgb * circleColor.a, circleColor.a), uPickID);";
-          builder.addFragmentCode(`
+          if (this.segmentColorAttributeIndex === undefined) {
+            // Preserve legacy skeleton behavior for non-spatial skeletons.
+            builder.addFragmentCode(`
+vec4 segmentColor() {
+  return ${segmentColorExpression};
+}
+void emitRGBA(vec4 color) {
+  vec4 borderColor = color;
+  emit(getCircleColor(color, borderColor), uPickID);
+}
+void emitRGB(vec3 color) {
+  emitRGBA(vec4(color, 1.0));
+}
+void emitDefault() {
+  emitRGBA(uColor);
+}
+`);
+          } else {
+            builder.addFragmentCode(`
 vec4 segmentColor() {
   return ${segmentColorExpression};
 }
 void emitRGBA(vec4 color) {
   vec4 borderColor = color;
   vec4 circleColor = getCircleColor(color, borderColor);
-  ${emitNodeColorCode}
+  emit(vec4(circleColor.rgb * circleColor.a, circleColor.a), uPickID);
 }
 void emitRGB(vec3 color) {
   emitRGBA(vec4(color, 1.0));
@@ -369,6 +388,7 @@ void emitDefault() {
   emitRGBA(segmentColor());
 }
 `);
+          }
           builder.addFragmentCode(glsl_COLORMAPS);
           const { vertexAttributes } = this;
           const numAttributes = vertexAttributes.length;
