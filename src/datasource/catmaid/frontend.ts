@@ -92,7 +92,6 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
         return 3;
     }
 
-    private static readonly DEBUG_SCALE_SELECTION = true;
     private sortedGridCellSizes: Array<{ x: number; y: number; z: number }>;
 
     constructor(
@@ -138,12 +137,6 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
         
         // Sorted by minimum dimension (Descending: Large/Coarse -> Small/Fine)
         const sortedGridSizes = this.sortedGridCellSizes;
-
-        if (CatmaidMultiscaleSpatiallyIndexedSkeletonSource.DEBUG_SCALE_SELECTION) {
-            console.debug("[CATMAID] Spatially indexed skeleton scales", {
-                gridCellSizes: sortedGridSizes,
-            });
-        }
 
         for (const [gridIndex, gridCellSize] of sortedGridSizes.entries()) {
             const chunkDataSize = Uint32Array.from([
@@ -203,12 +196,6 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
                 chunkToMultiscaleTransform,
             });
 
-            if (CatmaidMultiscaleSpatiallyIndexedSkeletonSource.DEBUG_SCALE_SELECTION) {
-                console.debug("[CATMAID] Spatially indexed skeleton scale", {
-                    gridCellSize,
-                    chunkToMultiscaleTransform: "identity",
-                });
-            }
         }
 
         return [sources];
@@ -277,7 +264,6 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
 
         // CATMAID node and grid-cache coordinates are in project-space nanometers.
         // Convert stack dimensions (pixels) to project-space nanometer bounds.
-        const { dimension, translation, resolution } = stackInfo;
         const projectBounds = getCatmaidProjectSpaceBounds(stackInfo);
 
         // Extract grid cell sizes from metadata
@@ -345,25 +331,6 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
             lowerCoordinateBound[i] = lowerBounds[i];
             upperCoordinateBound[i] = upperBounds[i];
         }
-
-        // Log information about available chunk sizes
-        console.info("CATMAID Multiscale Skeleton Source:", {
-            chunkSizes: gridCellSizes.map((size) => ({
-                x: size.x,
-                y: size.y,
-                z: size.z,
-                unit: "nm",
-            })),
-            stackDimension: { ...dimension, unit: "px" },
-            stackResolution: { x: resolution.x, y: resolution.y, z: resolution.z, unit: "nm/px" },
-            stackTranslation: { x: translation?.x ?? 0, y: translation?.y ?? 0, z: translation?.z ?? 0, unit: "nm" },
-            projectBounds: {
-                min: projectBounds.min,
-                max: projectBounds.max,
-                unit: "nm",
-            },
-            totalNumberOfSkeletons: skeletonIds.length,
-        });
 
         // Extract cache provider from metadata
         const cacheProvider = stackInfo.metadata?.cache_provider;

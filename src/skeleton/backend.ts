@@ -73,7 +73,6 @@ import { registerRPC, registerSharedObject } from "#src/worker_rpc.js";
 import { deserializeTransformedSources } from "#src/sliceview/backend.js";
 import { debounce } from "lodash-es";
 
-const DEBUG_SPATIALLY_INDEXED_SKELETON_SCALES = true;
 
 export interface SpatiallyIndexedSkeletonChunkSpecification extends SliceViewChunkSpecification {
   chunkLayout: any;
@@ -505,17 +504,6 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
       const lodValue = this.skeletonLod.value;
       for (const scales of transformedSources) {
         const selectedScales = selectScales(scales);
-        if (DEBUG_SPATIALLY_INDEXED_SKELETON_SCALES) {
-          console.debug("[SKELETON-SCALES] selection", {
-            pixelSize: resolvedPixelSize,
-            renderScaleTarget,
-            totalScales: scales.length,
-            selectedScaleIndices: selectedScales.map((s) => s.scaleIndex),
-            selectedChunkSizes: selectedScales.map(
-              (s) => s.tsource.chunkLayout.size,
-            ),
-          });
-        }
         for (const { tsource, scaleIndex } of selectedScales) {
           const source =
             tsource.source as SpatiallyIndexedSkeletonSourceBackend;

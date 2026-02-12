@@ -34,7 +34,6 @@ import type {
 } from "#src/renderlayer.js";
 import { update3dRenderLayerAttachment } from "#src/renderlayer.js";
 import {
-  getRenderScaleHistogramOffset,
   RenderScaleHistogram,
 } from "#src/render_scale_statistics.js";
 import {
@@ -144,8 +143,6 @@ const DEFAULT_FRAGMENT_MAIN = `void main() {
   emitDefault();
 }
 `;
-
-const DEBUG_SPATIALLY_INDEXED_SKELETON_RENDERING = true;
 
 interface VertexAttributeRenderInfo extends VertexAttributeInfo {
   name: string;
@@ -1238,15 +1235,6 @@ interface SpatiallyIndexedSkeletonLayerOptions {
 
 type SpatiallyIndexedSkeletonView = "2d" | "3d";
 
-const spatialSkeletonGridHistogramDebugSignatures = new Map<string, string>();
-
-function logSpatialSkeletonGridHistogramOnce(tag: string, message: string) {
-  const previous = spatialSkeletonGridHistogramDebugSignatures.get(tag);
-  if (previous === message) return;
-  spatialSkeletonGridHistogramDebugSignatures.set(tag, message);
-  console.info(`[SKELETON-GRID-HIST][${tag}] ${message}`);
-}
-
 function getSpatialSkeletonGridSpacing(
   transformedSource: TransformedSource,
   levels: Array<{ size: { x: number; y: number; z: number } }> | undefined,
@@ -1270,30 +1258,17 @@ function updateSpatialSkeletonGridRenderScaleHistogram(
   levels: Array<{ size: { x: number; y: number; z: number } }> | undefined,
   relative: boolean,
   pixelSize: number,
-  debugTag: string,
 ) {
   histogram.begin(frameNumber);
   if (lod === undefined || transformedSources.length === 0) {
-    logSpatialSkeletonGridHistogramOnce(
-      debugTag,
-      lod === undefined
-        ? `skipped: lod undefined; transformedSources=${transformedSources.length}`
-        : `skipped: transformedSources empty for lod=${lod}`,
-    );
     return;
   }
   const lodSuffix = `:${lod}`;
   const scales = transformedSources[0] ?? [];
   if (scales.length === 0) {
-    logSpatialSkeletonGridHistogramOnce(
-      debugTag,
-      `skipped: no scales in transformedSources[0] for lod=${lod}`,
-    );
     return;
   }
   const safePixelSize = Math.max(pixelSize, 1e-6);
-  let totalVisibleChunkSamples = 0;
-  const summaries: string[] = [];
   for (const tsource of scales) {
     const gridIndex = (tsource.source as any).parameters?.gridIndex as
       | number
@@ -1311,7 +1286,6 @@ function updateSpatialSkeletonGridRenderScaleHistogram(
       localPosition,
       tsource,
       (positionInChunks) => {
-        totalVisibleChunkSamples++;
         const key = `${positionInChunks.join()}${lodSuffix}`;
         const chunk = source.chunks.get(key) as
           | SpatiallyIndexedSkeletonChunk
@@ -1325,13 +1299,6 @@ function updateSpatialSkeletonGridRenderScaleHistogram(
     );
     const spacing = getSpatialSkeletonGridSpacing(tsource, levels, gridIndex);
     const renderScale = relative ? spacing / safePixelSize : spacing;
-    const binIndex = Math.round(
-      getRenderScaleHistogramOffset(
-        renderScale,
-        histogram.logScaleOrigin,
-        histogram.logScaleBinSize,
-      ),
-    );
     const total = presentCount + missingCount;
     if (total > 0) {
       histogram.add(spacing, renderScale, presentCount, missingCount);
@@ -1339,21 +1306,7 @@ function updateSpatialSkeletonGridRenderScaleHistogram(
       // Keep all grid rows visible in the histogram even when currently empty.
       histogram.add(spacing, renderScale, 0, 1, true);
     }
-    summaries.push(
-      `g${gridIndex}:p=${presentCount},m=${missingCount},t=${total},s=${Math.round(spacing)},b=${binIndex}`,
-    );
   }
-  if (totalVisibleChunkSamples === 0) {
-    logSpatialSkeletonGridHistogramOnce(
-      debugTag,
-      `no visible chunks for lod=${lod}; ${summaries.join(" | ") || "none"}`,
-    );
-    return;
-  }
-  logSpatialSkeletonGridHistogramOnce(
-    debugTag,
-    `ok lod=${lod}; visible-chunk-samples=${totalVisibleChunkSamples}; ${summaries.join(" | ")}`,
-  );
 }
 
 export class SpatiallyIndexedSkeletonLayer extends RefCounted implements SkeletonLayerInterface {
@@ -1376,13 +1329,8 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
   gridLevel: WatchableValueInterface<number>;
   lod: WatchableValueInterface<number>;
 
-  private markFilteredDataDirty(reason: string) {
+  private markFilteredDataDirty() {
     this.generation++;
-    if (DEBUG_SPATIALLY_INDEXED_SKELETON_RENDERING) {
-      console.debug(
-        `[SKELETON-RENDER] Spatially indexed skeleton data dirty (${reason}); generation=${this.generation}`,
-      );
-    }
     this.redrawNeeded.dispatch();
   }
 
@@ -1448,23 +1396,23 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       ...this.source.vertexAttributes,
       segmentColorAttribute,
     ];
-    const markDirty = (reason: string) => this.markFilteredDataDirty(reason);
+    const markDirty = () => this.markFilteredDataDirty();
     // Monitor visible segment changes to update filtered buffers.
     this.registerDisposer(
       registerNested((context, segmentationGroup) => {
         context.registerDisposer(
           segmentationGroup.visibleSegments.changed.add(() =>
-            markDirty("visibleSegments"),
+            markDirty(),
           ),
         );
         context.registerDisposer(
           segmentationGroup.temporaryVisibleSegments.changed.add(() =>
-            markDirty("temporaryVisibleSegments"),
+            markDirty(),
           ),
         );
         context.registerDisposer(
           segmentationGroup.useTemporaryVisibleSegments.changed.add(() =>
-            markDirty("useTemporaryVisibleSegments"),
+            markDirty(),
           ),
         );
       }, this.displayState.segmentationGroupState),
@@ -1474,37 +1422,37 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       registerNested((context, colorGroupState) => {
         context.registerDisposer(
           colorGroupState.segmentColorHash.changed.add(() =>
-            markDirty("segmentColorHash"),
+            markDirty(),
           ),
         );
         context.registerDisposer(
           colorGroupState.segmentDefaultColor.changed.add(() =>
-            markDirty("segmentDefaultColor"),
+            markDirty(),
           ),
         );
         context.registerDisposer(
           colorGroupState.segmentStatedColors.changed.add(() =>
-            markDirty("segmentStatedColors"),
+            markDirty(),
           ),
         );
       }, this.displayState.segmentationColorGroupState),
     );
     this.registerDisposer(
       displayState.objectAlpha.changed.add(() =>
-        markDirty("objectAlpha"),
+        markDirty(),
       ),
     );
     if (this.gridLevel !== undefined) {
       this.registerDisposer(
         this.gridLevel.changed.add(() =>
-          markDirty("spatialSkeletonGridLevel"),
+          markDirty(),
         ),
       );
     }
     if (displayState.hiddenObjectAlpha) {
       this.registerDisposer(
         displayState.hiddenObjectAlpha.changed.add(() =>
-          markDirty("hiddenObjectAlpha"),
+          markDirty(),
         ),
       );
     }
@@ -1729,12 +1677,6 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
         }
       }
     }
-    if (DEBUG_SPATIALLY_INDEXED_SKELETON_RENDERING) {
-      console.debug(
-        `[SKELETON-RENDER] Global node map entries=${globalNodeMap.size}`,
-      );
-    }
-
     for (const sourceEntry of selectedSources) {
       const chunks = sourceEntry.chunkSource.chunks;
       for (const chunk of chunks.values()) {
@@ -1759,21 +1701,6 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
           filteredChunk,
           renderContext.projectionParameters,
         );
-        if (
-          DEBUG_SPATIALLY_INDEXED_SKELETON_RENDERING &&
-          chunk.missingConnections.length > 0 &&
-          globalNodeMap
-        ) {
-          let resolved = 0;
-          for (const conn of chunk.missingConnections) {
-            if (globalNodeMap.has(conn.parentId)) {
-              resolved++;
-            }
-          }
-          console.debug(
-            `[SKELETON-RENDER] Chunk (${chunk.chunkGridPosition.join(",")}) missingConnections=${chunk.missingConnections.length} resolved=${resolved}`,
-          );
-        }
       }
     }
 
@@ -1818,7 +1745,6 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     }
 
     const gl = this.gl;
-    const chunkLabel = chunk.chunkGridPosition.join(",");
     const disposeFilteredTextures = () => {
       if (chunk.filteredVertexAttributeTextures) {
         for (const tex of chunk.filteredVertexAttributeTextures) {
@@ -1829,11 +1755,6 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     };
     const vertexAttributeOffsets = chunk.vertexAttributeOffsets;
     if (!vertexAttributeOffsets || vertexAttributeOffsets.length < 2) {
-      if (DEBUG_SPATIALLY_INDEXED_SKELETON_RENDERING) {
-        console.warn(
-          `[SKELETON-RENDER] Missing segment attribute offsets for spatially indexed chunk (${chunkLabel}).`,
-        );
-      }
       disposeFilteredTextures();
       chunk.filteredGeneration = this.generation;
       chunk.filteredSkipVisibleSegments = skipVisibleSegments;
@@ -1859,8 +1780,6 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       number,
       { include: boolean; color: Float32Array }
     >();
-    let includedSegments = 0;
-    let skippedSegments = 0;
 
     const getSegmentInfo = (segmentId: number) => {
       let info = segmentInfo.get(segmentId);
@@ -1879,11 +1798,6 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       color[2] *= effectiveAlpha;
       color[3] = 1.0;
       const include = effectiveAlpha > 0;
-      if (include) {
-        includedSegments++;
-      } else {
-        skippedSegments++;
-      }
       info = { include, color };
       segmentInfo.set(segmentId, info);
       return info;
@@ -1896,11 +1810,6 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       const rawId = segmentIds[v];
       const segmentId = Math.round(rawId);
       if (!Number.isFinite(segmentId)) {
-        if (DEBUG_SPATIALLY_INDEXED_SKELETON_RENDERING) {
-          console.warn(
-            `[SKELETON-RENDER] Non-finite segment id in chunk (${chunkLabel}) vertex=${v}: ${rawId}`,
-          );
-        }
         continue;
       }
       const info = getSegmentInfo(segmentId);
@@ -1917,11 +1826,6 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       chunk.filteredMissingConnectionsHash = missingConnectionsHash;
       chunk.numFilteredIndices = 0;
       chunk.numFilteredVertices = 0;
-      if (DEBUG_SPATIALLY_INDEXED_SKELETON_RENDERING) {
-        console.debug(
-          `[SKELETON-RENDER] Filtered chunk (${chunkLabel}) produced no vertices; skipping draw.`,
-        );
-      }
       return null;
     }
 
@@ -1942,13 +1846,6 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     const extraSegments: number[] = [];
     const extraColors: number[] = [];
     const extraVertexMap = new Map<number, number>();
-    let interEdgesAdded = 0;
-    let interVerticesAdded = 0;
-    let interEdgesMissingParent = 0;
-    let interEdgesSkippedHidden = 0;
-    let interEdgesSkippedChild = 0;
-    let interEdgesSkippedParentFiltered = 0;
-    let interEdgesMissingData = 0;
     const chunkPositionCache = new Map<
       SpatiallyIndexedSkeletonChunk,
       Float32Array
@@ -1973,26 +1870,18 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       for (const conn of chunk.missingConnections) {
         const segmentId = Math.round(conn.skeletonId);
         if (!Number.isFinite(segmentId)) {
-          if (DEBUG_SPATIALLY_INDEXED_SKELETON_RENDERING) {
-            console.warn(
-              `[SKELETON-RENDER] Non-finite missing connection segment id in chunk (${chunkLabel}): ${conn.skeletonId}`,
-            );
-          }
           continue;
         }
         const info = getSegmentInfo(segmentId);
         if (!info.include) {
-          interEdgesSkippedHidden++;
           continue;
         }
         const childNew = oldToNew[conn.vertexIndex];
         if (childNew < 0) {
-          interEdgesSkippedChild++;
           continue;
         }
         const parentNode = globalNodeMap.get(conn.parentId);
         if (!parentNode) {
-          interEdgesMissingParent++;
           continue;
         }
         let parentNew = -1;
@@ -2001,7 +1890,6 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
           if (localParent >= 0) {
             parentNew = localParent;
           } else {
-            interEdgesSkippedParentFiltered++;
             continue;
           }
         } else {
@@ -2011,7 +1899,6 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
           } else {
             const parentPositions = getChunkPositions(parentNode.chunk);
             if (!parentPositions) {
-              interEdgesMissingData++;
               continue;
             }
             const posIndex = parentNode.vertexIndex * 3;
@@ -2030,12 +1917,10 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
               info.color[2],
               info.color[3],
             );
-            interVerticesAdded++;
           }
         }
         if (parentNew >= 0) {
           interChunkIndices.push(childNew, parentNew);
-          interEdgesAdded++;
         }
       }
     }
@@ -2051,11 +1936,6 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       chunk.filteredMissingConnectionsHash = missingConnectionsHash;
       chunk.numFilteredIndices = 0;
       chunk.numFilteredVertices = 0;
-      if (DEBUG_SPATIALLY_INDEXED_SKELETON_RENDERING) {
-        console.debug(
-          `[SKELETON-RENDER] Filtered chunk (${chunkLabel}) produced no indices; skipping draw.`,
-        );
-      }
       return null;
     }
 
@@ -2130,35 +2010,12 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     chunk.numFilteredIndices = filteredIndices.length;
     chunk.numFilteredVertices = totalVertexCount;
 
-    if (DEBUG_SPATIALLY_INDEXED_SKELETON_RENDERING) {
-      console.debug(
-        `[SKELETON-RENDER] Filtered chunk (${chunkLabel}) vertices=${chunk.numFilteredVertices} indices=${chunk.numFilteredIndices} segments=${segmentInfo.size} included=${includedSegments} skipped=${skippedSegments} interEdges=${interEdgesAdded} interVertices=${interVerticesAdded}`,
-      );
-      if (
-        interEdgesMissingParent ||
-        interEdgesSkippedHidden ||
-        interEdgesSkippedChild ||
-        interEdgesSkippedParentFiltered ||
-        interEdgesMissingData
-      ) {
-        console.debug(
-          `[SKELETON-RENDER] Chunk (${chunkLabel}) inter-edge skips missingParent=${interEdgesMissingParent} hidden=${interEdgesSkippedHidden} childFiltered=${interEdgesSkippedChild} parentFiltered=${interEdgesSkippedParentFiltered} missingData=${interEdgesMissingData}`,
-        );
-      }
-    }
-
     return {
       vertexAttributeTextures: chunk.filteredVertexAttributeTextures,
       indexBuffer: chunk.filteredIndexBuffer,
       numIndices: chunk.numFilteredIndices,
       numVertices: chunk.numFilteredVertices,
     };
-  }
-
-
-  static isSegmentVisible(id: number, visibleSegments: Uint64Set): boolean {
-    const id64 = BigInt(Math.round(id));
-    return visibleSegments.has(id64);
   }
 
   isReady() {
@@ -2325,7 +2182,6 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
         levels,
         relative,
         pixelSize,
-        "3D",
       );
     }
     this.base.draw(
@@ -2514,7 +2370,6 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
         levels,
         relative,
         pixelSize,
-        "2D",
       );
     }
     this.base.draw(
