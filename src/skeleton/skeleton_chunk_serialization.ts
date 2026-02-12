@@ -108,6 +108,6 @@ export function serializeSkeletonChunkData(
  */
 export function freeSkeletonChunkSystemMemory(data: SkeletonChunkData): void {
   data.vertexPositions = data.indices = data.vertexAttributes = null;
-  data.missingConnections = [];
-  data.nodeMap = new Map();
+  data.missingConnections = undefined;
+  data.nodeMap = undefined;
 }
