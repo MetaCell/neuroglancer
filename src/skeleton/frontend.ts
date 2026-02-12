@@ -477,10 +477,6 @@ void emitDefault() {
         this.targetIsSliceView ? 1.0 : 0.0,
       );
       drawLines(gl, 1, skeletonChunk.numIndices / 2);
-      const glError = gl.getError();
-      if (glError !== gl.NO_ERROR) {
-        console.error('[SKELETON-RENDER] WebGL error after drawLines:', glError);
-      }
       gl.vertexAttribDivisor(aVertexIndex, 0);
       gl.disableVertexAttribArray(aVertexIndex);
     }
