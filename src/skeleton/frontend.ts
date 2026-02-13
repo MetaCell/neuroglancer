@@ -24,7 +24,7 @@ import {
   ChunkRenderLayerFrontend,
   ChunkSource,
 } from "#src/chunk_manager/frontend.js";
-import type { LayerView, VisibleLayerInfo } from "#src/layer/index.js";
+import type { LayerView, UserLayer, VisibleLayerInfo } from "#src/layer/index.js";
 import type { PerspectivePanel } from "#src/perspective_view/panel.js";
 import type { PerspectiveViewRenderContext } from "#src/perspective_view/render_layer.js";
 import { PerspectiveViewRenderLayer } from "#src/perspective_view/render_layer.js";
@@ -92,6 +92,7 @@ import { DataType } from "#src/util/data_type.js";
 import { RefCounted } from "#src/util/disposable.js";
 import { mat4 } from "#src/util/geom.js";
 import { verifyFinitePositiveFloat } from "#src/util/json.js";
+import { getObjectId } from "#src/util/object_id.js";
 import { NullarySignal } from "#src/util/signal.js";
 import type { Trackable } from "#src/util/trackable.js";
 import { CompoundTrackable } from "#src/util/trackable.js";
@@ -1256,6 +1257,11 @@ export class MultiscaleSliceViewSpatiallyIndexedSkeletonLayer extends SliceViewR
 type SpatiallyIndexedSkeletonSourceEntry =
   SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>;
 
+interface SpatiallyIndexedGlobalNodeLookupEntry {
+  chunk: SpatiallyIndexedSkeletonChunk;
+  vertexIndex: number;
+}
+
 interface SpatiallyIndexedSkeletonLayerOptions {
   gridLevel?: WatchableValueInterface<number>;
   lod?: WatchableValueInterface<number>;
@@ -1356,12 +1362,152 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     segmentTextureFormat,
     segmentColorTextureFormat,
   ];
+  private regularSkeletonLayerWatchable = new WatchableValue(false);
+  private regularSkeletonLayerUserLayer: UserLayer | undefined;
+  private removeRegularSkeletonLayerUserLayerListener:
+    | (() => boolean)
+    | undefined;
+  private cachedGlobalNodeLookupKey: string | undefined;
+  private cachedGlobalNodeLookupChunkSignatures = new Map<
+    SpatiallyIndexedSkeletonChunk,
+    string
+  >();
+  private cachedGlobalNodeLookup = new Map<
+    number,
+    SpatiallyIndexedGlobalNodeLookupEntry
+  >();
   gridLevel: WatchableValueInterface<number>;
   lod: WatchableValueInterface<number>;
 
   private markFilteredDataDirty() {
     this.generation++;
     this.redrawNeeded.dispatch();
+  }
+
+  private computeHasRegularSkeletonLayer(userLayer: UserLayer) {
+    for (const renderLayer of userLayer.renderLayers) {
+      if (
+        renderLayer instanceof PerspectiveViewSkeletonLayer ||
+        renderLayer instanceof SliceViewPanelSkeletonLayer
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private updateHasRegularSkeletonLayerWatchable(userLayer: UserLayer | undefined) {
+    if (this.regularSkeletonLayerUserLayer !== userLayer) {
+      this.removeRegularSkeletonLayerUserLayerListener?.();
+      this.removeRegularSkeletonLayerUserLayerListener = undefined;
+      this.regularSkeletonLayerUserLayer = userLayer;
+      if (userLayer !== undefined) {
+        const update = () => {
+          const nextValue = this.computeHasRegularSkeletonLayer(userLayer);
+          if (this.regularSkeletonLayerWatchable.value !== nextValue) {
+            this.regularSkeletonLayerWatchable.value = nextValue;
+            this.markFilteredDataDirty();
+          }
+        };
+        update();
+        this.removeRegularSkeletonLayerUserLayerListener =
+          userLayer.layersChanged.add(update);
+      } else if (this.regularSkeletonLayerWatchable.value) {
+        this.regularSkeletonLayerWatchable.value = false;
+        this.markFilteredDataDirty();
+      }
+    }
+    return this.regularSkeletonLayerWatchable.value;
+  }
+
+  private lodMatches(chunk: SpatiallyIndexedSkeletonChunk, targetLod: number | undefined) {
+    if (targetLod === undefined || chunk.lod === undefined) {
+      return true;
+    }
+    return Math.abs(chunk.lod - targetLod) < 1e-6;
+  }
+
+  private makeGlobalNodeLookupCacheKey(
+    selectedSources: SpatiallyIndexedSkeletonSourceEntry[],
+    targetLod: number | undefined,
+  ) {
+    const sourceKey = selectedSources
+      .map((entry) => getObjectId(entry.chunkSource))
+      .join(",");
+    const lodKey =
+      targetLod === undefined ? "none" : Math.round(targetLod * 1e6) / 1e6;
+    return `${lodKey}|${sourceKey}`;
+  }
+
+  private computeGlobalNodeLookupChunkSignatures(
+    selectedSources: SpatiallyIndexedSkeletonSourceEntry[],
+    targetLod: number | undefined,
+  ) {
+    const signatures = new Map<SpatiallyIndexedSkeletonChunk, string>();
+    for (const sourceEntry of selectedSources) {
+      const chunks = sourceEntry.chunkSource.chunks;
+      for (const chunk of chunks.values()) {
+        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
+        if (!this.lodMatches(typedChunk, targetLod)) continue;
+        if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
+        const nodeMap = typedChunk.nodeMap;
+        const signature = `${getObjectId(nodeMap)}:${nodeMap.size}`;
+        signatures.set(typedChunk, signature);
+      }
+    }
+    return signatures;
+  }
+
+  private chunkSignaturesEqual(
+    nextSignatures: Map<SpatiallyIndexedSkeletonChunk, string>,
+  ) {
+    const prevSignatures = this.cachedGlobalNodeLookupChunkSignatures;
+    if (prevSignatures.size !== nextSignatures.size) return false;
+    for (const [chunk, signature] of nextSignatures) {
+      if (prevSignatures.get(chunk) !== signature) return false;
+    }
+    return true;
+  }
+
+  private rebuildGlobalNodeLookup(
+    selectedSources: SpatiallyIndexedSkeletonSourceEntry[],
+    targetLod: number | undefined,
+  ) {
+    this.cachedGlobalNodeLookup.clear();
+    for (const sourceEntry of selectedSources) {
+      const chunks = sourceEntry.chunkSource.chunks;
+      for (const chunk of chunks.values()) {
+        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
+        if (!this.lodMatches(typedChunk, targetLod)) continue;
+        if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
+        for (const [nodeId, vertexIndex] of typedChunk.nodeMap.entries()) {
+          this.cachedGlobalNodeLookup.set(nodeId, {
+            chunk: typedChunk,
+            vertexIndex,
+          });
+        }
+      }
+    }
+  }
+
+  private getGlobalNodeLookup(
+    selectedSources: SpatiallyIndexedSkeletonSourceEntry[],
+    targetLod: number | undefined,
+  ) {
+    const key = this.makeGlobalNodeLookupCacheKey(selectedSources, targetLod);
+    const nextSignatures = this.computeGlobalNodeLookupChunkSignatures(
+      selectedSources,
+      targetLod,
+    );
+    const shouldRebuild =
+      this.cachedGlobalNodeLookupKey !== key ||
+      !this.chunkSignaturesEqual(nextSignatures);
+    if (shouldRebuild) {
+      this.cachedGlobalNodeLookupKey = key;
+      this.cachedGlobalNodeLookupChunkSignatures = nextSignatures;
+      this.rebuildGlobalNodeLookup(selectedSources, targetLod);
+    }
+    return this.cachedGlobalNodeLookup;
   }
 
   get visibility() {
@@ -1381,6 +1527,14 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     options: SpatiallyIndexedSkeletonLayerOptions = {},
   ) {
     super();
+    this.registerDisposer(() => {
+      this.removeRegularSkeletonLayerUserLayerListener?.();
+      this.removeRegularSkeletonLayerUserLayerListener = undefined;
+      this.regularSkeletonLayerUserLayer = undefined;
+      this.cachedGlobalNodeLookup.clear();
+      this.cachedGlobalNodeLookupChunkSignatures.clear();
+      this.cachedGlobalNodeLookupKey = undefined;
+    });
     let sources3d: SpatiallyIndexedSkeletonSourceEntry[];
     let sources2d = options.sources2d ?? [];
     if (Array.isArray(sources)) {
@@ -1616,17 +1770,9 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     );
     if (modelMatrix === undefined) return;
     
-    // Check if a regular SkeletonLayer is also active (both sources active)
-    let hasRegularSkeletonLayer = false;
-    if (_layer.userLayer) {
-      for (const renderLayer of _layer.userLayer.renderLayers) {
-        if (renderLayer instanceof PerspectiveViewSkeletonLayer || 
-            renderLayer instanceof SliceViewPanelSkeletonLayer) {
-          hasRegularSkeletonLayer = true;
-          break;
-        }
-      }
-    }
+    const hasRegularSkeletonLayer = this.updateHasRegularSkeletonLayerWatchable(
+      _layer.userLayer,
+    );
     let pointDiameter: number;
     if (renderOptions.mode.value === SkeletonRenderMode.LINES_AND_POINTS) {
       pointDiameter = Math.max(5, lineWidth * 2);
@@ -1680,39 +1826,17 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     renderHelper.setColor(gl, nodeShader, baseColor);
 
     const targetLod = drawOptions?.lod;
-    const lodMatches = (chunk: SpatiallyIndexedSkeletonChunk) => {
-      if (targetLod === undefined || chunk.lod === undefined) {
-        return true;
-      }
-      return Math.abs(chunk.lod - targetLod) < 1e-6;
-    };
-
-    const globalNodeMap = new Map<
-      number,
-      { chunk: SpatiallyIndexedSkeletonChunk; vertexIndex: number }
-    >();
     const view = drawOptions?.view ?? "3d";
     const selectedSources = this.selectSourcesForViewAndGrid(
       view,
       drawOptions?.gridLevel,
     );
+    const globalNodeMap = this.getGlobalNodeLookup(selectedSources, targetLod);
     for (const sourceEntry of selectedSources) {
       const chunks = sourceEntry.chunkSource.chunks;
       for (const chunk of chunks.values()) {
         const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
-        if (!lodMatches(typedChunk)) continue;
-        if (typedChunk.state === ChunkState.GPU_MEMORY) {
-          for (const [nodeId, vertexIndex] of typedChunk.nodeMap.entries()) {
-            globalNodeMap.set(nodeId, { chunk: typedChunk, vertexIndex });
-          }
-        }
-      }
-    }
-    for (const sourceEntry of selectedSources) {
-      const chunks = sourceEntry.chunkSource.chunks;
-      for (const chunk of chunks.values()) {
-        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
-        if (!lodMatches(typedChunk)) continue;
+        if (!this.lodMatches(typedChunk, targetLod)) continue;
         if (typedChunk.state !== ChunkState.GPU_MEMORY || typedChunk.numIndices === 0) {
           continue;
         }
