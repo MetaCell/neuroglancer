@@ -79,6 +79,7 @@ export interface SpatiallyIndexedSkeletonChunkSpecification extends SliceViewChu
 }
 
 const SKELETON_CHUNK_PRIORITY = 60;
+const SPATIALLY_INDEXED_SKELETON_LOD_DEBOUNCE_MS = 300;
 
 registerRPC(
   SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_UPDATE_SOURCES_RPC_ID,
@@ -292,7 +293,7 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
     // Debounce LOD changes to avoid making requests for every slider value
     const debouncedLodUpdate = debounce(() => {
       scheduleUpdateChunkPriorities();
-    }, 300);
+    }, SPATIALLY_INDEXED_SKELETON_LOD_DEBOUNCE_MS);
     
     this.registerDisposer(
       this.skeletonLod.changed.add(() => {
