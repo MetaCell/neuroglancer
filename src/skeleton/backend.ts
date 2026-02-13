@@ -548,9 +548,14 @@ export class SpatiallyIndexedSkeletonSliceViewRenderLayerBackend extends SliceVi
     this.registerDisposer(
       this.skeletonGridLevel.changed.add(scheduleUpdateChunkPriorities),
     );
+    // Debounce LOD changes to avoid making requests for every slider value.
+    const debouncedLodUpdate = debounce(() => {
+      scheduleUpdateChunkPriorities();
+    }, SPATIALLY_INDEXED_SKELETON_LOD_DEBOUNCE_MS);
+    
     this.registerDisposer(
       this.skeletonLod.changed.add(() => {
-        scheduleUpdateChunkPriorities();
+        debouncedLodUpdate();
       }),
     );
   }
