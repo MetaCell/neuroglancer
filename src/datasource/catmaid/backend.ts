@@ -29,14 +29,21 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
     WithSharedCredentialsProviderCounterpart<CatmaidToken>()(SpatiallyIndexedSkeletonSourceBackend),
     CatmaidSkeletonSourceParameters
 ) {
+    private clientInstance: CatmaidClient | undefined;
+
     get client(): CatmaidClient {
-        const { catmaidParameters } = this.parameters;
-        return new CatmaidClient(
-            catmaidParameters.url,
-            catmaidParameters.projectId,
-            catmaidParameters.token,
-            this.credentialsProvider
-        );
+        let client = this.clientInstance;
+        if (client === undefined) {
+            const { catmaidParameters } = this.parameters;
+            client = new CatmaidClient(
+                catmaidParameters.url,
+                catmaidParameters.projectId,
+                catmaidParameters.token,
+                this.credentialsProvider
+            );
+            this.clientInstance = client;
+        }
+        return client;
     }
 
     constructor(...args: any[]) {
@@ -117,14 +124,21 @@ export class CatmaidSkeletonSourceBackend extends WithParameters(
     WithSharedCredentialsProviderCounterpart<CatmaidToken>()(SkeletonSource),
     CatmaidCompleteSkeletonSourceParameters
 ) {
+    private clientInstance: CatmaidClient | undefined;
+
     get client(): CatmaidClient {
-        const { catmaidParameters } = this.parameters;
-        return new CatmaidClient(
-            catmaidParameters.url,
-            catmaidParameters.projectId,
-            catmaidParameters.token,
-            this.credentialsProvider
-        );
+        let client = this.clientInstance;
+        if (client === undefined) {
+            const { catmaidParameters } = this.parameters;
+            client = new CatmaidClient(
+                catmaidParameters.url,
+                catmaidParameters.projectId,
+                catmaidParameters.token,
+                this.credentialsProvider
+            );
+            this.clientInstance = client;
+        }
+        return client;
     }
 
     constructor(...args: any[]) {

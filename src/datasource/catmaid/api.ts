@@ -144,6 +144,10 @@ function fetchWithCatmaidCredentials(
 
 export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
     private metadataInfoPromiseByKey = new Map<string, Promise<CatmaidStackInfo | null>>();
+    private readonly msgpackUnpackr = new Unpackr({
+        mapsAsObjects: false,
+        int64AsType: "number",
+    });
 
     constructor(
         public baseUrl: string,
@@ -185,12 +189,8 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
                 return response.json();
             }
             const buffer = await response.arrayBuffer();
-            const unpackr = new Unpackr({
-                mapsAsObjects: false,
-                int64AsType: "number",
-            });
             try {
-                return unpackr.unpack(new Uint8Array(buffer));
+                return this.msgpackUnpackr.unpack(new Uint8Array(buffer));
             } catch (error) {
                 // Some CATMAID deployments return a JSON error body with a msgpack request.
                 try {
