@@ -1306,6 +1306,11 @@ export class SegmentationUserLayer extends Base {
           this.displayState.segmentationGroupState.value,
         );
       } else if (mesh !== undefined) {
+        if (mesh instanceof MultiscaleSpatiallyIndexedSkeletonSource) {
+          // Collect grid metadata outside `activate`, since `activate` is a no-op
+          // when guard values are unchanged and may skip the callback.
+          spatialSkeletonGridSizes = mesh.getSpatialSkeletonGridSizes();
+        }
         loadedSubsource.activate(() => {
           const displayState = {
             ...this.displayState,
@@ -1366,7 +1371,6 @@ export class SegmentationUserLayer extends Base {
                 ),
               );
             }
-            spatialSkeletonGridSizes = mesh.getSpatialSkeletonGridSizes();
           } else if (mesh instanceof SpatiallyIndexedSkeletonSource) {
             const base3d = new SpatiallyIndexedSkeletonLayer(
               this.manager.chunkManager,
