@@ -1270,6 +1270,28 @@ interface SpatiallyIndexedSkeletonLayerOptions {
 
 type SpatiallyIndexedSkeletonView = "2d" | "3d";
 
+export interface SpatiallyIndexedSkeletonNodeHit {
+  nodeId: number;
+  segmentId: number;
+  position: Float32Array;
+  distanceSquared: number;
+}
+
+export interface SpatiallyIndexedSkeletonNodeInfo {
+  nodeId: number;
+  segmentId: number;
+  position: Float32Array;
+}
+
+export interface SpatiallyIndexedSkeletonEdgeHit {
+  segmentId: number;
+  nodeIdA: number;
+  nodeIdB: number;
+  parentNodeId: number;
+  closestPoint: Float32Array;
+  distanceSquared: number;
+}
+
 function getSpatialSkeletonGridSpacing(
   transformedSource: TransformedSource,
   levels: Array<{ size: { x: number; y: number; z: number } }> | undefined,
@@ -1741,6 +1763,480 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       }
     }
     return [selectedEntry.entry];
+  }
+
+  private getCurrentSourcesForEditing() {
+    const gridLevel3d = (this.displayState as any).spatialSkeletonGridLevel3d
+      ?.value as number | undefined;
+    const gridLevel2d = (this.displayState as any).spatialSkeletonGridLevel2d
+      ?.value as number | undefined;
+    const selected3d = this.selectSourcesForViewAndGrid(
+      "3d",
+      gridLevel3d ?? this.gridLevel.value,
+    );
+    const selected2d = this.selectSourcesForViewAndGrid(
+      "2d",
+      gridLevel2d ?? this.gridLevel.value,
+    );
+    const merged: SpatiallyIndexedSkeletonSourceEntry[] = [];
+    const seenSourceIds = new Set<string>();
+    for (const sourceEntry of [...selected3d, ...selected2d]) {
+      const sourceId = getObjectId(sourceEntry.chunkSource);
+      if (seenSourceIds.has(sourceId)) continue;
+      seenSourceIds.add(sourceId);
+      merged.push(sourceEntry);
+    }
+    return merged;
+  }
+
+  private getChunkPositionAndSegmentArrays(chunk: SpatiallyIndexedSkeletonChunk) {
+    const offsets = chunk.vertexAttributeOffsets;
+    if (!offsets || offsets.length < 2) return undefined;
+    const positions = new Float32Array(
+      chunk.vertexAttributes.buffer,
+      chunk.vertexAttributes.byteOffset + offsets[0],
+      chunk.numVertices * 3,
+    );
+    const segmentIds = new Float32Array(
+      chunk.vertexAttributes.buffer,
+      chunk.vertexAttributes.byteOffset + offsets[1],
+      chunk.numVertices,
+    );
+    return { positions, segmentIds };
+  }
+
+  findClosestNode(
+    position: ArrayLike<number>,
+    options: {
+      segmentId?: bigint;
+      maxDistance?: number;
+      lod?: number;
+    } = {},
+  ): SpatiallyIndexedSkeletonNodeHit | undefined {
+    const x = Number(position[0]);
+    const y = Number(position[1]);
+    const z = Number(position[2]);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+      return undefined;
+    }
+    const segmentFilter =
+      options.segmentId === undefined ? undefined : Number(options.segmentId);
+    const useSegmentFilter = Number.isFinite(segmentFilter);
+    const maxDistanceSquared =
+      options.maxDistance === undefined
+        ? Number.POSITIVE_INFINITY
+        : options.maxDistance * options.maxDistance;
+    const targetLod = options.lod;
+    let bestHit: SpatiallyIndexedSkeletonNodeHit | undefined;
+    let bestDistanceSquared = Number.POSITIVE_INFINITY;
+    const selectedSources = this.getCurrentSourcesForEditing();
+    for (const sourceEntry of selectedSources) {
+      const chunks = sourceEntry.chunkSource.chunks;
+      for (const chunk of chunks.values()) {
+        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
+        if (!this.lodMatches(typedChunk, targetLod)) continue;
+        if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
+        const data = this.getChunkPositionAndSegmentArrays(typedChunk);
+        if (data === undefined) continue;
+        const { positions, segmentIds } = data;
+        for (const [nodeId, vertexIndex] of typedChunk.nodeMap.entries()) {
+          if (vertexIndex < 0 || vertexIndex >= typedChunk.numVertices) {
+            continue;
+          }
+          const segmentId = Math.round(segmentIds[vertexIndex]);
+          if (useSegmentFilter && segmentId !== segmentFilter) {
+            continue;
+          }
+          const index = vertexIndex * 3;
+          const dx = positions[index] - x;
+          const dy = positions[index + 1] - y;
+          const dz = positions[index + 2] - z;
+          const distanceSquared = dx * dx + dy * dy + dz * dz;
+          if (distanceSquared >= bestDistanceSquared) {
+            continue;
+          }
+          bestDistanceSquared = distanceSquared;
+          bestHit = {
+            nodeId,
+            segmentId,
+            position: new Float32Array([
+              positions[index],
+              positions[index + 1],
+              positions[index + 2],
+            ]),
+            distanceSquared,
+          };
+        }
+      }
+    }
+    if (bestHit === undefined || bestDistanceSquared > maxDistanceSquared) {
+      return undefined;
+    }
+    return bestHit;
+  }
+
+  findClosestEdge(
+    position: ArrayLike<number>,
+    options: {
+      segmentId?: bigint;
+      maxDistance?: number;
+      lod?: number;
+    } = {},
+  ): SpatiallyIndexedSkeletonEdgeHit | undefined {
+    const x = Number(position[0]);
+    const y = Number(position[1]);
+    const z = Number(position[2]);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+      return undefined;
+    }
+    const segmentFilter =
+      options.segmentId === undefined ? undefined : Number(options.segmentId);
+    const useSegmentFilter = Number.isFinite(segmentFilter);
+    const maxDistanceSquared =
+      options.maxDistance === undefined
+        ? Number.POSITIVE_INFINITY
+        : options.maxDistance * options.maxDistance;
+    const targetLod = options.lod;
+    let bestHit: SpatiallyIndexedSkeletonEdgeHit | undefined;
+    let bestDistanceSquared = Number.POSITIVE_INFINITY;
+    const selectedSources = this.getCurrentSourcesForEditing();
+    for (const sourceEntry of selectedSources) {
+      const chunks = sourceEntry.chunkSource.chunks;
+      for (const chunk of chunks.values()) {
+        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
+        if (!this.lodMatches(typedChunk, targetLod)) continue;
+        if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
+        const data = this.getChunkPositionAndSegmentArrays(typedChunk);
+        if (data === undefined) continue;
+        const { positions, segmentIds } = data;
+        const nodeIdByVertex = new Int32Array(typedChunk.numVertices);
+        nodeIdByVertex.fill(-1);
+        for (const [nodeId, vertexIndex] of typedChunk.nodeMap.entries()) {
+          if (vertexIndex < 0 || vertexIndex >= typedChunk.numVertices) continue;
+          nodeIdByVertex[vertexIndex] = nodeId;
+        }
+        const indices = typedChunk.indices;
+        for (let i = 0; i < indices.length; i += 2) {
+          const vertexA = indices[i];
+          const vertexB = indices[i + 1];
+          if (
+            vertexA < 0 ||
+            vertexA >= typedChunk.numVertices ||
+            vertexB < 0 ||
+            vertexB >= typedChunk.numVertices
+          ) {
+            continue;
+          }
+          const nodeIdA = nodeIdByVertex[vertexA];
+          const nodeIdB = nodeIdByVertex[vertexB];
+          if (nodeIdA < 0 || nodeIdB < 0) continue;
+          const segmentId = Math.round(segmentIds[vertexA]);
+          if (useSegmentFilter && segmentId !== segmentFilter) continue;
+          const ax = positions[vertexA * 3];
+          const ay = positions[vertexA * 3 + 1];
+          const az = positions[vertexA * 3 + 2];
+          const bx = positions[vertexB * 3];
+          const by = positions[vertexB * 3 + 1];
+          const bz = positions[vertexB * 3 + 2];
+          const abx = bx - ax;
+          const aby = by - ay;
+          const abz = bz - az;
+          const apx = x - ax;
+          const apy = y - ay;
+          const apz = z - az;
+          const abLengthSquared = abx * abx + aby * aby + abz * abz;
+          const t = abLengthSquared <= 1e-12
+            ? 0
+            : Math.min(
+                1,
+                Math.max(0, (apx * abx + apy * aby + apz * abz) / abLengthSquared),
+              );
+          const cx = ax + abx * t;
+          const cy = ay + aby * t;
+          const cz = az + abz * t;
+          const dx = cx - x;
+          const dy = cy - y;
+          const dz = cz - z;
+          const distanceSquared = dx * dx + dy * dy + dz * dz;
+          if (distanceSquared >= bestDistanceSquared) continue;
+          bestDistanceSquared = distanceSquared;
+          const da = (ax - x) * (ax - x) + (ay - y) * (ay - y) + (az - z) * (az - z);
+          const db = (bx - x) * (bx - x) + (by - y) * (by - y) + (bz - z) * (bz - z);
+          bestHit = {
+            segmentId,
+            nodeIdA,
+            nodeIdB,
+            parentNodeId: da <= db ? nodeIdA : nodeIdB,
+            closestPoint: new Float32Array([cx, cy, cz]),
+            distanceSquared,
+          };
+        }
+      }
+    }
+    if (bestHit === undefined || bestDistanceSquared > maxDistanceSquared) {
+      return undefined;
+    }
+    return bestHit;
+  }
+
+  getNodes(
+    options: {
+      segmentId?: bigint;
+      lod?: number;
+    } = {},
+  ): SpatiallyIndexedSkeletonNodeInfo[] {
+    const segmentFilter =
+      options.segmentId === undefined ? undefined : Number(options.segmentId);
+    const useSegmentFilter = Number.isFinite(segmentFilter);
+    const targetLod = options.lod;
+    const nodes = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
+    const selectedSources = this.getCurrentSourcesForEditing();
+    for (const sourceEntry of selectedSources) {
+      const chunks = sourceEntry.chunkSource.chunks;
+      for (const chunk of chunks.values()) {
+        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
+        if (!this.lodMatches(typedChunk, targetLod)) continue;
+        if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
+        const data = this.getChunkPositionAndSegmentArrays(typedChunk);
+        if (data === undefined) continue;
+        const { positions, segmentIds } = data;
+        for (const [nodeId, vertexIndex] of typedChunk.nodeMap.entries()) {
+          if (vertexIndex < 0 || vertexIndex >= typedChunk.numVertices) {
+            continue;
+          }
+          if (nodes.has(nodeId)) continue;
+          const segmentId = Math.round(segmentIds[vertexIndex]);
+          if (useSegmentFilter && segmentId !== segmentFilter) {
+            continue;
+          }
+          const index = vertexIndex * 3;
+          nodes.set(nodeId, {
+            nodeId,
+            segmentId,
+            position: new Float32Array([
+              positions[index],
+              positions[index + 1],
+              positions[index + 2],
+            ]),
+          });
+        }
+      }
+    }
+    return [...nodes.values()].sort((a, b) => a.nodeId - b.nodeId);
+  }
+
+  addNode(
+    position: ArrayLike<number>,
+    options: {
+      segmentId: number | bigint;
+      parentNodeId?: number;
+      nodeId?: number;
+      lod?: number;
+    },
+  ): SpatiallyIndexedSkeletonNodeInfo | undefined {
+    const x = Number(position[0]);
+    const y = Number(position[1]);
+    const z = Number(position[2]);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+      return undefined;
+    }
+    const segmentId = Number(options.segmentId);
+    if (!Number.isFinite(segmentId)) {
+      return undefined;
+    }
+    const targetLod = options.lod;
+    const selectedSources = this.getCurrentSourcesForEditing();
+    if (selectedSources.length === 0) return undefined;
+    const globalNodeMap = this.getGlobalNodeLookup(selectedSources, targetLod);
+    const parentNodeId = options.parentNodeId;
+    const parentEntry =
+      parentNodeId === undefined ? undefined : globalNodeMap.get(parentNodeId);
+
+    let targetChunk = parentEntry?.chunk;
+    if (targetChunk === undefined) {
+      let firstGpuChunk: SpatiallyIndexedSkeletonChunk | undefined;
+      for (const sourceEntry of selectedSources) {
+        const chunks = sourceEntry.chunkSource.chunks;
+        for (const chunk of chunks.values()) {
+          const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
+          if (!this.lodMatches(typedChunk, targetLod)) continue;
+          if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
+          if (firstGpuChunk === undefined) {
+            firstGpuChunk = typedChunk;
+          }
+          const data = this.getChunkPositionAndSegmentArrays(typedChunk);
+          if (data === undefined) continue;
+          const { segmentIds } = data;
+          for (let v = 0; v < typedChunk.numVertices; ++v) {
+            if (Math.round(segmentIds[v]) !== segmentId) continue;
+            targetChunk = typedChunk;
+            break;
+          }
+          if (targetChunk !== undefined) break;
+        }
+        if (targetChunk !== undefined) break;
+      }
+      targetChunk = targetChunk ?? firstGpuChunk;
+    }
+    if (targetChunk === undefined) return undefined;
+    if (targetChunk.state !== ChunkState.GPU_MEMORY) return undefined;
+
+    const data = this.getChunkPositionAndSegmentArrays(targetChunk);
+    if (data === undefined) return undefined;
+    const { positions: oldPositions, segmentIds: oldSegmentIds } = data;
+    const oldNumVertices = targetChunk.numVertices;
+    const newVertexIndex = oldNumVertices;
+    const newNumVertices = oldNumVertices + 1;
+    const newPositions = new Float32Array(newNumVertices * 3);
+    newPositions.set(oldPositions);
+    newPositions[newVertexIndex * 3] = x;
+    newPositions[newVertexIndex * 3 + 1] = y;
+    newPositions[newVertexIndex * 3 + 2] = z;
+    const newSegmentIds = new Float32Array(newNumVertices);
+    newSegmentIds.set(oldSegmentIds);
+    newSegmentIds[newVertexIndex] = segmentId;
+
+    let maxNodeId = 0;
+    for (const sourceEntry of selectedSources) {
+      const chunks = sourceEntry.chunkSource.chunks;
+      for (const chunk of chunks.values()) {
+        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
+        for (const nodeId of typedChunk.nodeMap.keys()) {
+          if (nodeId > maxNodeId) maxNodeId = nodeId;
+        }
+      }
+    }
+    const requestedNodeId = options.nodeId;
+    const newNodeId =
+      requestedNodeId === undefined ? maxNodeId + 1 : Math.trunc(requestedNodeId);
+    if (!Number.isFinite(newNodeId) || newNodeId <= 0) {
+      return undefined;
+    }
+    if (
+      requestedNodeId !== undefined &&
+      globalNodeMap.has(newNodeId)
+    ) {
+      return undefined;
+    }
+    targetChunk.nodeMap.set(newNodeId, newVertexIndex);
+
+    const oldIndices = targetChunk.indices;
+    let updatedIndices = oldIndices;
+    if (parentEntry !== undefined && parentNodeId !== undefined) {
+      if (parentEntry.chunk === targetChunk) {
+        updatedIndices = new Uint32Array(oldIndices.length + 2);
+        updatedIndices.set(oldIndices, 0);
+        updatedIndices[oldIndices.length] = newVertexIndex;
+        updatedIndices[oldIndices.length + 1] = parentEntry.vertexIndex;
+      } else {
+        targetChunk.missingConnections.push({
+          nodeId: newNodeId,
+          parentId: parentNodeId,
+          vertexIndex: newVertexIndex,
+          skeletonId: segmentId,
+        });
+      }
+    }
+
+    const positionBytes = new Uint8Array(newPositions.buffer);
+    const segmentBytes = new Uint8Array(newSegmentIds.buffer);
+    const vertexBytes = new Uint8Array(
+      positionBytes.byteLength + segmentBytes.byteLength,
+    );
+    vertexBytes.set(positionBytes, 0);
+    vertexBytes.set(segmentBytes, positionBytes.byteLength);
+    const vertexOffsets = new Uint32Array([0, positionBytes.byteLength]);
+
+    const gl = this.gl;
+    for (const texture of targetChunk.vertexAttributeTextures) {
+      gl.deleteTexture(texture);
+    }
+    targetChunk.vertexAttributes = vertexBytes;
+    targetChunk.vertexAttributeOffsets = vertexOffsets;
+    targetChunk.numVertices = newNumVertices;
+    targetChunk.vertexAttributeTextures = uploadVertexAttributesToGPU(
+      gl,
+      targetChunk.vertexAttributes,
+      targetChunk.vertexAttributeOffsets,
+      targetChunk.source.attributeTextureFormats,
+    );
+
+    if (updatedIndices !== oldIndices) {
+      targetChunk.indices = updatedIndices;
+      targetChunk.numIndices = updatedIndices.length;
+    }
+    targetChunk.indexBuffer.setData(targetChunk.indices);
+
+    if (targetChunk.filteredVertexAttributeTextures) {
+      for (const texture of targetChunk.filteredVertexAttributeTextures) {
+        if (texture) gl.deleteTexture(texture);
+      }
+      targetChunk.filteredVertexAttributeTextures = undefined;
+    }
+    if (targetChunk.filteredIndexBuffer) {
+      targetChunk.filteredIndexBuffer.dispose();
+      targetChunk.filteredIndexBuffer = undefined;
+    }
+    targetChunk.filteredGeneration = -1;
+    targetChunk.numFilteredIndices = 0;
+    targetChunk.numFilteredVertices = 0;
+    this.markFilteredDataDirty();
+
+    return {
+      nodeId: newNodeId,
+      segmentId,
+      position: new Float32Array([x, y, z]),
+    };
+  }
+
+  setNodePosition(
+    nodeId: number,
+    position: ArrayLike<number>,
+    options: {
+      lod?: number;
+    } = {},
+  ) {
+    const x = Number(position[0]);
+    const y = Number(position[1]);
+    const z = Number(position[2]);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+      return false;
+    }
+    const targetLod = options.lod;
+    let moved = false;
+    const selectedSources = this.getCurrentSourcesForEditing();
+    for (const sourceEntry of selectedSources) {
+      const chunks = sourceEntry.chunkSource.chunks;
+      for (const chunk of chunks.values()) {
+        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
+        if (!this.lodMatches(typedChunk, targetLod)) continue;
+        if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
+        const vertexIndex = typedChunk.nodeMap.get(nodeId);
+        if (vertexIndex === undefined) continue;
+        if (vertexIndex < 0 || vertexIndex >= typedChunk.numVertices) {
+          continue;
+        }
+        const data = this.getChunkPositionAndSegmentArrays(typedChunk);
+        if (data === undefined) continue;
+        const { positions } = data;
+        const index = vertexIndex * 3;
+        if (
+          positions[index] === x &&
+          positions[index + 1] === y &&
+          positions[index + 2] === z
+        ) {
+          continue;
+        }
+        positions[index] = x;
+        positions[index + 1] = y;
+        positions[index + 2] = z;
+        moved = true;
+      }
+    }
+    if (moved) {
+      this.markFilteredDataDirty();
+    }
+    return moved;
   }
 
   draw(

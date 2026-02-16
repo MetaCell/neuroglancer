@@ -118,6 +118,8 @@ import { SegmentDisplayTab } from "#src/ui/segment_list.js";
 import { registerSegmentSelectTools } from "#src/ui/segment_select_tools.js";
 import { registerSegmentSplitMergeTools } from "#src/ui/segment_split_merge_tools.js";
 import { DisplayOptionsTab } from "#src/ui/segmentation_display_options_tab.js";
+import { SpatialSkeletonEditTab } from "#src/ui/spatial_skeleton_edit_tab.js";
+import { registerSpatialSkeletonEditModeTool } from "#src/ui/spatial_skeleton_edit_tool.js";
 import { Uint64Map } from "#src/uint64_map.js";
 import { Uint64OrderedSet } from "#src/uint64_ordered_set.js";
 import { Uint64Set } from "#src/uint64_set.js";
@@ -1087,6 +1089,42 @@ export class SegmentationUserLayer extends Base {
   };
 
   displayState = new SegmentationUserLayerDisplayState(this);
+  isCatmaidSource = new WatchableValue(false);
+  spatialSkeletonEditMode = new WatchableValue(false);
+  spatialSkeletonMergeMode = new WatchableValue(false);
+  spatialSkeletonSplitMode = new WatchableValue(false);
+  selectedSpatialSkeletonNodeId = new WatchableValue<number | undefined>(
+    undefined,
+  );
+  spatialSkeletonTreeEndNodeId = new WatchableValue<number | undefined>(
+    undefined,
+  );
+  spatialSkeletonVisibleChunksNeeded = new WatchableValue(0);
+  spatialSkeletonVisibleChunksAvailable = new WatchableValue(0);
+  spatialSkeletonVisibleChunksLoaded = new WatchableValue(false);
+  spatialSkeletonNodeDataVersion = new WatchableValue(0);
+  private spatialSkeletonNodeDescriptions = new Map<number, string>();
+  readonly spatialSkeletonEditModeAllowed = this.registerDisposer(
+    makeCachedDerivedWatchableValue(
+      (levels, gridLevel3d) =>
+        levels.length > 0 && gridLevel3d >= levels.length - 1,
+      [
+        this.displayState.spatialSkeletonGridLevels,
+        this.displayState.spatialSkeletonGridLevel3d,
+      ],
+    ),
+  );
+  readonly spatialSkeletonActionsAllowed = this.registerDisposer(
+    makeCachedDerivedWatchableValue(
+      (isCatmaidSource, maxLodSelected, visibleChunksLoaded) =>
+        isCatmaidSource && maxLodSelected && visibleChunksLoaded,
+      [
+        this.isCatmaidSource,
+        this.spatialSkeletonEditModeAllowed,
+        this.spatialSkeletonVisibleChunksLoaded,
+      ],
+    ),
+  );
 
   anchorSegment = new TrackableValue<bigint | undefined>(undefined, (x) =>
     x === undefined ? undefined : parseUint64(x),
@@ -1179,6 +1217,14 @@ export class SegmentationUserLayer extends Base {
     this.displayState.linkedSegmentationGroup.changed.add(() =>
       this.updateDataSubsourceActivations(),
     );
+    this.registerDisposer(
+      this.layersChanged.add(() => this.updateSpatialSkeletonChunkLoadState()),
+    );
+    this.registerDisposer(
+      this.manager.chunkManager.layerChunkStatisticsUpdated.add(() =>
+        this.updateSpatialSkeletonChunkLoadState(),
+      ),
+    );
     this.tabs.add("rendering", {
       label: "Render",
       order: -100,
@@ -1188,6 +1234,19 @@ export class SegmentationUserLayer extends Base {
       label: "Seg.",
       order: -50,
       getter: () => new SegmentDisplayTab(this),
+    });
+    const hideSpatialSkeletonEditTab = this.registerDisposer(
+      makeCachedDerivedWatchableValue(
+        (isCatmaidSource, hasSpatialSkeletonsLayer) =>
+          !(isCatmaidSource && hasSpatialSkeletonsLayer),
+        [this.isCatmaidSource, this.hasSpatiallyIndexedSkeletonsLayer],
+      ),
+    );
+    this.tabs.add("skeleton", {
+      label: "Skeleton",
+      order: -45,
+      getter: () => new SpatialSkeletonEditTab(this),
+      hidden: hideSpatialSkeletonEditTab,
     });
     const hideGraphTab = this.registerDisposer(
       makeCachedDerivedWatchableValue(
@@ -1202,6 +1261,7 @@ export class SegmentationUserLayer extends Base {
       hidden: hideGraphTab,
     });
     this.tabs.default = "rendering";
+    this.updateSpatialSkeletonChunkLoadState();
   }
 
   get volumeOptions() {
@@ -1267,14 +1327,95 @@ export class SegmentationUserLayer extends Base {
     return undefined;
   };
 
+  readonly getSpatiallyIndexedSkeletonLayer = () => {
+    for (const layer of this.renderLayers) {
+      if (layer instanceof PerspectiveViewSpatiallyIndexedSkeletonLayer) {
+        return layer.base;
+      }
+      if (layer instanceof SliceViewPanelSpatiallyIndexedSkeletonLayer) {
+        return layer.base;
+      }
+      if (layer instanceof SliceViewSpatiallyIndexedSkeletonLayer) {
+        return layer.base;
+      }
+    }
+    return undefined;
+  };
+
+  private updateSpatialSkeletonChunkLoadState() {
+    let needed = 0;
+    let available = 0;
+    for (const layer of this.renderLayers) {
+      if (
+        !(
+          layer instanceof PerspectiveViewSpatiallyIndexedSkeletonLayer ||
+          layer instanceof SliceViewPanelSpatiallyIndexedSkeletonLayer ||
+          layer instanceof SliceViewSpatiallyIndexedSkeletonLayer ||
+          layer instanceof MultiscaleSliceViewSpatiallyIndexedSkeletonLayer
+        )
+      ) {
+        continue;
+      }
+      const progress = layer.layerChunkProgressInfo;
+      needed += progress.numVisibleChunksNeeded;
+      available += progress.numVisibleChunksAvailable;
+    }
+    this.spatialSkeletonVisibleChunksNeeded.value = needed;
+    this.spatialSkeletonVisibleChunksAvailable.value = available;
+    this.spatialSkeletonVisibleChunksLoaded.value =
+      needed > 0 && available >= needed;
+  }
+
+  getSpatialSkeletonActionsDisabledReason() {
+    if (!this.isCatmaidSource.value) {
+      return "Skeleton actions are only available for CATMAID sources.";
+    }
+    if (!this.spatialSkeletonEditModeAllowed.value) {
+      return "Set skeleton grid resolution to max LOD before using Skeleton actions.";
+    }
+    if (!this.spatialSkeletonVisibleChunksLoaded.value) {
+      const needed = this.spatialSkeletonVisibleChunksNeeded.value;
+      const available = this.spatialSkeletonVisibleChunksAvailable.value;
+      if (needed === 0) {
+        return "Waiting for visible skeleton chunks.";
+      }
+      return `Wait for visible skeleton chunks to load (${available}/${needed}).`;
+    }
+    return undefined;
+  }
+
+  setSpatialSkeletonNodeDescription(nodeId: number, description: string) {
+    const value = description.trim();
+    if (value.length === 0) {
+      this.spatialSkeletonNodeDescriptions.delete(nodeId);
+      return;
+    }
+    this.spatialSkeletonNodeDescriptions.set(nodeId, value);
+  }
+
+  getSpatialSkeletonNodeDescription(nodeId: number) {
+    return this.spatialSkeletonNodeDescriptions.get(nodeId);
+  }
+
+  markSpatialSkeletonNodeDataChanged() {
+    this.spatialSkeletonNodeDataVersion.value =
+      this.spatialSkeletonNodeDataVersion.value + 1;
+  }
+
   activateDataSubsources(subsources: Iterable<LoadedDataSubsource>) {
     const updatedSegmentPropertyMaps: SegmentPropertyMap[] = [];
     const isGroupRoot =
       this.displayState.linkedSegmentationGroup.root.value === this;
     let updatedGraph: SegmentationGraphSource | undefined;
     let hasVolume = false;
+    let hasCatmaidSource = false;
     let spatialSkeletonGridSizes: SpatialSkeletonGridSize[] | undefined;
     for (const loadedSubsource of subsources) {
+      const dataSourceUrl =
+        loadedSubsource.loadedDataSource.layerDataSource.spec.url;
+      if (dataSourceUrl.toLowerCase().startsWith("catmaid://")) {
+        hasCatmaidSource = true;
+      }
       if (this.addStaticAnnotations(loadedSubsource)) continue;
       const {
         volume,
@@ -1498,6 +1639,8 @@ export class SegmentationUserLayer extends Base {
       spatialSkeletonGridSizes ?? [],
     );
     this.displayState.hasVolume.value = hasVolume;
+    this.isCatmaidSource.value = hasCatmaidSource;
+    this.updateSpatialSkeletonChunkLoadState();
   }
 
   getLegacyDataSourceSpecifications(
@@ -2063,5 +2206,6 @@ registerLayerShaderControlsTool(
   json_keys.SKELETON_RENDERING_SHADER_CONTROL_TOOL_ID,
 );
 
+registerSpatialSkeletonEditModeTool(SegmentationUserLayer);
 registerSegmentSplitMergeTools(SegmentationUserLayer);
 registerSegmentSelectTools(SegmentationUserLayer);

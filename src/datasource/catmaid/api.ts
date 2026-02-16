@@ -34,7 +34,10 @@ export const credentialsKey = "CATMAID";
 const DEFAULT_CACHE_GRID_CELL_WIDTH = 25000;
 const DEFAULT_CACHE_GRID_CELL_HEIGHT = 25000;
 const DEFAULT_CACHE_GRID_CELL_DEPTH = 40;
+const CATMAID_NOCHECK_STATE = JSON.stringify({ nocheck: true });
 const CATMAID_NO_MATCHING_NODE_PROVIDER_ERROR = "Could not find matching node provider for request";
+
+type CatmaidStatePayload = string | object;
 
 function includesNoMatchingNodeProviderError(value: unknown): boolean {
     return typeof value === "string" && value.includes(CATMAID_NO_MATCHING_NODE_PROVIDER_ERROR);
@@ -110,6 +113,43 @@ function normalizeBoundingBoxForNodeList(boundingBox: {
     const z2 = Math.max(z1 + 1, Math.ceil(boundingBox.max.z));
 
     return { left, top, z1, right, bottom, z2 };
+}
+
+function appendNodeUpdateRows(
+    body: URLSearchParams,
+    key: string,
+    rows: Array<[number, number, number, number]>,
+) {
+    // CATMAID get_request_list parses nested lists from bracketed keys
+    // (e.g. t[0][0]=id, t[0][1]=x, ...), not from a JSON string.
+    for (let rowIndex = 0; rowIndex < rows.length; ++rowIndex) {
+        const row = rows[rowIndex];
+        for (let colIndex = 0; colIndex < row.length; ++colIndex) {
+            body.append(
+                `${key}[${rowIndex}][${colIndex}]`,
+                row[colIndex].toString(),
+            );
+        }
+    }
+}
+
+function appendCatmaidState(
+    body: URLSearchParams,
+    state?: CatmaidStatePayload,
+) {
+    if (state === undefined) {
+        body.append("state", CATMAID_NOCHECK_STATE);
+        return;
+    }
+    if (typeof state === "string") {
+        const normalizedState = state.trim();
+        body.append(
+            "state",
+            normalizedState.length > 0 ? normalizedState : CATMAID_NOCHECK_STATE,
+        );
+        return;
+    }
+    body.append("state", JSON.stringify(state));
 }
 
 function fetchWithCatmaidCredentials(
@@ -411,13 +451,11 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
         x: number,
         y: number,
         z: number,
+        state?: CatmaidStatePayload,
     ): Promise<void> {
-        const body = new URLSearchParams({
-            x: x.toString(),
-            y: y.toString(),
-            z: z.toString(),
-            treenode_id: nodeId.toString(),
-        });
+        const body = new URLSearchParams();
+        appendNodeUpdateRows(body, "t", [[nodeId, x, y, z]]);
+        appendCatmaidState(body, state);
 
         await this.fetch(`node/update`, {
             method: "POST",
@@ -425,10 +463,14 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
         });
     }
 
-    async deleteNode(nodeId: number): Promise<void> {
+    async deleteNode(
+        nodeId: number,
+        state?: CatmaidStatePayload,
+    ): Promise<void> {
         const body = new URLSearchParams({
             treenode_id: nodeId.toString(),
         });
+        appendCatmaidState(body, state);
         await this.fetch(`treenode/delete`, {
             method: "POST",
             body: body,
@@ -441,22 +483,29 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
         y: number,
         z: number,
         parentId?: number,
+        state?: CatmaidStatePayload,
     ): Promise<number> {
+        void skeletonId;
+        if (parentId === undefined) {
+            throw new Error("CATMAID addNode requires a parent node.");
+        }
         const body = new URLSearchParams({
             x: x.toString(),
             y: y.toString(),
             z: z.toString(),
-            skeleton_id: skeletonId.toString(),
+            parent_id: parentId.toString(),
         });
-        if (parentId) {
-            body.append("parent_id", parentId.toString());
-        }
+        appendCatmaidState(body, state);
 
         const res = await this.fetch(`treenode/create`, {
             method: "POST",
             body: body,
         });
-        return res.treenode_id;
+        const treenodeId = Number(res?.treenode_id);
+        if (!Number.isFinite(treenodeId)) {
+            throw new Error("CATMAID treenode/create did not return a valid treenode_id.");
+        }
+        return treenodeId;
     }
 
     async mergeSkeletons(
