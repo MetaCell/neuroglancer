@@ -24,7 +24,12 @@ import {
   ChunkRenderLayerFrontend,
   ChunkSource,
 } from "#src/chunk_manager/frontend.js";
-import type { LayerView, UserLayer, VisibleLayerInfo } from "#src/layer/index.js";
+import type {
+  LayerView,
+  PickState,
+  UserLayer,
+  VisibleLayerInfo,
+} from "#src/layer/index.js";
 import type { PerspectivePanel } from "#src/perspective_view/panel.js";
 import type { PerspectiveViewRenderContext } from "#src/perspective_view/render_layer.js";
 import { PerspectiveViewRenderLayer } from "#src/perspective_view/render_layer.js";
@@ -1868,6 +1873,8 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       segmentId?: bigint;
       maxDistance?: number;
       lod?: number;
+      view?: SpatiallyIndexedSkeletonView;
+      gridLevel?: number;
     } = {},
   ): SpatiallyIndexedSkeletonNodeHit | undefined {
     const x = Number(position[0]);
@@ -1886,7 +1893,10 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     const targetLod = options.lod;
     let bestHit: SpatiallyIndexedSkeletonNodeHit | undefined;
     let bestDistanceSquared = Number.POSITIVE_INFINITY;
-    const selectedSources = this.getCurrentSourcesForEditing();
+    const selectedSources =
+      options.view === undefined
+        ? this.getCurrentSourcesForEditing()
+        : this.selectSourcesForViewAndGrid(options.view, options.gridLevel);
     for (const sourceEntry of selectedSources) {
       const chunks = sourceEntry.chunkSource.chunks;
       for (const chunk of chunks.values()) {
@@ -1930,6 +1940,72 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       return undefined;
     }
     return bestHit;
+  }
+
+  private getHoverSelectionRadius(view: SpatiallyIndexedSkeletonView) {
+    const displayState = this.displayState as any;
+    const levels = displayState.spatialSkeletonGridLevels
+      ?.value as Array<{ size: { x: number; y: number; z: number } }>
+      | undefined;
+    const gridLevel =
+      view === "2d"
+        ? (displayState.spatialSkeletonGridLevel2d?.value as number | undefined)
+        : (displayState.spatialSkeletonGridLevel3d?.value as
+            | number
+            | undefined);
+    let spacing = 1;
+    if (
+      levels !== undefined &&
+      levels.length > 0 &&
+      gridLevel !== undefined &&
+      Number.isFinite(gridLevel)
+    ) {
+      const clampedLevel = Math.min(
+        Math.max(Math.trunc(gridLevel), 0),
+        levels.length - 1,
+      );
+      const size = levels[clampedLevel]?.size;
+      if (size !== undefined) {
+        spacing = Math.max(Math.min(size.x, size.y, size.z), 1e-6);
+      }
+    }
+    const pixelSize =
+      view === "2d"
+        ? (displayState.spatialSkeletonGridPixelSize2d?.value as
+            | number
+            | undefined)
+        : (displayState.spatialSkeletonGridPixelSize3d?.value as
+            | number
+            | undefined);
+    return Math.max(spacing * 0.75, Math.max(pixelSize ?? 0, 1e-6) * 2);
+  }
+
+  getHoveredSegmentId(
+    position: ArrayLike<number>,
+    options: {
+      view: SpatiallyIndexedSkeletonView;
+      lod?: number;
+      maxDistance?: number;
+    },
+  ): bigint | undefined {
+    const displayState = this.displayState as any;
+    const gridLevel =
+      options.view === "2d"
+        ? (displayState.spatialSkeletonGridLevel2d?.value as number | undefined)
+        : (displayState.spatialSkeletonGridLevel3d?.value as
+            | number
+            | undefined);
+    const hit = this.findClosestNode(position, {
+      maxDistance:
+        options.maxDistance ?? this.getHoverSelectionRadius(options.view),
+      lod: options.lod,
+      view: options.view,
+      gridLevel,
+    });
+    if (hit === undefined || !Number.isSafeInteger(hit.segmentId)) {
+      return undefined;
+    }
+    return BigInt(hit.segmentId);
   }
 
   getNodes(
@@ -2194,7 +2270,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
 
   draw(
     renderContext: SliceViewPanelRenderContext | PerspectiveViewRenderContext,
-    _layer: RenderLayer,
+    layer: RenderLayer,
     renderHelper: RenderHelper,
     renderOptions: ViewSpecificSkeletonRenderingOptions,
     attachment: VisibleLayerInfo<
@@ -2220,7 +2296,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     if (modelMatrix === undefined) return;
     
     const hasRegularSkeletonLayer = this.updateHasRegularSkeletonLayerWatchable(
-      _layer.userLayer,
+      layer.userLayer,
     );
     let pointDiameter: number;
     if (renderOptions.mode.value === SkeletonRenderMode.LINES_AND_POINTS) {
@@ -2273,6 +2349,13 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     renderHelper.setColor(gl, edgeShader, baseColor);
     nodeShader.bind();
     renderHelper.setColor(gl, nodeShader, baseColor);
+    if (renderContext.emitPickID) {
+      const pickID = renderContext.pickIDs.register(layer);
+      edgeShader.bind();
+      renderHelper.setPickID(gl, edgeShader, pickID);
+      nodeShader.bind();
+      renderHelper.setPickID(gl, nodeShader, pickID);
+    }
 
     const targetLod = drawOptions?.lod;
     const view = drawOptions?.view ?? "3d";
@@ -2761,6 +2844,17 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
     return this.base.displayState.objectAlpha.value < 1.0;
   }
 
+  transformPickedValue(pickState: PickState) {
+    const mousePosition = (pickState as any).position as
+      | ArrayLike<number>
+      | undefined;
+    if (mousePosition === undefined) return undefined;
+    return this.base.getHoveredSegmentId(mousePosition, {
+      view: "3d",
+      lod: this.base.lod.value,
+    });
+  }
+
   draw(
     renderContext: PerspectiveViewRenderContext,
     attachment: VisibleLayerInfo<
@@ -2922,6 +3016,17 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
   }
   get gl() {
     return this.base.gl;
+  }
+
+  transformPickedValue(pickState: PickState) {
+    const mousePosition = (pickState as any).position as
+      | ArrayLike<number>
+      | undefined;
+    if (mousePosition === undefined) return undefined;
+    return this.base.getHoveredSegmentId(mousePosition, {
+      view: "2d",
+      lod: this.base.lod.value,
+    });
   }
 
   attach(
