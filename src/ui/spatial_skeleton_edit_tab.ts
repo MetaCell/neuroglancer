@@ -15,6 +15,11 @@
  */
 
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
+import svg_chevrons_down from "ikonate/icons/chevrons-down.svg?raw";
+import svg_chevrons_up from "ikonate/icons/chevrons-up.svg?raw";
+import svg_next from "ikonate/icons/next.svg?raw";
+import svg_origin from "ikonate/icons/origin.svg?raw";
+import svg_previous from "ikonate/icons/previous.svg?raw";
 import { getVisibleSegments } from "#src/segmentation_display_state/base.js";
 import type { SpatiallyIndexedSkeletonNodeInfo } from "#src/skeleton/frontend.js";
 import { StatusMessage } from "#src/status.js";
@@ -25,6 +30,7 @@ import {
   SPATIAL_SKELETON_MERGE_MODE_TOOL_ID,
   SPATIAL_SKELETON_SPLIT_MODE_TOOL_ID,
 } from "#src/ui/spatial_skeleton_edit_tool.js";
+import { makeIcon } from "#src/widget/icon.js";
 import { Tab } from "#src/widget/tab_view.js";
 
 const MAX_LISTED_NODES = 300;
@@ -43,7 +49,7 @@ export class SpatialSkeletonEditTab extends Tab {
     element.classList.add("neuroglancer-spatial-skeleton-tab");
 
     const toolbox = document.createElement("div");
-    toolbox.className = "neuroglancer-segmentation-toolbox";
+    toolbox.className = "neuroglancer-segmentation-toolbox neuroglancer-spatial-skeleton-toolbar";
     toolbox.appendChild(
       makeToolButton(this, layer.toolBinder, {
         toolJson: SPATIAL_SKELETON_EDIT_MODE_TOOL_ID,
@@ -65,15 +71,75 @@ export class SpatialSkeletonEditTab extends Tab {
         title: "Toggle skeleton split mode (placeholder)",
       }),
     );
-    element.appendChild(toolbox);
 
-    const status = document.createElement("div");
-    status.classList.add("neuroglancer-spatial-skeleton-tab-status");
-    const gateStatus = document.createElement("div");
-    const modeStatus = document.createElement("div");
-    status.appendChild(gateStatus);
-    status.appendChild(modeStatus);
-    element.appendChild(status);
+    const navTools = document.createElement("div");
+    navTools.className = "neuroglancer-spatial-skeleton-nav-tools";
+    const makeNavIconButton = (
+      svg: string,
+      title: string,
+      onClick: () => void,
+    ) => {
+      const button = document.createElement("button");
+      button.className = "neuroglancer-spatial-skeleton-nav-tool";
+      button.type = "button";
+      button.title = title;
+      button.appendChild(makeIcon({ svg, title, clickable: false }));
+      button.addEventListener("click", () => onClick());
+      navTools.appendChild(button);
+      return button;
+    };
+
+    const setTreeEndButton = makeNavIconButton(
+      svg_origin,
+      "go to start of branch",
+      () => {
+        if (!ensureActionsAllowed()) return;
+        const selectedNode = getSelectedNode();
+        if (selectedNode === undefined) {
+          StatusMessage.showTemporaryMessage("No skeleton node is selected.");
+          return;
+        }
+        layer.spatialSkeletonTreeEndNodeId.value = selectedNode.nodeId;
+      },
+    );
+    const prevBranchButton = makeNavIconButton(
+      svg_previous,
+      "go to previous node",
+      () => moveSelectedNode(-1),
+    );
+    const nextBranchButton = makeNavIconButton(
+      svg_next,
+      "go to next node",
+      () => moveSelectedNode(1),
+    );
+    const goRootButton = makeNavIconButton(
+      svg_chevrons_up,
+      "go to root",
+      () => {
+        if (!ensureActionsAllowed()) return;
+        setSelectedNodeByIndex(0);
+      },
+    );
+    const goTreeEndButton = makeNavIconButton(
+      svg_chevrons_down,
+      "go to end of branch",
+      () => {
+        if (!ensureActionsAllowed()) return;
+        const treeEndNodeId = layer.spatialSkeletonTreeEndNodeId.value;
+        if (
+          treeEndNodeId !== undefined &&
+          allNodes.some((node) => node.nodeId === treeEndNodeId)
+        ) {
+          layer.selectedSpatialSkeletonNodeId.value = treeEndNodeId;
+          return;
+        }
+        if (allNodes.length > 0) {
+          setSelectedNodeByIndex(allNodes.length - 1);
+        }
+      },
+    );
+    toolbox.appendChild(navTools);
+    element.appendChild(toolbox);
 
     const nodesSection = document.createElement("div");
     nodesSection.className = "neuroglancer-spatial-skeleton-section";
@@ -94,50 +160,6 @@ export class SpatialSkeletonEditTab extends Tab {
     nodesSection.appendChild(nodesList);
     element.appendChild(nodesSection);
 
-    const selectionSection = document.createElement("div");
-    selectionSection.className = "neuroglancer-spatial-skeleton-section";
-    const selectionTitle = document.createElement("div");
-    selectionTitle.className = "neuroglancer-spatial-skeleton-section-title";
-    selectionTitle.textContent = "Selection";
-    const selectedNodeInfo = document.createElement("div");
-    selectedNodeInfo.className = "neuroglancer-spatial-skeleton-summary";
-    const selectionActions = document.createElement("div");
-    selectionActions.className = "neuroglancer-spatial-skeleton-actions";
-    const setTreeEndButton = document.createElement("button");
-    setTreeEndButton.textContent = "Set tree end";
-    const prevBranchButton = document.createElement("button");
-    prevBranchButton.textContent = "Prev branch";
-    const nextBranchButton = document.createElement("button");
-    nextBranchButton.textContent = "Next branch";
-    const goRootButton = document.createElement("button");
-    goRootButton.textContent = "Go root";
-    const goTreeEndButton = document.createElement("button");
-    goTreeEndButton.textContent = "Go tree end";
-    for (const button of [
-      setTreeEndButton,
-      prevBranchButton,
-      nextBranchButton,
-      goRootButton,
-      goTreeEndButton,
-    ]) {
-      selectionActions.appendChild(button);
-    }
-    const descriptionLabel = document.createElement("div");
-    descriptionLabel.className = "neuroglancer-spatial-skeleton-section-title";
-    descriptionLabel.textContent = "Description";
-    const descriptionTextarea = document.createElement("textarea");
-    descriptionTextarea.className = "neuroglancer-spatial-skeleton-description";
-    descriptionTextarea.placeholder = "Describe selected node";
-    const saveDescriptionButton = document.createElement("button");
-    saveDescriptionButton.textContent = "Save description";
-    selectionSection.appendChild(selectionTitle);
-    selectionSection.appendChild(selectedNodeInfo);
-    selectionSection.appendChild(selectionActions);
-    selectionSection.appendChild(descriptionLabel);
-    selectionSection.appendChild(descriptionTextarea);
-    selectionSection.appendChild(saveDescriptionButton);
-    element.appendChild(selectionSection);
-
     const gatedControls = [
       filterInput,
       setTreeEndButton,
@@ -145,14 +167,11 @@ export class SpatialSkeletonEditTab extends Tab {
       nextBranchButton,
       goRootButton,
       goTreeEndButton,
-      descriptionTextarea,
-      saveDescriptionButton,
     ];
 
     let allNodes: SpatiallyIndexedSkeletonNodeInfo[] = [];
     let filteredNodes: SpatiallyIndexedSkeletonNodeInfo[] = [];
     let filterText = "";
-    let descriptionNodeId: number | undefined;
 
     const getSelectedNode = () => {
       const selectedId = layer.selectedSpatialSkeletonNodeId.value;
@@ -220,30 +239,6 @@ export class SpatialSkeletonEditTab extends Tab {
       }
     };
 
-    const updateSelection = () => {
-      const selectedNode = getSelectedNode();
-      if (selectedNode === undefined) {
-        selectedNodeInfo.textContent = "No node selected.";
-        descriptionNodeId = undefined;
-        descriptionTextarea.value = "";
-        return;
-      }
-      const treeEndNodeId = layer.spatialSkeletonTreeEndNodeId.value;
-      const treeEndTag =
-        treeEndNodeId === selectedNode.nodeId ? "  [tree end]" : "";
-      selectedNodeInfo.textContent = `Node ${selectedNode.nodeId}  ${formatNodePosition(
-        selectedNode.position,
-      )}${treeEndTag}`;
-      if (
-        descriptionNodeId !== selectedNode.nodeId ||
-        document.activeElement !== descriptionTextarea
-      ) {
-        descriptionNodeId = selectedNode.nodeId;
-        descriptionTextarea.value =
-          layer.getSpatialSkeletonNodeDescription(selectedNode.nodeId) ?? "";
-      }
-    };
-
     const refreshNodes = () => {
       const skeletonLayer = layer.getSpatiallyIndexedSkeletonLayer();
       const activeSegmentIds = [
@@ -259,7 +254,6 @@ export class SpatialSkeletonEditTab extends Tab {
         nodesSummary.textContent =
           "Set one or more segments active in Seg tab to inspect skeleton nodes.";
         updateList();
-        updateSelection();
         return;
       }
       const nodesById = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
@@ -292,7 +286,6 @@ export class SpatialSkeletonEditTab extends Tab {
         (segmentPreview.length > 0 ? ` (${segmentPreview}${segmentSuffix})` : "") +
         ".";
       updateList();
-      updateSelection();
     };
 
     const updateGateStatus = () => {
@@ -301,70 +294,12 @@ export class SpatialSkeletonEditTab extends Tab {
       for (const control of gatedControls) {
         control.disabled = !allowed;
       }
-      const available = layer.spatialSkeletonVisibleChunksAvailable.value;
-      const needed = layer.spatialSkeletonVisibleChunksNeeded.value;
-      gateStatus.textContent = allowed
-        ? `Ready (${available}/${needed} visible chunks loaded).`
-        : reason!;
-      modeStatus.textContent =
-        `Modes: edit=${layer.spatialSkeletonEditMode.value ? "on" : "off"}, ` +
-        `merge=${layer.spatialSkeletonMergeMode.value ? "on" : "off"}, ` +
-        `split=${layer.spatialSkeletonSplitMode.value ? "on" : "off"}.`;
     };
 
     filterInput.addEventListener("input", () => {
       filterText = filterInput.value.trim();
       applyFilter();
       updateList();
-    });
-
-    saveDescriptionButton.addEventListener("click", () => {
-      if (!ensureActionsAllowed()) return;
-      const selectedNode = getSelectedNode();
-      if (selectedNode === undefined) {
-        StatusMessage.showTemporaryMessage("No skeleton node is selected.");
-        return;
-      }
-      const description = descriptionTextarea.value;
-      layer.setSpatialSkeletonNodeDescription(selectedNode.nodeId, description);
-      console.info("[SpatialSkeleton] Simulated CATMAID set node description", {
-        nodeId: selectedNode.nodeId,
-        description,
-      });
-      StatusMessage.showTemporaryMessage(
-        `Simulated CATMAID node description update for node ${selectedNode.nodeId}.`,
-      );
-    });
-
-    setTreeEndButton.addEventListener("click", () => {
-      if (!ensureActionsAllowed()) return;
-      const selectedNode = getSelectedNode();
-      if (selectedNode === undefined) {
-        StatusMessage.showTemporaryMessage("No skeleton node is selected.");
-        return;
-      }
-      layer.spatialSkeletonTreeEndNodeId.value = selectedNode.nodeId;
-      updateSelection();
-    });
-    prevBranchButton.addEventListener("click", () => moveSelectedNode(-1));
-    nextBranchButton.addEventListener("click", () => moveSelectedNode(1));
-    goRootButton.addEventListener("click", () => {
-      if (!ensureActionsAllowed()) return;
-      setSelectedNodeByIndex(0);
-    });
-    goTreeEndButton.addEventListener("click", () => {
-      if (!ensureActionsAllowed()) return;
-      const treeEndNodeId = layer.spatialSkeletonTreeEndNodeId.value;
-      if (
-        treeEndNodeId !== undefined &&
-        allNodes.some((node) => node.nodeId === treeEndNodeId)
-      ) {
-        layer.selectedSpatialSkeletonNodeId.value = treeEndNodeId;
-        return;
-      }
-      if (allNodes.length > 0) {
-        setSelectedNodeByIndex(allNodes.length - 1);
-      }
     });
 
     this.registerDisposer(
@@ -421,12 +356,6 @@ export class SpatialSkeletonEditTab extends Tab {
     this.registerDisposer(
       layer.selectedSpatialSkeletonNodeId.changed.add(() => {
         updateList();
-        updateSelection();
-      }),
-    );
-    this.registerDisposer(
-      layer.spatialSkeletonTreeEndNodeId.changed.add(() => {
-        updateSelection();
       }),
     );
     this.registerDisposer(
