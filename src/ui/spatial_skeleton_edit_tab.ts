@@ -161,6 +161,7 @@ export class SpatialSkeletonEditTab extends Tab {
     let nodesBySegment = new Map<number, SpatiallyIndexedSkeletonNodeInfo[]>();
     let filterText = "";
     let actionsAllowed = false;
+    let pendingScrollToSelectedNode = false;
     const pendingDeleteNodes = new Set<number>();
     const catmaidClients = new Map<string, CatmaidClient>();
 
@@ -168,6 +169,101 @@ export class SpatialSkeletonEditTab extends Tab {
       const selectedId = layer.selectedSpatialSkeletonNodeId.value;
       if (selectedId === undefined) return undefined;
       return allNodes.find((node) => node.nodeId === selectedId);
+    };
+
+    const buildSegmentRelations = (segmentId: number) => {
+      const segmentNodes = nodesBySegment.get(segmentId) ?? [];
+      const nodeById = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
+      const parentById = new Map<number, number | undefined>();
+      const childrenById = new Map<number, number[]>();
+      for (const node of segmentNodes) {
+        nodeById.set(node.nodeId, node);
+        parentById.set(node.nodeId, undefined);
+        childrenById.set(node.nodeId, []);
+      }
+      for (const node of segmentNodes) {
+        const parentId = node.parentNodeId;
+        if (parentId === undefined || !nodeById.has(parentId)) {
+          continue;
+        }
+        parentById.set(node.nodeId, parentId);
+        const children = childrenById.get(parentId);
+        if (children !== undefined) {
+          children.push(node.nodeId);
+        }
+      }
+      for (const children of childrenById.values()) {
+        children.sort((a, b) => a - b);
+      }
+      return { nodeById, parentById, childrenById };
+    };
+
+    const getBranchStartNode = (node: SpatiallyIndexedSkeletonNodeInfo) => {
+      const relations = buildSegmentRelations(node.segmentId);
+      if (!relations.nodeById.has(node.nodeId)) {
+        return node;
+      }
+      let currentNodeId = node.nodeId;
+      let fallbackNodeId = node.nodeId;
+      while (true) {
+        fallbackNodeId = currentNodeId;
+        const childCount = relations.childrenById.get(currentNodeId)?.length ?? 0;
+        if (childCount > 1) {
+          return relations.nodeById.get(currentNodeId) ?? node;
+        }
+        const parentNodeId = relations.parentById.get(currentNodeId);
+        if (parentNodeId === undefined) {
+          break;
+        }
+        currentNodeId = parentNodeId;
+      }
+      return relations.nodeById.get(fallbackNodeId) ?? node;
+    };
+
+    const getBranchEndNode = (node: SpatiallyIndexedSkeletonNodeInfo) => {
+      const relations = buildSegmentRelations(node.segmentId);
+      if (!relations.nodeById.has(node.nodeId)) {
+        return node;
+      }
+      let bestLeafNodeId: number | undefined;
+      let bestLeafDistance = Number.POSITIVE_INFINITY;
+      const queue: Array<{ nodeId: number; distance: number }> = [
+        { nodeId: node.nodeId, distance: 0 },
+      ];
+      const visited = new Set<number>();
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        if (visited.has(current.nodeId)) {
+          continue;
+        }
+        visited.add(current.nodeId);
+        if (current.distance > bestLeafDistance) {
+          continue;
+        }
+        const children = relations.childrenById.get(current.nodeId) ?? [];
+        if (children.length === 0) {
+          if (
+            bestLeafNodeId === undefined ||
+            current.distance < bestLeafDistance ||
+            (current.distance === bestLeafDistance &&
+              current.nodeId < bestLeafNodeId)
+          ) {
+            bestLeafNodeId = current.nodeId;
+            bestLeafDistance = current.distance;
+          }
+          continue;
+        }
+        for (const childNodeId of children) {
+          queue.push({
+            nodeId: childNodeId,
+            distance: current.distance + 1,
+          });
+        }
+      }
+      if (bestLeafNodeId === undefined) {
+        return node;
+      }
+      return relations.nodeById.get(bestLeafNodeId) ?? node;
     };
 
     const ensureActionsAllowed = () => {
@@ -179,9 +275,30 @@ export class SpatialSkeletonEditTab extends Tab {
       return true;
     };
 
-    const setSelectedNodeByIndex = (index: number) => {
+    const selectNode = (
+      node: SpatiallyIndexedSkeletonNodeInfo | undefined,
+      options: {
+        moveView?: boolean;
+      } = {},
+    ) => {
+      if (node === undefined) return;
+      const moveView = options.moveView ?? true;
+      pendingScrollToSelectedNode = true;
+      layer.selectedSpatialSkeletonNodeId.value = node.nodeId;
+      if (moveView) {
+        moveViewToNodePosition(node.position);
+      }
+      updateList();
+    };
+
+    const setSelectedNodeByIndex = (
+      index: number,
+      options: {
+        moveView?: boolean;
+      } = {},
+    ) => {
       if (index < 0 || index >= allNodes.length) return;
-      layer.selectedSpatialSkeletonNodeId.value = allNodes[index].nodeId;
+      selectNode(allNodes[index], options);
     };
 
     const moveSelectedNode = (delta: number) => {
@@ -190,7 +307,9 @@ export class SpatialSkeletonEditTab extends Tab {
       if (selectedId === undefined) return;
       const index = allNodes.findIndex((node) => node.nodeId === selectedId);
       if (index === -1) return;
-      setSelectedNodeByIndex(Math.max(0, Math.min(allNodes.length - 1, index + delta)));
+      setSelectedNodeByIndex(
+        Math.max(0, Math.min(allNodes.length - 1, index + delta)),
+      );
     };
 
     const moveViewToNodePosition = (position: ArrayLike<number>) => {
@@ -252,7 +371,7 @@ export class SpatialSkeletonEditTab extends Tab {
 
     const setTreeEndFromNode = (node: SpatiallyIndexedSkeletonNodeInfo) => {
       if (!ensureActionsAllowed()) return;
-      layer.selectedSpatialSkeletonNodeId.value = node.nodeId;
+      selectNode(node);
       layer.spatialSkeletonTreeEndNodeId.value = node.nodeId;
       StatusMessage.showTemporaryMessage(`Set node ${node.nodeId} as true end.`);
     };
@@ -307,7 +426,7 @@ export class SpatialSkeletonEditTab extends Tab {
         StatusMessage.showTemporaryMessage("No skeleton node is selected.");
         return;
       }
-      layer.spatialSkeletonTreeEndNodeId.value = selectedNode.nodeId;
+      selectNode(getBranchStartNode(selectedNode));
     });
     const prevNodeButton = makeNavIconButton(svg_previous, "go to previous node", () =>
       moveSelectedNode(-1),
@@ -321,17 +440,12 @@ export class SpatialSkeletonEditTab extends Tab {
     });
     const goTreeEndButton = makeNavIconButton(svg_chevrons_down, "go to end of branch", () => {
       if (!ensureActionsAllowed()) return;
-      const treeEndNodeId = layer.spatialSkeletonTreeEndNodeId.value;
-      if (
-        treeEndNodeId !== undefined &&
-        allNodes.some((node) => node.nodeId === treeEndNodeId)
-      ) {
-        layer.selectedSpatialSkeletonNodeId.value = treeEndNodeId;
+      const selectedNode = getSelectedNode();
+      if (selectedNode === undefined) {
+        StatusMessage.showTemporaryMessage("No skeleton node is selected.");
         return;
       }
-      if (allNodes.length > 0) {
-        setSelectedNodeByIndex(allNodes.length - 1);
-      }
+      selectNode(getBranchEndNode(selectedNode));
     });
     toolbox.appendChild(navTools);
     element.insertBefore(toolbox, nodesSection);
@@ -462,6 +576,7 @@ export class SpatialSkeletonEditTab extends Tab {
       nodesList.textContent = "";
       let renderedNodeCount = 0;
       let overflowNodeCount = 0;
+      let selectedRowButton: HTMLButtonElement | undefined;
       for (const segmentId of activeSegmentIds) {
         const segmentNodes = nodesBySegment.get(segmentId) ?? [];
         const section = document.createElement("div");
@@ -504,9 +619,11 @@ export class SpatialSkeletonEditTab extends Tab {
           selectButton.style.paddingLeft = `${0.4 + depth * 1.0}em`;
           selectButton.addEventListener("click", () => {
             if (!ensureActionsAllowed()) return;
-            layer.selectedSpatialSkeletonNodeId.value = node.nodeId;
-            moveViewToNodePosition(node.position);
+            selectNode(node);
           });
+          if (node.nodeId === layer.selectedSpatialSkeletonNodeId.value) {
+            selectedRowButton = selectButton;
+          }
 
           const typeIcon = document.createElement("span");
           typeIcon.className = "neuroglancer-spatial-skeleton-node-type";
@@ -564,6 +681,12 @@ export class SpatialSkeletonEditTab extends Tab {
         more.className = "neuroglancer-spatial-skeleton-summary";
         more.textContent = `Showing first ${MAX_LISTED_NODES} nodes`;
         nodesList.appendChild(more);
+      }
+      if (pendingScrollToSelectedNode) {
+        pendingScrollToSelectedNode = false;
+        selectedRowButton?.scrollIntoView({
+          block: "nearest",
+        });
       }
     };
 
@@ -697,6 +820,7 @@ export class SpatialSkeletonEditTab extends Tab {
     );
     this.registerDisposer(
       layer.selectedSpatialSkeletonNodeId.changed.add(() => {
+        pendingScrollToSelectedNode = true;
         updateList();
       }),
     );
