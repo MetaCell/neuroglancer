@@ -47,7 +47,6 @@ const SPATIAL_SKELETON_EDIT_INPUT_EVENT_MAP = EventActionMap.fromObject({
     "spatial-skeleton-edit-drag-node",
 });
 
-const ENABLE_SPATIAL_SKELETON_EDIT_DEBUG = true;
 const DRAG_START_DISTANCE_PX = 4;
 
 interface PendingNodeAddSelection {
@@ -303,50 +302,8 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
       statusElement.textContent = message;
     };
 
-    const debugState = new Map<string, string>();
-    const debugOverlay =
-      ENABLE_SPATIAL_SKELETON_EDIT_DEBUG === true
-        ? document.createElement("pre")
-        : undefined;
-    const updateDebugOverlay = () => {
-      if (debugOverlay === undefined) return;
-      const lines = ["Spatial Skeleton Edit Debug"];
-      for (const [key, value] of debugState.entries()) {
-        lines.push(`${key}: ${value}`);
-      }
-      debugOverlay.textContent = lines.join("\n");
-    };
-    const setDebug = (key: string, value: string) => {
-      if (ENABLE_SPATIAL_SKELETON_EDIT_DEBUG !== true) return;
-      debugState.set(key, value);
-      updateDebugOverlay();
-    };
-    const debugLog = (label: string, data: Record<string, unknown> = {}) => {
-      if (ENABLE_SPATIAL_SKELETON_EDIT_DEBUG !== true) return;
-      const timestamp = new Date().toISOString();
-      console.info(`[SpatialSkeletonEdit][${timestamp}] ${label}`, data);
-      setDebug("lastLog", `${label} @ ${timestamp}`);
-    };
-    if (debugOverlay !== undefined) {
-      debugOverlay.style.position = "fixed";
-      debugOverlay.style.right = "8px";
-      debugOverlay.style.bottom = "8px";
-      debugOverlay.style.zIndex = "100000";
-      debugOverlay.style.maxWidth = "420px";
-      debugOverlay.style.maxHeight = "45vh";
-      debugOverlay.style.overflow = "auto";
-      debugOverlay.style.margin = "0";
-      debugOverlay.style.padding = "8px";
-      debugOverlay.style.background = "rgba(0, 0, 0, 0.75)";
-      debugOverlay.style.color = "#86ff9b";
-      debugOverlay.style.font = "11px/1.4 monospace";
-      debugOverlay.style.border = "1px solid rgba(134, 255, 155, 0.45)";
-      debugOverlay.style.borderRadius = "4px";
-      document.body.appendChild(debugOverlay);
-      activation.registerDisposer(() => {
-        debugOverlay.remove();
-      });
-    }
+    const setDebug = (_key: string, _value: string) => {};
+    const debugLog = (_label: string, _data: Record<string, unknown> = {}) => {};
 
     const disableWithMessage = (message: string) => {
       setStatus(message);

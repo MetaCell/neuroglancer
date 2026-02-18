@@ -144,7 +144,6 @@ const DEFAULT_FRAGMENT_MAIN = `void main() {
   emitDefault();
 }
 `;
-const ENABLE_SPATIAL_SKELETON_SELECTION_DEBUG = true;
 
 interface VertexAttributeRenderInfo extends VertexAttributeInfo {
   name: string;
@@ -1439,8 +1438,6 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
   gridLevel: WatchableValueInterface<number>;
   lod: WatchableValueInterface<number>;
   private selectedNodeId: WatchableValueInterface<number | undefined> | undefined;
-  private selectionDebugSignature: string | undefined;
-  private selectionChunkDebugSignatures = new Map<string, string>();
 
   private markFilteredDataDirty() {
     this.generation++;
@@ -2283,10 +2280,6 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       view,
       drawOptions?.gridLevel,
     );
-    const selectedNodeId = this.selectedNodeId?.value;
-    let selectedNodeFoundInChunks = 0;
-    let selectedNodeDrawableInChunks = 0;
-    const selectedChunkStates: string[] = [];
     const globalNodeMap = this.getGlobalNodeLookup(selectedSources, targetLod);
     for (const sourceEntry of selectedSources) {
       const chunks = sourceEntry.chunkSource.chunks;
@@ -2295,34 +2288,6 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
         if (!this.lodMatches(typedChunk, targetLod)) continue;
         if (typedChunk.state !== ChunkState.GPU_MEMORY || typedChunk.numIndices === 0) {
           continue;
-        }
-        if (selectedNodeId !== undefined) {
-          const selectedVertexIndex = typedChunk.nodeMap.get(selectedNodeId);
-          if (selectedVertexIndex !== undefined) {
-            selectedNodeFoundInChunks++;
-            const data = this.getChunkPositionAndSegmentArrays(typedChunk);
-            if (
-              data !== undefined &&
-              selectedVertexIndex >= 0 &&
-              selectedVertexIndex < typedChunk.numVertices
-            ) {
-              const segmentId = Math.round(data.segmentIds[selectedVertexIndex]);
-              const isVisible = visibleSegments.has(BigInt(segmentId));
-              const alphaForSegment = isVisible
-                ? this.displayState.objectAlpha.value
-                : this.displayState.hiddenObjectAlpha?.value ?? 0;
-              const effectiveAlpha =
-                hasRegularSkeletonLayer && isVisible ? 0 : alphaForSegment;
-              if (effectiveAlpha > 0) {
-                selectedNodeDrawableInChunks++;
-              }
-              if (selectedChunkStates.length < 4) {
-                selectedChunkStates.push(
-                  `chunk=${getObjectId(typedChunk)} seg=${segmentId} visible=${isVisible} effAlpha=${effectiveAlpha.toFixed(3)} vertex=${selectedVertexIndex}`,
-                );
-              }
-            }
-          }
         }
         const filteredChunk = this.updateChunkFilteredBuffer(
           typedChunk,
@@ -2340,41 +2305,6 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
           filteredChunk,
           renderContext.projectionParameters,
         );
-      }
-    }
-    if (ENABLE_SPATIAL_SKELETON_SELECTION_DEBUG) {
-      const modeName =
-        SkeletonRenderMode[renderOptions.mode.value] ??
-        String(renderOptions.mode.value);
-      const debugSignature = [
-        view,
-        targetLod === undefined ? "lod:none" : `lod:${targetLod.toFixed(4)}`,
-        drawOptions?.gridLevel === undefined
-          ? "grid:none"
-          : `grid:${drawOptions.gridLevel}`,
-        `selected:${selectedNodeId ?? "none"}`,
-        `found:${selectedNodeFoundInChunks}`,
-        `drawable:${selectedNodeDrawableInChunks}`,
-        `skipVisible:${hasRegularSkeletonLayer}`,
-        `mode:${modeName}`,
-        `diameter:${pointDiameter.toFixed(2)}`,
-        `selectedAttrIndex:${this.selectedNodeAttributeIndex ?? "none"}`,
-      ].join("|");
-      if (debugSignature !== this.selectionDebugSignature) {
-        this.selectionDebugSignature = debugSignature;
-        console.info("[SpatialSkeletonSelectionDebug]", {
-          view,
-          targetLod,
-          gridLevel: drawOptions?.gridLevel,
-          selectedNodeId,
-          selectedNodeFoundInChunks,
-          selectedNodeDrawableInChunks,
-          skipVisibleSegments: hasRegularSkeletonLayer,
-          mode: modeName,
-          pointDiameter,
-          selectedNodeAttributeIndex: this.selectedNodeAttributeIndex,
-          sampleChunkStates: selectedChunkStates,
-        });
       }
     }
 
@@ -2635,7 +2565,6 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     const filteredSegments = new Float32Array(totalVertexCount);
     const filteredColors = new Float32Array(totalVertexCount * 4);
     const filteredSelected = new Float32Array(totalVertexCount);
-    let selectedVertexCount = 0;
     for (let i = 0; i < vertexList.length; ++i) {
       const oldIndex = vertexList[i];
       const srcStart = oldIndex * 3;
@@ -2655,7 +2584,6 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
           ? 1
           : 0;
       filteredSelected[i] = selectedFlag;
-      selectedVertexCount += selectedFlag;
     }
     for (let i = 0; i < extraVertexCount; ++i) {
       const dstVertex = vertexList.length + i;
@@ -2672,33 +2600,6 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       filteredColors[dstVertex * 4 + 3] = extraColors[colorStart + 3];
       const selectedFlag = extraSelected[i] ?? 0;
       filteredSelected[dstVertex] = selectedFlag;
-      selectedVertexCount += selectedFlag;
-    }
-    if (ENABLE_SPATIAL_SKELETON_SELECTION_DEBUG && selectedNodeId !== undefined) {
-      const chunkId = getObjectId(chunk);
-      const selectionSignature = [
-        `selected:${selectedNodeId}`,
-        `localVertex:${selectedLocalVertexIndex ?? "none"}`,
-        `selectedVertices:${selectedVertexCount}`,
-        `visibleVertices:${vertexList.length}`,
-        `totalVertices:${totalVertexCount}`,
-        `indices:${filteredIndices.length}`,
-        `skipVisible:${skipVisibleSegments}`,
-      ].join("|");
-      if (this.selectionChunkDebugSignatures.get(chunkId) !== selectionSignature) {
-        this.selectionChunkDebugSignatures.set(chunkId, selectionSignature);
-        console.info("[SpatialSkeletonSelectionChunkDebug]", {
-          chunkId,
-          selectedNodeId,
-          selectedLocalVertexIndex,
-          selectedVerticesInFilteredChunk: selectedVertexCount,
-          visibleVertexCount: vertexList.length,
-          totalVertexCount,
-          filteredIndexCount: filteredIndices.length,
-          skipVisibleSegments,
-          missingConnections: chunk.missingConnections.length,
-        });
-      }
     }
 
     const posBytes = new Uint8Array(filteredPositions.buffer);
