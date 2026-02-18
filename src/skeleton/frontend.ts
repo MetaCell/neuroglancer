@@ -168,6 +168,11 @@ const segmentColorTextureFormat = computeTextureFormat(
   DataType.FLOAT32,
   4,
 );
+const selectedNodeTextureFormat = computeTextureFormat(
+  new TextureFormat(),
+  DataType.FLOAT32,
+  1,
+);
 
 interface SkeletonLayerInterface {
   vertexAttributes: VertexAttributeRenderInfo[];
@@ -197,6 +202,7 @@ class RenderHelper extends RefCounted {
   );
   private vertexIdHelper;
   private segmentColorAttributeIndex: number | undefined;
+  private selectedNodeAttributeIndex: number | undefined;
   get vertexAttributes(): VertexAttributeRenderInfo[] {
     return this.base.vertexAttributes;
   }
@@ -230,6 +236,11 @@ class RenderHelper extends RefCounted {
     super();
     this.vertexIdHelper = this.registerDisposer(VertexIdHelper.get(this.gl));
     this.segmentColorAttributeIndex = base.segmentColorAttributeIndex;
+    const selectedNodeAttrIndex = this.vertexAttributes.findIndex(
+      (x) => x.name === selectedNodeAttribute.name,
+    );
+    this.selectedNodeAttributeIndex =
+      selectedNodeAttrIndex >= 0 ? selectedNodeAttrIndex : undefined;
     this.edgeShaderGetter = parameterizedEmitterDependentShaderGetter(
       this,
       this.gl,
@@ -370,12 +381,20 @@ void emitDefault() {
 }
 `);
           } else {
+            const selectedNodeExpression =
+              this.selectedNodeAttributeIndex === undefined
+                ? undefined
+                : `vCustom${this.selectedNodeAttributeIndex}`;
+            const borderColorExpression =
+              selectedNodeExpression === undefined
+                ? "color"
+                : `((${selectedNodeExpression} > 0.5) ? vec4(1.0, 1.0, 1.0, 1.0) : color)`;
             builder.addFragmentCode(`
 vec4 segmentColor() {
   return ${segmentColorExpression};
 }
 void emitRGBA(vec4 color) {
-  vec4 borderColor = color;
+  vec4 borderColor = ${borderColorExpression};
   vec4 circleColor = getCircleColor(color, borderColor);
   emit(vec4(circleColor.rgb * circleColor.a, circleColor.a), uPickID);
 }
@@ -941,6 +960,14 @@ const segmentColorAttribute: VertexAttributeRenderInfo = {
   glslDataType: "vec4",
 };
 
+const selectedNodeAttribute: VertexAttributeRenderInfo = {
+  dataType: DataType.FLOAT32,
+  numComponents: 1,
+  name: "selectedNodeAttr",
+  webglDataType: WebGL2RenderingContext.FLOAT,
+  glslDataType: "float",
+};
+
 export class SkeletonChunk extends Chunk implements SkeletonChunkInterface {
   declare source: SkeletonSource;
   vertexAttributes: Uint8Array;
@@ -1266,6 +1293,7 @@ interface SpatiallyIndexedSkeletonLayerOptions {
   gridLevel?: WatchableValueInterface<number>;
   lod?: WatchableValueInterface<number>;
   sources2d?: SpatiallyIndexedSkeletonSourceEntry[];
+  selectedNodeId?: WatchableValueInterface<number | undefined>;
 }
 
 type SpatiallyIndexedSkeletonView = "2d" | "3d";
@@ -1281,15 +1309,6 @@ export interface SpatiallyIndexedSkeletonNodeInfo {
   nodeId: number;
   segmentId: number;
   position: Float32Array;
-}
-
-export interface SpatiallyIndexedSkeletonEdgeHit {
-  segmentId: number;
-  nodeIdA: number;
-  nodeIdB: number;
-  parentNodeId: number;
-  closestPoint: Float32Array;
-  distanceSquared: number;
 }
 
 function getSpatialSkeletonGridSpacing(
@@ -1371,6 +1390,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
   redrawNeeded = new NullarySignal();
   vertexAttributes: VertexAttributeRenderInfo[];
   segmentColorAttributeIndex: number | undefined;
+  selectedNodeAttributeIndex: number | undefined;
   fallbackShaderParameters = new WatchableValue(
     getFallbackBuilderState(parseShaderUiControls(DEFAULT_FRAGMENT_MAIN)),
   );
@@ -1383,6 +1403,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     vertexPositionTextureFormat,
     segmentTextureFormat,
     segmentColorTextureFormat,
+    selectedNodeTextureFormat,
   ];
   private regularSkeletonLayerWatchable = new WatchableValue(false);
   private regularSkeletonLayerUserLayer: UserLayer | undefined;
@@ -1400,6 +1421,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
   >();
   gridLevel: WatchableValueInterface<number>;
   lod: WatchableValueInterface<number>;
+  private selectedNodeId: WatchableValueInterface<number | undefined> | undefined;
 
   private markFilteredDataDirty() {
     this.generation++;
@@ -1588,6 +1610,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       new WatchableValue(0);
     this.lod =
       options.lod ?? (displayState as any).skeletonLod ?? new WatchableValue(0);
+    this.selectedNodeId = options.selectedNodeId;
     registerRedrawWhenSegmentationDisplayState3DChanged(displayState, this);
     this.displayState.shaderError.value = undefined;
     const { skeletonRenderingOptions: renderingOptions } = displayState;
@@ -1601,8 +1624,18 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     this.vertexAttributes = [
       ...this.source.vertexAttributes,
       segmentColorAttribute,
+      selectedNodeAttribute,
     ];
-    this.segmentColorAttributeIndex = this.vertexAttributes.length - 1;
+    const segmentColorIndex = this.vertexAttributes.findIndex(
+      (x) => x.name === segmentColorAttribute.name,
+    );
+    this.segmentColorAttributeIndex =
+      segmentColorIndex >= 0 ? segmentColorIndex : undefined;
+    const selectedNodeIndex = this.vertexAttributes.findIndex(
+      (x) => x.name === selectedNodeAttribute.name,
+    );
+    this.selectedNodeAttributeIndex =
+      selectedNodeIndex >= 0 ? selectedNodeIndex : undefined;
     const markDirty = () => this.markFilteredDataDirty();
     // Monitor visible segment changes to update filtered buffers.
     this.registerDisposer(
@@ -1649,6 +1682,14 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
         markDirty(),
       ),
     );
+    const selectedNodeWatchable = this.selectedNodeId;
+    if (selectedNodeWatchable?.changed) {
+      this.registerDisposer(
+        selectedNodeWatchable.changed.add(() =>
+          markDirty(),
+        ),
+      );
+    }
     if (this.gridLevel !== undefined) {
       this.registerDisposer(
         this.gridLevel.changed.add(() =>
@@ -1864,110 +1905,6 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
               positions[index + 1],
               positions[index + 2],
             ]),
-            distanceSquared,
-          };
-        }
-      }
-    }
-    if (bestHit === undefined || bestDistanceSquared > maxDistanceSquared) {
-      return undefined;
-    }
-    return bestHit;
-  }
-
-  findClosestEdge(
-    position: ArrayLike<number>,
-    options: {
-      segmentId?: bigint;
-      maxDistance?: number;
-      lod?: number;
-    } = {},
-  ): SpatiallyIndexedSkeletonEdgeHit | undefined {
-    const x = Number(position[0]);
-    const y = Number(position[1]);
-    const z = Number(position[2]);
-    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
-      return undefined;
-    }
-    const segmentFilter =
-      options.segmentId === undefined ? undefined : Number(options.segmentId);
-    const useSegmentFilter = Number.isFinite(segmentFilter);
-    const maxDistanceSquared =
-      options.maxDistance === undefined
-        ? Number.POSITIVE_INFINITY
-        : options.maxDistance * options.maxDistance;
-    const targetLod = options.lod;
-    let bestHit: SpatiallyIndexedSkeletonEdgeHit | undefined;
-    let bestDistanceSquared = Number.POSITIVE_INFINITY;
-    const selectedSources = this.getCurrentSourcesForEditing();
-    for (const sourceEntry of selectedSources) {
-      const chunks = sourceEntry.chunkSource.chunks;
-      for (const chunk of chunks.values()) {
-        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
-        if (!this.lodMatches(typedChunk, targetLod)) continue;
-        if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
-        const data = this.getChunkPositionAndSegmentArrays(typedChunk);
-        if (data === undefined) continue;
-        const { positions, segmentIds } = data;
-        const nodeIdByVertex = new Int32Array(typedChunk.numVertices);
-        nodeIdByVertex.fill(-1);
-        for (const [nodeId, vertexIndex] of typedChunk.nodeMap.entries()) {
-          if (vertexIndex < 0 || vertexIndex >= typedChunk.numVertices) continue;
-          nodeIdByVertex[vertexIndex] = nodeId;
-        }
-        const indices = typedChunk.indices;
-        for (let i = 0; i < indices.length; i += 2) {
-          const vertexA = indices[i];
-          const vertexB = indices[i + 1];
-          if (
-            vertexA < 0 ||
-            vertexA >= typedChunk.numVertices ||
-            vertexB < 0 ||
-            vertexB >= typedChunk.numVertices
-          ) {
-            continue;
-          }
-          const nodeIdA = nodeIdByVertex[vertexA];
-          const nodeIdB = nodeIdByVertex[vertexB];
-          if (nodeIdA < 0 || nodeIdB < 0) continue;
-          const segmentId = Math.round(segmentIds[vertexA]);
-          if (useSegmentFilter && segmentId !== segmentFilter) continue;
-          const ax = positions[vertexA * 3];
-          const ay = positions[vertexA * 3 + 1];
-          const az = positions[vertexA * 3 + 2];
-          const bx = positions[vertexB * 3];
-          const by = positions[vertexB * 3 + 1];
-          const bz = positions[vertexB * 3 + 2];
-          const abx = bx - ax;
-          const aby = by - ay;
-          const abz = bz - az;
-          const apx = x - ax;
-          const apy = y - ay;
-          const apz = z - az;
-          const abLengthSquared = abx * abx + aby * aby + abz * abz;
-          const t = abLengthSquared <= 1e-12
-            ? 0
-            : Math.min(
-                1,
-                Math.max(0, (apx * abx + apy * aby + apz * abz) / abLengthSquared),
-              );
-          const cx = ax + abx * t;
-          const cy = ay + aby * t;
-          const cz = az + abz * t;
-          const dx = cx - x;
-          const dy = cy - y;
-          const dz = cz - z;
-          const distanceSquared = dx * dx + dy * dy + dz * dz;
-          if (distanceSquared >= bestDistanceSquared) continue;
-          bestDistanceSquared = distanceSquared;
-          const da = (ax - x) * (ax - x) + (ay - y) * (ay - y) + (az - z) * (az - z);
-          const db = (bx - x) * (bx - x) + (by - y) * (by - y) + (bz - z) * (bz - z);
-          bestHit = {
-            segmentId,
-            nodeIdA,
-            nodeIdB,
-            parentNodeId: da <= db ? nodeIdA : nodeIdB,
-            closestPoint: new Float32Array([cx, cy, cz]),
             distanceSquared,
           };
         }
@@ -2431,6 +2368,9 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       number,
       { include: boolean; color: Float32Array }
     >();
+    const selectedNodeId = this.selectedNodeId?.value;
+    const selectedLocalVertexIndex =
+      selectedNodeId === undefined ? undefined : chunk.nodeMap.get(selectedNodeId);
 
     const getSegmentInfo = (segmentId: number) => {
       let info = segmentInfo.get(segmentId);
@@ -2494,6 +2434,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     const extraPositions: number[] = [];
     const extraSegments: number[] = [];
     const extraColors: number[] = [];
+    const extraSelected: number[] = [];
     const extraVertexMap = new Map<number, number>();
     const chunkPositionCache = new Map<
       SpatiallyIndexedSkeletonChunk,
@@ -2545,6 +2486,15 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
           const cached = extraVertexMap.get(conn.parentId);
           if (cached !== undefined) {
             parentNew = cached;
+            if (selectedNodeId !== undefined && conn.parentId === selectedNodeId) {
+              const extraSelectedIndex = cached - vertexList.length;
+              if (
+                extraSelectedIndex >= 0 &&
+                extraSelectedIndex < extraSelected.length
+              ) {
+                extraSelected[extraSelectedIndex] = 1;
+              }
+            }
           } else {
             const parentPositions = getChunkPositions(parentNode.chunk);
             if (!parentPositions) {
@@ -2565,6 +2515,11 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
               info.color[1],
               info.color[2],
               info.color[3],
+            );
+            extraSelected.push(
+              selectedNodeId !== undefined && conn.parentId === selectedNodeId
+                ? 1
+                : 0,
             );
           }
         }
@@ -2593,6 +2548,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     const filteredPositions = new Float32Array(totalVertexCount * 3);
     const filteredSegments = new Float32Array(totalVertexCount);
     const filteredColors = new Float32Array(totalVertexCount * 4);
+    const filteredSelected = new Float32Array(totalVertexCount);
     for (let i = 0; i < vertexList.length; ++i) {
       const oldIndex = vertexList[i];
       const srcStart = oldIndex * 3;
@@ -2607,6 +2563,10 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       if (info) {
         filteredColors.set(info.color, i * 4);
       }
+      filteredSelected[i] =
+        selectedLocalVertexIndex !== undefined && oldIndex === selectedLocalVertexIndex
+          ? 1
+          : 0;
     }
     for (let i = 0; i < extraVertexCount; ++i) {
       const dstVertex = vertexList.length + i;
@@ -2621,21 +2581,31 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       filteredColors[dstVertex * 4 + 1] = extraColors[colorStart + 1];
       filteredColors[dstVertex * 4 + 2] = extraColors[colorStart + 2];
       filteredColors[dstVertex * 4 + 3] = extraColors[colorStart + 3];
+      filteredSelected[dstVertex] = extraSelected[i] ?? 0;
     }
 
     const posBytes = new Uint8Array(filteredPositions.buffer);
     const segBytes = new Uint8Array(filteredSegments.buffer);
     const colorBytes = new Uint8Array(filteredColors.buffer);
+    const selectedBytes = new Uint8Array(filteredSelected.buffer);
     const vertexBytes = new Uint8Array(
-      posBytes.byteLength + segBytes.byteLength + colorBytes.byteLength,
+      posBytes.byteLength +
+        segBytes.byteLength +
+        colorBytes.byteLength +
+        selectedBytes.byteLength,
     );
     vertexBytes.set(posBytes, 0);
     vertexBytes.set(segBytes, posBytes.byteLength);
     vertexBytes.set(colorBytes, posBytes.byteLength + segBytes.byteLength);
+    vertexBytes.set(
+      selectedBytes,
+      posBytes.byteLength + segBytes.byteLength + colorBytes.byteLength,
+    );
     const vertexOffsets = new Uint32Array([
       0,
       posBytes.byteLength,
       posBytes.byteLength + segBytes.byteLength,
+      posBytes.byteLength + segBytes.byteLength + colorBytes.byteLength,
     ]);
 
     disposeFilteredTextures();

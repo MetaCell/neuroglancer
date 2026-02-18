@@ -39,6 +39,11 @@ const CATMAID_NO_MATCHING_NODE_PROVIDER_ERROR = "Could not find matching node pr
 
 type CatmaidStatePayload = string | object;
 
+export interface CatmaidAddNodeResult {
+    treenodeId: number;
+    skeletonId: number;
+}
+
 function includesNoMatchingNodeProviderError(value: unknown): boolean {
     return typeof value === "string" && value.includes(CATMAID_NO_MATCHING_NODE_PROVIDER_ERROR);
 }
@@ -477,23 +482,20 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
         });
     }
 
-    async addNode(
+    async addNodeWithInfo(
         skeletonId: number,
         x: number,
         y: number,
         z: number,
         parentId?: number,
         state?: CatmaidStatePayload,
-    ): Promise<number> {
+    ): Promise<CatmaidAddNodeResult> {
         void skeletonId;
-        if (parentId === undefined) {
-            throw new Error("CATMAID addNode requires a parent node.");
-        }
         const body = new URLSearchParams({
             x: x.toString(),
             y: y.toString(),
             z: z.toString(),
-            parent_id: parentId.toString(),
+            parent_id: (parentId ?? -1).toString(),
         });
         appendCatmaidState(body, state);
 
@@ -502,10 +504,36 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
             body: body,
         });
         const treenodeId = Number(res?.treenode_id);
+        const nextSkeletonId = Number(res?.skeleton_id);
         if (!Number.isFinite(treenodeId)) {
             throw new Error("CATMAID treenode/create did not return a valid treenode_id.");
         }
-        return treenodeId;
+        if (!Number.isFinite(nextSkeletonId)) {
+            throw new Error("CATMAID treenode/create did not return a valid skeleton_id.");
+        }
+        return {
+            treenodeId,
+            skeletonId: nextSkeletonId,
+        };
+    }
+
+    async addNode(
+        skeletonId: number,
+        x: number,
+        y: number,
+        z: number,
+        parentId?: number,
+        state?: CatmaidStatePayload,
+    ): Promise<number> {
+        const result = await this.addNodeWithInfo(
+            skeletonId,
+            x,
+            y,
+            z,
+            parentId,
+            state,
+        );
+        return result.treenodeId;
     }
 
     async mergeSkeletons(
