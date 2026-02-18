@@ -2264,8 +2264,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
   ) {
     const targetLod = options.lod;
     const selectedSources = this.getCurrentSourcesForEditing();
-    let targetChunk: SpatiallyIndexedSkeletonChunk | undefined;
-    let targetVertexIndex: number | undefined;
+    const deletedVertexByChunk = new Map<SpatiallyIndexedSkeletonChunk, number>();
     for (const sourceEntry of selectedSources) {
       const chunks = sourceEntry.chunkSource.chunks;
       for (const chunk of chunks.values()) {
@@ -2274,57 +2273,85 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
         if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
         const vertexIndex = typedChunk.nodeMap.get(nodeId);
         if (vertexIndex === undefined) continue;
-        targetChunk = typedChunk;
-        targetVertexIndex = vertexIndex;
-        break;
+        if (vertexIndex < 0 || vertexIndex >= typedChunk.numVertices) continue;
+        deletedVertexByChunk.set(typedChunk, vertexIndex);
       }
-      if (targetChunk !== undefined) break;
     }
-    if (targetChunk === undefined || targetVertexIndex === undefined) {
+    if (deletedVertexByChunk.size === 0) {
       return false;
     }
-    if (targetVertexIndex < 0 || targetVertexIndex >= targetChunk.numVertices) {
-      return false;
-    }
-    const data = this.getChunkPositionAndSegmentArrays(targetChunk);
-    if (data === undefined) return false;
-    const oldNumVertices = targetChunk.numVertices;
-    const { positions: oldPositions, segmentIds: oldSegmentIds } = data;
-    const newNumVertices = Math.max(0, oldNumVertices - 1);
-    const newPositions = new Float32Array(newNumVertices * 3);
-    const newSegmentIds = new Float32Array(newNumVertices);
-    let dstVertex = 0;
-    for (let srcVertex = 0; srcVertex < oldNumVertices; ++srcVertex) {
-      if (srcVertex === targetVertexIndex) continue;
-      const srcOffset = srcVertex * 3;
-      const dstOffset = dstVertex * 3;
-      newPositions[dstOffset] = oldPositions[srcOffset];
-      newPositions[dstOffset + 1] = oldPositions[srcOffset + 1];
-      newPositions[dstOffset + 2] = oldPositions[srcOffset + 2];
-      newSegmentIds[dstVertex] = oldSegmentIds[srcVertex];
-      dstVertex++;
-    }
+    const gl = this.gl;
+    const changedChunks = new Set<SpatiallyIndexedSkeletonChunk>();
 
-    const remapVertexIndex = (vertexIndex: number) =>
-      vertexIndex > targetVertexIndex ? vertexIndex - 1 : vertexIndex;
-    const newNodeMap = new Map<number, number>();
-    for (const [candidateNodeId, vertexIndex] of targetChunk.nodeMap.entries()) {
-      if (candidateNodeId === nodeId) continue;
-      newNodeMap.set(candidateNodeId, remapVertexIndex(vertexIndex));
-    }
-
-    const newIndices: number[] = [];
-    const oldIndices = targetChunk.indices;
-    for (let i = 0; i < targetChunk.numIndices; i += 2) {
-      const a = oldIndices[i];
-      const b = oldIndices[i + 1];
-      if (a === targetVertexIndex || b === targetVertexIndex) {
+    for (const [targetChunk, targetVertexIndex] of deletedVertexByChunk) {
+      const data = this.getChunkPositionAndSegmentArrays(targetChunk);
+      if (data === undefined) {
         continue;
       }
-      newIndices.push(remapVertexIndex(a), remapVertexIndex(b));
+      const oldNumVertices = targetChunk.numVertices;
+      const { positions: oldPositions, segmentIds: oldSegmentIds } = data;
+      const newNumVertices = Math.max(0, oldNumVertices - 1);
+      const newPositions = new Float32Array(newNumVertices * 3);
+      const newSegmentIds = new Float32Array(newNumVertices);
+      let dstVertex = 0;
+      for (let srcVertex = 0; srcVertex < oldNumVertices; ++srcVertex) {
+        if (srcVertex === targetVertexIndex) continue;
+        const srcOffset = srcVertex * 3;
+        const dstOffset = dstVertex * 3;
+        newPositions[dstOffset] = oldPositions[srcOffset];
+        newPositions[dstOffset + 1] = oldPositions[srcOffset + 1];
+        newPositions[dstOffset + 2] = oldPositions[srcOffset + 2];
+        newSegmentIds[dstVertex] = oldSegmentIds[srcVertex];
+        dstVertex++;
+      }
+
+      const remapVertexIndex = (vertexIndex: number) =>
+        vertexIndex > targetVertexIndex ? vertexIndex - 1 : vertexIndex;
+      const newNodeMap = new Map<number, number>();
+      for (const [candidateNodeId, vertexIndex] of targetChunk.nodeMap.entries()) {
+        if (candidateNodeId === nodeId) continue;
+        newNodeMap.set(candidateNodeId, remapVertexIndex(vertexIndex));
+      }
+
+      const newIndices: number[] = [];
+      const oldIndices = targetChunk.indices;
+      for (let i = 0; i < targetChunk.numIndices; i += 2) {
+        const a = oldIndices[i];
+        const b = oldIndices[i + 1];
+        if (a === targetVertexIndex || b === targetVertexIndex) {
+          continue;
+        }
+        newIndices.push(remapVertexIndex(a), remapVertexIndex(b));
+      }
+
+      const positionBytes = new Uint8Array(newPositions.buffer);
+      const segmentBytes = new Uint8Array(newSegmentIds.buffer);
+      const vertexBytes = new Uint8Array(
+        positionBytes.byteLength + segmentBytes.byteLength,
+      );
+      vertexBytes.set(positionBytes, 0);
+      vertexBytes.set(segmentBytes, positionBytes.byteLength);
+      const vertexOffsets = new Uint32Array([0, positionBytes.byteLength]);
+
+      for (const texture of targetChunk.vertexAttributeTextures) {
+        gl.deleteTexture(texture);
+      }
+      targetChunk.vertexAttributes = vertexBytes;
+      targetChunk.vertexAttributeOffsets = vertexOffsets;
+      targetChunk.numVertices = newNumVertices;
+      targetChunk.vertexAttributeTextures = uploadVertexAttributesToGPU(
+        gl,
+        targetChunk.vertexAttributes,
+        targetChunk.vertexAttributeOffsets,
+        targetChunk.source.attributeTextureFormats,
+      );
+      targetChunk.nodeMap = newNodeMap;
+      targetChunk.indices = new Uint32Array(newIndices);
+      targetChunk.numIndices = targetChunk.indices.length;
+      targetChunk.indexBuffer.setData(targetChunk.indices);
+      changedChunks.add(targetChunk);
     }
 
-    const updatedMissingConnectionChunks = new Set<SpatiallyIndexedSkeletonChunk>();
     for (const sourceEntry of selectedSources) {
       const chunks = sourceEntry.chunkSource.chunks;
       for (const chunk of chunks.values()) {
@@ -2332,6 +2359,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
         if (!this.lodMatches(typedChunk, targetLod)) continue;
         if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
         if (typedChunk.missingConnections.length === 0) continue;
+        const deletedVertexIndex = deletedVertexByChunk.get(typedChunk);
         let chunkChanged = false;
         const nextConnections: typeof typedChunk.missingConnections = [];
         for (const connection of typedChunk.missingConnections) {
@@ -2339,17 +2367,16 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
             chunkChanged = true;
             continue;
           }
-          if (typedChunk === targetChunk) {
-            if (connection.vertexIndex === targetVertexIndex) {
+          if (deletedVertexIndex !== undefined) {
+            if (connection.vertexIndex === deletedVertexIndex) {
               chunkChanged = true;
               continue;
             }
-            const remappedVertexIndex = remapVertexIndex(connection.vertexIndex);
-            if (remappedVertexIndex !== connection.vertexIndex) {
+            if (connection.vertexIndex > deletedVertexIndex) {
               chunkChanged = true;
               nextConnections.push({
                 ...connection,
-                vertexIndex: remappedVertexIndex,
+                vertexIndex: connection.vertexIndex - 1,
               });
               continue;
             }
@@ -2358,37 +2385,14 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
         }
         if (chunkChanged) {
           typedChunk.missingConnections = nextConnections;
-          updatedMissingConnectionChunks.add(typedChunk);
+          changedChunks.add(typedChunk);
         }
       }
     }
 
-    const positionBytes = new Uint8Array(newPositions.buffer);
-    const segmentBytes = new Uint8Array(newSegmentIds.buffer);
-    const vertexBytes = new Uint8Array(
-      positionBytes.byteLength + segmentBytes.byteLength,
-    );
-    vertexBytes.set(positionBytes, 0);
-    vertexBytes.set(segmentBytes, positionBytes.byteLength);
-    const vertexOffsets = new Uint32Array([0, positionBytes.byteLength]);
-
-    const gl = this.gl;
-    for (const texture of targetChunk.vertexAttributeTextures) {
-      gl.deleteTexture(texture);
+    if (changedChunks.size === 0) {
+      return false;
     }
-    targetChunk.vertexAttributes = vertexBytes;
-    targetChunk.vertexAttributeOffsets = vertexOffsets;
-    targetChunk.numVertices = newNumVertices;
-    targetChunk.vertexAttributeTextures = uploadVertexAttributesToGPU(
-      gl,
-      targetChunk.vertexAttributes,
-      targetChunk.vertexAttributeOffsets,
-      targetChunk.source.attributeTextureFormats,
-    );
-    targetChunk.nodeMap = newNodeMap;
-    targetChunk.indices = new Uint32Array(newIndices);
-    targetChunk.numIndices = targetChunk.indices.length;
-    targetChunk.indexBuffer.setData(targetChunk.indices);
 
     const invalidateFilteredChunk = (chunk: SpatiallyIndexedSkeletonChunk) => {
       if (chunk.filteredVertexAttributeTextures) {
@@ -2405,11 +2409,8 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       chunk.numFilteredIndices = 0;
       chunk.numFilteredVertices = 0;
     };
-    invalidateFilteredChunk(targetChunk);
-    for (const chunk of updatedMissingConnectionChunks) {
-      if (chunk !== targetChunk) {
-        invalidateFilteredChunk(chunk);
-      }
+    for (const chunk of changedChunks) {
+      invalidateFilteredChunk(chunk);
     }
     this.markFilteredDataDirty();
     return true;
