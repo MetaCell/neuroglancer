@@ -376,8 +376,74 @@ export class SpatialSkeletonEditTab extends Tab {
       StatusMessage.showTemporaryMessage(`Set node ${node.nodeId} as true end.`);
     };
 
+    const getDirectChildNodeIds = (node: SpatiallyIndexedSkeletonNodeInfo) => {
+      const segmentNodes = nodesBySegment.get(node.segmentId) ?? [];
+      const childNodeIds: number[] = [];
+      for (const candidate of segmentNodes) {
+        if (candidate.parentNodeId !== node.nodeId) continue;
+        childNodeIds.push(candidate.nodeId);
+      }
+      childNodeIds.sort((a, b) => a - b);
+      return childNodeIds;
+    };
+
+    const getSplitSubtreeSegmentUpdates = (
+      segmentId: number,
+      childSplits: Array<{
+        childNodeId: number;
+        newSkeletonId: number | undefined;
+      }>,
+    ) => {
+      const segmentNodes = nodesBySegment.get(segmentId) ?? [];
+      if (segmentNodes.length === 0 || childSplits.length === 0) {
+        return [] as Array<{ nodeId: number; segmentId: number }>;
+      }
+      const childrenByParent = new Map<number, number[]>();
+      for (const candidate of segmentNodes) {
+        const parentNodeId = candidate.parentNodeId;
+        if (parentNodeId === undefined) continue;
+        let children = childrenByParent.get(parentNodeId);
+        if (children === undefined) {
+          children = [];
+          childrenByParent.set(parentNodeId, children);
+        }
+        children.push(candidate.nodeId);
+      }
+      const segmentByNodeId = new Map<number, number>();
+      for (const split of childSplits) {
+        const nextSegmentId = split.newSkeletonId;
+        if (nextSegmentId === undefined || !Number.isFinite(nextSegmentId)) {
+          continue;
+        }
+        const normalizedSegmentId = Math.round(nextSegmentId);
+        if (normalizedSegmentId === segmentId) continue;
+        const queue = [split.childNodeId];
+        const visited = new Set<number>();
+        while (queue.length > 0) {
+          const nodeId = queue.shift()!;
+          if (visited.has(nodeId)) continue;
+          visited.add(nodeId);
+          segmentByNodeId.set(nodeId, normalizedSegmentId);
+          const children = childrenByParent.get(nodeId) ?? [];
+          for (const childNodeId of children) {
+            queue.push(childNodeId);
+          }
+        }
+      }
+      return [...segmentByNodeId.entries()].map(([nodeId, nextSegmentId]) => ({
+        nodeId,
+        segmentId: nextSegmentId,
+      }));
+    };
+
     const deleteNode = (node: SpatiallyIndexedSkeletonNodeInfo) => {
       if (!ensureActionsAllowed()) return;
+      if (!layer.spatialSkeletonEditMode.value) {
+        StatusMessage.showTemporaryMessage(
+          "Enable Edit mode before deleting nodes.",
+        );
+        return;
+      }
       if (pendingDeleteNodes.has(node.nodeId)) return;
       const skeletonLayer = layer.getSpatiallyIndexedSkeletonLayer();
       if (skeletonLayer === undefined) {
@@ -397,8 +463,31 @@ export class SpatialSkeletonEditTab extends Tab {
       updateList();
       void (async () => {
         try {
-          await client.deleteNode(node.nodeId);
+          const directChildNodeIds = getDirectChildNodeIds(node);
+          const result = await client.deleteNodeWithInfo(node.nodeId, {
+            childNodeIds: directChildNodeIds,
+          });
+          const splitSegmentUpdates = getSplitSubtreeSegmentUpdates(
+            node.segmentId,
+            result.childSplits,
+          );
+          if (splitSegmentUpdates.length > 0) {
+            skeletonLayer.setNodeSegmentIds(splitSegmentUpdates);
+          }
           skeletonLayer.deleteNode(node.nodeId);
+          const newSkeletonIds = result.newSkeletonIds.filter(
+            (segmentId) => segmentId !== node.segmentId,
+          );
+          if (newSkeletonIds.length > 0) {
+            const segmentationGroupState = layer.displayState.segmentationGroupState.value;
+            const { visibleSegments, selectedSegments } = segmentationGroupState;
+            visibleSegments.delete(BigInt(node.segmentId));
+            selectedSegments.delete(BigInt(node.segmentId));
+            for (const segmentId of newSkeletonIds) {
+              visibleSegments.add(BigInt(segmentId));
+            }
+            layer.selectSegment(BigInt(newSkeletonIds[0]), false);
+          }
           if (layer.selectedSpatialSkeletonNodeId.value === node.nodeId) {
             layer.selectedSpatialSkeletonNodeId.value = undefined;
           }
@@ -406,7 +495,13 @@ export class SpatialSkeletonEditTab extends Tab {
             layer.spatialSkeletonTreeEndNodeId.value = undefined;
           }
           layer.markSpatialSkeletonNodeDataChanged();
-          StatusMessage.showTemporaryMessage(`Deleted node ${node.nodeId}.`);
+          if (newSkeletonIds.length > 0) {
+            StatusMessage.showTemporaryMessage(
+              `Deleted node ${node.nodeId}. Activated split skeleton(s): ${newSkeletonIds.join(", ")}.`,
+            );
+          } else {
+            StatusMessage.showTemporaryMessage(`Deleted node ${node.nodeId}.`);
+          }
           refreshNodes();
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -649,6 +744,12 @@ export class SpatialSkeletonEditTab extends Tab {
 
           const actions = document.createElement("div");
           actions.className = "neuroglancer-spatial-skeleton-node-actions";
+          let deleteActionTitle = "delete node";
+          if (pendingDeleteNodes.has(node.nodeId)) {
+            deleteActionTitle = "deleting node";
+          } else if (!layer.spatialSkeletonEditMode.value) {
+            deleteActionTitle = "enable Edit mode to delete node";
+          }
           if (type === "regular") {
             actions.appendChild(
               makeRowActionButton(
@@ -662,9 +763,11 @@ export class SpatialSkeletonEditTab extends Tab {
           actions.appendChild(
             makeRowActionButton(
               svg_bin,
-              pendingDeleteNodes.has(node.nodeId) ? "deleting node" : "delete node",
+              deleteActionTitle,
               () => deleteNode(node),
-              !actionsAllowed || pendingDeleteNodes.has(node.nodeId),
+              !actionsAllowed ||
+                !layer.spatialSkeletonEditMode.value ||
+                pendingDeleteNodes.has(node.nodeId),
             ),
           );
 

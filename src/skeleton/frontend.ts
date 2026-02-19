@@ -2416,6 +2416,86 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     return true;
   }
 
+  setNodeSegmentIds(
+    updates: Iterable<{
+      nodeId: number;
+      segmentId: number | bigint;
+    }>,
+    options: {
+      lod?: number;
+    } = {},
+  ) {
+    const segmentByNodeId = new Map<number, number>();
+    for (const update of updates) {
+      const nodeId = Number(update.nodeId);
+      const segmentId = Number(update.segmentId);
+      if (!Number.isFinite(nodeId) || !Number.isFinite(segmentId)) {
+        continue;
+      }
+      const roundedNodeId = Math.round(nodeId);
+      if (roundedNodeId <= 0) continue;
+      segmentByNodeId.set(roundedNodeId, Math.round(segmentId));
+    }
+    if (segmentByNodeId.size === 0) {
+      return false;
+    }
+
+    const targetLod = options.lod;
+    const selectedSources = this.getCurrentSourcesForEditing();
+    let changed = false;
+    for (const sourceEntry of selectedSources) {
+      const chunks = sourceEntry.chunkSource.chunks;
+      for (const chunk of chunks.values()) {
+        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
+        if (!this.lodMatches(typedChunk, targetLod)) continue;
+        if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
+        const data = this.getChunkPositionAndSegmentArrays(typedChunk);
+        if (data === undefined) continue;
+        const { segmentIds } = data;
+        for (const [nodeId, vertexIndex] of typedChunk.nodeMap.entries()) {
+          const nextSegmentId = segmentByNodeId.get(nodeId);
+          if (nextSegmentId === undefined) continue;
+          if (vertexIndex < 0 || vertexIndex >= typedChunk.numVertices) {
+            continue;
+          }
+          if (Math.round(segmentIds[vertexIndex]) === nextSegmentId) {
+            continue;
+          }
+          segmentIds[vertexIndex] = nextSegmentId;
+          changed = true;
+        }
+        if (typedChunk.missingConnections.length === 0) {
+          continue;
+        }
+        let chunkConnectionsChanged = false;
+        const nextConnections: typeof typedChunk.missingConnections = [];
+        for (const connection of typedChunk.missingConnections) {
+          const nextSegmentId = segmentByNodeId.get(connection.nodeId);
+          if (
+            nextSegmentId !== undefined &&
+            Math.round(connection.skeletonId) !== nextSegmentId
+          ) {
+            chunkConnectionsChanged = true;
+            nextConnections.push({
+              ...connection,
+              skeletonId: nextSegmentId,
+            });
+          } else {
+            nextConnections.push(connection);
+          }
+        }
+        if (chunkConnectionsChanged) {
+          typedChunk.missingConnections = nextConnections;
+          changed = true;
+        }
+      }
+    }
+    if (changed) {
+      this.markFilteredDataDirty();
+    }
+    return changed;
+  }
+
   setNodePosition(
     nodeId: number,
     position: ArrayLike<number>,

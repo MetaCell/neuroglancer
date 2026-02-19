@@ -23,7 +23,12 @@ export interface SpatiallyIndexedSkeletonSource {
         parentId?: number,
     ): Promise<number>;
     moveNode(nodeId: number, x: number, y: number, z: number): Promise<void>;
-    deleteNode(nodeId: number): Promise<void>;
+    deleteNode(
+        nodeId: number,
+        options: {
+            childNodeIds: readonly number[];
+        },
+    ): Promise<void>;
 
     mergeSkeletons(skeletonId1: number, skeletonId2: number): Promise<void>;
     splitSkeleton(nodeId: number): Promise<void>;
