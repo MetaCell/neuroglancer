@@ -143,6 +143,7 @@ function getViewSpecificSkeletonRenderingControl(
     {
       label: `Skeleton mode (${viewName})`,
       toolJson: `${json_keys.SKELETON_RENDERING_JSON_KEY}.mode${viewName}`,
+      sectionKey: SKELETON_SECTION_JSON_KEY,
       isValid: (layer) => layer.hasSkeletonsLayer,
       ...enumLayerControl(
         (layer) =>
@@ -154,6 +155,7 @@ function getViewSpecificSkeletonRenderingControl(
     {
       label: `Line width (${viewName})`,
       toolJson: `${json_keys.SKELETON_RENDERING_JSON_KEY}.lineWidth${viewName}`,
+      sectionKey: SKELETON_SECTION_JSON_KEY,
       isValid: (layer) => layer.hasSkeletonsLayer,
       toolDescription: `Skeleton line width (${viewName})`,
       title: `Skeleton line width (${viewName})`,
