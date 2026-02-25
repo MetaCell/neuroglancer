@@ -48,15 +48,14 @@ const SPATIAL_SKELETON_EDIT_INPUT_EVENT_MAP = EventActionMap.fromObject({
 });
 
 const DRAG_START_DISTANCE_PX = 4;
+const SPATIAL_SKELETON_EDIT_DEBUG_LOGS = true;
 
-interface PendingNodeAddSelection {
-  segmentId?: number;
-  parentNodeId?: number;
-  source: "node" | "empty";
-  anchorPosition: Float32Array;
-  anchorClientX: number;
-  anchorClientY: number;
-  anchorPanel?: RenderedDataPanel;
+function logSpatialSkeletonEdit(
+  label: string,
+  data: Record<string, unknown> = {},
+) {
+  if (!SPATIAL_SKELETON_EDIT_DEBUG_LOGS) return;
+  console.debug(`[SpatialSkeletonEdit] ${label}`, data);
 }
 
 function formatVec3(value: ArrayLike<number> | undefined) {
@@ -192,6 +191,10 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
   ): Promise<CatmaidAddNodeResult> {
     const client = this.getCatmaidClient(skeletonLayer);
     if (client === undefined) {
+      logSpatialSkeletonEdit("commit-add-node-no-client", {
+        parentNodeId,
+        layerType: skeletonLayer.constructor.name,
+      });
       throw new Error(
         "Unable to resolve CATMAID client for active spatial skeleton source.",
       );
@@ -199,7 +202,19 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
     const x = Number(position[0]);
     const y = Number(position[1]);
     const z = Number(position[2]);
+    logSpatialSkeletonEdit("commit-add-node-request", {
+      parentNodeId,
+      x,
+      y,
+      z,
+      layerType: skeletonLayer.constructor.name,
+    });
     const nodeInfo = await client.addNodeWithInfo(0, x, y, z, parentNodeId);
+    logSpatialSkeletonEdit("commit-add-node-response", {
+      parentNodeId,
+      treenodeId: nodeInfo.treenodeId,
+      skeletonId: nodeInfo.skeletonId,
+    });
     StatusMessage.showTemporaryMessage(
       `Added node ${nodeInfo.treenodeId} on segment ${nodeInfo.skeletonId}.`,
     );
@@ -303,7 +318,9 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
     };
 
     const setDebug = (_key: string, _value: string) => {};
-    const debugLog = (_label: string, _data: Record<string, unknown> = {}) => {};
+    const debugLog = (label: string, data: Record<string, unknown> = {}) => {
+      logSpatialSkeletonEdit(label, data);
+    };
 
     const disableWithMessage = (message: string) => {
       setStatus(message);
@@ -345,65 +362,62 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
       levels: layer.displayState.spatialSkeletonGridLevels.value.length,
     });
     activation.bindInputEventMap(SPATIAL_SKELETON_EDIT_INPUT_EVENT_MAP);
-    let pendingAddSelection: PendingNodeAddSelection | undefined;
-    const updatePendingDebug = () => {
-      if (pendingAddSelection === undefined) {
-        setDebug("pendingAdd", "none");
-        return;
-      }
-      const parent =
-        pendingAddSelection.parentNodeId === undefined
-          ? "none"
-          : String(pendingAddSelection.parentNodeId);
-      const segment =
-        pendingAddSelection.segmentId === undefined
-          ? "new"
-          : String(pendingAddSelection.segmentId);
-      setDebug(
-        "pendingAdd",
-        `${pendingAddSelection.source} seg=${segment} parent=${parent}`,
+    const setReadyStatus = () => {
+      setStatus(
+        "Edit mode enabled. Left click toggles node selection. Shift+click adds a node (root if no node is selected). Drag nodes to move.",
       );
     };
-    const clearPendingAddSelection = () => {
-      pendingAddSelection = undefined;
-      updatePendingDebug();
+    setReadyStatus();
+    let stickyParentNodeId: number | undefined;
+    let stickyParentPosition: Float32Array | undefined;
+    let stickyParentClientX: number | undefined;
+    let stickyParentClientY: number | undefined;
+    let lastResolvedWorldPosition: Float32Array | undefined;
+    const rememberWorldPosition = (position: Float32Array | undefined) => {
+      if (position === undefined) return;
+      if (
+        !Number.isFinite(position[0]) ||
+        !Number.isFinite(position[1]) ||
+        !Number.isFinite(position[2])
+      ) {
+        return;
+      }
+      lastResolvedWorldPosition = new Float32Array(position);
     };
-    const setPendingAddSelection = (selection: PendingNodeAddSelection) => {
-      pendingAddSelection = selection;
-      updatePendingDebug();
+    const clearStickyParent = () => {
+      stickyParentNodeId = undefined;
+      stickyParentPosition = undefined;
+      stickyParentClientX = undefined;
+      stickyParentClientY = undefined;
     };
-    const setReadyStatus = () => {
-      if (pendingAddSelection === undefined) {
-        setStatus(
-          "Edit mode enabled. Left click selects a node or empty space. Second click adds a node. Drag nodes to move.",
-        );
-      } else {
-        const parent =
-          pendingAddSelection.parentNodeId === undefined
-            ? "none"
-            : String(pendingAddSelection.parentNodeId);
-        const segment =
-          pendingAddSelection.segmentId === undefined
-            ? "new"
-            : String(pendingAddSelection.segmentId);
-        if (pendingAddSelection.parentNodeId === undefined) {
-          setStatus(
-            "Empty-space selection armed. Click to add a root node.",
-          );
-        } else {
-          setStatus(
-            `Selection set (segment ${segment}, parent ${parent}). Click to add node.`,
-          );
-        }
+    const setStickyParent = (
+      nodeId: number,
+      position: Float32Array,
+      clientX?: number,
+      clientY?: number,
+    ) => {
+      stickyParentNodeId = nodeId;
+      stickyParentPosition = new Float32Array(position);
+      if (clientX !== undefined && Number.isFinite(clientX)) {
+        stickyParentClientX = clientX;
+      }
+      if (clientY !== undefined && Number.isFinite(clientY)) {
+        stickyParentClientY = clientY;
       }
     };
-    setReadyStatus();
     activation.registerEventListener(
       window,
       "mousedown",
       (event: MouseEvent) => {
         if (event.button !== 0) return;
         setDebug("windowMouseDown", formatMouseEvent(event));
+        debugLog("window-mousedown-capture", {
+          mouse: formatMouseEvent(event),
+          targetType:
+            event.target instanceof Element
+              ? event.target.tagName.toLowerCase()
+              : typeof event.target,
+        });
       },
       { capture: true },
     );
@@ -464,17 +478,27 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
           return;
         }
         const actionPanel = this.getRenderedDataPanelForEvent(event.detail);
+        debugLog("resolved-action-panel", {
+          panel: actionPanel?.constructor?.name ?? "none",
+          pickedLayer: this.mouseState.pickedRenderLayer?.constructor?.name ?? "none",
+        });
         const getPanelFallbackPosition = (
           panel: RenderedDataPanel,
           targetEvent: MouseEvent,
+          anchorOverride?: Float32Array,
         ): Float32Array | undefined => {
-          const localPosition = layer.localPosition.value;
-          if (localPosition.length < 3) return undefined;
-          const anchor = new Float32Array([
-            Number(localPosition[0]),
-            Number(localPosition[1]),
-            Number(localPosition[2]),
-          ]);
+          const anchor = new Float32Array(3);
+          if (anchorOverride !== undefined) {
+            anchor[0] = Number(anchorOverride[0]);
+            anchor[1] = Number(anchorOverride[1]);
+            anchor[2] = Number(anchorOverride[2]);
+          } else {
+            const localPosition = layer.localPosition.value;
+            if (localPosition.length < 3) return undefined;
+            anchor[0] = Number(localPosition[0]);
+            anchor[1] = Number(localPosition[1]);
+            anchor[2] = Number(localPosition[2]);
+          }
           if (
             !Number.isFinite(anchor[0]) ||
             !Number.isFinite(anchor[1]) ||
@@ -503,49 +527,120 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
         };
         const resolveClickPosition = (
           targetEvent: MouseEvent,
-          selection: PendingNodeAddSelection | undefined,
+          selectedParentNodeId?: number,
         ) => {
           const directMousePosition = this.getMousePosition();
           if (directMousePosition !== undefined) {
             return directMousePosition;
           }
-          if (selection?.anchorPanel !== undefined) {
-            const translated = new Float32Array(selection.anchorPosition);
-            selection.anchorPanel.translateDataPointByViewportPixels(
-              translated as unknown as vec3,
-              selection.anchorPosition as unknown as vec3,
-              targetEvent.clientX - selection.anchorClientX,
-              targetEvent.clientY - selection.anchorClientY,
-            );
-            if (
-              Number.isFinite(translated[0]) &&
-              Number.isFinite(translated[1]) &&
-              Number.isFinite(translated[2])
-            ) {
-              return translated;
-            }
-          }
-          if (selection !== undefined) {
-            return new Float32Array(selection.anchorPosition);
-          }
           if (actionPanel !== undefined) {
+            let anchorOverride: Float32Array | undefined;
+            if (selectedParentNodeId !== undefined) {
+              anchorOverride = getSelectedNodePositionFallback(selectedParentNodeId);
+            }
+            if (anchorOverride === undefined) {
+              anchorOverride = stickyParentPosition;
+            }
+            if (anchorOverride === undefined) {
+              anchorOverride = lastResolvedWorldPosition;
+            }
+            if (anchorOverride !== undefined) {
+              const hasStickyParentScreenAnchor =
+                selectedParentNodeId !== undefined &&
+                stickyParentNodeId === selectedParentNodeId &&
+                stickyParentClientX !== undefined &&
+                stickyParentClientY !== undefined;
+              if (hasStickyParentScreenAnchor) {
+                const anchorClientX = stickyParentClientX!;
+                const anchorClientY = stickyParentClientY!;
+                const projectedFromParentScreen = new Float32Array(anchorOverride);
+                actionPanel.translateDataPointByViewportPixels(
+                  projectedFromParentScreen as unknown as vec3,
+                  anchorOverride as unknown as vec3,
+                  targetEvent.clientX - anchorClientX,
+                  targetEvent.clientY - anchorClientY,
+                );
+                if (
+                  Number.isFinite(projectedFromParentScreen[0]) &&
+                  Number.isFinite(projectedFromParentScreen[1]) &&
+                  Number.isFinite(projectedFromParentScreen[2])
+                ) {
+                  debugLog("click-position-projected-from-parent-screen-anchor", {
+                    anchor: formatVec3(anchorOverride),
+                    anchorClientX,
+                    anchorClientY,
+                    targetClientX: targetEvent.clientX,
+                    targetClientY: targetEvent.clientY,
+                    projected: formatVec3(projectedFromParentScreen),
+                  });
+                  return projectedFromParentScreen;
+                }
+              }
+              const projectedFromAnchor = getPanelFallbackPosition(
+                actionPanel,
+                targetEvent,
+                anchorOverride,
+              );
+              if (projectedFromAnchor !== undefined) {
+                debugLog("click-position-projected-from-anchor", {
+                  anchor: formatVec3(anchorOverride),
+                  projected: formatVec3(projectedFromAnchor),
+                });
+                return projectedFromAnchor;
+              }
+            }
             return getPanelFallbackPosition(actionPanel, targetEvent);
           }
           return undefined;
         };
+        const getLocalPositionFallback = () => {
+          const localPosition = layer.localPosition.value;
+          if (localPosition.length < 3) return undefined;
+          const x = Number(localPosition[0]);
+          const y = Number(localPosition[1]);
+          const z = Number(localPosition[2]);
+          if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+            return undefined;
+          }
+          return new Float32Array([x, y, z]);
+        };
+        const getSelectedNodePositionFallback = (selectedNodeId: number) => {
+          const selectedNode = skeletonLayer
+            .getNodes()
+            .find((node) => node.nodeId === selectedNodeId);
+          if (selectedNode === undefined) return undefined;
+          return new Float32Array(selectedNode.position);
+        };
         const mousePosition = this.getMousePosition();
+        const addGesture = event.detail.shiftKey;
+        const selectedNodeIdAtMouseDown = layer.selectedSpatialSkeletonNodeId.value;
+        const effectiveSelectedNodeIdAtMouseDown =
+          selectedNodeIdAtMouseDown ?? stickyParentNodeId;
         const clickStartPosition =
           mousePosition ??
           (actionPanel === undefined
             ? undefined
             : getPanelFallbackPosition(actionPanel, event.detail));
+        rememberWorldPosition(mousePosition);
+        rememberWorldPosition(clickStartPosition);
         if (
           mousePosition === undefined &&
           clickStartPosition === undefined &&
-          pendingAddSelection === undefined
+          !addGesture
         ) {
-          debugLog("click-aborted-no-position");
+          debugLog("click-aborted-no-position", {
+            addGesture,
+            selectedNodeIdAtMouseDown,
+            stickyParentNodeId,
+          });
           return;
+        }
+        if (mousePosition === undefined && clickStartPosition === undefined) {
+          debugLog("click-position-missing-will-use-fallback", {
+            addGesture,
+            selectedNodeIdAtMouseDown,
+            stickyParentNodeId,
+          });
         }
         const segmentId = layer.displayState.segmentSelectionState.baseValue;
         const nodeSelectionRadius = this.getNodeSelectionRadius();
@@ -556,6 +651,17 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
                 segmentId,
                 maxDistance: nodeSelectionRadius,
               });
+        debugLog("gesture-resolved", {
+          addGesture,
+          shiftAtMouseDown: event.detail.shiftKey,
+          nodeHitId: nodeHit?.nodeId,
+          selectedNodeId: selectedNodeIdAtMouseDown,
+          effectiveSelectedNodeId: effectiveSelectedNodeIdAtMouseDown,
+          stickyParentNodeId,
+          stickyParentClientX,
+          stickyParentClientY,
+          clickStartPosition: formatVec3(clickStartPosition),
+        });
         setDebug("dragStartMousePos", formatVec3(clickStartPosition));
         setDebug(
           "nodeHit",
@@ -568,7 +674,6 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
           segmentId: segmentId?.toString(),
           nodeSelectionRadius,
           clickStartPosition: formatVec3(clickStartPosition),
-          pendingAddSelection,
         });
 
         const selectSegmentByNumber = (value: number) => {
@@ -578,61 +683,82 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
         };
 
         const commitClickAction = async (commitEvent: MouseEvent) => {
-          if (pendingAddSelection !== undefined) {
-            const selection = pendingAddSelection;
-            if (
-              selection.parentNodeId !== undefined &&
-              nodeHit?.nodeId === selection.parentNodeId
-            ) {
-              clearPendingAddSelection();
-              layer.selectedSpatialSkeletonNodeId.value = undefined;
-              setReadyStatus();
-              StatusMessage.showTemporaryMessage(
-                `Selection for node ${selection.parentNodeId} canceled.`,
-              );
-              debugLog("add-selection-canceled", {
-                nodeId: selection.parentNodeId,
-                reason: "clicked-selected-node-again",
-              });
-              return;
+          debugLog("commit-click-action", {
+            addGesture,
+            shiftAtMouseUp: commitEvent.shiftKey,
+            nodeHitId: nodeHit?.nodeId,
+            selectedNodeId: layer.selectedSpatialSkeletonNodeId.value,
+            stickyParentNodeId,
+            commitMouse: formatMouseEvent(commitEvent),
+          });
+          if (addGesture) {
+            const selectedParentNodeId =
+              layer.selectedSpatialSkeletonNodeId.value ?? stickyParentNodeId;
+            let clickPosition =
+              resolveClickPosition(commitEvent, selectedParentNodeId) ??
+              (clickStartPosition === undefined
+                ? undefined
+                : new Float32Array(clickStartPosition));
+            if (clickPosition === undefined) {
+              clickPosition = getLocalPositionFallback();
             }
-            const clickPosition = resolveClickPosition(commitEvent, selection);
             if (clickPosition === undefined) {
               StatusMessage.showTemporaryMessage(
                 "Unable to resolve add-node position for this click.",
               );
               debugLog("add-node-position-unresolved", {
-                selection,
+                addGesture,
+                selectedParentNodeId,
                 clientX: commitEvent.clientX,
                 clientY: commitEvent.clientY,
+                stickyParentNodeId,
               });
               return;
             }
+            rememberWorldPosition(clickPosition);
+            debugLog("shift-add-attempt", {
+              selectedParentNodeId,
+              clickPosition: formatVec3(clickPosition),
+            });
             let committedNode: CatmaidAddNodeResult;
+            const addAttemptStartedAt = performance.now();
+            const slowAddNodeTimer = setTimeout(() => {
+              debugLog("add-node-commit-still-pending", {
+                elapsedMs: Math.round(performance.now() - addAttemptStartedAt),
+                selectedParentNodeId,
+                clickPosition: formatVec3(clickPosition),
+              });
+            }, 2000);
             try {
               committedNode = await this.commitAddNode(
                 skeletonLayer,
-                selection.parentNodeId,
+                selectedParentNodeId,
                 clickPosition,
               );
+              debugLog("add-node-commit-finished", {
+                elapsedMs: Math.round(performance.now() - addAttemptStartedAt),
+                selectedParentNodeId,
+              });
             } catch (error) {
               StatusMessage.showTemporaryMessage(
                 "Failed to commit node creation to CATMAID.",
               );
+              const errorInfo: Record<string, unknown> =
+                error instanceof Error
+                  ? { message: error.message, stack: error.stack }
+                  : { error: String(error) };
               debugLog("add-node-commit-failed", {
-                error: String(error),
-                selection,
+                ...errorInfo,
+                parentNodeId: selectedParentNodeId,
                 clickPosition: formatVec3(clickPosition),
               });
               return;
+            } finally {
+              clearTimeout(slowAddNodeTimer);
             }
-            const committedSegmentId =
-              selection.parentNodeId === undefined
-                ? committedNode.skeletonId
-                : selection.segmentId ?? committedNode.skeletonId;
             const newNode = skeletonLayer.addNode(clickPosition, {
-              segmentId: committedSegmentId,
-              parentNodeId: selection.parentNodeId,
+              segmentId: committedNode.skeletonId,
+              parentNodeId: selectedParentNodeId,
               nodeId: committedNode.treenodeId,
             });
             if (newNode === undefined) {
@@ -641,83 +767,79 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
               );
               debugLog("add-node-local-update-failed", {
                 clickPosition: formatVec3(clickPosition),
-                selection,
+                parentNodeId: selectedParentNodeId,
                 committedNode,
               });
               layer.selectedSpatialSkeletonNodeId.value = committedNode.treenodeId;
-              selectSegmentByNumber(committedSegmentId);
+              setStickyParent(
+                committedNode.treenodeId,
+                clickPosition,
+                commitEvent.clientX,
+                commitEvent.clientY,
+              );
+              selectSegmentByNumber(committedNode.skeletonId);
               layer.markSpatialSkeletonNodeDataChanged();
-              clearPendingAddSelection();
               setReadyStatus();
               return;
             }
             layer.selectedSpatialSkeletonNodeId.value = newNode.nodeId;
+            setStickyParent(
+              newNode.nodeId,
+              newNode.position,
+              commitEvent.clientX,
+              commitEvent.clientY,
+            );
             selectSegmentByNumber(newNode.segmentId);
             layer.markSpatialSkeletonNodeDataChanged();
             debugLog("add-node-committed", {
               nodeId: newNode.nodeId,
               segmentId: newNode.segmentId,
-              parentNodeId: selection.parentNodeId,
+              parentNodeId: selectedParentNodeId,
               position: formatVec3(newNode.position),
             });
-            clearPendingAddSelection();
             setReadyStatus();
             return;
           }
 
-          if (nodeHit !== undefined) {
-            selectSegmentByNumber(nodeHit.segmentId);
-            layer.selectedSpatialSkeletonNodeId.value = nodeHit.nodeId;
-            const selectionPanel =
-              this.getRenderedDataPanelForEvent(commitEvent) ?? actionPanel;
-            setPendingAddSelection({
-              segmentId: nodeHit.segmentId,
-              parentNodeId: nodeHit.nodeId,
-              source: "node",
-              anchorPosition: new Float32Array(nodeHit.position),
-              anchorClientX: commitEvent.clientX,
-              anchorClientY: commitEvent.clientY,
-              anchorPanel: selectionPanel,
-            });
-            StatusMessage.showTemporaryMessage(
-              `Selected node ${nodeHit.nodeId}. Click empty space to add a connected node, or click the same node again to cancel.`,
-            );
+          if (nodeHit === undefined) {
+            if (layer.selectedSpatialSkeletonNodeId.value !== undefined) {
+              layer.selectedSpatialSkeletonNodeId.value = undefined;
+              clearStickyParent();
+              StatusMessage.showTemporaryMessage("Selection cleared.");
+              debugLog("selection-cleared", { reason: "empty-space-click" });
+            }
             setReadyStatus();
             return;
           }
-          const emptyAnchorPosition =
-            clickStartPosition === undefined
-              ? resolveClickPosition(commitEvent, undefined)
-              : new Float32Array(clickStartPosition);
-          if (emptyAnchorPosition === undefined) {
+
+          if (layer.selectedSpatialSkeletonNodeId.value === nodeHit.nodeId) {
+            layer.selectedSpatialSkeletonNodeId.value = undefined;
+            clearStickyParent();
             StatusMessage.showTemporaryMessage(
-              "Unable to resolve a world position for empty-space selection.",
+              `Deselected node ${nodeHit.nodeId}.`,
             );
-            debugLog("empty-selection-position-unresolved", {
-              clientX: commitEvent.clientX,
-              clientY: commitEvent.clientY,
-            });
+            debugLog("node-deselected", { nodeId: nodeHit.nodeId });
+            setReadyStatus();
             return;
           }
-          const selectionPanel =
-            this.getRenderedDataPanelForEvent(commitEvent) ?? actionPanel;
-          setPendingAddSelection({
-            segmentId: undefined,
-            parentNodeId: undefined,
-            source: "empty",
-            anchorPosition: emptyAnchorPosition,
-            anchorClientX: commitEvent.clientX,
-            anchorClientY: commitEvent.clientY,
-            anchorPanel: selectionPanel,
+
+          selectSegmentByNumber(nodeHit.segmentId);
+          layer.selectedSpatialSkeletonNodeId.value = nodeHit.nodeId;
+          setStickyParent(
+            nodeHit.nodeId,
+            nodeHit.position,
+            commitEvent.clientX,
+            commitEvent.clientY,
+          );
+          rememberWorldPosition(nodeHit.position);
+          StatusMessage.showTemporaryMessage(
+            `Selected node ${nodeHit.nodeId}. Shift+click to add a connected node.`,
+          );
+          debugLog("node-selected", {
+            nodeId: nodeHit.nodeId,
+            segmentId: nodeHit.segmentId,
           });
           setReadyStatus();
-          StatusMessage.showTemporaryMessage(
-            "No node selected. Click again to add a root node in empty space.",
-          );
-          debugLog("click-selection-empty-space", {
-            mousePosition: formatVec3(emptyAnchorPosition),
-            selectedSegment: "ignored",
-          });
         };
 
         if (nodeHit === undefined) {
@@ -894,6 +1016,12 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
           (_event, deltaX, deltaY) => {
             dragDistanceSquared += deltaX * deltaX + deltaY * deltaY;
             const thresholdSquared = DRAG_START_DISTANCE_PX * DRAG_START_DISTANCE_PX;
+            if (addGesture) {
+              if (dragDistanceSquared >= thresholdSquared) {
+                setDebug("dragState", "ignored-shift-drag");
+              }
+              return;
+            }
             if (!dragActive && dragDistanceSquared >= thresholdSquared) {
               dragActive = true;
               setStatus(`Dragging node ${nodeHit.nodeId}`);
@@ -903,6 +1031,27 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
             applyMousePosition(deltaX, deltaY);
           },
           (finishEvent) => {
+            const thresholdSquared = DRAG_START_DISTANCE_PX * DRAG_START_DISTANCE_PX;
+            if (addGesture) {
+              if (dragDistanceSquared > thresholdSquared) {
+                setReadyStatus();
+                setDebug("dragState", "ignored-shift-drag");
+                debugLog("shift-drag-ignored", {
+                  nodeId: nodeHit.nodeId,
+                  dragDistanceSquared,
+                  thresholdSquared,
+                });
+                return;
+              }
+              setDebug("dragState", "shift-click");
+              debugLog("shift-click-finish", {
+                nodeId: nodeHit.nodeId,
+                dragDistanceSquared,
+                thresholdSquared,
+              });
+              void commitClickAction(finishEvent);
+              return;
+            }
             if (!dragActive) {
               setDebug("dragState", "click");
               void commitClickAction(finishEvent);
@@ -918,6 +1067,10 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
               finalPosition: formatVec3(lastPosition),
             });
             if (moved) {
+              if (stickyParentNodeId === nodeHit.nodeId) {
+                stickyParentPosition = new Float32Array(lastPosition);
+              }
+              rememberWorldPosition(lastPosition);
               layer.markSpatialSkeletonNodeDataChanged();
               void this.commitMoveNode(
                 skeletonLayer,
@@ -934,7 +1087,6 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
                 });
               });
             }
-            clearPendingAddSelection();
           },
         );
       },
