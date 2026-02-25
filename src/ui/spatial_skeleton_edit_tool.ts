@@ -373,6 +373,10 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
     let stickyParentClientX: number | undefined;
     let stickyParentClientY: number | undefined;
     let lastResolvedWorldPosition: Float32Array | undefined;
+    let lastMouseSamplePosition: Float32Array | undefined;
+    let lastMouseSampleClientX: number | undefined;
+    let lastMouseSampleClientY: number | undefined;
+    let lastMouseSamplePanel: RenderedDataPanel | undefined;
     const rememberWorldPosition = (position: Float32Array | undefined) => {
       if (position === undefined) return;
       if (
@@ -424,13 +428,22 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
     activation.registerEventListener(
       window,
       "pointermove",
-      () => {
+      (event: PointerEvent) => {
         if (!this.mouseState.updateUnconditionally()) return;
         setDebug(
           "pickedLayer",
           this.mouseState.pickedRenderLayer?.constructor?.name ?? "none",
         );
         setDebug("mousePos", formatVec3(this.mouseState.unsnappedPosition));
+        const sampledMousePosition = this.getMousePosition();
+        if (sampledMousePosition !== undefined) {
+          const samplePanel = this.getRenderedDataPanelForEvent(event);
+          lastMouseSamplePosition = new Float32Array(sampledMousePosition);
+          lastMouseSampleClientX = event.clientX;
+          lastMouseSampleClientY = event.clientY;
+          lastMouseSamplePanel = samplePanel;
+          rememberWorldPosition(sampledMousePosition);
+        }
       },
       { capture: true },
     );
@@ -525,6 +538,70 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
           }
           return projected;
         };
+        const getPanelNavigationAnchor = (
+          panel: RenderedDataPanel,
+        ): Float32Array | undefined => {
+          const position = panel.navigationState.position.value;
+          if (position.length < 3) return undefined;
+          const displayDimensions = panel.navigationState.displayDimensions.value;
+          const displayIndices = displayDimensions.displayDimensionIndices;
+          const displayRank = displayDimensions.displayRank;
+          const anchor = new Float32Array(3);
+          if (displayRank >= 3 && displayIndices.length >= 3) {
+            anchor[0] = Number(position[displayIndices[0]]);
+            anchor[1] = Number(position[displayIndices[1]]);
+            anchor[2] = Number(position[displayIndices[2]]);
+          } else {
+            anchor[0] = Number(position[0]);
+            anchor[1] = Number(position[1]);
+            anchor[2] = Number(position[2]);
+          }
+          if (
+            !Number.isFinite(anchor[0]) ||
+            !Number.isFinite(anchor[1]) ||
+            !Number.isFinite(anchor[2])
+          ) {
+            return undefined;
+          }
+          return anchor;
+        };
+        const getActionPanelProjectedPosition = (
+          targetEvent: MouseEvent,
+          anchorOverride?: Float32Array,
+        ): Float32Array | undefined => {
+          if (actionPanel === undefined) return undefined;
+          if (anchorOverride !== undefined) {
+            const projectedFromOverride = getPanelFallbackPosition(
+              actionPanel,
+              targetEvent,
+              anchorOverride,
+            );
+            if (projectedFromOverride !== undefined) {
+              return projectedFromOverride;
+            }
+          }
+          const projectedFromLocal = getPanelFallbackPosition(
+            actionPanel,
+            targetEvent,
+          );
+          if (projectedFromLocal !== undefined) {
+            return projectedFromLocal;
+          }
+          const navigationAnchor = getPanelNavigationAnchor(actionPanel);
+          if (navigationAnchor === undefined) return undefined;
+          const projectedFromNavigation = getPanelFallbackPosition(
+            actionPanel,
+            targetEvent,
+            navigationAnchor,
+          );
+          if (projectedFromNavigation !== undefined) {
+            debugLog("click-position-projected-from-navigation-anchor", {
+              anchor: formatVec3(navigationAnchor),
+              projected: formatVec3(projectedFromNavigation),
+            });
+          }
+          return projectedFromNavigation;
+        };
         const resolveClickPosition = (
           targetEvent: MouseEvent,
           selectedParentNodeId?: number,
@@ -534,6 +611,38 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
             return directMousePosition;
           }
           if (actionPanel !== undefined) {
+            const hasMouseSampleAnchor =
+              lastMouseSamplePosition !== undefined &&
+              lastMouseSamplePanel === actionPanel &&
+              lastMouseSampleClientX !== undefined &&
+              lastMouseSampleClientY !== undefined;
+            if (hasMouseSampleAnchor) {
+              const sampleAnchor = lastMouseSamplePosition!;
+              const sampleClientX = lastMouseSampleClientX!;
+              const sampleClientY = lastMouseSampleClientY!;
+              const projectedFromMouseSample = new Float32Array(sampleAnchor);
+              actionPanel.translateDataPointByViewportPixels(
+                projectedFromMouseSample as unknown as vec3,
+                sampleAnchor as unknown as vec3,
+                targetEvent.clientX - sampleClientX,
+                targetEvent.clientY - sampleClientY,
+              );
+              if (
+                Number.isFinite(projectedFromMouseSample[0]) &&
+                Number.isFinite(projectedFromMouseSample[1]) &&
+                Number.isFinite(projectedFromMouseSample[2])
+              ) {
+                debugLog("click-position-projected-from-mouse-sample", {
+                  anchor: formatVec3(sampleAnchor),
+                  anchorClientX: sampleClientX,
+                  anchorClientY: sampleClientY,
+                  targetClientX: targetEvent.clientX,
+                  targetClientY: targetEvent.clientY,
+                  projected: formatVec3(projectedFromMouseSample),
+                });
+                return projectedFromMouseSample;
+              }
+            }
             let anchorOverride: Float32Array | undefined;
             if (selectedParentNodeId !== undefined) {
               anchorOverride = getSelectedNodePositionFallback(selectedParentNodeId);
@@ -589,20 +698,30 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
                 return projectedFromAnchor;
               }
             }
-            return getPanelFallbackPosition(actionPanel, targetEvent);
+            return getActionPanelProjectedPosition(targetEvent, anchorOverride);
           }
           return undefined;
         };
         const getLocalPositionFallback = () => {
           const localPosition = layer.localPosition.value;
-          if (localPosition.length < 3) return undefined;
-          const x = Number(localPosition[0]);
-          const y = Number(localPosition[1]);
-          const z = Number(localPosition[2]);
-          if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
-            return undefined;
+          if (localPosition.length >= 3) {
+            const x = Number(localPosition[0]);
+            const y = Number(localPosition[1]);
+            const z = Number(localPosition[2]);
+            if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
+              return new Float32Array([x, y, z]);
+            }
           }
-          return new Float32Array([x, y, z]);
+          if (actionPanel !== undefined) {
+            const navigationAnchor = getPanelNavigationAnchor(actionPanel);
+            if (navigationAnchor !== undefined) {
+              debugLog("local-position-fallback-navigation-anchor", {
+                anchor: formatVec3(navigationAnchor),
+              });
+              return navigationAnchor;
+            }
+          }
+          return undefined;
         };
         const getSelectedNodePositionFallback = (selectedNodeId: number) => {
           const selectedNode = skeletonLayer
@@ -620,7 +739,7 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
           mousePosition ??
           (actionPanel === undefined
             ? undefined
-            : getPanelFallbackPosition(actionPanel, event.detail));
+            : getActionPanelProjectedPosition(event.detail));
         rememberWorldPosition(mousePosition);
         rememberWorldPosition(clickStartPosition);
         if (
