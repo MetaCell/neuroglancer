@@ -41,10 +41,15 @@ export const SPATIAL_SKELETON_MERGE_MODE_TOOL_ID = "spatialSkeletonMergeMode";
 export const SPATIAL_SKELETON_SPLIT_MODE_TOOL_ID = "spatialSkeletonSplitMode";
 
 const SPATIAL_SKELETON_EDIT_INPUT_EVENT_MAP = EventActionMap.fromObject({
-  // Capture left-drag regardless of modifier keys so panel camera bindings
-  // never steal the drag gesture while edit mode is active.
-  "at:control?+alt?+meta?+shift?+mousedown0":
-    "spatial-skeleton-edit-drag-node",
+  // Use shift+click for node creation, and alt+drag for node movement.
+  // Keep plain left-drag/click camera controls available from default bindings.
+  "at:shift+mousedown0": "spatial-skeleton-edit-drag-node",
+  "at:alt+mousedown0": "spatial-skeleton-edit-drag-node",
+  "at:click0": {
+    action: "spatial-skeleton-edit-select-node",
+    stopPropagation: false,
+    preventDefault: false,
+  },
 });
 
 const DRAG_START_DISTANCE_PX = 4;
@@ -364,7 +369,7 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
     activation.bindInputEventMap(SPATIAL_SKELETON_EDIT_INPUT_EVENT_MAP);
     const setReadyStatus = () => {
       setStatus(
-        "Edit mode enabled. Left click toggles node selection. Shift+click adds a node (root if no node is selected). Drag nodes to move.",
+        "Edit mode enabled. Left click toggles node selection. Shift+click adds a node (root if no node is selected). Alt+drag moves nodes.",
       );
     };
     setReadyStatus();
@@ -462,6 +467,93 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
           activation.cancel();
         }
       }),
+    );
+
+    const selectSegmentByNumber = (value: number) => {
+      if (!Number.isFinite(value)) return;
+      const rounded = Math.round(value);
+      layer.selectSegment(BigInt(rounded), false);
+    };
+
+    activation.bindAction(
+      "spatial-skeleton-edit-select-node",
+      (event: ActionEvent<MouseEvent>) => {
+        if (event.detail.button !== 0) return;
+        if (
+          event.detail.shiftKey ||
+          event.detail.ctrlKey ||
+          event.detail.altKey ||
+          event.detail.metaKey
+        ) {
+          return;
+        }
+        const clickDisabledReason = layer.getSpatialSkeletonActionsDisabledReason();
+        if (clickDisabledReason !== undefined) {
+          StatusMessage.showTemporaryMessage(clickDisabledReason);
+          return;
+        }
+        const skeletonLayer = this.getActiveSpatiallyIndexedSkeletonLayer();
+        if (skeletonLayer === undefined) {
+          return;
+        }
+        const mousePosition = this.getMousePosition();
+        if (mousePosition === undefined) {
+          debugLog("select-click-no-mouse-position", {
+            mouse: formatMouseEvent(event.detail),
+          });
+          return;
+        }
+        const segmentId = layer.displayState.segmentSelectionState.baseValue;
+        const nodeSelectionRadius = this.getNodeSelectionRadius();
+        const nodeHit = skeletonLayer.findClosestNode(mousePosition, {
+          segmentId,
+          maxDistance: nodeSelectionRadius,
+        });
+        debugLog("select-click-hit-test", {
+          nodeHitId: nodeHit?.nodeId,
+          selectedNodeId: layer.selectedSpatialSkeletonNodeId.value,
+          mousePosition: formatVec3(mousePosition),
+        });
+        if (nodeHit === undefined) {
+          if (layer.selectedSpatialSkeletonNodeId.value !== undefined) {
+            layer.selectedSpatialSkeletonNodeId.value = undefined;
+            clearStickyParent();
+            StatusMessage.showTemporaryMessage("Selection cleared.");
+            debugLog("selection-cleared", { reason: "empty-space-click" });
+            setReadyStatus();
+          }
+          return;
+        }
+
+        if (layer.selectedSpatialSkeletonNodeId.value === nodeHit.nodeId) {
+          layer.selectedSpatialSkeletonNodeId.value = undefined;
+          clearStickyParent();
+          StatusMessage.showTemporaryMessage(
+            `Deselected node ${nodeHit.nodeId}.`,
+          );
+          debugLog("node-deselected", { nodeId: nodeHit.nodeId });
+          setReadyStatus();
+          return;
+        }
+
+        selectSegmentByNumber(nodeHit.segmentId);
+        layer.selectedSpatialSkeletonNodeId.value = nodeHit.nodeId;
+        setStickyParent(
+          nodeHit.nodeId,
+          nodeHit.position,
+          event.detail.clientX,
+          event.detail.clientY,
+        );
+        rememberWorldPosition(nodeHit.position);
+        StatusMessage.showTemporaryMessage(
+          `Selected node ${nodeHit.nodeId}. Shift+click to add a connected node.`,
+        );
+        debugLog("node-selected", {
+          nodeId: nodeHit.nodeId,
+          segmentId: nodeHit.segmentId,
+        });
+        setReadyStatus();
+      },
     );
 
     activation.bindAction(
@@ -795,12 +887,6 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
           clickStartPosition: formatVec3(clickStartPosition),
         });
 
-        const selectSegmentByNumber = (value: number) => {
-          if (!Number.isFinite(value)) return;
-          const rounded = Math.round(value);
-          layer.selectSegment(BigInt(rounded), false);
-        };
-
         const commitClickAction = async (commitEvent: MouseEvent) => {
           debugLog("commit-click-action", {
             addGesture,
@@ -919,46 +1005,6 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
             setReadyStatus();
             return;
           }
-
-          if (nodeHit === undefined) {
-            if (layer.selectedSpatialSkeletonNodeId.value !== undefined) {
-              layer.selectedSpatialSkeletonNodeId.value = undefined;
-              clearStickyParent();
-              StatusMessage.showTemporaryMessage("Selection cleared.");
-              debugLog("selection-cleared", { reason: "empty-space-click" });
-            }
-            setReadyStatus();
-            return;
-          }
-
-          if (layer.selectedSpatialSkeletonNodeId.value === nodeHit.nodeId) {
-            layer.selectedSpatialSkeletonNodeId.value = undefined;
-            clearStickyParent();
-            StatusMessage.showTemporaryMessage(
-              `Deselected node ${nodeHit.nodeId}.`,
-            );
-            debugLog("node-deselected", { nodeId: nodeHit.nodeId });
-            setReadyStatus();
-            return;
-          }
-
-          selectSegmentByNumber(nodeHit.segmentId);
-          layer.selectedSpatialSkeletonNodeId.value = nodeHit.nodeId;
-          setStickyParent(
-            nodeHit.nodeId,
-            nodeHit.position,
-            commitEvent.clientX,
-            commitEvent.clientY,
-          );
-          rememberWorldPosition(nodeHit.position);
-          StatusMessage.showTemporaryMessage(
-            `Selected node ${nodeHit.nodeId}. Shift+click to add a connected node.`,
-          );
-          debugLog("node-selected", {
-            nodeId: nodeHit.nodeId,
-            segmentId: nodeHit.segmentId,
-          });
-          setReadyStatus();
         };
 
         if (nodeHit === undefined) {
