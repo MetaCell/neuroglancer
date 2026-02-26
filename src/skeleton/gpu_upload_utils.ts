@@ -22,10 +22,10 @@ import {
 
 /**
  * Uploads vertex attribute data to GPU as 1D textures.
- * 
+ *
  * This function takes contiguous packed vertex attribute data and creates separate
  * GPU textures for each attribute type (e.g., positions, segment IDs, etc.).
- * 
+ *
  * @param gl - WebGL rendering context
  * @param vertexAttributes - Packed byte array containing all vertex attributes
  * @param vertexAttributeOffsets - Byte offsets marking the start of each attribute in the packed array
@@ -40,7 +40,7 @@ export function uploadVertexAttributesToGPU(
 ): (WebGLTexture | null)[] {
   const vertexAttributeTextures: (WebGLTexture | null)[] = [];
   const numAttributes = vertexAttributeOffsets.length;
-  
+
   for (let i = 0; i < numAttributes; ++i) {
     const texture = gl.createTexture();
     gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, texture);
@@ -57,6 +57,6 @@ export function uploadVertexAttributesToGPU(
     vertexAttributeTextures[i] = texture;
   }
   gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, null);
-  
+
   return vertexAttributeTextures;
 }

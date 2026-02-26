@@ -21,7 +21,12 @@ export interface SkeletonChunkData {
   vertexAttributes: TypedNumberArray[] | null;
   indices: Uint32Array | null;
   lod?: number;
-  missingConnections?: Array<{ nodeId: number; parentId: number; vertexIndex: number; skeletonId: number }>;
+  missingConnections?: Array<{
+    nodeId: number;
+    parentId: number;
+    vertexIndex: number;
+    skeletonId: number;
+  }>;
   nodeMap?: Map<number, number>;
 }
 

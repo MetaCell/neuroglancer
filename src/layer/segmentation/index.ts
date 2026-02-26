@@ -150,7 +150,8 @@ const MAX_LAYER_BAR_UI_INDICATOR_COLORS = 6;
 
 export class SegmentationUserLayerGroupState
   extends RefCounted
-  implements SegmentationGroupState {
+  implements SegmentationGroupState
+{
   specificationChanged = new Signal();
   constructor(public layer: SegmentationUserLayer) {
     super();
@@ -305,7 +306,8 @@ export class SegmentationUserLayerGroupState
 
 export class SegmentationUserLayerColorGroupState
   extends RefCounted
-  implements SegmentationColorGroupState {
+  implements SegmentationColorGroupState
+{
   specificationChanged = new Signal();
   constructor(public layer: SegmentationUserLayer) {
     super();
@@ -379,12 +381,13 @@ export class SegmentationUserLayerColorGroupState
 }
 
 class LinkedSegmentationGroupState<
-  State extends
-  | SegmentationUserLayerGroupState
-  | SegmentationUserLayerColorGroupState,
->
+    State extends
+      | SegmentationUserLayerGroupState
+      | SegmentationUserLayerColorGroupState,
+  >
   extends RefCounted
-  implements WatchableValueInterface<State> {
+  implements WatchableValueInterface<State>
+{
   private curRoot: SegmentationUserLayer | undefined;
   private curGroupState: Owned<State> | undefined;
   get changed() {
@@ -503,7 +506,8 @@ function getSpatialSkeletonGridHistogramConfig(
     if (delta > 0) minDelta = Math.min(minDelta, delta);
   }
   const span = maxLogSpacing - minLogSpacing;
-  const minBinSizeForCoverage = span / Math.max(numRenderScaleHistogramBins - 4, 1);
+  const minBinSizeForCoverage =
+    span / Math.max(numRenderScaleHistogramBins - 4, 1);
   const lowerBound = Math.max(minBinSizeForCoverage, 0.05);
   let binSize = lowerBound;
   if (Number.isFinite(minDelta)) {
@@ -655,7 +659,10 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
     this.spatialSkeletonGridResolutionRelative2d.changed.add(() => {
       const nextRelative = this.spatialSkeletonGridResolutionRelative2d.value;
       if (nextRelative !== this.lastSpatialSkeletonGridResolutionRelative2d) {
-        const pixelSize = Math.max(this.spatialSkeletonGridPixelSize2d.value, 1e-6);
+        const pixelSize = Math.max(
+          this.spatialSkeletonGridPixelSize2d.value,
+          1e-6,
+        );
         const currentTarget = this.spatialSkeletonGridResolutionTarget2d.value;
         const adjustedTarget = nextRelative
           ? currentTarget / pixelSize
@@ -671,7 +678,10 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
     this.spatialSkeletonGridResolutionRelative3d.changed.add(() => {
       const nextRelative = this.spatialSkeletonGridResolutionRelative3d.value;
       if (nextRelative !== this.lastSpatialSkeletonGridResolutionRelative3d) {
-        const pixelSize = Math.max(this.spatialSkeletonGridPixelSize3d.value, 1e-6);
+        const pixelSize = Math.max(
+          this.spatialSkeletonGridPixelSize3d.value,
+          1e-6,
+        );
         const currentTarget = this.spatialSkeletonGridResolutionTarget3d.value;
         const adjustedTarget = nextRelative
           ? currentTarget / pixelSize
@@ -737,7 +747,9 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
     verifyNonnegativeInt,
     0,
   );
-  spatialSkeletonGridLevels = new WatchableValue<SpatialSkeletonGridLevel[]>([]);
+  spatialSkeletonGridLevels = new WatchableValue<SpatialSkeletonGridLevel[]>(
+    [],
+  );
   spatialSkeletonGridResolutionTarget2d = new TrackableValue<number>(
     1,
     verifyFiniteNonNegativeFloat,
@@ -873,7 +885,10 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
   }
 
   applySpatialSkeletonGridLevel2dFromSpec(value: any) {
-    if (value !== undefined && !this.spatialSkeletonGridResolutionTarget2dExplicit) {
+    if (
+      value !== undefined &&
+      !this.spatialSkeletonGridResolutionTarget2dExplicit
+    ) {
       this.spatialSkeletonGridLevel2d.restoreState(value);
       this.spatialSkeletonGridLevel2dExplicit = true;
       if (this.spatialSkeletonGridLevels.value.length > 0) {
@@ -892,7 +907,8 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
             ].size,
           );
           const targetValue = this.spatialSkeletonGridResolutionRelative2d.value
-            ? spacing / Math.max(this.spatialSkeletonGridPixelSize2d.value, 1e-6)
+            ? spacing /
+              Math.max(this.spatialSkeletonGridPixelSize2d.value, 1e-6)
             : spacing;
           this.suppressSpatialSkeletonGridResolutionTarget2d = true;
           this.spatialSkeletonGridResolutionTarget2d.value = targetValue;
@@ -903,7 +919,10 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
   }
 
   applySpatialSkeletonGridLevel3dFromSpec(value: any) {
-    if (value !== undefined && !this.spatialSkeletonGridResolutionTarget3dExplicit) {
+    if (
+      value !== undefined &&
+      !this.spatialSkeletonGridResolutionTarget3dExplicit
+    ) {
       this.spatialSkeletonGridLevel3d.restoreState(value);
       this.spatialSkeletonGridLevel3dExplicit = true;
       if (this.spatialSkeletonGridLevels.value.length > 0) {
@@ -922,7 +941,8 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
             ].size,
           );
           const targetValue = this.spatialSkeletonGridResolutionRelative3d.value
-            ? spacing / Math.max(this.spatialSkeletonGridPixelSize3d.value, 1e-6)
+            ? spacing /
+              Math.max(this.spatialSkeletonGridPixelSize3d.value, 1e-6)
             : spacing;
           this.suppressSpatialSkeletonGridResolutionTarget3d = true;
           this.spatialSkeletonGridResolutionTarget3d.value = targetValue;
@@ -1276,13 +1296,8 @@ export class SegmentationUserLayer extends Base {
     let spatialSkeletonGridSizes: SpatialSkeletonGridSize[] | undefined;
     for (const loadedSubsource of subsources) {
       if (this.addStaticAnnotations(loadedSubsource)) continue;
-      const {
-        volume,
-        mesh,
-        segmentPropertyMap,
-        segmentationGraph,
-        local,
-      } = loadedSubsource.subsourceEntry.subsource;
+      const { volume, mesh, segmentPropertyMap, segmentationGraph, local } =
+        loadedSubsource.subsourceEntry.subsource;
       if (volume instanceof MultiscaleVolumeChunkSource) {
         switch (volume.dataType) {
           case DataType.FLOAT32:
@@ -1423,7 +1438,7 @@ export class SegmentationUserLayer extends Base {
             "Not supported on non-root linked segmentation layers",
           );
         } else {
-          loadedSubsource.activate(() => { });
+          loadedSubsource.activate(() => {});
           updatedSegmentPropertyMaps.push(segmentPropertyMap);
         }
       } else if (segmentationGraph !== undefined) {
@@ -1554,7 +1569,7 @@ export class SegmentationUserLayer extends Base {
     if (
       layerSpec[json_keys.EQUIVALENCES_JSON_KEY] !== undefined &&
       explicitSpecs.find((spec) => spec.url === localEquivalencesUrl) ===
-      undefined
+        undefined
     ) {
       specs.push({
         url: localEquivalencesUrl,
