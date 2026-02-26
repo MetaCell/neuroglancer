@@ -57,11 +57,12 @@ import {
   SCALE_PRIORITY_MULTIPLIER,
   deserializeTransformedSources,
 } from "#src/sliceview/backend.js";
-import type {
-  SliceViewChunkSpecification,
-  SliceViewBase,
-  SliceViewProjectionParameters,
-  TransformedSource,
+import {
+  forEachVisibleVolumetricChunk,
+  type SliceViewChunkSpecification,
+  type SliceViewBase,
+  type SliceViewProjectionParameters,
+  type TransformedSource,
 } from "#src/sliceview/base.js";
 import type { TypedNumberArray } from "#src/util/array.js";
 import type { Endianness } from "#src/util/endian.js";
