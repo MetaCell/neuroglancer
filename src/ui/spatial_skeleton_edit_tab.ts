@@ -17,6 +17,7 @@
 import { CatmaidClient } from "#src/datasource/catmaid/api.js";
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import { getVisibleSegments } from "#src/segmentation_display_state/base.js";
+import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
 import type { SpatiallyIndexedSkeletonLayer } from "#src/skeleton/frontend.js";
 import type { SpatiallyIndexedSkeletonNodeInfo } from "#src/skeleton/frontend.js";
 import { StatusMessage } from "#src/status.js";
@@ -162,8 +163,15 @@ export class SpatialSkeletonEditTab extends Tab {
     let filterText = "";
     let actionsAllowed = false;
     let pendingScrollToSelectedNode = false;
+    let refreshRequestId = 0;
+    let fullSkeletonCacheVersion = layer.spatialSkeletonNodeDataVersion.value;
     const pendingDeleteNodes = new Set<number>();
     const catmaidClients = new Map<string, CatmaidClient>();
+    const fullSegmentNodeCache = new Map<number, SpatiallyIndexedSkeletonNodeInfo[]>();
+    const pendingFullSegmentNodeFetches = new Map<
+      number,
+      Promise<SpatiallyIndexedSkeletonNodeInfo[]>
+    >();
 
     const getSelectedNode = () => {
       const selectedId = layer.selectedSpatialSkeletonNodeId.value;
@@ -198,6 +206,88 @@ export class SpatialSkeletonEditTab extends Tab {
       return { nodeById, parentById, childrenById };
     };
 
+    const getSegmentRootNodeIds = (
+      relations: {
+        nodeById: Map<number, SpatiallyIndexedSkeletonNodeInfo>;
+        parentById: Map<number, number | undefined>;
+      },
+    ) => {
+      const rootNodeIds: number[] = [];
+      for (const nodeId of relations.nodeById.keys()) {
+        const parentId = relations.parentById.get(nodeId);
+        if (parentId === undefined || !relations.nodeById.has(parentId)) {
+          rootNodeIds.push(nodeId);
+        }
+      }
+      rootNodeIds.sort((a, b) => a - b);
+      if (rootNodeIds.length === 0) {
+        const firstNodeId = [...relations.nodeById.keys()].sort((a, b) => a - b)[0];
+        if (firstNodeId !== undefined) {
+          rootNodeIds.push(firstNodeId);
+        }
+      }
+      return rootNodeIds;
+    };
+
+    const getDepthFirstNodeOrder = (relations: {
+      nodeById: Map<number, SpatiallyIndexedSkeletonNodeInfo>;
+      parentById: Map<number, number | undefined>;
+      childrenById: Map<number, number[]>;
+    }) => {
+      const orderedNodeIds: number[] = [];
+      const visited = new Set<number>();
+      const walk = (nodeId: number) => {
+        if (visited.has(nodeId)) return;
+        if (!relations.nodeById.has(nodeId)) return;
+        visited.add(nodeId);
+        orderedNodeIds.push(nodeId);
+        const children = relations.childrenById.get(nodeId) ?? [];
+        for (const childNodeId of children) {
+          walk(childNodeId);
+        }
+      };
+
+      for (const rootNodeId of getSegmentRootNodeIds(relations)) {
+        walk(rootNodeId);
+      }
+      for (const nodeId of [...relations.nodeById.keys()].sort((a, b) => a - b)) {
+        walk(nodeId);
+      }
+      return orderedNodeIds;
+    };
+
+    const getNavigationNodes = () => {
+      const orderedNodes: SpatiallyIndexedSkeletonNodeInfo[] = [];
+      for (const segmentId of activeSegmentIds) {
+        const relations = buildSegmentRelations(segmentId);
+        for (const nodeId of getDepthFirstNodeOrder(relations)) {
+          const node = relations.nodeById.get(nodeId);
+          if (node !== undefined) {
+            orderedNodes.push(node);
+          }
+        }
+      }
+      return orderedNodes;
+    };
+
+    const getSegmentRootNode = (node: SpatiallyIndexedSkeletonNodeInfo) => {
+      const relations = buildSegmentRelations(node.segmentId);
+      if (!relations.nodeById.has(node.nodeId)) {
+        return node;
+      }
+      let currentNodeId = node.nodeId;
+      const visited = new Set<number>();
+      while (!visited.has(currentNodeId)) {
+        visited.add(currentNodeId);
+        const parentNodeId = relations.parentById.get(currentNodeId);
+        if (parentNodeId === undefined) {
+          break;
+        }
+        currentNodeId = parentNodeId;
+      }
+      return relations.nodeById.get(currentNodeId) ?? node;
+    };
+
     const getBranchStartNode = (node: SpatiallyIndexedSkeletonNodeInfo) => {
       const relations = buildSegmentRelations(node.segmentId);
       if (!relations.nodeById.has(node.nodeId)) {
@@ -205,7 +295,9 @@ export class SpatialSkeletonEditTab extends Tab {
       }
       let currentNodeId = node.nodeId;
       let fallbackNodeId = node.nodeId;
-      while (true) {
+      const visited = new Set<number>();
+      while (!visited.has(currentNodeId)) {
+        visited.add(currentNodeId);
         fallbackNodeId = currentNodeId;
         const childCount = relations.childrenById.get(currentNodeId)?.length ?? 0;
         if (childCount > 1) {
@@ -226,40 +318,30 @@ export class SpatialSkeletonEditTab extends Tab {
         return node;
       }
       let bestLeafNodeId: number | undefined;
-      let bestLeafDistance = Number.POSITIVE_INFINITY;
-      const queue: Array<{ nodeId: number; distance: number }> = [
-        { nodeId: node.nodeId, distance: 0 },
-      ];
       const visited = new Set<number>();
-      while (queue.length > 0) {
-        const current = queue.shift()!;
-        if (visited.has(current.nodeId)) {
-          continue;
+      let bestDepth = -1;
+      const walk = (nodeId: number, depth: number) => {
+        if (visited.has(nodeId)) {
+          return;
         }
-        visited.add(current.nodeId);
-        if (current.distance > bestLeafDistance) {
-          continue;
-        }
-        const children = relations.childrenById.get(current.nodeId) ?? [];
+        visited.add(nodeId);
+        const children = relations.childrenById.get(nodeId) ?? [];
         if (children.length === 0) {
           if (
             bestLeafNodeId === undefined ||
-            current.distance < bestLeafDistance ||
-            (current.distance === bestLeafDistance &&
-              current.nodeId < bestLeafNodeId)
+            depth > bestDepth ||
+            (depth === bestDepth && nodeId < bestLeafNodeId)
           ) {
-            bestLeafNodeId = current.nodeId;
-            bestLeafDistance = current.distance;
+            bestLeafNodeId = nodeId;
+            bestDepth = depth;
           }
-          continue;
+          return;
         }
         for (const childNodeId of children) {
-          queue.push({
-            nodeId: childNodeId,
-            distance: current.distance + 1,
-          });
+          walk(childNodeId, depth + 1);
         }
-      }
+      };
+      walk(node.nodeId, 0);
       if (bestLeafNodeId === undefined) {
         return node;
       }
@@ -291,25 +373,58 @@ export class SpatialSkeletonEditTab extends Tab {
       updateList();
     };
 
-    const setSelectedNodeByIndex = (
+    const setSelectedNodeBySequenceIndex = (
+      nodes: SpatiallyIndexedSkeletonNodeInfo[],
       index: number,
       options: {
         moveView?: boolean;
       } = {},
     ) => {
-      if (index < 0 || index >= allNodes.length) return;
-      selectNode(allNodes[index], options);
+      if (index < 0 || index >= nodes.length) return;
+      selectNode(nodes[index], options);
     };
 
     const moveSelectedNode = (delta: number) => {
       if (!ensureActionsAllowed()) return;
       const selectedId = layer.selectedSpatialSkeletonNodeId.value;
       if (selectedId === undefined) return;
-      const index = allNodes.findIndex((node) => node.nodeId === selectedId);
+      const orderedNodes = getNavigationNodes();
+      const index = orderedNodes.findIndex((node) => node.nodeId === selectedId);
       if (index === -1) return;
-      setSelectedNodeByIndex(
-        Math.max(0, Math.min(allNodes.length - 1, index + delta)),
+      setSelectedNodeBySequenceIndex(
+        orderedNodes,
+        Math.max(0, Math.min(orderedNodes.length - 1, index + delta)),
       );
+    };
+
+    const mapCatmaidNodeToNodeInfo = (
+      node: SpatiallyIndexedSkeletonNode,
+      fallbackSegmentId: number,
+    ): SpatiallyIndexedSkeletonNodeInfo | undefined => {
+      const nodeId = Number(node.id);
+      const x = Number(node.x);
+      const y = Number(node.y);
+      const z = Number(node.z);
+      if (
+        !Number.isFinite(nodeId) ||
+        !Number.isFinite(x) ||
+        !Number.isFinite(y) ||
+        !Number.isFinite(z)
+      ) {
+        return undefined;
+      }
+      const parentNodeId =
+        node.parent_id === undefined ||
+        node.parent_id === null ||
+        !Number.isFinite(Number(node.parent_id))
+          ? undefined
+          : Math.round(Number(node.parent_id));
+      return {
+        nodeId: Math.round(nodeId),
+        segmentId: fallbackSegmentId,
+        position: new Float32Array([x, y, z]),
+        parentNodeId,
+      };
     };
 
     const moveViewToNodePosition = (position: ArrayLike<number>) => {
@@ -531,7 +646,12 @@ export class SpatialSkeletonEditTab extends Tab {
     );
     const goRootButton = makeNavIconButton(svg_chevrons_up, "go to root", () => {
       if (!ensureActionsAllowed()) return;
-      setSelectedNodeByIndex(0);
+      const selectedNode = getSelectedNode();
+      if (selectedNode === undefined) {
+        StatusMessage.showTemporaryMessage("No skeleton node is selected.");
+        return;
+      }
+      selectNode(getSegmentRootNode(selectedNode));
     });
     const goTreeEndButton = makeNavIconButton(svg_chevrons_down, "go to end of branch", () => {
       if (!ensureActionsAllowed()) return;
@@ -793,7 +913,85 @@ export class SpatialSkeletonEditTab extends Tab {
       }
     };
 
+    const summarizeNodeState = (summarySuffix = "") => {
+      const segmentPreview = activeSegmentIds.slice(0, 5).map(String).join(", ");
+      const segmentSuffix = activeSegmentIds.length > 5 ? ", ..." : "";
+      nodesSummary.textContent =
+        `${allNodes.length} loaded nodes across ${activeSegmentIds.length} active skeleton(s)` +
+        (segmentPreview.length > 0 ? ` (${segmentPreview}${segmentSuffix})` : "") +
+        `.${summarySuffix}`;
+    };
+
+    const applyNodesBySegment = (
+      nextNodesBySegment: Map<number, SpatiallyIndexedSkeletonNodeInfo[]>,
+      summarySuffix = "",
+    ) => {
+      nodesBySegment = nextNodesBySegment;
+      const allNodesById = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
+      for (const segmentNodes of nextNodesBySegment.values()) {
+        for (const node of segmentNodes) {
+          if (!allNodesById.has(node.nodeId)) {
+            allNodesById.set(node.nodeId, node);
+          }
+        }
+      }
+      allNodes = [...allNodesById.values()].sort((a, b) =>
+        a.segmentId === b.segmentId ? a.nodeId - b.nodeId : a.segmentId - b.segmentId,
+      );
+      const selectedId = layer.selectedSpatialSkeletonNodeId.value;
+      if (
+        selectedId === undefined ||
+        !allNodes.some((node) => node.nodeId === selectedId)
+      ) {
+        layer.selectedSpatialSkeletonNodeId.value =
+          allNodes.length > 0 ? allNodes[0].nodeId : undefined;
+      }
+      summarizeNodeState(summarySuffix);
+      updateList();
+    };
+
+    const fetchFullSegmentNodes = async (
+      client: CatmaidClient,
+      segmentId: number,
+    ): Promise<SpatiallyIndexedSkeletonNodeInfo[]> => {
+      const cached = fullSegmentNodeCache.get(segmentId);
+      if (cached !== undefined) {
+        return cached;
+      }
+      const pending = pendingFullSegmentNodeFetches.get(segmentId);
+      if (pending !== undefined) {
+        return pending;
+      }
+      let fetchPromise: Promise<SpatiallyIndexedSkeletonNodeInfo[]>;
+      const fetchVersion = fullSkeletonCacheVersion;
+      fetchPromise = (async () => {
+        const fetchedNodes = await client.getSkeleton(segmentId);
+        const dedupedNodes = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
+        for (const fetchedNode of fetchedNodes) {
+          const mappedNode = mapCatmaidNodeToNodeInfo(fetchedNode, segmentId);
+          if (mappedNode === undefined) continue;
+          if (!dedupedNodes.has(mappedNode.nodeId)) {
+            dedupedNodes.set(mappedNode.nodeId, mappedNode);
+          }
+        }
+        const normalizedNodes = [...dedupedNodes.values()].sort(
+          (a, b) => a.nodeId - b.nodeId,
+        );
+        if (fullSkeletonCacheVersion === fetchVersion) {
+          fullSegmentNodeCache.set(segmentId, normalizedNodes);
+        }
+        return normalizedNodes;
+      })().finally(() => {
+        if (pendingFullSegmentNodeFetches.get(segmentId) === fetchPromise) {
+          pendingFullSegmentNodeFetches.delete(segmentId);
+        }
+      });
+      pendingFullSegmentNodeFetches.set(segmentId, fetchPromise);
+      return fetchPromise;
+    };
+
     const refreshNodes = () => {
+      const requestId = ++refreshRequestId;
       const skeletonLayer = layer.getSpatiallyIndexedSkeletonLayer();
       const activeSegmentBigints = [
         ...getVisibleSegments(layer.displayState.segmentationGroupState.value).keys(),
@@ -812,48 +1010,60 @@ export class SpatialSkeletonEditTab extends Tab {
         return;
       }
 
-      const allNodesById = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
-      const nextNodesBySegment = new Map<number, SpatiallyIndexedSkeletonNodeInfo[]>();
-      for (const segmentId of activeSegmentBigints) {
-        const segmentNumber = Number(segmentId);
-        if (!Number.isFinite(segmentNumber)) {
-          continue;
+      if (fullSkeletonCacheVersion !== layer.spatialSkeletonNodeDataVersion.value) {
+        fullSkeletonCacheVersion = layer.spatialSkeletonNodeDataVersion.value;
+        fullSegmentNodeCache.clear();
+        pendingFullSegmentNodeFetches.clear();
+      }
+      const activeSegmentIdSet = new Set(activeSegmentIds);
+      for (const cachedSegmentId of fullSegmentNodeCache.keys()) {
+        if (!activeSegmentIdSet.has(cachedSegmentId)) {
+          fullSegmentNodeCache.delete(cachedSegmentId);
         }
-        const segmentNodes = skeletonLayer.getNodes({ segmentId });
-        const dedupedNodes = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
-        for (const node of segmentNodes) {
-          if (!dedupedNodes.has(node.nodeId)) {
-            dedupedNodes.set(node.nodeId, node);
-          }
-          if (!allNodesById.has(node.nodeId)) {
-            allNodesById.set(node.nodeId, node);
-          }
-        }
-        nextNodesBySegment.set(
-          segmentNumber,
-          [...dedupedNodes.values()].sort((a, b) => a.nodeId - b.nodeId),
-        );
       }
 
-      nodesBySegment = nextNodesBySegment;
-      allNodes = [...allNodesById.values()].sort((a, b) =>
-        a.segmentId === b.segmentId ? a.nodeId - b.nodeId : a.segmentId - b.segmentId,
-      );
-      const selectedId = layer.selectedSpatialSkeletonNodeId.value;
-      if (
-        selectedId === undefined ||
-        !allNodes.some((node) => node.nodeId === selectedId)
-      ) {
-        layer.selectedSpatialSkeletonNodeId.value =
-          allNodes.length > 0 ? allNodes[0].nodeId : undefined;
+      const catmaidClient = getCatmaidClient(skeletonLayer);
+      if (catmaidClient === undefined) {
+        allNodes = [];
+        nodesBySegment = new Map();
+        layer.selectedSpatialSkeletonNodeId.value = undefined;
+        nodesSummary.textContent =
+          "Unable to load full skeleton data: CATMAID client unavailable for the active source.";
+        updateList();
+        return;
       }
-      const segmentPreview = activeSegmentIds.slice(0, 5).map(String).join(", ");
-      const segmentSuffix = activeSegmentIds.length > 5 ? ", ..." : "";
-      nodesSummary.textContent =
-        `${allNodes.length} loaded nodes across ${activeSegmentIds.length} active skeleton(s)` +
-        (segmentPreview.length > 0 ? ` (${segmentPreview}${segmentSuffix})` : "") +
-        ".";
-      updateList();
+
+      void (async () => {
+        try {
+          const fetchedSegments = await Promise.all(
+            activeSegmentIds.map(async (segmentId) => [
+              segmentId,
+              await fetchFullSegmentNodes(catmaidClient, segmentId),
+            ] as const),
+          );
+          if (requestId !== refreshRequestId) {
+            return;
+          }
+          const nextNodesBySegment = new Map<number, SpatiallyIndexedSkeletonNodeInfo[]>(
+            fetchedSegments,
+          );
+          applyNodesBySegment(nextNodesBySegment, " Using full CATMAID skeleton data.");
+        } catch (error) {
+          if (requestId !== refreshRequestId) {
+            return;
+          }
+          const message = error instanceof Error ? error.message : String(error);
+          StatusMessage.showTemporaryMessage(
+            `Failed to load full skeleton data from CATMAID: ${message}`,
+          );
+          allNodes = [];
+          nodesBySegment = new Map();
+          layer.selectedSpatialSkeletonNodeId.value = undefined;
+          nodesSummary.textContent =
+            "Failed to load full skeleton data from CATMAID.";
+          updateList();
+        }
+      })();
     };
 
     const updateGateStatus = () => {
