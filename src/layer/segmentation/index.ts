@@ -1106,10 +1106,13 @@ export class SegmentationUserLayer extends Base {
   private spatialSkeletonNodeDescriptions = new Map<number, string>();
   readonly spatialSkeletonEditModeAllowed = this.registerDisposer(
     makeCachedDerivedWatchableValue(
-      (levels, gridLevel3d) =>
-        levels.length > 0 && gridLevel3d >= levels.length - 1,
+      (levels, gridLevel2d, gridLevel3d) =>
+        levels.length > 0 &&
+        gridLevel2d >= levels.length - 1 &&
+        gridLevel3d >= levels.length - 1,
       [
         this.displayState.spatialSkeletonGridLevels,
+        this.displayState.spatialSkeletonGridLevel2d,
         this.displayState.spatialSkeletonGridLevel3d,
       ],
     ),
@@ -1371,7 +1374,7 @@ export class SegmentationUserLayer extends Base {
       return "Skeleton actions are only available for CATMAID sources.";
     }
     if (!this.spatialSkeletonEditModeAllowed.value) {
-      return "Set skeleton grid resolution to max LOD before using Skeleton actions.";
+      return "Set skeleton grid resolution to max LOD in both 2D and 3D before using Skeleton actions.";
     }
     if (!this.spatialSkeletonVisibleChunksLoaded.value) {
       const needed = this.spatialSkeletonVisibleChunksNeeded.value;
