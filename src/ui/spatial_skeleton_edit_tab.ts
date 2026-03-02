@@ -296,13 +296,17 @@ export class SpatialSkeletonEditTab extends Tab {
       let currentNodeId = node.nodeId;
       let fallbackNodeId = node.nodeId;
       const visited = new Set<number>();
+      let skipSelectedNode = true;
       while (!visited.has(currentNodeId)) {
         visited.add(currentNodeId);
         fallbackNodeId = currentNodeId;
-        const childCount = relations.childrenById.get(currentNodeId)?.length ?? 0;
-        if (childCount > 1) {
-          return relations.nodeById.get(currentNodeId) ?? node;
+        if (!skipSelectedNode) {
+          const childCount = relations.childrenById.get(currentNodeId)?.length ?? 0;
+          if (childCount > 1) {
+            return relations.nodeById.get(currentNodeId) ?? node;
+          }
         }
+        skipSelectedNode = false;
         const parentNodeId = relations.parentById.get(currentNodeId);
         if (parentNodeId === undefined) {
           break;
