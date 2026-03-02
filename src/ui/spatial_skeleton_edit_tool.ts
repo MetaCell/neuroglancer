@@ -326,6 +326,13 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
     const debugLog = (label: string, data: Record<string, unknown> = {}) => {
       logSpatialSkeletonEdit(label, data);
     };
+    const isChunkLoadWaitReason = (reason: string | undefined) => {
+      if (reason === undefined) return false;
+      return (
+        reason === "Waiting for visible skeleton chunks." ||
+        reason.startsWith("Wait for visible skeleton chunks to load (")
+      );
+    };
 
     const disableWithMessage = (message: string) => {
       setStatus(message);
@@ -374,46 +381,16 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
     };
     setReadyStatus();
     let stickyParentNodeId: number | undefined;
-    let stickyParentPosition: Float32Array | undefined;
-    let stickyParentClientX: number | undefined;
-    let stickyParentClientY: number | undefined;
-    let lastResolvedWorldPosition: Float32Array | undefined;
-    let lastMouseSamplePosition: Float32Array | undefined;
-    let lastMouseSampleClientX: number | undefined;
-    let lastMouseSampleClientY: number | undefined;
-    let lastMouseSamplePanel: RenderedDataPanel | undefined;
-    const rememberWorldPosition = (position: Float32Array | undefined) => {
-      if (position === undefined) return;
-      if (
-        !Number.isFinite(position[0]) ||
-        !Number.isFinite(position[1]) ||
-        !Number.isFinite(position[2])
-      ) {
-        return;
-      }
-      lastResolvedWorldPosition = new Float32Array(position);
-    };
     const clearStickyParent = () => {
       stickyParentNodeId = undefined;
-      stickyParentPosition = undefined;
-      stickyParentClientX = undefined;
-      stickyParentClientY = undefined;
     };
-    const setStickyParent = (
-      nodeId: number,
-      position: Float32Array,
-      clientX?: number,
-      clientY?: number,
-    ) => {
+    const setStickyParent = (nodeId: number) => {
       stickyParentNodeId = nodeId;
-      stickyParentPosition = new Float32Array(position);
-      if (clientX !== undefined && Number.isFinite(clientX)) {
-        stickyParentClientX = clientX;
-      }
-      if (clientY !== undefined && Number.isFinite(clientY)) {
-        stickyParentClientY = clientY;
-      }
     };
+    activation.registerDisposer(() => {
+      clearStickyParent();
+      layer.selectedSpatialSkeletonNodeId.value = undefined;
+    });
     activation.registerEventListener(
       window,
       "mousedown",
@@ -433,22 +410,13 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
     activation.registerEventListener(
       window,
       "pointermove",
-      (event: PointerEvent) => {
+      (_event: PointerEvent) => {
         if (!this.mouseState.updateUnconditionally()) return;
         setDebug(
           "pickedLayer",
           this.mouseState.pickedRenderLayer?.constructor?.name ?? "none",
         );
         setDebug("mousePos", formatVec3(this.mouseState.unsnappedPosition));
-        const sampledMousePosition = this.getMousePosition();
-        if (sampledMousePosition !== undefined) {
-          const samplePanel = this.getRenderedDataPanelForEvent(event);
-          lastMouseSamplePosition = new Float32Array(sampledMousePosition);
-          lastMouseSampleClientX = event.clientX;
-          lastMouseSampleClientY = event.clientY;
-          lastMouseSamplePanel = samplePanel;
-          rememberWorldPosition(sampledMousePosition);
-        }
       },
       { capture: true },
     );
@@ -462,10 +430,17 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
           const reason = layer.getSpatialSkeletonActionsDisabledReason();
           if (reason !== undefined) {
             StatusMessage.showTemporaryMessage(reason);
+            if (isChunkLoadWaitReason(reason)) {
+              setStatus(reason);
+              debugLog("actions-paused-waiting-for-chunks", { reason });
+              return;
+            }
             debugLog("auto-cancel-actions-not-allowed", { reason });
           }
           activation.cancel();
+          return;
         }
+        setReadyStatus();
       }),
     );
 
@@ -538,13 +513,7 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
 
         selectSegmentByNumber(nodeHit.segmentId);
         layer.selectedSpatialSkeletonNodeId.value = nodeHit.nodeId;
-        setStickyParent(
-          nodeHit.nodeId,
-          nodeHit.position,
-          event.detail.clientX,
-          event.detail.clientY,
-        );
-        rememberWorldPosition(nodeHit.position);
+        setStickyParent(nodeHit.nodeId);
         StatusMessage.showTemporaryMessage(
           `Selected node ${nodeHit.nodeId}. Shift+click to add a connected node.`,
         );
@@ -587,258 +556,25 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
           panel: actionPanel?.constructor?.name ?? "none",
           pickedLayer: this.mouseState.pickedRenderLayer?.constructor?.name ?? "none",
         });
-        const getPanelFallbackPosition = (
-          panel: RenderedDataPanel,
-          targetEvent: MouseEvent,
-          anchorOverride?: Float32Array,
-        ): Float32Array | undefined => {
-          const anchor = new Float32Array(3);
-          if (anchorOverride !== undefined) {
-            anchor[0] = Number(anchorOverride[0]);
-            anchor[1] = Number(anchorOverride[1]);
-            anchor[2] = Number(anchorOverride[2]);
-          } else {
-            const localPosition = layer.localPosition.value;
-            if (localPosition.length < 3) return undefined;
-            anchor[0] = Number(localPosition[0]);
-            anchor[1] = Number(localPosition[1]);
-            anchor[2] = Number(localPosition[2]);
-          }
-          if (
-            !Number.isFinite(anchor[0]) ||
-            !Number.isFinite(anchor[1]) ||
-            !Number.isFinite(anchor[2])
-          ) {
-            return undefined;
-          }
-          const rect = panel.element.getBoundingClientRect();
-          const deltaX = targetEvent.clientX - (rect.left + rect.width / 2);
-          const deltaY = targetEvent.clientY - (rect.top + rect.height / 2);
-          const projected = new Float32Array(anchor);
-          panel.translateDataPointByViewportPixels(
-            projected as unknown as vec3,
-            anchor as unknown as vec3,
-            deltaX,
-            deltaY,
-          );
-          if (
-            !Number.isFinite(projected[0]) ||
-            !Number.isFinite(projected[1]) ||
-            !Number.isFinite(projected[2])
-          ) {
-            return undefined;
-          }
-          return projected;
-        };
-        const getPanelNavigationAnchor = (
-          panel: RenderedDataPanel,
-        ): Float32Array | undefined => {
-          const position = panel.navigationState.position.value;
-          if (position.length < 3) return undefined;
-          const displayDimensions = panel.navigationState.displayDimensions.value;
-          const displayIndices = displayDimensions.displayDimensionIndices;
-          const displayRank = displayDimensions.displayRank;
-          const anchor = new Float32Array(3);
-          if (displayRank >= 3 && displayIndices.length >= 3) {
-            anchor[0] = Number(position[displayIndices[0]]);
-            anchor[1] = Number(position[displayIndices[1]]);
-            anchor[2] = Number(position[displayIndices[2]]);
-          } else {
-            anchor[0] = Number(position[0]);
-            anchor[1] = Number(position[1]);
-            anchor[2] = Number(position[2]);
-          }
-          if (
-            !Number.isFinite(anchor[0]) ||
-            !Number.isFinite(anchor[1]) ||
-            !Number.isFinite(anchor[2])
-          ) {
-            return undefined;
-          }
-          return anchor;
-        };
-        const getActionPanelProjectedPosition = (
-          targetEvent: MouseEvent,
-          anchorOverride?: Float32Array,
-        ): Float32Array | undefined => {
-          if (actionPanel === undefined) return undefined;
-          if (anchorOverride !== undefined) {
-            const projectedFromOverride = getPanelFallbackPosition(
-              actionPanel,
-              targetEvent,
-              anchorOverride,
-            );
-            if (projectedFromOverride !== undefined) {
-              return projectedFromOverride;
-            }
-          }
-          const projectedFromLocal = getPanelFallbackPosition(
-            actionPanel,
-            targetEvent,
-          );
-          if (projectedFromLocal !== undefined) {
-            return projectedFromLocal;
-          }
-          const navigationAnchor = getPanelNavigationAnchor(actionPanel);
-          if (navigationAnchor === undefined) return undefined;
-          const projectedFromNavigation = getPanelFallbackPosition(
-            actionPanel,
-            targetEvent,
-            navigationAnchor,
-          );
-          if (projectedFromNavigation !== undefined) {
-            debugLog("click-position-projected-from-navigation-anchor", {
-              anchor: formatVec3(navigationAnchor),
-              projected: formatVec3(projectedFromNavigation),
-            });
-          }
-          return projectedFromNavigation;
-        };
-        const resolveClickPosition = (
-          targetEvent: MouseEvent,
-          selectedParentNodeId?: number,
-        ) => {
-          const directMousePosition = this.getMousePosition();
-          if (directMousePosition !== undefined) {
-            return directMousePosition;
-          }
-          if (actionPanel !== undefined) {
-            const hasMouseSampleAnchor =
-              lastMouseSamplePosition !== undefined &&
-              lastMouseSamplePanel === actionPanel &&
-              lastMouseSampleClientX !== undefined &&
-              lastMouseSampleClientY !== undefined;
-            if (hasMouseSampleAnchor) {
-              const sampleAnchor = lastMouseSamplePosition!;
-              const sampleClientX = lastMouseSampleClientX!;
-              const sampleClientY = lastMouseSampleClientY!;
-              const projectedFromMouseSample = new Float32Array(sampleAnchor);
-              actionPanel.translateDataPointByViewportPixels(
-                projectedFromMouseSample as unknown as vec3,
-                sampleAnchor as unknown as vec3,
-                targetEvent.clientX - sampleClientX,
-                targetEvent.clientY - sampleClientY,
-              );
-              if (
-                Number.isFinite(projectedFromMouseSample[0]) &&
-                Number.isFinite(projectedFromMouseSample[1]) &&
-                Number.isFinite(projectedFromMouseSample[2])
-              ) {
-                debugLog("click-position-projected-from-mouse-sample", {
-                  anchor: formatVec3(sampleAnchor),
-                  anchorClientX: sampleClientX,
-                  anchorClientY: sampleClientY,
-                  targetClientX: targetEvent.clientX,
-                  targetClientY: targetEvent.clientY,
-                  projected: formatVec3(projectedFromMouseSample),
-                });
-                return projectedFromMouseSample;
-              }
-            }
-            let anchorOverride: Float32Array | undefined;
-            if (selectedParentNodeId !== undefined) {
-              anchorOverride = getSelectedNodePositionFallback(selectedParentNodeId);
-            }
-            if (anchorOverride === undefined) {
-              anchorOverride = stickyParentPosition;
-            }
-            if (anchorOverride === undefined) {
-              anchorOverride = lastResolvedWorldPosition;
-            }
-            if (anchorOverride !== undefined) {
-              const hasStickyParentScreenAnchor =
-                selectedParentNodeId !== undefined &&
-                stickyParentNodeId === selectedParentNodeId &&
-                stickyParentClientX !== undefined &&
-                stickyParentClientY !== undefined;
-              if (hasStickyParentScreenAnchor) {
-                const anchorClientX = stickyParentClientX!;
-                const anchorClientY = stickyParentClientY!;
-                const projectedFromParentScreen = new Float32Array(anchorOverride);
-                actionPanel.translateDataPointByViewportPixels(
-                  projectedFromParentScreen as unknown as vec3,
-                  anchorOverride as unknown as vec3,
-                  targetEvent.clientX - anchorClientX,
-                  targetEvent.clientY - anchorClientY,
-                );
-                if (
-                  Number.isFinite(projectedFromParentScreen[0]) &&
-                  Number.isFinite(projectedFromParentScreen[1]) &&
-                  Number.isFinite(projectedFromParentScreen[2])
-                ) {
-                  debugLog("click-position-projected-from-parent-screen-anchor", {
-                    anchor: formatVec3(anchorOverride),
-                    anchorClientX,
-                    anchorClientY,
-                    targetClientX: targetEvent.clientX,
-                    targetClientY: targetEvent.clientY,
-                    projected: formatVec3(projectedFromParentScreen),
-                  });
-                  return projectedFromParentScreen;
-                }
-              }
-              const projectedFromAnchor = getPanelFallbackPosition(
-                actionPanel,
-                targetEvent,
-                anchorOverride,
-              );
-              if (projectedFromAnchor !== undefined) {
-                debugLog("click-position-projected-from-anchor", {
-                  anchor: formatVec3(anchorOverride),
-                  projected: formatVec3(projectedFromAnchor),
-                });
-                return projectedFromAnchor;
-              }
-            }
-            return getActionPanelProjectedPosition(targetEvent, anchorOverride);
-          }
-          return undefined;
-        };
-        const getLocalPositionFallback = () => {
-          const localPosition = layer.localPosition.value;
-          if (localPosition.length >= 3) {
-            const x = Number(localPosition[0]);
-            const y = Number(localPosition[1]);
-            const z = Number(localPosition[2]);
-            if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
-              return new Float32Array([x, y, z]);
-            }
-          }
-          if (actionPanel !== undefined) {
-            const navigationAnchor = getPanelNavigationAnchor(actionPanel);
-            if (navigationAnchor !== undefined) {
-              debugLog("local-position-fallback-navigation-anchor", {
-                anchor: formatVec3(navigationAnchor),
-              });
-              return navigationAnchor;
-            }
-          }
-          return undefined;
-        };
-        const getSelectedNodePositionFallback = (selectedNodeId: number) => {
-          const selectedNode = skeletonLayer
-            .getNodes()
-            .find((node) => node.nodeId === selectedNodeId);
-          if (selectedNode === undefined) return undefined;
-          return new Float32Array(selectedNode.position);
-        };
         const mousePosition = this.getMousePosition();
         const addGesture = event.detail.shiftKey;
         const selectedNodeIdAtMouseDown = layer.selectedSpatialSkeletonNodeId.value;
         const effectiveSelectedNodeIdAtMouseDown =
           selectedNodeIdAtMouseDown ?? stickyParentNodeId;
-        const clickStartPosition =
-          mousePosition ??
-          (actionPanel === undefined
-            ? undefined
-            : getActionPanelProjectedPosition(event.detail));
-        rememberWorldPosition(mousePosition);
-        rememberWorldPosition(clickStartPosition);
-        if (
-          mousePosition === undefined &&
-          clickStartPosition === undefined &&
-          !addGesture
-        ) {
+        if (mousePosition === undefined) {
+          if (addGesture) {
+            StatusMessage.showTemporaryMessage(
+              "Unable to resolve add-node position for this click. Make sure another visible layer is available under the cursor.",
+            );
+            debugLog("add-node-position-unresolved", {
+              addGesture,
+              selectedNodeIdAtMouseDown,
+              stickyParentNodeId,
+              clientX: event.detail.clientX,
+              clientY: event.detail.clientY,
+            });
+            return;
+          }
           debugLog("click-aborted-no-position", {
             addGesture,
             selectedNodeIdAtMouseDown,
@@ -846,22 +582,13 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
           });
           return;
         }
-        if (mousePosition === undefined && clickStartPosition === undefined) {
-          debugLog("click-position-missing-will-use-fallback", {
-            addGesture,
-            selectedNodeIdAtMouseDown,
-            stickyParentNodeId,
-          });
-        }
+        const clickStartPosition = new Float32Array(mousePosition);
         const segmentId = layer.displayState.segmentSelectionState.baseValue;
         const nodeSelectionRadius = this.getNodeSelectionRadius();
-        const nodeHit =
-          mousePosition === undefined
-            ? undefined
-            : skeletonLayer.findClosestNode(mousePosition, {
-                segmentId,
-                maxDistance: nodeSelectionRadius,
-              });
+        const nodeHit = skeletonLayer.findClosestNode(mousePosition, {
+          segmentId,
+          maxDistance: nodeSelectionRadius,
+        });
         debugLog("gesture-resolved", {
           addGesture,
           shiftAtMouseDown: event.detail.shiftKey,
@@ -869,8 +596,6 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
           selectedNodeId: selectedNodeIdAtMouseDown,
           effectiveSelectedNodeId: effectiveSelectedNodeIdAtMouseDown,
           stickyParentNodeId,
-          stickyParentClientX,
-          stickyParentClientY,
           clickStartPosition: formatVec3(clickStartPosition),
         });
         setDebug("dragStartMousePos", formatVec3(clickStartPosition));
@@ -899,28 +624,8 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
           if (addGesture) {
             const selectedParentNodeId =
               layer.selectedSpatialSkeletonNodeId.value ?? stickyParentNodeId;
-            let clickPosition =
-              resolveClickPosition(commitEvent, selectedParentNodeId) ??
-              (clickStartPosition === undefined
-                ? undefined
-                : new Float32Array(clickStartPosition));
-            if (clickPosition === undefined) {
-              clickPosition = getLocalPositionFallback();
-            }
-            if (clickPosition === undefined) {
-              StatusMessage.showTemporaryMessage(
-                "Unable to resolve add-node position for this click.",
-              );
-              debugLog("add-node-position-unresolved", {
-                addGesture,
-                selectedParentNodeId,
-                clientX: commitEvent.clientX,
-                clientY: commitEvent.clientY,
-                stickyParentNodeId,
-              });
-              return;
-            }
-            rememberWorldPosition(clickPosition);
+            const clickPosition =
+              this.getMousePosition() ?? new Float32Array(clickStartPosition);
             debugLog("shift-add-attempt", {
               selectedParentNodeId,
               clickPosition: formatVec3(clickPosition),
@@ -976,24 +681,14 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
                 committedNode,
               });
               layer.selectedSpatialSkeletonNodeId.value = committedNode.treenodeId;
-              setStickyParent(
-                committedNode.treenodeId,
-                clickPosition,
-                commitEvent.clientX,
-                commitEvent.clientY,
-              );
+              setStickyParent(committedNode.treenodeId);
               selectSegmentByNumber(committedNode.skeletonId);
               layer.markSpatialSkeletonNodeDataChanged();
               setReadyStatus();
               return;
             }
             layer.selectedSpatialSkeletonNodeId.value = newNode.nodeId;
-            setStickyParent(
-              newNode.nodeId,
-              newNode.position,
-              commitEvent.clientX,
-              commitEvent.clientY,
-            );
+            setStickyParent(newNode.nodeId);
             selectSegmentByNumber(newNode.segmentId);
             layer.markSpatialSkeletonNodeDataChanged();
             debugLog("add-node-committed", {
@@ -1232,10 +927,6 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
               finalPosition: formatVec3(lastPosition),
             });
             if (moved) {
-              if (stickyParentNodeId === nodeHit.nodeId) {
-                stickyParentPosition = new Float32Array(lastPosition);
-              }
-              rememberWorldPosition(lastPosition);
               layer.markSpatialSkeletonNodeDataChanged();
               void this.commitMoveNode(
                 skeletonLayer,
