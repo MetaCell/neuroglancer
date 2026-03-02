@@ -87,10 +87,6 @@ function formatMouseEvent(event: MouseEvent) {
   return `button=${event.button} buttons=${event.buttons} mods=${mods} prevented=${event.defaultPrevented}`;
 }
 
-function formatAxis3(value: Float32Array) {
-  return `(${value[0].toFixed(4)}, ${value[1].toFixed(4)}, ${value[2].toFixed(4)})`;
-}
-
 export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer> {
   private readonly catmaidClients = new Map<string, CatmaidClient>();
 
@@ -119,19 +115,6 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
       return undefined;
     }
     return new Float32Array([x, y, z]);
-  }
-
-  private getNodeSelectionRadius() {
-    const { layer } = this;
-    const levels = layer.displayState.spatialSkeletonGridLevels.value;
-    if (levels.length === 0) return 1;
-    const gridLevel = Math.min(
-      Math.max(layer.displayState.spatialSkeletonGridLevel3d.value, 0),
-      levels.length - 1,
-    );
-    const size = levels[gridLevel].size;
-    const spacing = Math.max(Math.min(size.x, size.y, size.z), 1);
-    return Math.max(spacing * 0.75, 1);
   }
 
   private getCatmaidClient(
@@ -191,12 +174,14 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
 
   private async commitAddNode(
     skeletonLayer: SpatiallyIndexedSkeletonLayer,
+    skeletonId: number,
     parentNodeId: number | undefined,
     position: Float32Array,
   ): Promise<CatmaidAddNodeResult> {
     const client = this.getCatmaidClient(skeletonLayer);
     if (client === undefined) {
       logSpatialSkeletonEdit("commit-add-node-no-client", {
+        skeletonId,
         parentNodeId,
         layerType: skeletonLayer.constructor.name,
       });
@@ -208,14 +193,22 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
     const y = Number(position[1]);
     const z = Number(position[2]);
     logSpatialSkeletonEdit("commit-add-node-request", {
+      skeletonId,
       parentNodeId,
       x,
       y,
       z,
       layerType: skeletonLayer.constructor.name,
     });
-    const nodeInfo = await client.addNodeWithInfo(0, x, y, z, parentNodeId);
+    const nodeInfo = await client.addNodeWithInfo(
+      skeletonId,
+      x,
+      y,
+      z,
+      parentNodeId,
+    );
     logSpatialSkeletonEdit("commit-add-node-response", {
+      requestedSkeletonId: skeletonId,
       parentNodeId,
       treenodeId: nodeInfo.treenodeId,
       skeletonId: nodeInfo.skeletonId,
@@ -224,22 +217,6 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
       `Added node ${nodeInfo.treenodeId} on segment ${nodeInfo.skeletonId}.`,
     );
     return nodeInfo;
-  }
-
-  private getActivePixelSize() {
-    const pickedLayerName =
-      this.mouseState.pickedRenderLayer?.constructor?.name ?? "";
-    const use2d = pickedLayerName.includes("SliceView");
-    const pixelSize2d = Math.max(
-      this.layer.displayState.spatialSkeletonGridPixelSize2d.value,
-      1e-6,
-    );
-    const pixelSize3d = Math.max(
-      this.layer.displayState.spatialSkeletonGridPixelSize3d.value,
-      1e-6,
-    );
-    if (use2d) return pixelSize2d;
-    return pixelSize3d;
   }
 
   private getActiveSpatiallyIndexedSkeletonLayer() {
@@ -256,29 +233,32 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
     return this.layer.getSpatiallyIndexedSkeletonLayer();
   }
 
-  private getInitialFallbackDragAxes(pixelSize: number) {
-    const axisX = new Float32Array([pixelSize, 0, 0]);
-    const axisY = new Float32Array([0, -pixelSize, 0]);
-    const displayDimensions = this.mouseState.displayDimensions;
-    const indices = displayDimensions?.displayDimensionIndices;
-    if (indices === undefined || indices.length < 2) {
-      return { axisX, axisY };
+  private getPickedSpatialSkeletonNode():
+    | {
+        nodeId: number;
+        segmentId?: number;
+      }
+    | undefined {
+    if (!this.mouseState.updateUnconditionally() || !this.mouseState.active) {
+      return undefined;
     }
-    axisX.fill(0);
-    axisY.fill(0);
-    const dimX = indices[0];
-    const dimY = indices[1];
-    if (dimX >= 0 && dimX < 3) {
-      axisX[dimX] = pixelSize;
-    } else {
-      axisX[0] = pixelSize;
+    const nodeIdRaw = this.mouseState.pickedSpatialSkeletonNodeId;
+    if (
+      typeof nodeIdRaw !== "number" ||
+      !Number.isSafeInteger(nodeIdRaw) ||
+      nodeIdRaw <= 0
+    ) {
+      return undefined;
     }
-    if (dimY >= 0 && dimY < 3) {
-      axisY[dimY] = -pixelSize;
-    } else {
-      axisY[1] = -pixelSize;
-    }
-    return { axisX, axisY };
+    const nodeId = nodeIdRaw;
+    const segmentIdRaw = this.mouseState.pickedSpatialSkeletonSegmentId;
+    return {
+      nodeId,
+      segmentId:
+        typeof segmentIdRaw === "number" && Number.isSafeInteger(segmentIdRaw)
+          ? segmentIdRaw
+          : undefined,
+    };
   }
 
   private getRenderedDataPanelForEvent(
@@ -380,15 +360,7 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
       );
     };
     setReadyStatus();
-    let stickyParentNodeId: number | undefined;
-    const clearStickyParent = () => {
-      stickyParentNodeId = undefined;
-    };
-    const setStickyParent = (nodeId: number) => {
-      stickyParentNodeId = nodeId;
-    };
     activation.registerDisposer(() => {
-      clearStickyParent();
       layer.selectedSpatialSkeletonNodeId.value = undefined;
     });
     activation.registerEventListener(
@@ -471,28 +443,15 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
         if (skeletonLayer === undefined) {
           return;
         }
-        const mousePosition = this.getMousePosition();
-        if (mousePosition === undefined) {
-          debugLog("select-click-no-mouse-position", {
-            mouse: formatMouseEvent(event.detail),
-          });
-          return;
-        }
-        const segmentId = layer.displayState.segmentSelectionState.baseValue;
-        const nodeSelectionRadius = this.getNodeSelectionRadius();
-        const nodeHit = skeletonLayer.findClosestNode(mousePosition, {
-          segmentId,
-          maxDistance: nodeSelectionRadius,
-        });
+        const nodeHit = this.getPickedSpatialSkeletonNode();
         debugLog("select-click-hit-test", {
           nodeHitId: nodeHit?.nodeId,
           selectedNodeId: layer.selectedSpatialSkeletonNodeId.value,
-          mousePosition: formatVec3(mousePosition),
+          mousePosition: formatVec3(this.mouseState.unsnappedPosition),
         });
         if (nodeHit === undefined) {
           if (layer.selectedSpatialSkeletonNodeId.value !== undefined) {
             layer.selectedSpatialSkeletonNodeId.value = undefined;
-            clearStickyParent();
             StatusMessage.showTemporaryMessage("Selection cleared.");
             debugLog("selection-cleared", { reason: "empty-space-click" });
             setReadyStatus();
@@ -502,7 +461,6 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
 
         if (layer.selectedSpatialSkeletonNodeId.value === nodeHit.nodeId) {
           layer.selectedSpatialSkeletonNodeId.value = undefined;
-          clearStickyParent();
           StatusMessage.showTemporaryMessage(
             `Deselected node ${nodeHit.nodeId}.`,
           );
@@ -511,9 +469,15 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
           return;
         }
 
-        selectSegmentByNumber(nodeHit.segmentId);
+        const resolvedNodeInfo =
+          nodeHit.segmentId === undefined
+            ? skeletonLayer.getNode(nodeHit.nodeId)
+            : undefined;
+        const segmentId = nodeHit.segmentId ?? resolvedNodeInfo?.segmentId;
+        if (segmentId !== undefined) {
+          selectSegmentByNumber(segmentId);
+        }
         layer.selectedSpatialSkeletonNodeId.value = nodeHit.nodeId;
-        setStickyParent(nodeHit.nodeId);
         StatusMessage.showTemporaryMessage(
           `Selected node ${nodeHit.nodeId}. Shift+click to add a connected node.`,
         );
@@ -556,251 +520,159 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
           panel: actionPanel?.constructor?.name ?? "none",
           pickedLayer: this.mouseState.pickedRenderLayer?.constructor?.name ?? "none",
         });
-        const mousePosition = this.getMousePosition();
         const addGesture = event.detail.shiftKey;
-        const selectedNodeIdAtMouseDown = layer.selectedSpatialSkeletonNodeId.value;
-        const effectiveSelectedNodeIdAtMouseDown =
-          selectedNodeIdAtMouseDown ?? stickyParentNodeId;
-        if (mousePosition === undefined) {
-          if (addGesture) {
+        if (addGesture) {
+          const clickStartPosition = this.getMousePosition();
+          if (clickStartPosition === undefined) {
             StatusMessage.showTemporaryMessage(
-              "Unable to resolve add-node position for this click. Make sure another visible layer is available under the cursor.",
+              "Unable to resolve add-node position for this click.",
             );
             debugLog("add-node-position-unresolved", {
-              addGesture,
-              selectedNodeIdAtMouseDown,
-              stickyParentNodeId,
+              selectedNodeId: layer.selectedSpatialSkeletonNodeId.value,
               clientX: event.detail.clientX,
               clientY: event.detail.clientY,
             });
             return;
           }
-          debugLog("click-aborted-no-position", {
-            addGesture,
-            selectedNodeIdAtMouseDown,
-            stickyParentNodeId,
-          });
-          return;
-        }
-        const clickStartPosition = new Float32Array(mousePosition);
-        const segmentId = layer.displayState.segmentSelectionState.baseValue;
-        const nodeSelectionRadius = this.getNodeSelectionRadius();
-        const nodeHit = skeletonLayer.findClosestNode(mousePosition, {
-          segmentId,
-          maxDistance: nodeSelectionRadius,
-        });
-        debugLog("gesture-resolved", {
-          addGesture,
-          shiftAtMouseDown: event.detail.shiftKey,
-          nodeHitId: nodeHit?.nodeId,
-          selectedNodeId: selectedNodeIdAtMouseDown,
-          effectiveSelectedNodeId: effectiveSelectedNodeIdAtMouseDown,
-          stickyParentNodeId,
-          clickStartPosition: formatVec3(clickStartPosition),
-        });
-        setDebug("dragStartMousePos", formatVec3(clickStartPosition));
-        setDebug(
-          "nodeHit",
-          nodeHit === undefined
-            ? "none"
-            : `${nodeHit.nodeId} dist2=${nodeHit.distanceSquared.toFixed(3)}`,
-        );
-        debugLog("primary-action-hit-test", {
-          nodeHit: nodeHit?.nodeId,
-          segmentId: segmentId?.toString(),
-          nodeSelectionRadius,
-          clickStartPosition: formatVec3(clickStartPosition),
-        });
-
-        const commitClickAction = async (commitEvent: MouseEvent) => {
-          debugLog("commit-click-action", {
-            addGesture,
-            shiftAtMouseUp: commitEvent.shiftKey,
-            nodeHitId: nodeHit?.nodeId,
-            selectedNodeId: layer.selectedSpatialSkeletonNodeId.value,
-            stickyParentNodeId,
-            commitMouse: formatMouseEvent(commitEvent),
-          });
-          if (addGesture) {
-            const selectedParentNodeId =
-              layer.selectedSpatialSkeletonNodeId.value ?? stickyParentNodeId;
-            const clickPosition =
-              this.getMousePosition() ?? new Float32Array(clickStartPosition);
-            debugLog("shift-add-attempt", {
-              selectedParentNodeId,
-              clickPosition: formatVec3(clickPosition),
-            });
-            let committedNode: CatmaidAddNodeResult;
-            const addAttemptStartedAt = performance.now();
-            const slowAddNodeTimer = setTimeout(() => {
-              debugLog("add-node-commit-still-pending", {
-                elapsedMs: Math.round(performance.now() - addAttemptStartedAt),
-                selectedParentNodeId,
-                clickPosition: formatVec3(clickPosition),
-              });
-            }, 2000);
-            try {
-              committedNode = await this.commitAddNode(
-                skeletonLayer,
-                selectedParentNodeId,
-                clickPosition,
-              );
-              debugLog("add-node-commit-finished", {
-                elapsedMs: Math.round(performance.now() - addAttemptStartedAt),
-                selectedParentNodeId,
-              });
-            } catch (error) {
-              StatusMessage.showTemporaryMessage(
-                "Failed to commit node creation to CATMAID.",
-              );
-              const errorInfo: Record<string, unknown> =
-                error instanceof Error
-                  ? { message: error.message, stack: error.stack }
-                  : { error: String(error) };
-              debugLog("add-node-commit-failed", {
-                ...errorInfo,
-                parentNodeId: selectedParentNodeId,
-                clickPosition: formatVec3(clickPosition),
-              });
-              return;
-            } finally {
-              clearTimeout(slowAddNodeTimer);
-            }
-            const newNode = skeletonLayer.addNode(clickPosition, {
-              segmentId: committedNode.skeletonId,
-              parentNodeId: selectedParentNodeId,
-              nodeId: committedNode.treenodeId,
-            });
-            if (newNode === undefined) {
-              StatusMessage.showTemporaryMessage(
-                `Added node ${committedNode.treenodeId} in CATMAID, but local preview update failed.`,
-              );
-              debugLog("add-node-local-update-failed", {
-                clickPosition: formatVec3(clickPosition),
-                parentNodeId: selectedParentNodeId,
-                committedNode,
-              });
-              layer.selectedSpatialSkeletonNodeId.value = committedNode.treenodeId;
-              setStickyParent(committedNode.treenodeId);
-              selectSegmentByNumber(committedNode.skeletonId);
-              layer.markSpatialSkeletonNodeDataChanged();
-              setReadyStatus();
-              return;
-            }
-            layer.selectedSpatialSkeletonNodeId.value = newNode.nodeId;
-            setStickyParent(newNode.nodeId);
-            selectSegmentByNumber(newNode.segmentId);
-            layer.markSpatialSkeletonNodeDataChanged();
-            debugLog("add-node-committed", {
-              nodeId: newNode.nodeId,
-              segmentId: newNode.segmentId,
-              parentNodeId: selectedParentNodeId,
-              position: formatVec3(newNode.position),
-            });
-            setReadyStatus();
-            return;
-          }
-        };
-
-        if (nodeHit === undefined) {
-          let movementSquared = 0;
+          let dragDistanceSquared = 0;
+          setDebug("dragState", "armed-shift");
           startRelativeMouseDrag(
             event.detail,
             (_event, deltaX, deltaY) => {
-              movementSquared += deltaX * deltaX + deltaY * deltaY;
+              dragDistanceSquared += deltaX * deltaX + deltaY * deltaY;
             },
-            (finishEvent) => {
+            (_finishEvent) => {
               const thresholdSquared = DRAG_START_DISTANCE_PX * DRAG_START_DISTANCE_PX;
-              if (movementSquared > thresholdSquared) {
+              if (dragDistanceSquared > thresholdSquared) {
                 setReadyStatus();
-                setDebug("dragState", "ignored-no-node");
-                debugLog("drag-ignored-no-node-hit", { movementSquared });
+                setDebug("dragState", "ignored-shift-drag");
+                debugLog("shift-drag-ignored", {
+                  dragDistanceSquared,
+                  thresholdSquared,
+                });
                 return;
               }
-              void commitClickAction(finishEvent);
+              const selectedParentNodeId = layer.selectedSpatialSkeletonNodeId.value;
+              const selectedParentNode =
+                selectedParentNodeId === undefined
+                  ? undefined
+                  : skeletonLayer.getNode(selectedParentNodeId);
+              const targetSkeletonId =
+                selectedParentNode === undefined
+                  ? 0
+                  : selectedParentNode.segmentId;
+              const clickPosition =
+                this.getMousePosition() ?? new Float32Array(clickStartPosition);
+              debugLog("shift-add-attempt", {
+                selectedParentNodeId,
+                selectedParentSegmentId: selectedParentNode?.segmentId,
+                targetSkeletonId,
+                clickPosition: formatVec3(clickPosition),
+              });
+              void (async () => {
+                let committedNode: CatmaidAddNodeResult;
+                try {
+                  committedNode = await this.commitAddNode(
+                    skeletonLayer,
+                    targetSkeletonId,
+                    selectedParentNodeId,
+                    clickPosition,
+                  );
+                } catch (error) {
+                  StatusMessage.showTemporaryMessage(
+                    "Failed to commit node creation to CATMAID.",
+                  );
+                  const errorInfo: Record<string, unknown> =
+                    error instanceof Error
+                      ? { message: error.message, stack: error.stack }
+                      : { error: String(error) };
+                  debugLog("add-node-commit-failed", {
+                    ...errorInfo,
+                    parentNodeId: selectedParentNodeId,
+                    clickPosition: formatVec3(clickPosition),
+                  });
+                  return;
+                }
+                const newNode = skeletonLayer.addNode(clickPosition, {
+                  segmentId: committedNode.skeletonId,
+                  parentNodeId: selectedParentNodeId,
+                  nodeId: committedNode.treenodeId,
+                });
+                if (newNode === undefined) {
+                  StatusMessage.showTemporaryMessage(
+                    `Added node ${committedNode.treenodeId} in CATMAID, but local preview update failed.`,
+                  );
+                  layer.selectedSpatialSkeletonNodeId.value = committedNode.treenodeId;
+                  selectSegmentByNumber(committedNode.skeletonId);
+                  layer.markSpatialSkeletonNodeDataChanged();
+                  setReadyStatus();
+                  return;
+                }
+                layer.selectedSpatialSkeletonNodeId.value = newNode.nodeId;
+                selectSegmentByNumber(newNode.segmentId);
+                layer.markSpatialSkeletonNodeDataChanged();
+                debugLog("add-node-committed", {
+                  nodeId: newNode.nodeId,
+                  segmentId: newNode.segmentId,
+                  parentNodeId: selectedParentNodeId,
+                  position: formatVec3(newNode.position),
+                });
+                setReadyStatus();
+              })();
             },
           );
           return;
         }
 
-        setDebug("hit", `node=${nodeHit.nodeId} dist2=${nodeHit.distanceSquared.toFixed(3)}`);
-        setDebug("hitPos", formatVec3(nodeHit.position));
-        const dragPanel = this.getRenderedDataPanelForEvent(event.detail);
-        setDebug("dragPanel", dragPanel?.constructor?.name ?? "none");
-        debugLog("drag-hit-node", {
-          nodeId: nodeHit.nodeId,
-          distanceSquared: nodeHit.distanceSquared,
-          hitPosition: formatVec3(nodeHit.position),
-          dragPanel: dragPanel?.constructor?.name ?? "none",
-        });
+        const pickedNode = this.getPickedSpatialSkeletonNode();
+        if (pickedNode === undefined) {
+          setDebug("dragState", "ignored-no-node");
+          debugLog("drag-ignored-no-picked-node");
+          return;
+        }
+        const nodeInfo = skeletonLayer.getNode(pickedNode.nodeId);
+        if (nodeInfo === undefined) {
+          debugLog("drag-node-not-found", {
+            nodeId: pickedNode.nodeId,
+          });
+          return;
+        }
+        const dragPanel = actionPanel;
+        if (dragPanel === undefined) {
+          StatusMessage.showTemporaryMessage(
+            "Unable to resolve active panel for node drag.",
+          );
+          return;
+        }
+        setDebug("hit", `node=${pickedNode.nodeId}`);
+        setDebug("hitPos", formatVec3(nodeInfo.position));
+        setDebug("dragPanel", dragPanel.constructor?.name ?? "none");
         let moved = false;
-        let lastPosition = nodeHit.position;
+        let lastPosition = nodeInfo.position;
         const dragAnchorPosition =
-          new Float32Array(nodeHit.position) as unknown as vec3;
+          new Float32Array(nodeInfo.position) as unknown as vec3;
         const panelTranslatedPosition =
-          new Float32Array(nodeHit.position) as unknown as vec3;
-        let fallbackPosition = new Float32Array(nodeHit.position);
-        let previousMousePosition = this.getMousePosition();
-        const initialPixelSize = this.getActivePixelSize();
-        const initialAxes = this.getInitialFallbackDragAxes(initialPixelSize);
-        const fallbackAxisX = initialAxes.axisX;
-        const fallbackAxisY = initialAxes.axisY;
+          new Float32Array(nodeInfo.position) as unknown as vec3;
         let moveEvents = 0;
         let totalDeltaX = 0;
         let totalDeltaY = 0;
-        let fallbackEvents = 0;
-        let fallbackReason = "none";
         let dragDistanceSquared = 0;
         let dragActive = false;
-        const applyFallbackDragDelta = (deltaX: number, deltaY: number) => {
-          const applied = new Float32Array(fallbackPosition);
-          applied[0] += fallbackAxisX[0] * deltaX + fallbackAxisY[0] * deltaY;
-          applied[1] += fallbackAxisX[1] * deltaX + fallbackAxisY[1] * deltaY;
-          applied[2] += fallbackAxisX[2] * deltaX + fallbackAxisY[2] * deltaY;
-          fallbackPosition = applied;
-          ++fallbackEvents;
-          setDebug("fallbackEvents", String(fallbackEvents));
-          setDebug("fallbackReason", fallbackReason);
-          setDebug("fallbackAxisX", formatAxis3(fallbackAxisX));
-          setDebug("fallbackAxisY", formatAxis3(fallbackAxisY));
-          return applied;
-        };
-        const updateFallbackAxesFromSample = (
-          from: Float32Array,
-          to: Float32Array,
-          deltaX: number,
-          deltaY: number,
-        ) => {
-          const denom = deltaX * deltaX + deltaY * deltaY;
-          if (denom <= 1e-6) return;
-          const worldDx = to[0] - from[0];
-          const worldDy = to[1] - from[1];
-          const worldDz = to[2] - from[2];
-          const scaleX = deltaX / denom;
-          const scaleY = deltaY / denom;
-          // Exponential smoothing keeps drag stable while adapting to camera orientation.
-          const alpha = 0.5;
-          const oneMinusAlpha = 1 - alpha;
-          const candidateX0 = worldDx * scaleX;
-          const candidateX1 = worldDy * scaleX;
-          const candidateX2 = worldDz * scaleX;
-          const candidateY0 = worldDx * scaleY;
-          const candidateY1 = worldDy * scaleY;
-          const candidateY2 = worldDz * scaleY;
-          fallbackAxisX[0] = fallbackAxisX[0] * oneMinusAlpha + candidateX0 * alpha;
-          fallbackAxisX[1] = fallbackAxisX[1] * oneMinusAlpha + candidateX1 * alpha;
-          fallbackAxisX[2] = fallbackAxisX[2] * oneMinusAlpha + candidateX2 * alpha;
-          fallbackAxisY[0] = fallbackAxisY[0] * oneMinusAlpha + candidateY0 * alpha;
-          fallbackAxisY[1] = fallbackAxisY[1] * oneMinusAlpha + candidateY1 * alpha;
-          fallbackAxisY[2] = fallbackAxisY[2] * oneMinusAlpha + candidateY2 * alpha;
-        };
-        const applyMousePosition = (deltaX: number, deltaY: number) => {
-          ++moveEvents;
-          totalDeltaX += deltaX;
-          totalDeltaY += deltaY;
-          let appliedPosition: Float32Array | undefined;
-          let source = "panel-translation";
-          if (dragPanel !== undefined) {
+        setDebug("dragState", "armed");
+        startRelativeMouseDrag(
+          event.detail,
+          (_event, deltaX, deltaY) => {
+            dragDistanceSquared += deltaX * deltaX + deltaY * deltaY;
+            const thresholdSquared = DRAG_START_DISTANCE_PX * DRAG_START_DISTANCE_PX;
+            if (!dragActive && dragDistanceSquared >= thresholdSquared) {
+              dragActive = true;
+              setStatus(`Dragging node ${pickedNode.nodeId}`);
+              setDebug("dragState", "active");
+            }
+            if (!dragActive) return;
+            ++moveEvents;
+            totalDeltaX += deltaX;
+            totalDeltaY += deltaY;
             panelTranslatedPosition[0] = dragAnchorPosition[0];
             panelTranslatedPosition[1] = dragAnchorPosition[1];
             panelTranslatedPosition[2] = dragAnchorPosition[2];
@@ -811,117 +683,35 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
               totalDeltaY,
             );
             if (
-              Number.isFinite(panelTranslatedPosition[0]) &&
-              Number.isFinite(panelTranslatedPosition[1]) &&
-              Number.isFinite(panelTranslatedPosition[2])
+              !Number.isFinite(panelTranslatedPosition[0]) ||
+              !Number.isFinite(panelTranslatedPosition[1]) ||
+              !Number.isFinite(panelTranslatedPosition[2])
             ) {
-              appliedPosition = new Float32Array(panelTranslatedPosition);
-              fallbackPosition = new Float32Array(appliedPosition);
-            }
-          }
-          if (appliedPosition === undefined) {
-            const nextPosition = this.getMousePosition();
-            source = "mouse-position";
-            if (nextPosition === undefined) {
-              fallbackReason = "no-mouse-position";
-              appliedPosition = applyFallbackDragDelta(deltaX, deltaY);
-              source = "fallback-no-mouse-position";
-            } else if (
-              previousMousePosition !== undefined &&
-              nextPosition[0] === previousMousePosition[0] &&
-              nextPosition[1] === previousMousePosition[1] &&
-              nextPosition[2] === previousMousePosition[2]
-            ) {
-              fallbackReason = "stale-mouse-position";
-              appliedPosition = applyFallbackDragDelta(deltaX, deltaY);
-              source = "fallback-stale-mouse-position";
-            } else {
-              if (previousMousePosition !== undefined) {
-                updateFallbackAxesFromSample(
-                  previousMousePosition,
-                  nextPosition,
-                  deltaX,
-                  deltaY,
-                );
-              }
-              fallbackPosition = new Float32Array(nextPosition);
-              appliedPosition = nextPosition;
-            }
-            previousMousePosition = nextPosition ?? previousMousePosition;
-          }
-          const didMove = skeletonLayer.setNodePosition(
-            nodeHit.nodeId,
-            appliedPosition,
-          );
-          if (!didMove) return;
-          moved = true;
-          lastPosition = appliedPosition;
-          setDebug("draggingNode", String(nodeHit.nodeId));
-          setDebug("dragMoves", String(moveEvents));
-          setDebug("lastAppliedPos", formatVec3(appliedPosition));
-          if (moveEvents <= 5 || moveEvents % 20 === 0) {
-            debugLog("drag-move", {
-              nodeId: nodeHit.nodeId,
-              moveEvents,
-              deltaX,
-              deltaY,
-              source,
-              appliedPosition: formatVec3(appliedPosition),
-            });
-          }
-        };
-        setDebug("dragState", "armed");
-        startRelativeMouseDrag(
-          event.detail,
-          (_event, deltaX, deltaY) => {
-            dragDistanceSquared += deltaX * deltaX + deltaY * deltaY;
-            const thresholdSquared = DRAG_START_DISTANCE_PX * DRAG_START_DISTANCE_PX;
-            if (addGesture) {
-              if (dragDistanceSquared >= thresholdSquared) {
-                setDebug("dragState", "ignored-shift-drag");
-              }
               return;
             }
-            if (!dragActive && dragDistanceSquared >= thresholdSquared) {
-              dragActive = true;
-              setStatus(`Dragging node ${nodeHit.nodeId}`);
-              setDebug("dragState", "active");
-            }
-            if (!dragActive) return;
-            applyMousePosition(deltaX, deltaY);
+            const appliedPosition = new Float32Array(panelTranslatedPosition);
+            const didMove = skeletonLayer.setNodePosition(
+              pickedNode.nodeId,
+              appliedPosition,
+            );
+            if (!didMove) return;
+            moved = true;
+            lastPosition = appliedPosition;
+            setDebug("draggingNode", String(pickedNode.nodeId));
+            setDebug("dragMoves", String(moveEvents));
+            setDebug("lastAppliedPos", formatVec3(appliedPosition));
           },
-          (finishEvent) => {
-            const thresholdSquared = DRAG_START_DISTANCE_PX * DRAG_START_DISTANCE_PX;
-            if (addGesture) {
-              if (dragDistanceSquared > thresholdSquared) {
-                setReadyStatus();
-                setDebug("dragState", "ignored-shift-drag");
-                debugLog("shift-drag-ignored", {
-                  nodeId: nodeHit.nodeId,
-                  dragDistanceSquared,
-                  thresholdSquared,
-                });
-                return;
-              }
-              setDebug("dragState", "shift-click");
-              debugLog("shift-click-finish", {
-                nodeId: nodeHit.nodeId,
-                dragDistanceSquared,
-                thresholdSquared,
-              });
-              void commitClickAction(finishEvent);
-              return;
-            }
+          (_finishEvent) => {
             if (!dragActive) {
-              setDebug("dragState", "click");
-              void commitClickAction(finishEvent);
+              setReadyStatus();
+              setDebug("dragState", "idle");
               return;
             }
             setReadyStatus();
             setDebug("dragState", "idle");
             setDebug("draggingNode", "none");
             debugLog("drag-end", {
-              nodeId: nodeHit.nodeId,
+              nodeId: pickedNode.nodeId,
               moved,
               moveEvents,
               finalPosition: formatVec3(lastPosition),
@@ -930,14 +720,14 @@ export class SpatialSkeletonEditModeTool extends LayerTool<SegmentationUserLayer
               layer.markSpatialSkeletonNodeDataChanged();
               void this.commitMoveNode(
                 skeletonLayer,
-                nodeHit.nodeId,
+                pickedNode.nodeId,
                 lastPosition,
               ).catch((error) => {
                 StatusMessage.showTemporaryMessage(
-                  `Failed to commit move for node ${nodeHit.nodeId}.`,
+                  `Failed to commit move for node ${pickedNode.nodeId}.`,
                 );
                 debugLog("move-node-commit-failed", {
-                  nodeId: nodeHit.nodeId,
+                  nodeId: pickedNode.nodeId,
                   error: String(error),
                   position: formatVec3(lastPosition),
                 });

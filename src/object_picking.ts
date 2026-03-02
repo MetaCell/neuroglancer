@@ -104,6 +104,8 @@ export class PickIDManager {
       values[valuesOffset + 1],
       values[valuesOffset + 2],
     ));
+    mouseState.pickedSpatialSkeletonNodeId = undefined;
+    mouseState.pickedSpatialSkeletonSegmentId = undefined;
     mouseState.pickedAnnotationId = undefined;
     mouseState.pickedAnnotationLayer = undefined;
     mouseState.pickedAnnotationBuffer = undefined;

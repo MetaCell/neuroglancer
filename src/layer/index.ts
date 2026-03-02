@@ -1119,6 +1119,8 @@ export interface PickState {
   pickedRenderLayer: RenderLayer | null;
   pickedValue: bigint;
   pickedOffset: number;
+  pickedSpatialSkeletonNodeId: number | undefined;
+  pickedSpatialSkeletonSegmentId: number | undefined;
   pickedAnnotationLayer: AnnotationLayerState | undefined;
   pickedAnnotationId: string | undefined;
   pickedAnnotationBuffer: ArrayBuffer | undefined;
@@ -1140,6 +1142,8 @@ export class MouseSelectionState implements PickState {
   pickedRenderLayer: RenderLayer | null = null;
   pickedValue = 0n;
   pickedOffset = 0;
+  pickedSpatialSkeletonNodeId: number | undefined = undefined;
+  pickedSpatialSkeletonSegmentId: number | undefined = undefined;
   pickedAnnotationLayer: AnnotationLayerState | undefined = undefined;
   pickedAnnotationId: string | undefined = undefined;
   pickedAnnotationBuffer: ArrayBuffer | undefined = undefined;

@@ -26,6 +26,7 @@ import {
 } from "#src/chunk_manager/frontend.js";
 import type {
   LayerView,
+  MouseSelectionState,
   PickState,
   UserLayer,
   VisibleLayerInfo,
@@ -192,6 +193,9 @@ interface SkeletonChunkInterface {
   indexBuffer: GLBuffer;
   numIndices: number;
   numVertices: number;
+  pickNodeIds?: Int32Array;
+  pickSegmentIds?: Int32Array;
+  pickEdgeSegmentIds?: Int32Array;
 }
 
 interface SkeletonChunkData {
@@ -200,6 +204,17 @@ interface SkeletonChunkData {
   numVertices: number;
   vertexAttributeOffsets: Uint32Array;
 }
+
+type SpatiallyIndexedSkeletonPickData =
+  | {
+      kind: "node";
+      nodeIds: Int32Array;
+      segmentIds: Int32Array;
+    }
+  | {
+      kind: "edge";
+      segmentIds: Int32Array;
+    };
 
 class RenderHelper extends RefCounted {
   private textureAccessHelper = new OneDimensionalTextureAccessHelper(
@@ -271,7 +286,11 @@ class RenderHelper extends RefCounted {
           defineLineShader(builder);
           builder.addAttribute("highp uvec2", "aVertexIndex");
           builder.addUniform("highp float", "uLineWidth");
+          builder.addUniform("highp uint", "uPickInstanceStride");
+          builder.addVarying("highp uint", "vPickID", "flat");
           let vertexMain = `
+highp uint pickOffset = uint(gl_InstanceID) * uPickInstanceStride;
+vPickID = uPickID + pickOffset;
 highp vec3 vertexA = readAttribute0(aVertexIndex.x);
 highp vec3 vertexB = readAttribute0(aVertexIndex.y);
 emitLine(uProjection, vertexA, vertexB, uLineWidth);
@@ -292,10 +311,10 @@ vec4 segmentColor() {
   return ${segmentColorExpression};
 }
 void emitRGB(vec3 color) {
-  emit(vec4(color * uColor.a, uColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()}), uPickID);
+  emit(vec4(color * uColor.a, uColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()}), vPickID);
 }
 void emitDefault() {
-  emit(vec4(uColor.rgb, uColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()}), uPickID);
+  emit(vec4(uColor.rgb, uColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()}), vPickID);
 }
 `);
           } else {
@@ -305,12 +324,12 @@ vec4 segmentColor() {
 }
 void emitRGB(vec3 color) {
   highp float alpha = ${segmentAlphaExpression} * getLineAlpha() * ${this.getCrossSectionFadeFactor()};
-  emit(vec4(color * alpha, alpha), uPickID);
+  emit(vec4(color * alpha, alpha), vPickID);
 }
 void emitDefault() {
   vec4 baseColor = segmentColor();
   highp float alpha = baseColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()};
-  emit(vec4(baseColor.rgb * alpha, alpha), uPickID);
+  emit(vec4(baseColor.rgb * alpha, alpha), vPickID);
 }
 `);
           }
@@ -361,6 +380,8 @@ void emitDefault() {
             /*crossSectionFade=*/ this.targetIsSliceView,
           );
           builder.addUniform("highp float", "uNodeDiameter");
+          builder.addUniform("highp uint", "uPickInstanceStride");
+          builder.addVarying("highp uint", "vPickID", "flat");
           const selectedNodeAttributeReadExpression =
             this.selectedNodeAttributeIndex === undefined
               ? "0.0"
@@ -375,6 +396,8 @@ void emitDefault() {
               : `max(0.0, uNodeDiameter - 2.0 * ${selectedBorderWidthExpression})`;
           let vertexMain = `
 highp uint vertexIndex = uint(gl_InstanceID);
+highp uint pickOffset = vertexIndex * uPickInstanceStride;
+vPickID = uPickID + pickOffset;
 highp vec3 vertexPosition = readAttribute0(vertexIndex);
 emitCircle(
   uProjection * vec4(vertexPosition, 1.0),
@@ -392,7 +415,7 @@ vec4 segmentColor() {
 }
 void emitRGBA(vec4 color) {
   vec4 borderColor = color;
-  emit(getCircleColor(color, borderColor), uPickID);
+  emit(getCircleColor(color, borderColor), vPickID);
 }
 void emitRGB(vec3 color) {
   emitRGBA(vec4(color, 1.0));
@@ -417,7 +440,7 @@ vec4 segmentColor() {
 void emitRGBA(vec4 color) {
   vec4 borderColor = ${borderColorExpression};
   vec4 circleColor = getCircleColor(color, borderColor);
-  emit(vec4(circleColor.rgb * circleColor.a, circleColor.a), uPickID);
+  emit(vec4(circleColor.rgb * circleColor.a, circleColor.a), vPickID);
 }
 void emitRGB(vec3 color) {
   emitRGBA(vec4(color, 1.0));
@@ -511,6 +534,14 @@ void emitDefault() {
 
   setPickID(gl: GL, shader: ShaderProgram, pickID: number) {
     gl.uniform1ui(shader.uniform("uPickID"), pickID);
+  }
+
+  setEdgePickInstanceStride(gl: GL, shader: ShaderProgram, stride: number) {
+    gl.uniform1ui(shader.uniform("uPickInstanceStride"), stride);
+  }
+
+  setNodePickInstanceStride(gl: GL, shader: ShaderProgram, stride: number) {
+    gl.uniform1ui(shader.uniform("uPickInstanceStride"), stride);
   }
 
   drawSkeleton(
@@ -762,6 +793,7 @@ export class SkeletonLayer extends RefCounted {
 
     edgeShader.bind();
     renderHelper.beginLayer(gl, edgeShader, renderContext, modelMatrix);
+    renderHelper.setEdgePickInstanceStride(gl, edgeShader, 0);
     setControlsInShader(
       gl,
       edgeShader,
@@ -773,6 +805,7 @@ export class SkeletonLayer extends RefCounted {
     nodeShader.bind();
     renderHelper.beginLayer(gl, nodeShader, renderContext, modelMatrix);
     gl.uniform1f(nodeShader.uniform("uNodeDiameter"), pointDiameter);
+    renderHelper.setNodePickInstanceStride(gl, nodeShader, 0);
     setControlsInShader(
       gl,
       nodeShader,
@@ -1060,6 +1093,9 @@ export class SpatiallyIndexedSkeletonChunk extends SliceViewChunk implements Ske
   numFilteredIndices: number = 0;
   numFilteredVertices: number = 0;
   filteredVertexAttributeTextures?: (WebGLTexture | null)[];
+  filteredPickNodeIds?: Int32Array;
+  filteredPickSegmentIds?: Int32Array;
+  filteredPickEdgeSegmentIds?: Int32Array;
 
   constructor(source: SpatiallyIndexedSkeletonSource, chunkData: SkeletonChunkData) {
     super(source, chunkData);
@@ -1115,6 +1151,9 @@ export class SpatiallyIndexedSkeletonChunk extends SliceViewChunk implements Ske
       }
       this.filteredVertexAttributeTextures = undefined;
     }
+    this.filteredPickNodeIds = undefined;
+    this.filteredPickSegmentIds = undefined;
+    this.filteredPickEdgeSegmentIds = undefined;
   }
 }
 
@@ -1315,6 +1354,7 @@ interface SpatiallyIndexedSkeletonLayerOptions {
   lod?: WatchableValueInterface<number>;
   sources2d?: SpatiallyIndexedSkeletonSourceEntry[];
   selectedNodeId?: WatchableValueInterface<number | undefined>;
+  editMode?: WatchableValueInterface<boolean>;
 }
 
 type SpatiallyIndexedSkeletonView = "2d" | "3d";
@@ -1444,6 +1484,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
   gridLevel: WatchableValueInterface<number>;
   lod: WatchableValueInterface<number>;
   private selectedNodeId: WatchableValueInterface<number | undefined> | undefined;
+  private editMode: WatchableValueInterface<boolean> | undefined;
 
   private markFilteredDataDirty() {
     this.generation++;
@@ -1633,6 +1674,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     this.lod =
       options.lod ?? (displayState as any).skeletonLod ?? new WatchableValue(0);
     this.selectedNodeId = options.selectedNodeId;
+    this.editMode = options.editMode;
     registerRedrawWhenSegmentationDisplayState3DChanged(displayState, this);
     this.displayState.shaderError.value = undefined;
     const { skeletonRenderingOptions: renderingOptions } = displayState;
@@ -1708,6 +1750,14 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     if (selectedNodeWatchable?.changed) {
       this.registerDisposer(
         selectedNodeWatchable.changed.add(() =>
+          markDirty(),
+        ),
+      );
+    }
+    const editModeWatchable = this.editMode;
+    if (editModeWatchable?.changed) {
+      this.registerDisposer(
+        editModeWatchable.changed.add(() =>
           markDirty(),
         ),
       );
@@ -2007,6 +2057,43 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       return undefined;
     }
     return BigInt(hit.segmentId);
+  }
+
+  getNode(
+    nodeId: number,
+    options: {
+      lod?: number;
+    } = {},
+  ): SpatiallyIndexedSkeletonNodeInfo | undefined {
+    if (!Number.isSafeInteger(nodeId) || nodeId <= 0) return undefined;
+    const targetLod = options.lod;
+    const selectedSources = this.getCurrentSourcesForEditing();
+    for (const sourceEntry of selectedSources) {
+      const chunks = sourceEntry.chunkSource.chunks;
+      for (const chunk of chunks.values()) {
+        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
+        if (!this.lodMatches(typedChunk, targetLod)) continue;
+        if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
+        const vertexIndex = typedChunk.nodeMap.get(nodeId);
+        if (vertexIndex === undefined) continue;
+        if (vertexIndex < 0 || vertexIndex >= typedChunk.numVertices) continue;
+        const data = this.getChunkPositionAndSegmentArrays(typedChunk);
+        if (data === undefined) continue;
+        const { positions, segmentIds } = data;
+        const index = vertexIndex * 3;
+        const segmentId = Math.round(segmentIds[vertexIndex]);
+        return {
+          nodeId,
+          segmentId,
+          position: new Float32Array([
+            positions[index],
+            positions[index + 1],
+            positions[index + 2],
+          ]),
+        };
+      }
+    }
+    return undefined;
   }
 
   getNodes(
@@ -2601,6 +2688,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
 
     edgeShader.bind();
     renderHelper.beginLayer(gl, edgeShader, renderContext, modelMatrix);
+    renderHelper.setEdgePickInstanceStride(gl, edgeShader, 0);
     setControlsInShader(
       gl,
       edgeShader,
@@ -2612,6 +2700,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     nodeShader.bind();
     renderHelper.beginLayer(gl, nodeShader, renderContext, modelMatrix);
     gl.uniform1f(nodeShader.uniform("uNodeDiameter"), pointDiameter);
+    renderHelper.setNodePickInstanceStride(gl, nodeShader, 0);
     setControlsInShader(
       gl,
       nodeShader,
@@ -2628,15 +2717,17 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     nodeShader.bind();
     renderHelper.setColor(gl, nodeShader, baseColor);
     if (renderContext.emitPickID) {
-      const pickID = renderContext.pickIDs.register(layer);
       edgeShader.bind();
-      renderHelper.setPickID(gl, edgeShader, pickID);
+      renderHelper.setPickID(gl, edgeShader, 0);
+      renderHelper.setEdgePickInstanceStride(gl, edgeShader, 0);
       nodeShader.bind();
-      renderHelper.setPickID(gl, nodeShader, pickID);
+      renderHelper.setPickID(gl, nodeShader, 0);
+      renderHelper.setNodePickInstanceStride(gl, nodeShader, 0);
     }
 
     const targetLod = drawOptions?.lod;
     const view = drawOptions?.view ?? "3d";
+    const isEditModeActive = this.editMode?.value === true;
     const selectedSources = this.selectSourcesForViewAndGrid(
       view,
       drawOptions?.gridLevel,
@@ -2658,6 +2749,56 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
         );
         if (filteredChunk === null) {
           continue;
+        }
+        if (renderContext.emitPickID) {
+          const pickEdgeSegmentIds = filteredChunk.pickEdgeSegmentIds;
+          const pickNodeIds = filteredChunk.pickNodeIds;
+          const pickSegmentIds = filteredChunk.pickSegmentIds;
+          let edgePickId = 0;
+          let edgePickStride = 0;
+          let nodePickId = 0;
+          let nodePickStride = 0;
+          if (
+            !isEditModeActive &&
+            pickEdgeSegmentIds !== undefined &&
+            pickEdgeSegmentIds.length > 0
+          ) {
+            const pickData: SpatiallyIndexedSkeletonPickData = {
+              kind: "edge",
+              segmentIds: pickEdgeSegmentIds,
+            };
+            edgePickId = renderContext.pickIDs.register(
+              layer,
+              pickEdgeSegmentIds.length,
+              0n,
+              pickData,
+            );
+            edgePickStride = 1;
+          }
+          if (
+            pickNodeIds !== undefined &&
+            pickSegmentIds !== undefined &&
+            filteredChunk.numVertices > 0
+          ) {
+            const pickData: SpatiallyIndexedSkeletonPickData = {
+              kind: "node",
+              nodeIds: pickNodeIds,
+              segmentIds: pickSegmentIds,
+            };
+            nodePickId = renderContext.pickIDs.register(
+              layer,
+              filteredChunk.numVertices,
+              0n,
+              pickData,
+            );
+            nodePickStride = 1;
+          }
+          edgeShader.bind();
+          renderHelper.setPickID(gl, edgeShader, edgePickId);
+          renderHelper.setEdgePickInstanceStride(gl, edgeShader, edgePickStride);
+          nodeShader.bind();
+          renderHelper.setPickID(gl, nodeShader, nodePickId);
+          renderHelper.setNodePickInstanceStride(gl, nodeShader, nodePickStride);
         }
         renderHelper.drawSkeleton(
           gl,
@@ -2698,6 +2839,9 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       chunk.filteredMissingConnectionsHash === missingConnectionsHash &&
       chunk.filteredIndexBuffer &&
       chunk.filteredVertexAttributeTextures &&
+      chunk.filteredPickNodeIds &&
+      chunk.filteredPickSegmentIds &&
+      chunk.filteredPickEdgeSegmentIds &&
       chunk.numFilteredIndices > 0 &&
       chunk.numFilteredVertices > 0
     ) {
@@ -2706,6 +2850,9 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
         indexBuffer: chunk.filteredIndexBuffer,
         numIndices: chunk.numFilteredIndices,
         numVertices: chunk.numFilteredVertices,
+        pickNodeIds: chunk.filteredPickNodeIds,
+        pickSegmentIds: chunk.filteredPickSegmentIds,
+        pickEdgeSegmentIds: chunk.filteredPickEdgeSegmentIds,
       };
     }
 
@@ -2726,6 +2873,9 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       chunk.filteredMissingConnectionsHash = missingConnectionsHash;
       chunk.numFilteredIndices = 0;
       chunk.numFilteredVertices = 0;
+      chunk.filteredPickNodeIds = undefined;
+      chunk.filteredPickSegmentIds = undefined;
+      chunk.filteredPickEdgeSegmentIds = undefined;
       return null;
     }
 
@@ -2771,6 +2921,12 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
 
     const oldToNew = new Int32Array(chunk.numVertices);
     oldToNew.fill(-1);
+    const localNodeIdByVertex = new Int32Array(chunk.numVertices);
+    localNodeIdByVertex.fill(-1);
+    for (const [nodeId, vertexIndex] of chunk.nodeMap.entries()) {
+      if (vertexIndex < 0 || vertexIndex >= chunk.numVertices) continue;
+      localNodeIdByVertex[vertexIndex] = nodeId;
+    }
     const vertexList: number[] = [];
     for (let v = 0; v < chunk.numVertices; ++v) {
       const rawId = segmentIds[v];
@@ -2792,6 +2948,9 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       chunk.filteredMissingConnectionsHash = missingConnectionsHash;
       chunk.numFilteredIndices = 0;
       chunk.numFilteredVertices = 0;
+      chunk.filteredPickNodeIds = undefined;
+      chunk.filteredPickSegmentIds = undefined;
+      chunk.filteredPickEdgeSegmentIds = undefined;
       return null;
     }
 
@@ -2812,6 +2971,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     const extraSegments: number[] = [];
     const extraColors: number[] = [];
     const extraSelected: number[] = [];
+    const extraNodeIds: number[] = [];
     const extraVertexMap = new Map<number, number>();
     const chunkPositionCache = new Map<
       SpatiallyIndexedSkeletonChunk,
@@ -2893,6 +3053,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
               info.color[2],
               info.color[3],
             );
+            extraNodeIds.push(conn.parentId);
             extraSelected.push(
               selectedNodeId !== undefined && conn.parentId === selectedNodeId
                 ? 1
@@ -2917,6 +3078,9 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       chunk.filteredMissingConnectionsHash = missingConnectionsHash;
       chunk.numFilteredIndices = 0;
       chunk.numFilteredVertices = 0;
+      chunk.filteredPickNodeIds = undefined;
+      chunk.filteredPickSegmentIds = undefined;
+      chunk.filteredPickEdgeSegmentIds = undefined;
       return null;
     }
 
@@ -2926,6 +3090,9 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     const filteredSegments = new Float32Array(totalVertexCount);
     const filteredColors = new Float32Array(totalVertexCount * 4);
     const filteredSelected = new Float32Array(totalVertexCount);
+    const filteredPickNodeIds = new Int32Array(totalVertexCount);
+    filteredPickNodeIds.fill(-1);
+    const filteredPickSegmentIds = new Int32Array(totalVertexCount);
     for (let i = 0; i < vertexList.length; ++i) {
       const oldIndex = vertexList[i];
       const srcStart = oldIndex * 3;
@@ -2945,6 +3112,8 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
           ? 1
           : 0;
       filteredSelected[i] = selectedFlag;
+      filteredPickNodeIds[i] = localNodeIdByVertex[oldIndex];
+      filteredPickSegmentIds[i] = segmentId;
     }
     for (let i = 0; i < extraVertexCount; ++i) {
       const dstVertex = vertexList.length + i;
@@ -2961,6 +3130,22 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       filteredColors[dstVertex * 4 + 3] = extraColors[colorStart + 3];
       const selectedFlag = extraSelected[i] ?? 0;
       filteredSelected[dstVertex] = selectedFlag;
+      filteredPickNodeIds[dstVertex] = extraNodeIds[i] ?? -1;
+      filteredPickSegmentIds[dstVertex] = extraSegments[i] ?? 0;
+    }
+    const filteredPickEdgeSegmentIds = new Int32Array(filteredIndices.length / 2);
+    for (
+      let edgeIndex = 0, indexOffset = 0;
+      indexOffset < filteredIndices.length;
+      indexOffset += 2, ++edgeIndex
+    ) {
+      const vertexA = filteredIndices[indexOffset];
+      const vertexB = filteredIndices[indexOffset + 1];
+      let segmentId = filteredPickSegmentIds[vertexA];
+      if (!Number.isSafeInteger(segmentId) || segmentId <= 0) {
+        segmentId = filteredPickSegmentIds[vertexB];
+      }
+      filteredPickEdgeSegmentIds[edgeIndex] = segmentId;
     }
 
     const posBytes = new Uint8Array(filteredPositions.buffer);
@@ -3007,12 +3192,18 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     chunk.filteredMissingConnectionsHash = missingConnectionsHash;
     chunk.numFilteredIndices = filteredIndices.length;
     chunk.numFilteredVertices = totalVertexCount;
+    chunk.filteredPickNodeIds = filteredPickNodeIds;
+    chunk.filteredPickSegmentIds = filteredPickSegmentIds;
+    chunk.filteredPickEdgeSegmentIds = filteredPickEdgeSegmentIds;
 
     return {
       vertexAttributeTextures: chunk.filteredVertexAttributeTextures,
       indexBuffer: chunk.filteredIndexBuffer,
       numIndices: chunk.numFilteredIndices,
       numVertices: chunk.numFilteredVertices,
+      pickNodeIds: filteredPickNodeIds,
+      pickSegmentIds: filteredPickSegmentIds,
+      pickEdgeSegmentIds: filteredPickEdgeSegmentIds,
     };
   }
 
@@ -3122,7 +3313,21 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
     return this.base.displayState.objectAlpha.value < 1.0;
   }
 
+  getValueAt(position: Float32Array) {
+    return this.base.getHoveredSegmentId(position, {
+      view: "3d",
+      lod: this.base.lod.value,
+    });
+  }
+
   transformPickedValue(pickState: PickState) {
+    const pickedSegmentId = pickState.pickedSpatialSkeletonSegmentId;
+    if (
+      typeof pickedSegmentId === "number" &&
+      Number.isSafeInteger(pickedSegmentId)
+    ) {
+      return BigInt(pickedSegmentId);
+    }
     const mousePosition = (pickState as any).position as
       | ArrayLike<number>
       | undefined;
@@ -3131,6 +3336,42 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
       view: "3d",
       lod: this.base.lod.value,
     });
+  }
+
+  updateMouseState(
+    mouseState: MouseSelectionState,
+    _pickedValue: bigint,
+    pickedOffset: number,
+    data: any,
+  ) {
+    const pickData = data as SpatiallyIndexedSkeletonPickData | undefined;
+    if (pickData === undefined) return;
+    if (pickData.kind === "node") {
+      if (
+        pickedOffset < 0 ||
+        pickedOffset >= pickData.nodeIds.length ||
+        pickedOffset >= pickData.segmentIds.length
+      ) {
+        return;
+      }
+      const nodeId = pickData.nodeIds[pickedOffset];
+      if (!Number.isSafeInteger(nodeId) || nodeId <= 0) return;
+      mouseState.pickedSpatialSkeletonNodeId = nodeId;
+      const segmentId = pickData.segmentIds[pickedOffset];
+      if (Number.isSafeInteger(segmentId)) {
+        mouseState.pickedSpatialSkeletonSegmentId = segmentId;
+      }
+      return;
+    }
+    if (pickData.kind === "edge") {
+      if (pickedOffset < 0 || pickedOffset >= pickData.segmentIds.length) {
+        return;
+      }
+      const segmentId = pickData.segmentIds[pickedOffset];
+      if (Number.isSafeInteger(segmentId) && segmentId > 0) {
+        mouseState.pickedSpatialSkeletonSegmentId = segmentId;
+      }
+    }
   }
 
   draw(
@@ -3247,6 +3488,13 @@ export class SliceViewSpatiallyIndexedSkeletonLayer extends SliceViewRenderLayer
     return this.base.gl;
   }
 
+  getValueAt(position: Float32Array) {
+    return this.base.getHoveredSegmentId(position, {
+      view: "2d",
+      lod: this.base.lod.value,
+    });
+  }
+
   draw(renderContext: SliceViewRenderContext) {
     renderContext;
     // No-op for now to test data loading. 
@@ -3296,7 +3544,21 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
     return this.base.gl;
   }
 
+  getValueAt(position: Float32Array) {
+    return this.base.getHoveredSegmentId(position, {
+      view: "2d",
+      lod: this.base.lod.value,
+    });
+  }
+
   transformPickedValue(pickState: PickState) {
+    const pickedSegmentId = pickState.pickedSpatialSkeletonSegmentId;
+    if (
+      typeof pickedSegmentId === "number" &&
+      Number.isSafeInteger(pickedSegmentId)
+    ) {
+      return BigInt(pickedSegmentId);
+    }
     const mousePosition = (pickState as any).position as
       | ArrayLike<number>
       | undefined;
@@ -3305,6 +3567,42 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
       view: "2d",
       lod: this.base.lod.value,
     });
+  }
+
+  updateMouseState(
+    mouseState: MouseSelectionState,
+    _pickedValue: bigint,
+    pickedOffset: number,
+    data: any,
+  ) {
+    const pickData = data as SpatiallyIndexedSkeletonPickData | undefined;
+    if (pickData === undefined) return;
+    if (pickData.kind === "node") {
+      if (
+        pickedOffset < 0 ||
+        pickedOffset >= pickData.nodeIds.length ||
+        pickedOffset >= pickData.segmentIds.length
+      ) {
+        return;
+      }
+      const nodeId = pickData.nodeIds[pickedOffset];
+      if (!Number.isSafeInteger(nodeId) || nodeId <= 0) return;
+      mouseState.pickedSpatialSkeletonNodeId = nodeId;
+      const segmentId = pickData.segmentIds[pickedOffset];
+      if (Number.isSafeInteger(segmentId)) {
+        mouseState.pickedSpatialSkeletonSegmentId = segmentId;
+      }
+      return;
+    }
+    if (pickData.kind === "edge") {
+      if (pickedOffset < 0 || pickedOffset >= pickData.segmentIds.length) {
+        return;
+      }
+      const segmentId = pickData.segmentIds[pickedOffset];
+      if (Number.isSafeInteger(segmentId) && segmentId > 0) {
+        mouseState.pickedSpatialSkeletonSegmentId = segmentId;
+      }
+    }
   }
 
   attach(

@@ -1489,6 +1489,7 @@ export class SegmentationUserLayer extends Base {
                   gridLevel: displayState.spatialSkeletonGridLevel3d,
                   lod: displayState.skeletonLod,
                   selectedNodeId: this.selectedSpatialSkeletonNodeId,
+                  editMode: this.spatialSkeletonEditMode,
                 },
               );
               loadedSubsource.addRenderLayer(
@@ -1506,6 +1507,7 @@ export class SegmentationUserLayer extends Base {
                   gridLevel: displayState.spatialSkeletonGridLevel2d,
                   lod: displayState.spatialSkeletonLod2d,
                   selectedNodeId: this.selectedSpatialSkeletonNodeId,
+                  editMode: this.spatialSkeletonEditMode,
                 },
               );
               loadedSubsource.addRenderLayer(
@@ -1523,6 +1525,7 @@ export class SegmentationUserLayer extends Base {
                 gridLevel: displayState.spatialSkeletonGridLevel3d,
                 lod: displayState.skeletonLod,
                 selectedNodeId: this.selectedSpatialSkeletonNodeId,
+                editMode: this.spatialSkeletonEditMode,
               },
             );
             loadedSubsource.addRenderLayer(
@@ -1538,6 +1541,7 @@ export class SegmentationUserLayer extends Base {
                 gridLevel: displayState.spatialSkeletonGridLevel2d,
                 lod: displayState.spatialSkeletonLod2d,
                 selectedNodeId: this.selectedSpatialSkeletonNodeId,
+                editMode: this.spatialSkeletonEditMode,
               },
             );
             loadedSubsource.addRenderLayer(

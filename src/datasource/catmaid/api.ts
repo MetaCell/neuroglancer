@@ -607,13 +607,15 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
         parentId?: number,
         state?: CatmaidStatePayload,
     ): Promise<CatmaidAddNodeResult> {
-        void skeletonId;
         const body = new URLSearchParams({
             x: x.toString(),
             y: y.toString(),
             z: z.toString(),
             parent_id: (parentId ?? -1).toString(),
         });
+        if (Number.isSafeInteger(skeletonId) && skeletonId > 0) {
+            body.append("skeleton_id", skeletonId.toString());
+        }
         appendCatmaidState(body, state);
 
         const res = await this.fetch(`treenode/create`, {
