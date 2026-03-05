@@ -1,0 +1,50 @@
+.neuroglancer-accordion-item {
+  border-bottom: 1px solid #ddd;
+}
+
+.neuroglancer-accordion-item[data-expanded="true"]
+  .neuroglancer-accordion-body {
+  display: block; /* Show when expanded */
+}
+
+.neuroglancer-accordion-item[data-expanded="true"]
+  .neuroglancer-accordion-header
+  .neuroglancer-accordion-chevron
+  svg {
+  transform: rotate(180deg); /* Rotate chevron when expanded */
+}
+
+.neuroglancer-accordion-chevron {
+  display: inline-flex;
+  align-items: center;
+}
+
+.neuroglancer-accordion-chevron svg {
+  width: 20px;
+  height: 20px;
+  fill: rgba(255, 255, 255, 0.80); /* Chevron color */
+}
+
+.neuroglancer-accordion-item[data-expanded="false"]
+  .neuroglancer-accordion-body {
+  display: none; /* Hide when collapsed */
+}
+
+.neuroglancer-accordion-header {
+  padding: 8px 2px;
+  cursor: pointer;
+  justify-content: space-between;
+  align-items: center;
+  display: flex;
+}
+
+.neuroglancer-accordion-header-text {
+  color: rgba(255, 255, 255, 0.80);
+}
+
+.neuroglancer-accordion-body {
+  padding: 8px 2px;
+  overflow-x: auto;
+  overflow-y: auto;
+  padding-top: 0;
+}

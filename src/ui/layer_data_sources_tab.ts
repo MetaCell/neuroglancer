@@ -24,6 +24,7 @@ import type { UserLayer, UserLayerConstructor } from "#src/layer/index.js";
 import {
   changeLayerName,
   changeLayerType,
+  CREATE_SECTION_JSON_KEY,
   makeLayer,
   NewUserLayer,
   USER_LAYER_TABS,
@@ -53,6 +54,8 @@ import {
 import type { MessageList } from "#src/util/message_list.js";
 import { MessageSeverity } from "#src/util/message_list.js";
 import type { ProgressListener } from "#src/util/progress_listener.js";
+import type { AccordionState } from "#src/widget/accordion.js";
+import { AccordionTab } from "#src/widget/accordion.js";
 import { makeAddButton } from "#src/widget/add_button.js";
 import { CoordinateSpaceTransformWidget } from "#src/widget/coordinate_transform.js";
 import type {
@@ -64,7 +67,6 @@ import {
   makeCompletionElementWithDescription,
 } from "#src/widget/multiline_autocomplete.js";
 import { ProgressListenerWidget } from "#src/widget/progress_listener.js";
-import { Tab } from "#src/widget/tab_view.js";
 
 const dataSourceUrlSyntaxHighlighter: SyntaxHighlighter = {
   splitPattern: /\|?[^|:/_]*(?:[:/_]+)?/g,
@@ -420,7 +422,7 @@ function changeLayerTypeToDetected(userLayer: UserLayer) {
   return false;
 }
 
-export class LayerDataSourcesTab extends Tab {
+export class LayerDataSourcesTab extends AccordionTab {
   generation = -1;
   private sourceViews = new Map<LayerDataSource, DataSourceView>();
   private addDataSourceIcon = makeAddButton({
@@ -432,8 +434,11 @@ export class LayerDataSourcesTab extends Tab {
   private dataSourcesContainer = document.createElement("div");
   private reRender: DebouncedFunction;
 
-  constructor(public layer: Borrowed<UserLayer>) {
-    super();
+  constructor(
+    public layer: Borrowed<UserLayer>,
+    protected accordionState: AccordionState,
+  ) {
+    super(accordionState);
     const { element, dataSourcesContainer } = this;
     element.classList.add("neuroglancer-layer-data-sources-tab");
     dataSourcesContainer.classList.add(
@@ -448,7 +453,7 @@ export class LayerDataSourcesTab extends Tab {
       if (view === undefined) return;
       view.urlInput.inputElement.focus();
     });
-    element.appendChild(this.dataSourcesContainer);
+    this.appendChild(this.dataSourcesContainer);
     if (layer instanceof NewUserLayer) {
       const { layerTypeDetection, layerTypeElement, multiChannelLayerCreate } =
         this;
@@ -459,7 +464,7 @@ export class LayerDataSourcesTab extends Tab {
       layerTypeDetection.appendChild(document.createTextNode("Create as "));
       layerTypeDetection.appendChild(layerTypeElement);
       layerTypeDetection.appendChild(document.createTextNode(" layer"));
-      element.appendChild(layerTypeDetection);
+      this.appendChild(layerTypeDetection, CREATE_SECTION_JSON_KEY);
       layerTypeDetection.classList.add(
         "neuroglancer-layer-data-sources-tab-type-detection",
       );
@@ -492,7 +497,10 @@ export class LayerDataSourcesTab extends Tab {
       });
       multiChannelLayerCreate.style.display = "none";
       multiChannelLayerCreate.style.marginTop = "0.5em";
-      element.appendChild(multiChannelLayerCreate);
+      this.appendChild(multiChannelLayerCreate, CREATE_SECTION_JSON_KEY);
+
+      // Initially hide the section since both buttons start hidden
+      this.hideSection(CREATE_SECTION_JSON_KEY);
     }
     const reRender = (this.reRender = animationFrameDebounce(() =>
       this.updateView(),
@@ -522,14 +530,15 @@ export class LayerDataSourcesTab extends Tab {
       const { layerTypeElement } = this;
       layerTypeElement.textContent = layerConstructor.type;
       layerTypeDetection.title =
-        "Click here or press enter in the data source URL input box to create as " +
-        `${layerConstructor.type} layer`;
+        "Click here to create as " + `${layerConstructor.type} layer`;
       layerTypeDetection.style.display = "";
       multiChannelLayerCreate.style.display =
         layerConstructor.type === "image" ? "" : "none";
+      this.showSection(CREATE_SECTION_JSON_KEY);
     } else {
       layerTypeDetection.style.display = "none";
       multiChannelLayerCreate.style.display = "none";
+      this.hideSection(CREATE_SECTION_JSON_KEY);
     }
   }
 
@@ -593,5 +602,5 @@ USER_LAYER_TABS.push({
   id: "source",
   label: "Source",
   order: -100,
-  getter: (layer) => new LayerDataSourcesTab(layer),
+  getter: (layer) => new LayerDataSourcesTab(layer, layer.sourceAccordionState),
 });
