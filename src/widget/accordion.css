@@ -48,3 +48,11 @@
   overflow-y: auto;
   padding-top: 0;
 }
+
+.neuroglancer-accordion-item.no-border {
+  border-bottom: none;
+}
+
+.neuroglancer-accordion-item.no-border .neuroglancer-accordion-body {
+  padding: 0;
+}

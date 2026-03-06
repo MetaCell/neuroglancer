@@ -6,7 +6,7 @@ import { NullarySignal } from "#src/util/signal.js";
 import "#src/widget/accordion.css";
 import { Tab } from "#src/widget/tab_view.js";
 
-const ENABLE_ACCORDIONS = true;
+declare let NEUROGLANCER_USE_ACCORDIONS: boolean | undefined;
 
 export interface AccordionOptions {
   accordionJsonKey: string;
@@ -33,7 +33,7 @@ export class AccordionSectionState extends RefCounted {
 
   constructor(
     public jsonKey: string,
-    private defaultExpanded = false,
+    private defaultExpanded = true,
     onChangeCallback: () => void,
   ) {
     super();
@@ -97,7 +97,8 @@ export class AccordionState extends RefCounted {
   }
 
   toJSON() {
-    if (!ENABLE_ACCORDIONS) return undefined;
+    const useAccordions = typeof NEUROGLANCER_USE_ACCORDIONS !== 'undefined' ? NEUROGLANCER_USE_ACCORDIONS : true;
+    if (!useAccordions) return undefined;
     const sectionsData = this.sectionStates
       .map((section) => section.toJSON())
       .filter((data) => data !== undefined);
@@ -128,7 +129,8 @@ export class AccordionTab extends Tab {
       this.defaultKey = options.sections[0].jsonKey;
     }
     this.updateSectionsExpanded();
-    if (!ENABLE_ACCORDIONS) {
+    const useAccordions = typeof NEUROGLANCER_USE_ACCORDIONS !== 'undefined' ? NEUROGLANCER_USE_ACCORDIONS : true;
+    if (!useAccordions) {
       this.setAccordionHeadersHidden(true);
     }
   }
@@ -187,6 +189,11 @@ export class AccordionTab extends Tab {
     this.registerEventListener(newSection.header, "click", () =>
       this.setSectionExpanded(option.jsonKey),
     );
+
+    const useAccordions = typeof NEUROGLANCER_USE_ACCORDIONS !== 'undefined' ? NEUROGLANCER_USE_ACCORDIONS : true;
+    if (!useAccordions) {
+      container.classList.add("no-border");
+    }
 
     // Usually, the state is pre-propulated with all the relevant sections.
     // However, because appendChild is public and can be called with
