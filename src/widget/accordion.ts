@@ -148,6 +148,15 @@ export class AccordionTab extends Tab {
         "aria-expanded",
         String(state.isExpanded.value),
       );
+      // Update chevron tooltip
+      const chevron = section.header.querySelector('.neuroglancer-accordion-chevron');
+      if (chevron) {
+        const title = chevron.querySelector('title');
+        if (title) {
+          title.textContent = state.isExpanded.value ? 'Chevron Up' : 'Chevron Down';
+        }
+        chevron.setAttribute('title', state.isExpanded.value ? 'Chevron Up' : 'Chevron Down');
+      }
     });
   }
 
@@ -173,6 +182,13 @@ export class AccordionTab extends Tab {
     const chevron = document.createElement("span");
     chevron.classList.add("neuroglancer-accordion-chevron");
     chevron.innerHTML = svg_chevron_down;
+    // Set initial tooltip
+    const initialTooltip = option.defaultExpanded ? 'Chevron Up' : 'Chevron Down';
+    chevron.setAttribute('title', initialTooltip);
+    const title = chevron.querySelector('title');
+    if (title) {
+      title.textContent = initialTooltip;
+    }
     const headerText = document.createElement("span");
     headerText.classList.add("neuroglancer-accordion-header-text");
     headerText.textContent = option.displayName;
