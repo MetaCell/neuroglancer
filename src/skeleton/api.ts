@@ -17,9 +17,32 @@ export interface SpatiallyIndexedSkeletonOpenLeaf {
   creationTime?: string;
 }
 
+export interface SpatiallyIndexedSkeletonNavigationTarget {
+  nodeId: number;
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface SpatiallyIndexedSkeletonBranchNavigationTarget {
+  child: SpatiallyIndexedSkeletonNavigationTarget;
+  branchStartOrEnd: SpatiallyIndexedSkeletonNavigationTarget;
+  branchEnd: SpatiallyIndexedSkeletonNavigationTarget;
+}
+
 export interface SpatiallyIndexedSkeletonSource {
   listSkeletons(): Promise<number[]>;
   getSkeleton(skeletonId: number): Promise<SpatiallyIndexedSkeletonNode[]>;
+  getSkeletonRootNode(
+    skeletonId: number,
+  ): Promise<SpatiallyIndexedSkeletonNavigationTarget>;
+  getPreviousBranchOrRoot(
+    nodeId: number,
+    options?: { alt?: boolean },
+  ): Promise<SpatiallyIndexedSkeletonNavigationTarget>;
+  getNextBranchOrEnd(
+    nodeId: number,
+  ): Promise<SpatiallyIndexedSkeletonBranchNavigationTarget[]>;
   getOpenLeaves(
     skeletonId: number,
     nodeId: number,
@@ -48,7 +71,8 @@ export interface SpatiallyIndexedSkeletonSource {
   deleteNode(
     nodeId: number,
     options: {
-      childNodeIds: readonly number[];
+      parentNodeId?: number;
+      childNodeIds?: readonly number[];
     },
   ): Promise<void>;
 

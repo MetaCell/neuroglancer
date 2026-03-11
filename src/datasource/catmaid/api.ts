@@ -21,6 +21,8 @@ export interface CatmaidStackInfo {
 import { fetchOkWithCredentials } from "#src/credentials_provider/http_request.js";
 import type { CredentialsProvider } from "#src/credentials_provider/index.js";
 import {
+  SpatiallyIndexedSkeletonBranchNavigationTarget,
+  SpatiallyIndexedSkeletonNavigationTarget,
   SpatiallyIndexedSkeletonNode,
   SpatiallyIndexedSkeletonOpenLeaf,
   SpatiallyIndexedSkeletonSource,
@@ -48,33 +50,16 @@ export interface CatmaidAddNodeResult {
 }
 
 export interface CatmaidDeleteNodeOptions {
+  parentNodeId?: number;
   childNodeIds?: readonly number[];
   state?: CatmaidStatePayload;
 }
 
-export interface CatmaidDeleteNodeResult {
-  deletedSkeletonId: number | undefined;
-  existingSkeletonIds: number[];
-  newSkeletonIds: number[];
-  childSplits: Array<{
-    childNodeId: number;
-    existingSkeletonId: number | undefined;
-    newSkeletonId: number | undefined;
-  }>;
-}
+export interface CatmaidNodeNavigationTarget
+  extends SpatiallyIndexedSkeletonNavigationTarget {}
 
-export interface CatmaidNodeNavigationTarget {
-  nodeId: number;
-  x: number;
-  y: number;
-  z: number;
-}
-
-export interface CatmaidBranchNavigationTarget {
-  child: CatmaidNodeNavigationTarget;
-  branchStartOrEnd: CatmaidNodeNavigationTarget;
-  branchEnd: CatmaidNodeNavigationTarget;
-}
+export interface CatmaidBranchNavigationTarget
+  extends SpatiallyIndexedSkeletonBranchNavigationTarget {}
 
 export interface CatmaidOpenLeafTarget
   extends SpatiallyIndexedSkeletonOpenLeaf {}
@@ -91,17 +76,6 @@ export interface CatmaidSplitSkeletonResult {
 }
 
 export const CATMAID_TRUE_END_LABEL = "ends";
-export const CATMAID_TRUE_END_LABEL_ALIASES = [
-  CATMAID_TRUE_END_LABEL,
-  "true end",
-] as const;
-
-export function isCatmaidTrueEndLabel(label: string) {
-  const normalizedLabel = label.trim().toLowerCase();
-  return CATMAID_TRUE_END_LABEL_ALIASES.some(
-    (value) => value === normalizedLabel,
-  );
-}
 
 function includesNoMatchingNodeProviderError(value: unknown): boolean {
   return (
@@ -218,16 +192,6 @@ function appendCatmaidState(
     return;
   }
   body.append("state", JSON.stringify(state));
-}
-
-function appendRepeatedParameter(
-  body: URLSearchParams,
-  key: string,
-  values: Iterable<string | number>,
-) {
-  for (const value of values) {
-    body.append(key, value.toString());
-  }
 }
 
 function fetchWithCatmaidCredentials(
@@ -470,8 +434,11 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
   async getSkeleton(
     skeletonId: number,
   ): Promise<SpatiallyIndexedSkeletonNode[]> {
-    const data = await this.fetch(`skeletons/${skeletonId}/compact-detail`);
-    const nodes = data[0];
+    const data = await this.fetch(
+      `skeletons/${skeletonId}/compact-detail?with_tags=true`,
+    );
+    const nodes = Array.isArray(data?.[0]) ? data[0] : [];
+    const labels = data?.[2] ?? {};
     return nodes.map((n: any[]) => ({
       id: n[0],
       parent_id: n[1],
@@ -479,54 +446,8 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
       y: n[4],
       z: n[5],
       skeleton_id: skeletonId,
+      labels: Array.isArray(labels?.[n[0]]) ? labels[n[0]] : undefined,
     }));
-  }
-
-  async getNodeIdsByLabelNames(
-    skeletonIds: readonly number[],
-    labelNames: readonly string[],
-  ): Promise<Set<number>> {
-    const normalizedSkeletonIds = [
-      ...new Set(
-        skeletonIds
-          .map((value) => Number(value))
-          .filter((value) => Number.isFinite(value))
-          .map((value) => Math.round(value)),
-      ),
-    ];
-    const normalizedLabelNames = [
-      ...new Set(
-        labelNames
-          .map((value) => value.trim())
-          .filter((value) => value.length > 0),
-      ),
-    ];
-    if (
-      normalizedSkeletonIds.length === 0 ||
-      normalizedLabelNames.length === 0
-    ) {
-      return new Set<number>();
-    }
-    const body = new URLSearchParams();
-    appendRepeatedParameter(body, "skeleton_ids", normalizedSkeletonIds);
-    appendRepeatedParameter(body, "label_names", normalizedLabelNames);
-    const data = await this.fetch(`treenodes/compact-detail`, {
-      method: "POST",
-      body,
-    });
-    if (!Array.isArray(data)) {
-      throw new Error(
-        "CATMAID treenodes/compact-detail returned an unexpected response format.",
-      );
-    }
-    const result = new Set<number>();
-    for (const entry of data) {
-      if (!Array.isArray(entry) || entry.length === 0) continue;
-      const nodeId = Number(entry[0]);
-      if (!Number.isFinite(nodeId)) continue;
-      result.add(Math.round(nodeId));
-    }
-    return result;
   }
 
   async getSkeletonRootNode(
@@ -805,15 +726,29 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
     };
   }
 
-  private async splitDirectChildren(childNodeIds: readonly number[]): Promise<{
-    existingSkeletonIds: number[];
-    newSkeletonIds: number[];
-    childSplits: Array<{
-      childNodeId: number;
-      existingSkeletonId: number | undefined;
-      newSkeletonId: number | undefined;
-    }>;
-  }> {
+  async rerootSkeleton(
+    nodeId: number,
+    state?: CatmaidStatePayload,
+  ): Promise<void> {
+    const body = new URLSearchParams({
+      treenode_id: nodeId.toString(),
+    });
+    appendCatmaidState(body, state);
+    await this.fetch(`skeleton/reroot`, {
+      method: "POST",
+      body,
+    });
+  }
+
+  async deleteNode(
+    nodeId: number,
+    options: CatmaidDeleteNodeOptions = {},
+  ): Promise<void> {
+    const { parentNodeId, childNodeIds = [], state } = options;
+    const normalizedParentNodeId =
+      parentNodeId === undefined || parentNodeId === null
+        ? undefined
+        : Math.round(Number(parentNodeId));
     const normalizedChildIds = [
       ...new Set(
         childNodeIds
@@ -822,50 +757,9 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
           .map((value) => Math.round(value)),
       ),
     ].sort((a, b) => a - b);
-    if (normalizedChildIds.length === 0) {
-      return {
-        existingSkeletonIds: [],
-        newSkeletonIds: [],
-        childSplits: [],
-      };
+    if (normalizedParentNodeId === undefined && normalizedChildIds.length > 0) {
+      await this.rerootSkeleton(normalizedChildIds[0], state);
     }
-    const existingSkeletonIds = new Set<number>();
-    const newSkeletonIds = new Set<number>();
-    const childSplits: Array<{
-      childNodeId: number;
-      existingSkeletonId: number | undefined;
-      newSkeletonId: number | undefined;
-    }> = [];
-    for (const childId of normalizedChildIds) {
-      const splitResult = await this.splitSkeletonAtNode(childId);
-      if (splitResult.existingSkeletonId !== undefined) {
-        existingSkeletonIds.add(splitResult.existingSkeletonId);
-      }
-      if (splitResult.newSkeletonId !== undefined) {
-        newSkeletonIds.add(splitResult.newSkeletonId);
-      }
-      childSplits.push({
-        childNodeId: childId,
-        existingSkeletonId: splitResult.existingSkeletonId,
-        newSkeletonId: splitResult.newSkeletonId,
-      });
-    }
-    return {
-      existingSkeletonIds: [...existingSkeletonIds].sort((a, b) => a - b),
-      newSkeletonIds: [...newSkeletonIds].sort((a, b) => a - b),
-      childSplits,
-    };
-  }
-
-  async deleteNodeWithInfo(
-    nodeId: number,
-    options: CatmaidDeleteNodeOptions = {},
-  ): Promise<CatmaidDeleteNodeResult> {
-    const { childNodeIds = [], state } = options;
-    // Split all direct children first so deleting this node won't reconnect
-    // them to the deleted node's parent.
-    const splitResult = await this.splitDirectChildren(childNodeIds);
-
     const body = new URLSearchParams({
       treenode_id: nodeId.toString(),
     });
@@ -874,27 +768,9 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
       method: "POST",
       body: body,
     });
-    const deletedSkeletonId = Number(response?.skeleton_id);
-    return {
-      deletedSkeletonId: Number.isFinite(deletedSkeletonId)
-        ? Math.round(deletedSkeletonId)
-        : undefined,
-      existingSkeletonIds: splitResult.existingSkeletonIds,
-      newSkeletonIds: splitResult.newSkeletonIds,
-      childSplits: splitResult.childSplits,
-    };
-  }
-
-  async deleteNode(
-    nodeId: number,
-    options: CatmaidDeleteNodeOptions,
-  ): Promise<void> {
-    if (options.childNodeIds === undefined) {
-      throw new Error(
-        "deleteNode requires childNodeIds to avoid reconnecting children on delete.",
-      );
+    if (response?.success === undefined) {
+      throw new Error("Delete endpoint returned an unexpected response.");
     }
-    await this.deleteNodeWithInfo(nodeId, options);
   }
 
   async addNodeWithInfo(

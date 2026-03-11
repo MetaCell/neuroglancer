@@ -16,13 +16,13 @@
 
 import {
   CATMAID_TRUE_END_LABEL,
-  CATMAID_TRUE_END_LABEL_ALIASES,
   CatmaidClient,
-  isCatmaidTrueEndLabel,
 } from "#src/datasource/catmaid/api.js";
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import { getVisibleSegments } from "#src/segmentation_display_state/base.js";
 import type {
+  SpatiallyIndexedSkeletonBranchNavigationTarget,
+  SpatiallyIndexedSkeletonNavigationTarget,
   SpatiallyIndexedSkeletonNode,
   SpatiallyIndexedSkeletonSource as SpatiallyIndexedSkeletonApi,
 } from "#src/skeleton/api.js";
@@ -66,7 +66,11 @@ const NODE_TYPE_LABELS: Record<SkeletonNodeType, string> = {
 };
 
 function hasTrueEndLabel(node: SpatiallyIndexedSkeletonNodeInfo) {
-  return node.labels?.some((label) => isCatmaidTrueEndLabel(label)) ?? false;
+  return (
+    node.labels?.some(
+      (label) => label.trim().toLowerCase() === CATMAID_TRUE_END_LABEL,
+    ) ?? false
+  );
 }
 
 function formatNodePosition(position: ArrayLike<number>) {
@@ -203,122 +207,12 @@ export class SpatialSkeletonEditTab extends Tab {
       return allNodes.find((node) => node.nodeId === selectedId);
     };
 
-    const buildSegmentRelations = (segmentId: number) => {
-      const segmentNodes = nodesBySegment.get(segmentId) ?? [];
-      const nodeById = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
-      const parentById = new Map<number, number | undefined>();
-      const childrenById = new Map<number, number[]>();
-      for (const node of segmentNodes) {
-        nodeById.set(node.nodeId, node);
-        parentById.set(node.nodeId, undefined);
-        childrenById.set(node.nodeId, []);
-      }
-      for (const node of segmentNodes) {
-        const parentId = node.parentNodeId;
-        if (parentId === undefined || !nodeById.has(parentId)) {
-          continue;
-        }
-        parentById.set(node.nodeId, parentId);
-        const children = childrenById.get(parentId);
-        if (children !== undefined) {
-          children.push(node.nodeId);
-        }
-      }
-      for (const children of childrenById.values()) {
-        children.sort((a, b) => a - b);
-      }
-      return { nodeById, parentById, childrenById };
-    };
-
-    const getSegmentRootNode = (node: SpatiallyIndexedSkeletonNodeInfo) => {
-      const relations = buildSegmentRelations(node.segmentId);
-      if (!relations.nodeById.has(node.nodeId)) {
-        return node;
-      }
-      let currentNodeId = node.nodeId;
-      const visited = new Set<number>();
-      while (!visited.has(currentNodeId)) {
-        visited.add(currentNodeId);
-        const parentNodeId = relations.parentById.get(currentNodeId);
-        if (parentNodeId === undefined) {
-          break;
-        }
-        currentNodeId = parentNodeId;
-      }
-      return relations.nodeById.get(currentNodeId) ?? node;
-    };
-
-    const getBranchStartNode = (node: SpatiallyIndexedSkeletonNodeInfo) => {
-      const relations = buildSegmentRelations(node.segmentId);
-      if (!relations.nodeById.has(node.nodeId)) {
-        return node;
-      }
-      let currentNodeId = node.nodeId;
-      let fallbackNodeId = node.nodeId;
-      const visited = new Set<number>();
-      let skipSelectedNode = true;
-      while (!visited.has(currentNodeId)) {
-        visited.add(currentNodeId);
-        fallbackNodeId = currentNodeId;
-        if (!skipSelectedNode) {
-          const childCount =
-            relations.childrenById.get(currentNodeId)?.length ?? 0;
-          if (childCount > 1) {
-            return relations.nodeById.get(currentNodeId) ?? node;
-          }
-        }
-        skipSelectedNode = false;
-        const parentNodeId = relations.parentById.get(currentNodeId);
-        if (parentNodeId === undefined) {
-          break;
-        }
-        currentNodeId = parentNodeId;
-      }
-      return relations.nodeById.get(fallbackNodeId) ?? node;
-    };
-
-    const getBranchEndNode = (node: SpatiallyIndexedSkeletonNodeInfo) => {
-      const relations = buildSegmentRelations(node.segmentId);
-      if (!relations.nodeById.has(node.nodeId)) {
-        return node;
-      }
-      let bestLeafNodeId: number | undefined;
-      const visited = new Set<number>();
-      let bestDepth = -1;
-      const walk = (nodeId: number, depth: number) => {
-        if (visited.has(nodeId)) {
-          return;
-        }
-        visited.add(nodeId);
-        const children = relations.childrenById.get(nodeId) ?? [];
-        if (children.length === 0) {
-          if (
-            bestLeafNodeId === undefined ||
-            depth > bestDepth ||
-            (depth === bestDepth && nodeId < bestLeafNodeId)
-          ) {
-            bestLeafNodeId = nodeId;
-            bestDepth = depth;
-          }
-          return;
-        }
-        for (const childNodeId of children) {
-          walk(childNodeId, depth + 1);
-        }
-      };
-      walk(node.nodeId, 0);
-      if (bestLeafNodeId === undefined) {
-        return node;
-      }
-      return relations.nodeById.get(bestLeafNodeId) ?? node;
-    };
-
     const updateTrueEndLabels = (
       labels: readonly string[] | undefined,
       present: boolean,
     ) => {
       const nextLabels = (labels ?? []).filter(
-        (label) => !isCatmaidTrueEndLabel(label),
+        (label) => label.trim().toLowerCase() !== CATMAID_TRUE_END_LABEL,
       );
       if (present) {
         nextLabels.push(CATMAID_TRUE_END_LABEL);
@@ -483,6 +377,36 @@ export class SpatialSkeletonEditTab extends Tab {
       updateList();
     };
 
+    const getSelectedNavigationContext = () => {
+      if (!ensureActionsAllowed()) return undefined;
+      const selectedNode = getSelectedNode();
+      if (selectedNode === undefined) {
+        StatusMessage.showTemporaryMessage("No skeleton node is selected.");
+        return undefined;
+      }
+      const skeletonLayer = layer.getSpatiallyIndexedSkeletonLayer();
+      if (skeletonLayer === undefined) {
+        StatusMessage.showTemporaryMessage(
+          "No active spatial skeleton layer found for navigation.",
+        );
+        return undefined;
+      }
+      const skeletonApi = getSkeletonSourceApi(skeletonLayer);
+      if (skeletonApi === undefined) {
+        StatusMessage.showTemporaryMessage(
+          "Unable to resolve a skeleton API client for the active source.",
+        );
+        return undefined;
+      }
+      return { selectedNode, skeletonApi };
+    };
+
+    const getCurrentBranchEndTarget = (
+      branches: readonly SpatiallyIndexedSkeletonBranchNavigationTarget[],
+    ): SpatiallyIndexedSkeletonNavigationTarget | undefined => {
+      return branches[0]?.branchEnd;
+    };
+
     const updateTrueEndLabel = (
       node: SpatiallyIndexedSkeletonNodeInfo,
       present: boolean,
@@ -533,26 +457,9 @@ export class SpatialSkeletonEditTab extends Tab {
     };
 
     const goToClosestUnfinishedBranch = () => {
-      if (!ensureActionsAllowed()) return;
-      const selectedNode = getSelectedNode();
-      if (selectedNode === undefined) {
-        StatusMessage.showTemporaryMessage("No skeleton node is selected.");
-        return;
-      }
-      const skeletonLayer = layer.getSpatiallyIndexedSkeletonLayer();
-      if (skeletonLayer === undefined) {
-        StatusMessage.showTemporaryMessage(
-          "No active spatial skeleton layer found for navigation.",
-        );
-        return;
-      }
-      const skeletonApi = getSkeletonSourceApi(skeletonLayer);
-      if (skeletonApi === undefined) {
-        StatusMessage.showTemporaryMessage(
-          "Unable to resolve a skeleton API client for the active source.",
-        );
-        return;
-      }
+      const context = getSelectedNavigationContext();
+      if (context === undefined) return;
+      const { selectedNode, skeletonApi } = context;
       void (async () => {
         try {
           const openLeaves = await skeletonApi.getOpenLeaves(
@@ -592,55 +499,6 @@ export class SpatialSkeletonEditTab extends Tab {
       return childNodeIds;
     };
 
-    const getSplitSubtreeSegmentUpdates = (
-      segmentId: number,
-      childSplits: Array<{
-        childNodeId: number;
-        newSkeletonId: number | undefined;
-      }>,
-    ) => {
-      const segmentNodes = nodesBySegment.get(segmentId) ?? [];
-      if (segmentNodes.length === 0 || childSplits.length === 0) {
-        return [] as Array<{ nodeId: number; segmentId: number }>;
-      }
-      const childrenByParent = new Map<number, number[]>();
-      for (const candidate of segmentNodes) {
-        const parentNodeId = candidate.parentNodeId;
-        if (parentNodeId === undefined) continue;
-        let children = childrenByParent.get(parentNodeId);
-        if (children === undefined) {
-          children = [];
-          childrenByParent.set(parentNodeId, children);
-        }
-        children.push(candidate.nodeId);
-      }
-      const segmentByNodeId = new Map<number, number>();
-      for (const split of childSplits) {
-        const nextSegmentId = split.newSkeletonId;
-        if (nextSegmentId === undefined || !Number.isFinite(nextSegmentId)) {
-          continue;
-        }
-        const normalizedSegmentId = Math.round(nextSegmentId);
-        if (normalizedSegmentId === segmentId) continue;
-        const queue = [split.childNodeId];
-        const visited = new Set<number>();
-        while (queue.length > 0) {
-          const nodeId = queue.shift()!;
-          if (visited.has(nodeId)) continue;
-          visited.add(nodeId);
-          segmentByNodeId.set(nodeId, normalizedSegmentId);
-          const children = childrenByParent.get(nodeId) ?? [];
-          for (const childNodeId of children) {
-            queue.push(childNodeId);
-          }
-        }
-      }
-      return [...segmentByNodeId.entries()].map(([nodeId, nextSegmentId]) => ({
-        nodeId,
-        segmentId: nextSegmentId,
-      }));
-    };
-
     const deleteNode = (node: SpatiallyIndexedSkeletonNodeInfo) => {
       if (!ensureActionsAllowed()) return;
       if (pendingDeleteNodes.has(node.nodeId)) return;
@@ -663,31 +521,19 @@ export class SpatialSkeletonEditTab extends Tab {
       void (async () => {
         try {
           const directChildNodeIds = getDirectChildNodeIds(node);
-          const result = await client.deleteNodeWithInfo(node.nodeId, {
+          const deletingIsolatedRoot =
+            node.parentNodeId === undefined && directChildNodeIds.length === 0;
+          await client.deleteNode(node.nodeId, {
+            parentNodeId: node.parentNodeId,
             childNodeIds: directChildNodeIds,
           });
-          const splitSegmentUpdates = getSplitSubtreeSegmentUpdates(
-            node.segmentId,
-            result.childSplits,
-          );
-          if (splitSegmentUpdates.length > 0) {
-            skeletonLayer.setNodeSegmentIds(splitSegmentUpdates);
-          }
-          skeletonLayer.deleteNode(node.nodeId);
-          const newSkeletonIds = result.newSkeletonIds.filter(
-            (segmentId) => segmentId !== node.segmentId,
-          );
-          if (newSkeletonIds.length > 0) {
+          if (deletingIsolatedRoot) {
             const segmentationGroupState =
               layer.displayState.segmentationGroupState.value;
             const { visibleSegments, selectedSegments } =
               segmentationGroupState;
             visibleSegments.delete(BigInt(node.segmentId));
             selectedSegments.delete(BigInt(node.segmentId));
-            for (const segmentId of newSkeletonIds) {
-              visibleSegments.add(BigInt(segmentId));
-            }
-            layer.selectSegment(BigInt(newSkeletonIds[0]), false);
           }
           if (layer.selectedSpatialSkeletonNodeId.value === node.nodeId) {
             layer.selectedSpatialSkeletonNodeId.value = undefined;
@@ -696,13 +542,8 @@ export class SpatialSkeletonEditTab extends Tab {
             layer.spatialSkeletonTreeEndNodeId.value = undefined;
           }
           layer.markSpatialSkeletonNodeDataChanged();
-          if (newSkeletonIds.length > 0) {
-            StatusMessage.showTemporaryMessage(
-              `Deleted node ${node.nodeId}. Activated split skeleton(s): ${newSkeletonIds.join(", ")}.`,
-            );
-          } else {
-            StatusMessage.showTemporaryMessage(`Deleted node ${node.nodeId}.`);
-          }
+          skeletonLayer.invalidateSourceCaches();
+          StatusMessage.showTemporaryMessage(`Deleted node ${node.nodeId}.`);
           refreshNodes();
         } catch (error) {
           const message =
@@ -722,26 +563,44 @@ export class SpatialSkeletonEditTab extends Tab {
       svg_chevrons_up,
       "go to root of skeleton",
       () => {
-        if (!ensureActionsAllowed()) return;
-        const selectedNode = getSelectedNode();
-        if (selectedNode === undefined) {
-          StatusMessage.showTemporaryMessage("No skeleton node is selected.");
-          return;
-        }
-        selectNode(getSegmentRootNode(selectedNode));
+        const context = getSelectedNavigationContext();
+        if (context === undefined) return;
+        const { selectedNode, skeletonApi } = context;
+        void (async () => {
+          try {
+            navigateToNodeTarget(
+              await skeletonApi.getSkeletonRootNode(selectedNode.segmentId),
+            );
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            StatusMessage.showTemporaryMessage(
+              `Failed to locate skeleton root: ${message}`,
+            );
+          }
+        })();
       },
     );
     const goBranchStartButton = makeNavIconButton(
       svg_origin,
       "go to start of current branch",
       () => {
-        if (!ensureActionsAllowed()) return;
-        const selectedNode = getSelectedNode();
-        if (selectedNode === undefined) {
-          StatusMessage.showTemporaryMessage("No skeleton node is selected.");
-          return;
-        }
-        selectNode(getBranchStartNode(selectedNode));
+        const context = getSelectedNavigationContext();
+        if (context === undefined) return;
+        const { selectedNode, skeletonApi } = context;
+        void (async () => {
+          try {
+            navigateToNodeTarget(
+              await skeletonApi.getPreviousBranchOrRoot(selectedNode.nodeId),
+            );
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            StatusMessage.showTemporaryMessage(
+              `Failed to locate branch start: ${message}`,
+            );
+          }
+        })();
       },
     );
     const goUnfinishedBranchButton = makeNavIconButton(
@@ -755,13 +614,30 @@ export class SpatialSkeletonEditTab extends Tab {
       svg_chevrons_down,
       "go to end of current branch",
       () => {
-        if (!ensureActionsAllowed()) return;
-        const selectedNode = getSelectedNode();
-        if (selectedNode === undefined) {
-          StatusMessage.showTemporaryMessage("No skeleton node is selected.");
-          return;
-        }
-        selectNode(getBranchEndNode(selectedNode));
+        const context = getSelectedNavigationContext();
+        if (context === undefined) return;
+        const { selectedNode, skeletonApi } = context;
+        void (async () => {
+          try {
+            const branches = await skeletonApi.getNextBranchOrEnd(
+              selectedNode.nodeId,
+            );
+            const target = getCurrentBranchEndTarget(branches);
+            if (target === undefined) {
+              StatusMessage.showTemporaryMessage(
+                "No branch end was found from the selected node.",
+              );
+              return;
+            }
+            navigateToNodeTarget(target);
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            StatusMessage.showTemporaryMessage(
+              `Failed to locate branch end: ${message}`,
+            );
+          }
+        })();
       },
     );
     toolbox.appendChild(navTools);
@@ -1207,36 +1083,14 @@ export class SpatialSkeletonEditTab extends Tab {
 
       void (async () => {
         try {
-          const [fetchedSegments, trueEndNodeIds] = await Promise.all([
-            Promise.all(
-              activeSegmentIds.map(
-                async (segmentId) =>
-                  [
-                    segmentId,
-                    await fetchFullSegmentNodes(catmaidClient, segmentId),
-                  ] as const,
-              ),
+          const fetchedSegments = await Promise.all(
+            activeSegmentIds.map(
+              async (segmentId) =>
+                [
+                  segmentId,
+                  await fetchFullSegmentNodes(catmaidClient, segmentId),
+                ] as const,
             ),
-            catmaidClient.getNodeIdsByLabelNames(
-              activeSegmentIds,
-              CATMAID_TRUE_END_LABEL_ALIASES,
-            ),
-          ]);
-          const labeledSegments = fetchedSegments.map(
-            ([segmentId, segmentNodes]) =>
-              [
-                segmentId,
-                segmentNodes.map((node) => {
-                  const nextLabels = updateTrueEndLabels(
-                    node.labels,
-                    trueEndNodeIds.has(node.nodeId),
-                  );
-                  if (labelsEqual(node.labels, nextLabels)) {
-                    return node;
-                  }
-                  return { ...node, labels: nextLabels };
-                }),
-              ] as const,
           );
           if (requestId !== refreshRequestId) {
             return;
@@ -1244,7 +1098,7 @@ export class SpatialSkeletonEditTab extends Tab {
           const nextNodesBySegment = new Map<
             number,
             SpatiallyIndexedSkeletonNodeInfo[]
-          >(labeledSegments);
+          >(fetchedSegments);
           applyNodesBySegment(
             nextNodesBySegment,
             " Using full CATMAID skeleton data.",
