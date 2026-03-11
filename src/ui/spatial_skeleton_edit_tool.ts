@@ -43,10 +43,10 @@ export const SPATIAL_SKELETON_SPLIT_MODE_TOOL_ID = "spatialSkeletonSplitMode";
 const SPATIAL_SKELETON_EDIT_INPUT_EVENT_MAP = EventActionMap.fromObject({
   // Use shift+click for node creation, and alt+drag for node movement.
   // Keep plain left-drag/click camera controls available from default bindings.
-  "at:shift+mousedown0": "spatial-skeleton-edit-drag-node",
-  "at:alt+mousedown0": "spatial-skeleton-edit-drag-node",
+  "at:shift+mousedown0": "spatial-skeleton-add-node",
+  "at:alt+mousedown0": "spatial-skeleton-move-node",
   "at:click0": {
-    action: "spatial-skeleton-edit-select-node",
+    action: "spatial-skeleton-select-node",
     stopPropagation: false,
     preventDefault: false,
   },
@@ -518,7 +518,7 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonCatmaidToolBase 
     );
 
     activation.bindAction(
-      "spatial-skeleton-edit-select-node",
+      "spatial-skeleton-select-node",
       (event: ActionEvent<MouseEvent>) => {
         if (event.detail.button !== 0) return;
         if (
@@ -586,11 +586,11 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonCatmaidToolBase 
     );
 
     activation.bindAction(
-      "spatial-skeleton-edit-drag-node",
+      "spatial-skeleton-add-node",
       (event: ActionEvent<MouseEvent>) => {
-        setDebug("action", "spatial-skeleton-edit-drag-node");
+        setDebug("action", "spatial-skeleton-add-node");
         setDebug("actionMouseDown", formatMouseEvent(event.detail));
-        debugLog("drag-action-triggered", {
+        debugLog("add-node-action-triggered", {
           mouse: formatMouseEvent(event.detail),
           pickedLayer: this.mouseState.pickedRenderLayer?.constructor?.name,
           selectedSegment: String(
@@ -599,10 +599,140 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonCatmaidToolBase 
         });
         event.stopPropagation();
         event.detail.preventDefault();
-        const dragDisabledReason =
-          layer.getSpatialSkeletonActionsDisabledReason();
-        if (dragDisabledReason !== undefined) {
-          StatusMessage.showTemporaryMessage(dragDisabledReason);
+        const disabledReason = layer.getSpatialSkeletonActionsDisabledReason();
+        if (disabledReason !== undefined) {
+          StatusMessage.showTemporaryMessage(disabledReason);
+          return;
+        }
+        const skeletonLayer = this.getActiveSpatiallyIndexedSkeletonLayer();
+        if (skeletonLayer === undefined) {
+          StatusMessage.showTemporaryMessage(
+            "No spatially indexed skeleton source is currently loaded.",
+          );
+          return;
+        }
+        const clickStartPosition = this.getMousePosition();
+        if (clickStartPosition === undefined) {
+          StatusMessage.showTemporaryMessage(
+            "Unable to resolve add-node position for this click.",
+          );
+          debugLog("add-node-position-unresolved", {
+            selectedNodeId: layer.selectedSpatialSkeletonNodeId.value,
+            clientX: event.detail.clientX,
+            clientY: event.detail.clientY,
+          });
+          return;
+        }
+        let dragDistanceSquared = 0;
+        setDebug("dragState", "armed-shift");
+        startRelativeMouseDrag(
+          event.detail,
+          (_event, deltaX, deltaY) => {
+            dragDistanceSquared += deltaX * deltaX + deltaY * deltaY;
+          },
+          (_finishEvent) => {
+            const thresholdSquared =
+              DRAG_START_DISTANCE_PX * DRAG_START_DISTANCE_PX;
+            if (dragDistanceSquared > thresholdSquared) {
+              setReadyStatus();
+              setDebug("dragState", "ignored-shift-drag");
+              debugLog("shift-drag-ignored", {
+                dragDistanceSquared,
+                thresholdSquared,
+              });
+              return;
+            }
+            const selectedParentNodeId =
+              layer.selectedSpatialSkeletonNodeId.value;
+            const selectedParentNode =
+              selectedParentNodeId === undefined
+                ? undefined
+                : skeletonLayer.getNode(selectedParentNodeId);
+            const targetSkeletonId =
+              selectedParentNode === undefined
+                ? 0
+                : selectedParentNode.segmentId;
+            const clickPosition =
+              this.getMousePosition() ?? new Float32Array(clickStartPosition);
+            debugLog("shift-add-attempt", {
+              selectedParentNodeId,
+              selectedParentSegmentId: selectedParentNode?.segmentId,
+              targetSkeletonId,
+              clickPosition: formatVec3(clickPosition),
+            });
+            void (async () => {
+              let committedNode: CatmaidAddNodeResult;
+              try {
+                committedNode = await this.commitAddNode(
+                  skeletonLayer,
+                  targetSkeletonId,
+                  selectedParentNodeId,
+                  clickPosition,
+                );
+              } catch (error) {
+                StatusMessage.showTemporaryMessage(
+                  "Failed to commit node creation to CATMAID.",
+                );
+                const errorInfo: Record<string, unknown> =
+                  error instanceof Error
+                    ? { message: error.message, stack: error.stack }
+                    : { error: String(error) };
+                debugLog("add-node-commit-failed", {
+                  ...errorInfo,
+                  parentNodeId: selectedParentNodeId,
+                  clickPosition: formatVec3(clickPosition),
+                });
+                return;
+              }
+              const newNode = skeletonLayer.addNode(clickPosition, {
+                segmentId: committedNode.skeletonId,
+                parentNodeId: selectedParentNodeId,
+                nodeId: committedNode.treenodeId,
+              });
+              if (newNode === undefined) {
+                StatusMessage.showTemporaryMessage(
+                  `Added node ${committedNode.treenodeId} in CATMAID, but local preview update failed.`,
+                );
+                layer.selectedSpatialSkeletonNodeId.value =
+                  committedNode.treenodeId;
+                this.selectSegmentByNumber(committedNode.skeletonId);
+                layer.markSpatialSkeletonNodeDataChanged();
+                setReadyStatus();
+                return;
+              }
+              layer.selectedSpatialSkeletonNodeId.value = newNode.nodeId;
+              this.selectSegmentByNumber(newNode.segmentId);
+              layer.markSpatialSkeletonNodeDataChanged();
+              debugLog("add-node-committed", {
+                nodeId: newNode.nodeId,
+                segmentId: newNode.segmentId,
+                parentNodeId: selectedParentNodeId,
+                position: formatVec3(newNode.position),
+              });
+              setReadyStatus();
+            })();
+          },
+        );
+      },
+    );
+
+    activation.bindAction(
+      "spatial-skeleton-move-node",
+      (event: ActionEvent<MouseEvent>) => {
+        setDebug("action", "spatial-skeleton-move-node");
+        setDebug("actionMouseDown", formatMouseEvent(event.detail));
+        debugLog("move-node-action-triggered", {
+          mouse: formatMouseEvent(event.detail),
+          pickedLayer: this.mouseState.pickedRenderLayer?.constructor?.name,
+          selectedSegment: String(
+            layer.displayState.segmentSelectionState.baseValue ?? "none",
+          ),
+        });
+        event.stopPropagation();
+        event.detail.preventDefault();
+        const disabledReason = layer.getSpatialSkeletonActionsDisabledReason();
+        if (disabledReason !== undefined) {
+          StatusMessage.showTemporaryMessage(disabledReason);
           return;
         }
         const skeletonLayer = this.getActiveSpatiallyIndexedSkeletonLayer();
@@ -618,113 +748,6 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonCatmaidToolBase 
           pickedLayer:
             this.mouseState.pickedRenderLayer?.constructor?.name ?? "none",
         });
-        const addGesture = event.detail.shiftKey;
-        if (addGesture) {
-          const clickStartPosition = this.getMousePosition();
-          if (clickStartPosition === undefined) {
-            StatusMessage.showTemporaryMessage(
-              "Unable to resolve add-node position for this click.",
-            );
-            debugLog("add-node-position-unresolved", {
-              selectedNodeId: layer.selectedSpatialSkeletonNodeId.value,
-              clientX: event.detail.clientX,
-              clientY: event.detail.clientY,
-            });
-            return;
-          }
-          let dragDistanceSquared = 0;
-          setDebug("dragState", "armed-shift");
-          startRelativeMouseDrag(
-            event.detail,
-            (_event, deltaX, deltaY) => {
-              dragDistanceSquared += deltaX * deltaX + deltaY * deltaY;
-            },
-            (_finishEvent) => {
-              const thresholdSquared =
-                DRAG_START_DISTANCE_PX * DRAG_START_DISTANCE_PX;
-              if (dragDistanceSquared > thresholdSquared) {
-                setReadyStatus();
-                setDebug("dragState", "ignored-shift-drag");
-                debugLog("shift-drag-ignored", {
-                  dragDistanceSquared,
-                  thresholdSquared,
-                });
-                return;
-              }
-              const selectedParentNodeId =
-                layer.selectedSpatialSkeletonNodeId.value;
-              const selectedParentNode =
-                selectedParentNodeId === undefined
-                  ? undefined
-                  : skeletonLayer.getNode(selectedParentNodeId);
-              const targetSkeletonId =
-                selectedParentNode === undefined
-                  ? 0
-                  : selectedParentNode.segmentId;
-              const clickPosition =
-                this.getMousePosition() ?? new Float32Array(clickStartPosition);
-              debugLog("shift-add-attempt", {
-                selectedParentNodeId,
-                selectedParentSegmentId: selectedParentNode?.segmentId,
-                targetSkeletonId,
-                clickPosition: formatVec3(clickPosition),
-              });
-              void (async () => {
-                let committedNode: CatmaidAddNodeResult;
-                try {
-                  committedNode = await this.commitAddNode(
-                    skeletonLayer,
-                    targetSkeletonId,
-                    selectedParentNodeId,
-                    clickPosition,
-                  );
-                } catch (error) {
-                  StatusMessage.showTemporaryMessage(
-                    "Failed to commit node creation to CATMAID.",
-                  );
-                  const errorInfo: Record<string, unknown> =
-                    error instanceof Error
-                      ? { message: error.message, stack: error.stack }
-                      : { error: String(error) };
-                  debugLog("add-node-commit-failed", {
-                    ...errorInfo,
-                    parentNodeId: selectedParentNodeId,
-                    clickPosition: formatVec3(clickPosition),
-                  });
-                  return;
-                }
-                const newNode = skeletonLayer.addNode(clickPosition, {
-                  segmentId: committedNode.skeletonId,
-                  parentNodeId: selectedParentNodeId,
-                  nodeId: committedNode.treenodeId,
-                });
-                if (newNode === undefined) {
-                  StatusMessage.showTemporaryMessage(
-                    `Added node ${committedNode.treenodeId} in CATMAID, but local preview update failed.`,
-                  );
-                  layer.selectedSpatialSkeletonNodeId.value =
-                    committedNode.treenodeId;
-                  this.selectSegmentByNumber(committedNode.skeletonId);
-                  layer.markSpatialSkeletonNodeDataChanged();
-                  setReadyStatus();
-                  return;
-                }
-                layer.selectedSpatialSkeletonNodeId.value = newNode.nodeId;
-                this.selectSegmentByNumber(newNode.segmentId);
-                layer.markSpatialSkeletonNodeDataChanged();
-                debugLog("add-node-committed", {
-                  nodeId: newNode.nodeId,
-                  segmentId: newNode.segmentId,
-                  parentNodeId: selectedParentNodeId,
-                  position: formatVec3(newNode.position),
-                });
-                setReadyStatus();
-              })();
-            },
-          );
-          return;
-        }
-
         const pickedNode = this.getPickedSpatialSkeletonNode();
         if (pickedNode === undefined) {
           setDebug("dragState", "ignored-no-node");
