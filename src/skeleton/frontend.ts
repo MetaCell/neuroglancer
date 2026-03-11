@@ -2555,6 +2555,41 @@ export class SpatiallyIndexedSkeletonLayer
     chunk.numFilteredVertices = 0;
   }
 
+  private invalidateChunksForNodePositionChange(
+    affectedChunks: Set<SpatiallyIndexedSkeletonChunk>,
+  ) {
+    if (affectedChunks.size === 0) {
+      return;
+    }
+    for (const chunk of affectedChunks) {
+      this.invalidateEditedChunk(chunk);
+    }
+  }
+
+  private collectChunksReferencingParentNode(
+    nodeId: number,
+    selectedSources: SpatiallyIndexedSkeletonSourceEntry[],
+    targetLod: number | undefined,
+    affectedChunks: Set<SpatiallyIndexedSkeletonChunk>,
+  ) {
+    for (const sourceEntry of selectedSources) {
+      const chunks = sourceEntry.chunkSource.chunks;
+      for (const chunk of chunks.values()) {
+        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
+        if (!this.lodMatches(typedChunk, targetLod)) continue;
+        if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
+        if (typedChunk.missingConnections.length === 0) continue;
+        if (
+          typedChunk.missingConnections.some(
+            (connection) => connection.parentId === nodeId,
+          )
+        ) {
+          affectedChunks.add(typedChunk);
+        }
+      }
+    }
+  }
+
   private getLoadedChildNodeIds(
     rootNodeId: number,
     options: {
@@ -2940,8 +2975,9 @@ export class SpatiallyIndexedSkeletonLayer
       return false;
     }
     const targetLod = options.lod;
-    let moved = false;
     const selectedSources = this.getCurrentSourcesForEditing();
+    let moved = false;
+    const affectedChunks = new Set<SpatiallyIndexedSkeletonChunk>();
     for (const sourceEntry of selectedSources) {
       const chunks = sourceEntry.chunkSource.chunks;
       for (const chunk of chunks.values()) {
@@ -2949,31 +2985,41 @@ export class SpatiallyIndexedSkeletonLayer
         if (!this.lodMatches(typedChunk, targetLod)) continue;
         if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
         const vertexIndex = typedChunk.nodeMap.get(nodeId);
-        if (vertexIndex === undefined) continue;
-        if (vertexIndex < 0 || vertexIndex >= typedChunk.numVertices) {
-          continue;
+        if (vertexIndex !== undefined) {
+          if (vertexIndex < 0 || vertexIndex >= typedChunk.numVertices) {
+            continue;
+          }
+          const data = this.getChunkPositionAndSegmentArrays(typedChunk);
+          if (data === undefined) continue;
+          const { positions } = data;
+          const index = vertexIndex * 3;
+          if (
+            positions[index] === x &&
+            positions[index + 1] === y &&
+            positions[index + 2] === z
+          ) {
+            continue;
+          }
+          positions[index] = x;
+          positions[index + 1] = y;
+          positions[index + 2] = z;
+          moved = true;
+          affectedChunks.add(typedChunk);
         }
-        const data = this.getChunkPositionAndSegmentArrays(typedChunk);
-        if (data === undefined) continue;
-        const { positions } = data;
-        const index = vertexIndex * 3;
-        if (
-          positions[index] === x &&
-          positions[index + 1] === y &&
-          positions[index + 2] === z
-        ) {
-          continue;
-        }
-        positions[index] = x;
-        positions[index + 1] = y;
-        positions[index + 2] = z;
-        moved = true;
       }
     }
-    if (moved) {
-      this.markFilteredDataDirty();
+    if (!moved) {
+      return false;
     }
-    return moved;
+    this.collectChunksReferencingParentNode(
+      nodeId,
+      selectedSources,
+      targetLod,
+      affectedChunks,
+    );
+    this.invalidateChunksForNodePositionChange(affectedChunks);
+    this.redrawNeeded.dispatch();
+    return true;
   }
 
   draw(

@@ -749,7 +749,9 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonCatmaidToolBase 
         setDebug("hitPos", formatVec3(nodeInfo.position));
         setDebug("dragPanel", dragPanel.constructor?.name ?? "none");
         let moved = false;
-        let lastPosition = nodeInfo.position;
+        const lastPosition = new Float32Array(
+          nodeInfo.position,
+        ) as unknown as vec3;
         const dragAnchorPosition = new Float32Array(
           nodeInfo.position,
         ) as unknown as vec3;
@@ -793,17 +795,18 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonCatmaidToolBase 
             ) {
               return;
             }
-            const appliedPosition = new Float32Array(panelTranslatedPosition);
             const didMove = skeletonLayer.setNodePosition(
               pickedNode.nodeId,
-              appliedPosition,
+              panelTranslatedPosition,
             );
             if (!didMove) return;
             moved = true;
-            lastPosition = appliedPosition;
+            lastPosition[0] = panelTranslatedPosition[0];
+            lastPosition[1] = panelTranslatedPosition[1];
+            lastPosition[2] = panelTranslatedPosition[2];
             setDebug("draggingNode", String(pickedNode.nodeId));
             setDebug("dragMoves", String(moveEvents));
-            setDebug("lastAppliedPos", formatVec3(appliedPosition));
+            setDebug("lastAppliedPos", formatVec3(lastPosition));
           },
           (_finishEvent) => {
             if (!dragActive) {
