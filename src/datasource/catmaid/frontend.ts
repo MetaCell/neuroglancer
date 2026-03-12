@@ -20,6 +20,16 @@ import {
 } from "#src/coordinate_transform.js";
 import { makeDataBoundsBoundingBoxAnnotationSet } from "#src/annotation/index.js";
 import { SpatiallyIndexedSkeletonSource, SkeletonSource, MultiscaleSpatiallyIndexedSkeletonSource } from "#src/skeleton/frontend.js";
+import type {
+    EditableSpatiallyIndexedSkeletonSource,
+    SpatiallyIndexedSkeletonAddNodeResult,
+    SpatiallyIndexedSkeletonBranchNavigationTarget,
+    SpatiallyIndexedSkeletonMergeResult,
+    SpatiallyIndexedSkeletonNavigationTarget,
+    SpatiallyIndexedSkeletonNode,
+    SpatiallyIndexedSkeletonOpenLeaf,
+    SpatiallyIndexedSkeletonSplitResult,
+} from "#src/skeleton/api.js";
 import { WithParameters } from "#src/chunk_manager/frontend.js";
 import {
     DataSource,
@@ -57,12 +67,157 @@ const METERS_PER_NANOMETER = 1e-9;
 export class CatmaidSpatiallyIndexedSkeletonSource extends WithParameters(
     WithCredentialsProvider<CatmaidToken>()(SpatiallyIndexedSkeletonSource),
     CatmaidSkeletonSourceParameters
-) {
+) implements EditableSpatiallyIndexedSkeletonSource {
+    private client_?: CatmaidClient;
+
+    private get client() {
+        let client = this.client_;
+        if (client !== undefined) {
+            return client;
+        }
+        const catmaidParameters = this.parameters.catmaidParameters;
+        client = new CatmaidClient(
+            catmaidParameters.url,
+            catmaidParameters.projectId,
+            catmaidParameters.token,
+            this.credentialsProvider,
+        );
+        this.client_ = client;
+        return client;
+    }
+
     getChunk(chunkData: any) {
         return super.getChunk(chunkData);
     }
     static encodeOptions(options: any) {
         return super.encodeOptions(options);
+    }
+
+    listSkeletons(): Promise<number[]> {
+        return this.client.listSkeletons();
+    }
+
+    getSkeleton(skeletonId: number): Promise<SpatiallyIndexedSkeletonNode[]> {
+        return this.client.getSkeleton(skeletonId);
+    }
+
+    getSkeletonRootNode(
+        skeletonId: number,
+    ): Promise<SpatiallyIndexedSkeletonNavigationTarget> {
+        return this.client.getSkeletonRootNode(skeletonId);
+    }
+
+    getPreviousBranchOrRoot(
+        nodeId: number,
+        options?: { alt?: boolean },
+    ): Promise<SpatiallyIndexedSkeletonNavigationTarget> {
+        return this.client.getPreviousBranchOrRoot(nodeId, options);
+    }
+
+    getNextBranchOrEnd(
+        nodeId: number,
+    ): Promise<SpatiallyIndexedSkeletonBranchNavigationTarget[]> {
+        return this.client.getNextBranchOrEnd(nodeId);
+    }
+
+    getOpenLeaves(
+        skeletonId: number,
+        nodeId: number,
+    ): Promise<SpatiallyIndexedSkeletonOpenLeaf[]> {
+        return this.client.getOpenLeaves(skeletonId, nodeId);
+    }
+
+    getDimensions() {
+        return this.client.getDimensions();
+    }
+
+    getResolution() {
+        return this.client.getResolution();
+    }
+
+    getGridCellSizes() {
+        return this.client.getGridCellSizes();
+    }
+
+    fetchNodes(
+        boundingBox: {
+            min: { x: number; y: number; z: number };
+            max: { x: number; y: number; z: number };
+        },
+        lod?: number,
+        options?: {
+            cacheProvider?: string;
+            signal?: AbortSignal;
+            includeLabels?: boolean;
+        },
+    ): Promise<SpatiallyIndexedSkeletonNode[]> {
+        return this.client.fetchNodes(boundingBox, lod, options);
+    }
+
+    addNode(
+        skeletonId: number,
+        x: number,
+        y: number,
+        z: number,
+        parentId?: number,
+    ): Promise<number> {
+        return this.client.addNode(skeletonId, x, y, z, parentId);
+    }
+
+    addNodeWithInfo(
+        skeletonId: number,
+        x: number,
+        y: number,
+        z: number,
+        parentId?: number,
+    ): Promise<SpatiallyIndexedSkeletonAddNodeResult> {
+        return this.client.addNodeWithInfo(skeletonId, x, y, z, parentId);
+    }
+
+    moveNode(nodeId: number, x: number, y: number, z: number): Promise<void> {
+        return this.client.moveNode(nodeId, x, y, z);
+    }
+
+    deleteNode(
+        nodeId: number,
+        options: {
+            parentNodeId?: number;
+            childNodeIds?: readonly number[];
+        },
+    ): Promise<void> {
+        return this.client.deleteNode(nodeId, options);
+    }
+
+    addNodeLabel(nodeId: number, label: string): Promise<void> {
+        return this.client.addNodeLabel(nodeId, label);
+    }
+
+    removeNodeLabel(nodeId: number, label: string): Promise<void> {
+        return this.client.removeNodeLabel(nodeId, label);
+    }
+
+    mergeSkeletons(
+        skeletonId1: number,
+        skeletonId2: number,
+    ): Promise<void> {
+        return this.client.mergeSkeletons(skeletonId1, skeletonId2);
+    }
+
+    mergeSkeletonsWithInfo(
+        fromNodeId: number,
+        toNodeId: number,
+    ): Promise<SpatiallyIndexedSkeletonMergeResult> {
+        return this.client.mergeSkeletonsWithInfo(fromNodeId, toNodeId);
+    }
+
+    splitSkeleton(nodeId: number): Promise<void> {
+        return this.client.splitSkeleton(nodeId);
+    }
+
+    splitSkeletonWithInfo(
+        nodeId: number,
+    ): Promise<SpatiallyIndexedSkeletonSplitResult> {
+        return this.client.splitSkeletonWithInfo(nodeId);
     }
 }
 

@@ -21,11 +21,11 @@ export interface CatmaidStackInfo {
 import { fetchOkWithCredentials } from "#src/credentials_provider/http_request.js";
 import type { CredentialsProvider } from "#src/credentials_provider/index.js";
 import {
+  EditableSpatiallyIndexedSkeletonSource,
   SpatiallyIndexedSkeletonBranchNavigationTarget,
   SpatiallyIndexedSkeletonNavigationTarget,
   SpatiallyIndexedSkeletonNode,
   SpatiallyIndexedSkeletonOpenLeaf,
-  SpatiallyIndexedSkeletonSource,
 } from "#src/skeleton/api.js";
 import { HttpError } from "#src/util/http_request.js";
 import { Unpackr } from "msgpackr";
@@ -224,7 +224,9 @@ function fetchWithCatmaidCredentials(
   );
 }
 
-export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
+export class CatmaidClient
+  implements EditableSpatiallyIndexedSkeletonSource
+{
   private metadataInfoPromiseByKey = new Map<
     string,
     Promise<CatmaidStackInfo | null>

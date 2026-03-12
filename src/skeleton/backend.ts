@@ -34,6 +34,10 @@ import {
   SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_UPDATE_SOURCES_RPC_ID,
   SPATIALLY_INDEXED_SKELETON_SLICEVIEW_RENDER_LAYER_RPC_ID,
 } from "#src/skeleton/base.js";
+import {
+  getSpatiallyIndexedSkeletonGridIndex,
+  selectSpatiallyIndexedSkeletonEntriesByGrid,
+} from "#src/skeleton/source_selection.js";
 import type { TypedNumberArray } from "#src/util/array.js";
 import type { Endianness } from "#src/util/endian.js";
 import {
@@ -452,49 +456,16 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
         if (scales.length === 0) {
           return [];
         }
-        const gridIndexedScales = scales
-          .map((tsource, scaleIndex) => ({
-            tsource,
-            scaleIndex,
-            gridIndex: (tsource.source as any).parameters?.gridIndex as
-              | number
-              | undefined,
-          }))
-          .filter((entry) => entry.gridIndex !== undefined);
-        if (gridIndexedScales.length === scales.length) {
-          let minGridIndex = Number.POSITIVE_INFINITY;
-          let maxGridIndex = Number.NEGATIVE_INFINITY;
-          for (const entry of gridIndexedScales) {
-            const gridIndex = entry.gridIndex as number;
-            minGridIndex = Math.min(minGridIndex, gridIndex);
-            maxGridIndex = Math.max(maxGridIndex, gridIndex);
-          }
-          const clampedGridLevel = Math.min(
-            Math.max(skeletonGridLevel, minGridIndex),
-            maxGridIndex,
+        if (
+          scales.every(
+            (scale) => getSpatiallyIndexedSkeletonGridIndex(scale) !== undefined,
+          )
+        ) {
+          return selectSpatiallyIndexedSkeletonEntriesByGrid(
+            scales.map((tsource, scaleIndex) => ({ tsource, scaleIndex })),
+            skeletonGridLevel,
+            ({ tsource }) => getSpatiallyIndexedSkeletonGridIndex(tsource),
           );
-          let selectedEntry =
-            gridIndexedScales.find(
-              (entry) => entry.gridIndex === clampedGridLevel,
-            ) ?? gridIndexedScales[0];
-          if (selectedEntry.gridIndex !== clampedGridLevel) {
-            let bestDistance = Number.POSITIVE_INFINITY;
-            for (const entry of gridIndexedScales) {
-              const distance = Math.abs(
-                (entry.gridIndex as number) - clampedGridLevel,
-              );
-              if (distance < bestDistance) {
-                bestDistance = distance;
-                selectedEntry = entry;
-              }
-            }
-          }
-          return [
-            {
-              tsource: selectedEntry.tsource,
-              scaleIndex: selectedEntry.scaleIndex,
-            },
-          ];
         }
         if (resolvedPixelSize === undefined) {
           return scales.map((tsource, scaleIndex) => ({
@@ -651,44 +622,17 @@ export class SpatiallyIndexedSkeletonSliceViewRenderLayerBackend extends SliceVi
       source.currentLod = lodValue;
     }
 
-    const gridIndexedSources = sources
-      .map((tsource, scaleIndex) => ({
-        tsource,
-        scaleIndex,
-        gridIndex: (tsource.source as any).parameters?.gridIndex as
-          | number
-          | undefined,
-      }))
-      .filter((entry) => entry.gridIndex !== undefined);
-    if (gridIndexedSources.length === sources.length && sources.length > 0) {
-      let minGridIndex = Number.POSITIVE_INFINITY;
-      let maxGridIndex = Number.NEGATIVE_INFINITY;
-      for (const entry of gridIndexedSources) {
-        const gridIndex = entry.gridIndex as number;
-        minGridIndex = Math.min(minGridIndex, gridIndex);
-        maxGridIndex = Math.max(maxGridIndex, gridIndex);
-      }
-      const clampedGridLevel = Math.min(
-        Math.max(this.skeletonGridLevel.value, minGridIndex),
-        maxGridIndex,
+    if (
+      sources.length > 0 &&
+      sources.every(
+        (source) => getSpatiallyIndexedSkeletonGridIndex(source) !== undefined,
+      )
+    ) {
+      return selectSpatiallyIndexedSkeletonEntriesByGrid(
+        sources,
+        this.skeletonGridLevel.value,
+        getSpatiallyIndexedSkeletonGridIndex,
       );
-      let selectedEntry =
-        gridIndexedSources.find(
-          (entry) => entry.gridIndex === clampedGridLevel,
-        ) ?? gridIndexedSources[0];
-      if (selectedEntry.gridIndex !== clampedGridLevel) {
-        let bestDistance = Number.POSITIVE_INFINITY;
-        for (const entry of gridIndexedSources) {
-          const distance = Math.abs(
-            (entry.gridIndex as number) - clampedGridLevel,
-          );
-          if (distance < bestDistance) {
-            bestDistance = distance;
-            selectedEntry = entry;
-          }
-        }
-      }
-      return [selectedEntry.tsource];
     }
     return super.filterVisibleSources(sliceView, sources);
   }
