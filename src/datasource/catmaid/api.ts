@@ -594,8 +594,13 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
       max: { x: number; y: number; z: number };
     },
     lod: number = 0,
-    cacheProvider?: string,
+    options: {
+      cacheProvider?: string;
+      signal?: AbortSignal;
+      includeLabels?: boolean;
+    } = {},
   ): Promise<SpatiallyIndexedSkeletonNode[]> {
+    const { cacheProvider, signal, includeLabels = false } = options;
     const normalizedBoundingBox = normalizeBoundingBoxForNodeList(boundingBox);
     const params = new URLSearchParams({
       left: normalizedBoundingBox.left.toString(),
@@ -607,7 +612,7 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
       lod_type: "percent",
       lod: lod.toString(),
       format: "msgpack",
-      labels: "true",
+      labels: includeLabels ? "true" : "false",
     });
 
     // Add cache provider if available
@@ -617,7 +622,11 @@ export class CatmaidClient implements SpatiallyIndexedSkeletonSource {
 
     let data: any;
     try {
-      data = await this.fetch(`node/list?${params.toString()}`, {}, true);
+      data = await this.fetch(
+        `node/list?${params.toString()}`,
+        { signal },
+        true,
+      );
     } catch (error) {
       if (await this.isNoMatchingNodeProviderHttpError(error)) {
         return [];

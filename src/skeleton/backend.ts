@@ -16,11 +16,12 @@
 
 import {
   Chunk,
+  ChunkManager,
   ChunkRenderLayerBackend,
   ChunkSource,
   withChunkManager,
 } from "#src/chunk_manager/backend.js";
-import { ChunkState } from "#src/chunk_manager/base.js";
+import { ChunkPriorityTier, ChunkState } from "#src/chunk_manager/base.js";
 import { decodeVertexPositionsAndIndices } from "#src/mesh/backend.js";
 import { withSegmentationLayerBackendState } from "#src/segmentation_display_state/backend.js";
 import {
@@ -80,6 +81,31 @@ export interface SpatiallyIndexedSkeletonChunkSpecification extends SliceViewChu
 
 const SKELETON_CHUNK_PRIORITY = 60;
 const SPATIALLY_INDEXED_SKELETON_LOD_DEBOUNCE_MS = 300;
+
+function cancelStaleSpatiallyIndexedSkeletonDownloads(
+  chunkManager: ChunkManager,
+  sources: Iterable<SpatiallyIndexedSkeletonSourceBackend>,
+  currentLod: number,
+) {
+  const queueManager = chunkManager.queueManager;
+  for (const source of sources) {
+    for (const chunk of source.chunks.values()) {
+      const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
+      if (typedChunk.state !== ChunkState.DOWNLOADING) continue;
+      if (typedChunk.newPriorityTier !== ChunkPriorityTier.RECENT) continue;
+      if (Math.abs((typedChunk.lod ?? currentLod) - currentLod) < 1e-6) {
+        continue;
+      }
+      const controller = typedChunk.downloadAbortController;
+      if (controller === undefined) continue;
+      typedChunk.downloadAbortController = undefined;
+      controller.abort(
+        new DOMException("stale spatial skeleton LOD download", "AbortError"),
+      );
+      queueManager.updateChunkState(typedChunk, ChunkState.QUEUED);
+    }
+  }
+}
 
 registerRPC(
   SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_UPDATE_SOURCES_RPC_ID,
@@ -271,6 +297,7 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
   renderScaleTarget: SharedWatchableValue<number>;
   skeletonLod: SharedWatchableValue<number>;
   skeletonGridLevel: SharedWatchableValue<number>;
+  private pendingLodCleanup = false;
 
   constructor(rpc: RPC, options: any) {
     super(rpc, options);
@@ -291,13 +318,17 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
     );
     
     // Debounce LOD changes to avoid making requests for every slider value
-    const debouncedLodUpdate = debounce(() => {
-      scheduleUpdateChunkPriorities();
-    }, SPATIALLY_INDEXED_SKELETON_LOD_DEBOUNCE_MS);
+    const debouncedLodUpdate = debounce(
+      () => {
+        scheduleUpdateChunkPriorities();
+      },
+      SPATIALLY_INDEXED_SKELETON_LOD_DEBOUNCE_MS,
+    );
+    this.registerDisposer(() => debouncedLodUpdate.cancel());
     
     this.registerDisposer(
       this.skeletonLod.changed.add(() => {
-        // Trigger a reschedule; LOD-specific chunks are keyed by LOD.
+        this.pendingLodCleanup = true;
         debouncedLodUpdate();
       }),
     );
@@ -305,6 +336,32 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
       this.chunkManager.recomputeChunkPriorities.add(() =>
         this.recomputeChunkPriorities(),
       ),
+    );
+    this.registerDisposer(
+      this.chunkManager.recomputeChunkPrioritiesLate.add(() => {
+        if (!this.pendingLodCleanup) return;
+        const sources = new Set<SpatiallyIndexedSkeletonSourceBackend>();
+        for (const attachment of this.attachments.values()) {
+          const attachmentState =
+            attachment.state as
+              | SpatiallyIndexedSkeletonRenderLayerAttachmentState
+              | undefined;
+          if (attachmentState === undefined) continue;
+          for (const scales of attachmentState.transformedSources) {
+            for (const tsource of scales) {
+              sources.add(
+                tsource.source as SpatiallyIndexedSkeletonSourceBackend,
+              );
+            }
+          }
+        }
+        cancelStaleSpatiallyIndexedSkeletonDownloads(
+          this.chunkManager,
+          sources,
+          this.skeletonLod.value,
+        );
+        this.pendingLodCleanup = false;
+      }),
     );
   }
 
@@ -537,6 +594,8 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
 export class SpatiallyIndexedSkeletonSliceViewRenderLayerBackend extends SliceViewRenderLayerBackend {
   skeletonGridLevel: SharedWatchableValue<number>;
   skeletonLod: SharedWatchableValue<number>;
+  private pendingLodCleanup = false;
+  private trackedSources = new Set<SpatiallyIndexedSkeletonSourceBackend>();
 
   constructor(rpc: RPC, options: any) {
     super(rpc, options);
@@ -549,18 +608,35 @@ export class SpatiallyIndexedSkeletonSliceViewRenderLayerBackend extends SliceVi
       this.skeletonGridLevel.changed.add(scheduleUpdateChunkPriorities),
     );
     // Debounce LOD changes to avoid making requests for every slider value.
-    const debouncedLodUpdate = debounce(() => {
-      scheduleUpdateChunkPriorities();
-    }, SPATIALLY_INDEXED_SKELETON_LOD_DEBOUNCE_MS);
+    const debouncedLodUpdate = debounce(
+      () => {
+        scheduleUpdateChunkPriorities();
+      },
+      SPATIALLY_INDEXED_SKELETON_LOD_DEBOUNCE_MS,
+    );
+    this.registerDisposer(() => debouncedLodUpdate.cancel());
     
     this.registerDisposer(
       this.skeletonLod.changed.add(() => {
+        this.pendingLodCleanup = true;
         debouncedLodUpdate();
+      }),
+    );
+    this.registerDisposer(
+      chunkManager.recomputeChunkPrioritiesLate.add(() => {
+        if (!this.pendingLodCleanup) return;
+        cancelStaleSpatiallyIndexedSkeletonDownloads(
+          chunkManager,
+          this.trackedSources,
+          this.skeletonLod.value,
+        );
+        this.pendingLodCleanup = false;
       }),
     );
   }
 
   prepareChunkSourceForRequest(source: SpatiallyIndexedSkeletonSourceBackend) {
+    this.trackedSources.add(source);
     source.currentLod = this.skeletonLod.value;
   }
 
@@ -571,6 +647,7 @@ export class SpatiallyIndexedSkeletonSliceViewRenderLayerBackend extends SliceVi
     const lodValue = this.skeletonLod.value;
     for (const tsource of sources) {
       const source = tsource.source as SpatiallyIndexedSkeletonSourceBackend;
+      this.trackedSources.add(source);
       source.currentLod = lodValue;
     }
 

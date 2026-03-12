@@ -50,7 +50,7 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
         super(args[0], args[1]);
     }
 
-    async download(chunk: SpatiallyIndexedSkeletonChunk, _signal: AbortSignal) {
+    async download(chunk: SpatiallyIndexedSkeletonChunk, signal: AbortSignal) {
         const { chunkGridPosition } = chunk;
         const { chunkDataSize } = this.spec;
 
@@ -66,7 +66,10 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
         const lodValue = chunk.lod ?? this.currentLod;
         // Get cache provider from parameters (passed from frontend)
         const cacheProvider = this.parameters.catmaidParameters.cacheProvider;
-        const nodes = await this.client.fetchNodes(bbox, lodValue, cacheProvider);
+        const nodes = await this.client.fetchNodes(bbox, lodValue, {
+            cacheProvider,
+            signal,
+        });
 
         const numVertices = nodes.length;
         const vertexPositions = new Float32Array(numVertices * 3);

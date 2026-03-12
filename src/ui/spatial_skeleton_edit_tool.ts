@@ -480,19 +480,6 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonCatmaidToolBase 
       },
       { capture: true },
     );
-    activation.registerEventListener(
-      window,
-      "pointermove",
-      (_event: PointerEvent) => {
-        if (!this.mouseState.updateUnconditionally()) return;
-        setDebug(
-          "pickedLayer",
-          this.mouseState.pickedRenderLayer?.constructor?.name ?? "none",
-        );
-        setDebug("mousePos", formatVec3(this.mouseState.unsnappedPosition));
-      },
-      { capture: true },
-    );
     activation.registerDisposer(
       layer.spatialSkeletonActionsAllowed.changed.add(() => {
         setDebug(
@@ -847,7 +834,6 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonCatmaidToolBase 
               finalPosition: formatVec3(lastPosition),
             });
             if (moved) {
-              layer.markSpatialSkeletonNodeDataChanged();
               void this.commitMoveNode(
                 skeletonLayer,
                 pickedNode.nodeId,

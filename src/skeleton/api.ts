@@ -59,6 +59,11 @@ export interface SpatiallyIndexedSkeletonSource {
       max: { x: number; y: number; z: number };
     },
     lod?: number,
+    options?: {
+      cacheProvider?: string;
+      signal?: AbortSignal;
+      includeLabels?: boolean;
+    },
   ): Promise<SpatiallyIndexedSkeletonNode[]>;
   addNode(
     skeletonId: number,

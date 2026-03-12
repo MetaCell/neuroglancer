@@ -1167,11 +1167,6 @@ export class SpatialSkeletonEditTab extends Tab {
       }),
     );
     this.registerDisposer(
-      layer.displayState.segmentSelectionState.changed.add(() => {
-        refreshNodes();
-      }),
-    );
-    this.registerDisposer(
       registerNested((context, segmentationGroupState) => {
         context.registerDisposer(
           segmentationGroupState.visibleSegments.changed.add(() => {
@@ -1203,18 +1198,7 @@ export class SpatialSkeletonEditTab extends Tab {
     );
     this.registerDisposer(
       layer.manager.chunkManager.layerChunkStatisticsUpdated.add(() => {
-        refreshNodes();
         updateGateStatus();
-      }),
-    );
-    this.registerDisposer(
-      layer.displayState.spatialSkeletonGridLevel2d.changed.add(() => {
-        refreshNodes();
-      }),
-    );
-    this.registerDisposer(
-      layer.displayState.spatialSkeletonGridLevel3d.changed.add(() => {
-        refreshNodes();
       }),
     );
     this.registerDisposer(
