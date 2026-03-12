@@ -792,7 +792,24 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
           debugLog("drag-ignored-no-picked-node");
           return;
         }
-        const nodeInfo = skeletonLayer.getNode(pickedNode.nodeId);
+        const pickedPosition = this.mouseState.position;
+        const hasPickedPosition =
+          pickedPosition.length >= 3 &&
+          Number.isFinite(pickedPosition[0]) &&
+          Number.isFinite(pickedPosition[1]) &&
+          Number.isFinite(pickedPosition[2]);
+        const nodeInfo =
+          hasPickedPosition
+            ? {
+                nodeId: pickedNode.nodeId,
+                segmentId: pickedNode.segmentId ?? 0,
+                position: new Float32Array([
+                  Number(pickedPosition[0]),
+                  Number(pickedPosition[1]),
+                  Number(pickedPosition[2]),
+                ]),
+              }
+            : skeletonLayer.getNode(pickedNode.nodeId);
         if (nodeInfo === undefined) {
           debugLog("drag-node-not-found", {
             nodeId: pickedNode.nodeId,

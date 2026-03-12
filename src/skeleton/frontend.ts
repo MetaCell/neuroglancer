@@ -1399,9 +1399,10 @@ export class MultiscaleSliceViewSpatiallyIndexedSkeletonLayer extends SliceViewR
 type SpatiallyIndexedSkeletonSourceEntry =
   SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>;
 
-interface SpatiallyIndexedGlobalNodeLookupEntry {
+interface SpatiallyIndexedNodeLocatorEntry {
   chunk: SpatiallyIndexedSkeletonChunk;
   vertexIndex: number;
+  sourceId: string;
 }
 
 interface SpatiallyIndexedSkeletonLayerOptions {
@@ -1529,11 +1530,8 @@ export class SpatiallyIndexedSkeletonLayer
   private removeRegularSkeletonLayerUserLayerListener:
     | (() => boolean)
     | undefined;
-  private cachedGlobalNodeLookupKey: string | undefined;
-  private cachedGlobalNodeLookup = new Map<
-    number,
-    SpatiallyIndexedGlobalNodeLookupEntry
-  >();
+  private nodeLocatorIndexKey: string | undefined;
+  private nodeLocatorIndex = new Map<number, SpatiallyIndexedNodeLocatorEntry[]>();
   private visibleChunksByView = new Map<
     SpatiallyIndexedSkeletonView,
     VisibleSpatialChunksBySource
@@ -1601,46 +1599,111 @@ export class SpatiallyIndexedSkeletonLayer
     return Math.abs(chunk.lod - targetLod) < 1e-6;
   }
 
-  private makeGlobalNodeLookupCacheKey(
-    selectedSources: SpatiallyIndexedSkeletonSourceEntry[],
-    targetLod: number | undefined,
+  private getIndexedSources() {
+    return dedupeSpatiallyIndexedSkeletonEntries(
+      [...this.sources, ...this.sources2d],
+      (entry) => getObjectId(entry.chunkSource),
+    );
+  }
+
+  private makeNodeLocatorIndexKey(
+    sourceEntries: readonly SpatiallyIndexedSkeletonSourceEntry[],
   ) {
-    const sourceKey = selectedSources
+    return sourceEntries
       .map(
         (entry) =>
           `${getObjectId(entry.chunkSource)}:${entry.chunkSource.lookupGeneration}`,
       )
       .join(",");
-    const lodKey =
-      targetLod === undefined ? "none" : Math.round(targetLod * 1e6) / 1e6;
-    return `${lodKey}|${sourceKey}`;
   }
 
-  private rebuildGlobalNodeLookup(
-    selectedSources: SpatiallyIndexedSkeletonSourceEntry[],
-    targetLod: number | undefined,
-  ) {
-    this.cachedGlobalNodeLookup.clear();
-    for (const chunk of this.iterateCandidateChunks(selectedSources, targetLod)) {
-      for (const [nodeId, vertexIndex] of chunk.nodeMap.entries()) {
-        this.cachedGlobalNodeLookup.set(nodeId, {
-          chunk,
-          vertexIndex,
-        });
+  private invalidateNodeLocatorIndex() {
+    this.nodeLocatorIndex.clear();
+    this.nodeLocatorIndexKey = undefined;
+  }
+
+  private ensureNodeLocatorIndex() {
+    const sourceEntries = this.getIndexedSources();
+    const key = this.makeNodeLocatorIndexKey(sourceEntries);
+    if (this.nodeLocatorIndexKey === key) return;
+    this.nodeLocatorIndexKey = key;
+    this.nodeLocatorIndex.clear();
+    for (const sourceEntry of sourceEntries) {
+      const sourceId = getObjectId(sourceEntry.chunkSource);
+      for (const chunk of sourceEntry.chunkSource.chunks.values()) {
+        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
+        if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
+        for (const [nodeId, vertexIndex] of typedChunk.nodeMap.entries()) {
+          let entries = this.nodeLocatorIndex.get(nodeId);
+          if (entries === undefined) {
+            entries = [];
+            this.nodeLocatorIndex.set(nodeId, entries);
+          }
+          entries.push({
+            chunk: typedChunk,
+            vertexIndex,
+            sourceId,
+          });
+        }
       }
     }
   }
 
-  private getGlobalNodeLookup(
-    selectedSources: SpatiallyIndexedSkeletonSourceEntry[],
+  private makeSourceIdSet(
+    sourceEntries: readonly SpatiallyIndexedSkeletonSourceEntry[],
+  ) {
+    const sourceIds = new Set<string>();
+    for (const sourceEntry of sourceEntries) {
+      sourceIds.add(getObjectId(sourceEntry.chunkSource));
+    }
+    return sourceIds;
+  }
+
+  private getNodeLocatorEntries(
+    nodeId: number,
+    selectedSourceIds: ReadonlySet<string>,
     targetLod: number | undefined,
   ) {
-    const key = this.makeGlobalNodeLookupCacheKey(selectedSources, targetLod);
-    if (this.cachedGlobalNodeLookupKey !== key) {
-      this.cachedGlobalNodeLookupKey = key;
-      this.rebuildGlobalNodeLookup(selectedSources, targetLod);
+    this.ensureNodeLocatorIndex();
+    const entries = this.nodeLocatorIndex.get(nodeId);
+    if (entries === undefined) return [];
+    return entries.filter(
+      (entry) =>
+        selectedSourceIds.has(entry.sourceId) &&
+        entry.chunk.state === ChunkState.GPU_MEMORY &&
+        this.lodMatches(entry.chunk, targetLod),
+    );
+  }
+
+  private getPrimaryNodeLocator(
+    nodeId: number,
+    selectedSourceIds: ReadonlySet<string>,
+    targetLod: number | undefined,
+  ) {
+    this.ensureNodeLocatorIndex();
+    const entries = this.nodeLocatorIndex.get(nodeId);
+    if (entries === undefined) return undefined;
+    for (const entry of entries) {
+      if (!selectedSourceIds.has(entry.sourceId)) continue;
+      if (entry.chunk.state !== ChunkState.GPU_MEMORY) continue;
+      if (!this.lodMatches(entry.chunk, targetLod)) continue;
+      return entry;
     }
-    return this.cachedGlobalNodeLookup;
+    return undefined;
+  }
+
+  private getMaxIndexedNodeId() {
+    this.ensureNodeLocatorIndex();
+    let maxNodeId = 0;
+    for (const nodeId of this.nodeLocatorIndex.keys()) {
+      if (nodeId > maxNodeId) maxNodeId = nodeId;
+    }
+    return maxNodeId;
+  }
+
+  private hasIndexedNodeId(nodeId: number) {
+    this.ensureNodeLocatorIndex();
+    return this.nodeLocatorIndex.has(nodeId);
   }
 
   get visibility() {
@@ -1666,8 +1729,7 @@ export class SpatiallyIndexedSkeletonLayer
       this.removeRegularSkeletonLayerUserLayerListener?.();
       this.removeRegularSkeletonLayerUserLayerListener = undefined;
       this.regularSkeletonLayerUserLayer = undefined;
-      this.cachedGlobalNodeLookup.clear();
-      this.cachedGlobalNodeLookupKey = undefined;
+      this.invalidateNodeLocatorIndex();
     });
     let sources3d: SpatiallyIndexedSkeletonSourceEntry[];
     let sources2d = options.sources2d ?? [];
@@ -1899,7 +1961,11 @@ export class SpatiallyIndexedSkeletonLayer
     selectedSources: SpatiallyIndexedSkeletonSourceEntry[],
     targetLod: number | undefined,
   ) {
-    const entry = this.getGlobalNodeLookup(selectedSources, targetLod).get(nodeId);
+    const entry = this.getPrimaryNodeLocator(
+      nodeId,
+      this.makeSourceIdSet(selectedSources),
+      targetLod,
+    );
     if (entry === undefined) {
       return undefined;
     }
@@ -1958,10 +2024,13 @@ export class SpatiallyIndexedSkeletonLayer
     targetLod: number | undefined,
   ) {
     const affectedChunks = new Set<SpatiallyIndexedSkeletonChunk>();
-    for (const chunk of this.iterateCandidateChunks(selectedSources, targetLod)) {
-      if (chunk.nodeMap.has(nodeId)) {
-        affectedChunks.add(chunk);
-      }
+    const selectedSourceIds = this.makeSourceIdSet(selectedSources);
+    for (const entry of this.getNodeLocatorEntries(
+      nodeId,
+      selectedSourceIds,
+      targetLod,
+    )) {
+      affectedChunks.add(entry.chunk);
     }
     this.collectChunksReferencingParentNode(
       nodeId,
@@ -1988,8 +2057,7 @@ export class SpatiallyIndexedSkeletonLayer
     if (!invalidated) {
       return false;
     }
-    this.cachedGlobalNodeLookup.clear();
-    this.cachedGlobalNodeLookupKey = undefined;
+    this.invalidateNodeLocatorIndex();
     this.redrawNeeded.dispatch();
     return true;
   }
@@ -2071,11 +2139,13 @@ export class SpatiallyIndexedSkeletonLayer
     } = {},
   ): SpatiallyIndexedSkeletonNodeInfo | undefined {
     if (!Number.isSafeInteger(nodeId) || nodeId <= 0) return undefined;
-    const targetLod = options.lod;
-    const entry = this.getGlobalNodeLookup(
-      this.getCurrentSourcesForEditing(),
+    const targetLod = options.lod ?? this.lod.value;
+    const selectedSources = this.getCurrentSourcesForEditing();
+    const entry = this.getPrimaryNodeLocator(
+      nodeId,
+      this.makeSourceIdSet(selectedSources),
       targetLod,
-    ).get(nodeId);
+    );
     if (entry === undefined) {
       return undefined;
     }
@@ -2204,10 +2274,16 @@ export class SpatiallyIndexedSkeletonLayer
     const targetLod = options.lod;
     const selectedSources = this.getCurrentSourcesForEditing();
     if (selectedSources.length === 0) return undefined;
-    const globalNodeMap = this.getGlobalNodeLookup(selectedSources, targetLod);
+    const selectedSourceIds = this.makeSourceIdSet(selectedSources);
     const parentNodeId = options.parentNodeId;
     const parentEntry =
-      parentNodeId === undefined ? undefined : globalNodeMap.get(parentNodeId);
+      parentNodeId === undefined
+        ? undefined
+        : this.getPrimaryNodeLocator(
+            parentNodeId,
+            selectedSourceIds,
+            targetLod,
+          );
 
     let targetChunk = parentEntry?.chunk;
     if (targetChunk === undefined) {
@@ -2253,16 +2329,7 @@ export class SpatiallyIndexedSkeletonLayer
     newSegmentIds.set(oldSegmentIds);
     newSegmentIds[newVertexIndex] = segmentId;
 
-    let maxNodeId = 0;
-    for (const sourceEntry of selectedSources) {
-      const chunks = sourceEntry.chunkSource.chunks;
-      for (const chunk of chunks.values()) {
-        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
-        for (const nodeId of typedChunk.nodeMap.keys()) {
-          if (nodeId > maxNodeId) maxNodeId = nodeId;
-        }
-      }
-    }
+    const maxNodeId = this.getMaxIndexedNodeId();
     const requestedNodeId = options.nodeId;
     const newNodeId =
       requestedNodeId === undefined
@@ -2271,7 +2338,7 @@ export class SpatiallyIndexedSkeletonLayer
     if (!Number.isFinite(newNodeId) || newNodeId <= 0) {
       return undefined;
     }
-    if (requestedNodeId !== undefined && globalNodeMap.has(newNodeId)) {
+    if (requestedNodeId !== undefined && this.hasIndexedNodeId(newNodeId)) {
       return undefined;
     }
     targetChunk.nodeMap.set(newNodeId, newVertexIndex);
@@ -2324,6 +2391,7 @@ export class SpatiallyIndexedSkeletonLayer
     }
     targetChunk.indexBuffer.setData(targetChunk.indices);
 
+    this.invalidateNodeLocatorIndex();
     this.clearFilteredChunkData(targetChunk);
     this.markFilteredDataDirty();
 
@@ -2482,6 +2550,7 @@ export class SpatiallyIndexedSkeletonLayer
     for (const chunk of changedChunks) {
       this.clearFilteredChunkData(chunk);
     }
+    this.invalidateNodeLocatorIndex();
     this.markFilteredDataDirty();
     return true;
   }
@@ -2729,8 +2798,12 @@ export class SpatiallyIndexedSkeletonLayer
 
     const targetLod = options.lod;
     const selectedSources = this.getCurrentSourcesForEditing();
-    const globalNodeMap = this.getGlobalNodeLookup(selectedSources, targetLod);
-    const childEntry = globalNodeMap.get(normalizedNodeId);
+    const selectedSourceIds = this.makeSourceIdSet(selectedSources);
+    const childEntry = this.getPrimaryNodeLocator(
+      normalizedNodeId,
+      selectedSourceIds,
+      targetLod,
+    );
     if (childEntry === undefined) {
       return false;
     }
@@ -2800,7 +2873,11 @@ export class SpatiallyIndexedSkeletonLayer
     }
 
     if (normalizedParentNodeId !== undefined) {
-      const parentEntry = globalNodeMap.get(normalizedParentNodeId);
+      const parentEntry = this.getPrimaryNodeLocator(
+        normalizedParentNodeId,
+        selectedSourceIds,
+        targetLod,
+      );
       if (
         parentEntry !== undefined &&
         parentEntry.chunk.state === ChunkState.GPU_MEMORY
@@ -2870,6 +2947,7 @@ export class SpatiallyIndexedSkeletonLayer
     for (const chunk of changedChunks) {
       this.invalidateEditedChunk(chunk);
     }
+    this.invalidateNodeLocatorIndex();
     this.markFilteredDataDirty();
     return true;
   }
@@ -3016,31 +3094,34 @@ export class SpatiallyIndexedSkeletonLayer
     }
     const targetLod = options.lod;
     const selectedSources = this.getCurrentSourcesForEditing();
+    const selectedSourceIds = this.makeSourceIdSet(selectedSources);
     let moved = false;
     const affectedChunks = new Set<SpatiallyIndexedSkeletonChunk>();
-    for (const chunk of this.iterateCandidateChunks(selectedSources, targetLod)) {
-      const vertexIndex = chunk.nodeMap.get(nodeId);
-      if (vertexIndex !== undefined) {
-        if (vertexIndex < 0 || vertexIndex >= chunk.numVertices) {
-          continue;
-        }
-        const data = this.getChunkPositionAndSegmentArrays(chunk);
-        if (data === undefined) continue;
-        const { positions } = data;
-        const index = vertexIndex * 3;
-        if (
-          positions[index] === x &&
-          positions[index + 1] === y &&
-          positions[index + 2] === z
-        ) {
-          continue;
-        }
-        positions[index] = x;
-        positions[index + 1] = y;
-        positions[index + 2] = z;
-        moved = true;
-        affectedChunks.add(chunk);
+    for (const entry of this.getNodeLocatorEntries(
+      nodeId,
+      selectedSourceIds,
+      targetLod,
+    )) {
+      const { chunk, vertexIndex } = entry;
+      if (vertexIndex < 0 || vertexIndex >= chunk.numVertices) {
+        continue;
       }
+      const data = this.getChunkPositionAndSegmentArrays(chunk);
+      if (data === undefined) continue;
+      const { positions } = data;
+      const index = vertexIndex * 3;
+      if (
+        positions[index] === x &&
+        positions[index + 1] === y &&
+        positions[index + 2] === z
+      ) {
+        continue;
+      }
+      positions[index] = x;
+      positions[index + 1] = y;
+      positions[index + 2] = z;
+      moved = true;
+      affectedChunks.add(chunk);
     }
     if (!moved) {
       return false;
@@ -3218,7 +3299,7 @@ export class SpatiallyIndexedSkeletonLayer
       view,
       drawOptions?.gridLevel,
     );
-    const globalNodeMap = this.getGlobalNodeLookup(selectedSources, targetLod);
+    const selectedSourceIds = this.makeSourceIdSet(selectedSources);
     for (const chunk of this.iterateCandidateChunks(selectedSources, targetLod, {
       view,
     })) {
@@ -3229,7 +3310,8 @@ export class SpatiallyIndexedSkeletonLayer
         chunk,
         visibleSegments,
         hasRegularSkeletonLayer,
-        globalNodeMap,
+        selectedSourceIds,
+        targetLod,
       );
       if (filteredChunk === null) {
         continue;
@@ -3310,15 +3392,17 @@ export class SpatiallyIndexedSkeletonLayer
     chunk: SpatiallyIndexedSkeletonChunk,
     visibleSegments: Uint64Set,
     skipVisibleSegments: boolean,
-    globalNodeMap?: Map<
-      number,
-      { chunk: SpatiallyIndexedSkeletonChunk; vertexIndex: number }
-    >,
+    selectedSourceIds: ReadonlySet<string>,
+    targetLod: number | undefined,
   ): SkeletonChunkInterface | null {
     let missingConnectionsHash = 0;
-    if (chunk.missingConnections.length > 0 && globalNodeMap) {
+    if (chunk.missingConnections.length > 0) {
       for (const conn of chunk.missingConnections) {
-        const parentNode = globalNodeMap.get(conn.parentId);
+        const parentNode = this.getPrimaryNodeLocator(
+          conn.parentId,
+          selectedSourceIds,
+          targetLod,
+        );
         const parentMarker = parentNode ? parentNode.vertexIndex + 1 : 0;
         missingConnectionsHash =
           ((missingConnectionsHash * 1664525) ^
@@ -3500,7 +3584,7 @@ export class SpatiallyIndexedSkeletonLayer
       return positionArray;
     };
 
-    if (chunk.missingConnections.length > 0 && globalNodeMap) {
+    if (chunk.missingConnections.length > 0) {
       for (const conn of chunk.missingConnections) {
         const segmentId = Math.round(conn.skeletonId);
         if (!Number.isFinite(segmentId)) {
@@ -3514,7 +3598,11 @@ export class SpatiallyIndexedSkeletonLayer
         if (childNew < 0) {
           continue;
         }
-        const parentNode = globalNodeMap.get(conn.parentId);
+        const parentNode = this.getPrimaryNodeLocator(
+          conn.parentId,
+          selectedSourceIds,
+          targetLod,
+        );
         if (!parentNode) {
           continue;
         }
