@@ -33,7 +33,7 @@ export class AccordionSectionState extends RefCounted {
 
   constructor(
     public jsonKey: string,
-    private defaultExpanded = true,
+    private defaultExpanded = false,
     onChangeCallback: () => void,
   ) {
     super();
@@ -208,7 +208,7 @@ export class AccordionTab extends Tab {
 
     const useAccordions = typeof NEUROGLANCER_USE_ACCORDIONS !== 'undefined' ? NEUROGLANCER_USE_ACCORDIONS : true;
     if (!useAccordions) {
-      container.classList.add("no-border");
+      container.classList.add("neuroglancer-accordion-no-border");
     }
 
     // Usually, the state is pre-propulated with all the relevant sections.

@@ -49,10 +49,10 @@
   padding-top: 0;
 }
 
-.neuroglancer-accordion-item.no-border {
+.neuroglancer-accordion-item.neuroglancer-accordion-no-border {
   border-bottom: none;
 }
 
-.neuroglancer-accordion-item.no-border .neuroglancer-accordion-body {
+.neuroglancer-accordion-item.neuroglancer-accordion-no-border .neuroglancer-accordion-body {
   padding: 0;
 }
