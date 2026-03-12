@@ -101,14 +101,6 @@ export class RenderScaleWidget extends RefCounted {
     debounce(() => this.updateView(), 0),
   );
 
-  protected canvasXToHistogramOffset(canvasX: number, width: number) {
-    return (canvasX / width) * numRenderScaleHistogramBins;
-  }
-
-  protected histogramOffsetToCanvasX(offset: number, width: number) {
-    return (offset * width) / numRenderScaleHistogramBins;
-  }
-
   adjustViaWheel(event: WheelEvent) {
     const deltaY = this.getWheelMoveValue(event);
     if (deltaY === 0) {
@@ -116,7 +108,8 @@ export class RenderScaleWidget extends RefCounted {
     }
     this.hoverTarget.value = undefined;
     const logScaleMax = Math.round(
-      this.logScaleOrigin + numRenderScaleHistogramBins * this.logScaleBinSize,
+      this.logScaleOrigin +
+        numRenderScaleHistogramBins * this.logScaleBinSize,
     );
     const targetValue = clampToInterval(
       [2 ** this.logScaleOrigin, 2 ** (logScaleMax - 1)],
@@ -164,10 +157,8 @@ export class RenderScaleWidget extends RefCounted {
     );
 
     const getTargetValue = (event: MouseEvent) => {
-      const position = this.canvasXToHistogramOffset(
-        event.offsetX,
-        canvas.width,
-      );
+      const position =
+        (event.offsetX / canvas.width) * numRenderScaleHistogramBins;
       return getRenderScaleFromHistogramOffset(
         position,
         this.logScaleOrigin,
@@ -232,6 +223,10 @@ export class RenderScaleWidget extends RefCounted {
       const value = hoverValue === undefined ? targetValue : hoverValue[0];
       const valueString = formatPixelNumber(value);
       legendRenderScale.textContent = valueString + " " + this.unitOfTarget;
+    }
+
+    function binToCanvasX(bin: number) {
+      return (bin * width) / numRenderScaleHistogramBins;
     }
 
     ctx.clearRect(0, 0, width, height);
@@ -367,65 +362,45 @@ export class RenderScaleWidget extends RefCounted {
           histogramData[index + numRenderScaleHistogramBins];
         const count = presentCount + notPresentCount;
         if (count === 0) continue;
-        const xStart = Math.round(this.histogramOffsetToCanvasX(i, width));
-        const xEnd = Math.round(this.histogramOffsetToCanvasX(i + 1, width));
-        const left = Math.min(xStart, xEnd);
-        const rectWidth = Math.abs(xEnd - xStart);
+        const xStart = Math.round(binToCanvasX(i));
+        const xEnd = Math.round(binToCanvasX(i + 1));
         const yStart = Math.round(countToCanvasY(sum));
         sum += count;
         const yEnd = Math.round(countToCanvasY(sum));
         const ySplit = (presentCount * yEnd + notPresentCount * yStart) / count;
         ctx.fillStyle = spatialScaleColors[spatialScaleIndex][1];
-        ctx.fillRect(left, yEnd, rectWidth, ySplit - yEnd);
+        ctx.fillRect(xStart, yEnd, xEnd - xStart, ySplit - yEnd);
         ctx.fillStyle = spatialScaleColors[spatialScaleIndex][0];
-        ctx.fillRect(left, ySplit, rectWidth, yStart - ySplit);
+        ctx.fillRect(xStart, ySplit, xEnd - xStart, yStart - ySplit);
       }
     }
 
     {
       const value = targetValue;
       ctx.fillStyle = "#fff";
-      const startOffset = this.histogramOffsetToCanvasX(
+      const startOffset = binToCanvasX(
         getRenderScaleHistogramOffset(
           value,
           this.logScaleOrigin,
           this.logScaleBinSize,
         ),
-        width,
       );
       const lineWidth = 1;
-      ctx.fillRect(
-        Math.min(
-          Math.max(0, width - lineWidth),
-          Math.max(0, Math.floor(startOffset)),
-        ),
-        0,
-        lineWidth,
-        height,
-      );
+      ctx.fillRect(Math.floor(startOffset), 0, lineWidth, height);
     }
 
     if (hoverValue !== undefined) {
       const value = hoverValue[0];
       ctx.fillStyle = "#888";
-      const startOffset = this.histogramOffsetToCanvasX(
+      const startOffset = binToCanvasX(
         getRenderScaleHistogramOffset(
           value,
           this.logScaleOrigin,
           this.logScaleBinSize,
         ),
-        width,
       );
       const lineWidth = 1;
-      ctx.fillRect(
-        Math.min(
-          Math.max(0, width - lineWidth),
-          Math.max(0, Math.floor(startOffset)),
-        ),
-        0,
-        lineWidth,
-        height,
-      );
+      ctx.fillRect(Math.floor(startOffset), 0, lineWidth, height);
     }
   }
 }
@@ -439,17 +414,10 @@ export class VolumeRenderingRenderScaleWidget extends RenderScaleWidget {
   }
 }
 
+
 export class SpatialSkeletonGridRenderScaleWidget extends RenderScaleWidget {
   protected unitOfTarget = "nm";
   private relative?: WatchableValueInterface<boolean>;
-
-  protected canvasXToHistogramOffset(canvasX: number, width: number) {
-    return super.canvasXToHistogramOffset(width - canvasX, width);
-  }
-
-  protected histogramOffsetToCanvasX(offset: number, width: number) {
-    return width - super.histogramOffsetToCanvasX(offset, width);
-  }
 
   private syncScaleConfig() {
     this.logScaleOrigin = this.histogram.logScaleOrigin;
@@ -516,10 +484,6 @@ export class SpatialSkeletonGridRenderScaleWidget extends RenderScaleWidget {
     this.syncScaleConfig();
     this.unitOfTarget = this.relative?.value === true ? "px" : "nm";
     super.updateView();
-  }
-
-  getWheelMoveValue(event: WheelEvent) {
-    return -event.deltaY;
   }
 }
 
