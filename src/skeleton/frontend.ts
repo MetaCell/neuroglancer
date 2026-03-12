@@ -151,6 +151,12 @@ const DEFAULT_FRAGMENT_MAIN = `void main() {
 }
 `;
 
+const SELECTED_NODE_OUTLINE_COLOR_RGB = "1.0, 0.95, 0.35";
+const SELECTED_NODE_OUTLINE_MIN_WIDTH_2D = "1.75";
+const SELECTED_NODE_OUTLINE_MAX_WIDTH_2D = "3.0";
+const SELECTED_NODE_OUTLINE_MIN_WIDTH_3D = "1.5";
+const SELECTED_NODE_OUTLINE_MAX_WIDTH_3D = "2.5";
+
 interface VertexAttributeRenderInfo extends VertexAttributeInfo {
   name: string;
   webglDataType: number;
@@ -384,18 +390,20 @@ void emitDefault() {
           builder.addUniform("highp float", "uNodeDiameter");
           builder.addUniform("highp uint", "uPickInstanceStride");
           builder.addVarying("highp uint", "vPickID", "flat");
+          const selectedOutlineMinWidth = this.targetIsSliceView
+            ? SELECTED_NODE_OUTLINE_MIN_WIDTH_2D
+            : SELECTED_NODE_OUTLINE_MIN_WIDTH_3D;
+          const selectedOutlineMaxWidth = this.targetIsSliceView
+            ? SELECTED_NODE_OUTLINE_MAX_WIDTH_2D
+            : SELECTED_NODE_OUTLINE_MAX_WIDTH_3D;
           const selectedNodeAttributeReadExpression =
             this.selectedNodeAttributeIndex === undefined
               ? "0.0"
               : `readAttribute${this.selectedNodeAttributeIndex}(vertexIndex)`;
-          const selectedBorderWidthExpression =
+          const selectedOutlineWidthExpression =
             this.selectedNodeAttributeIndex === undefined
               ? "0.0"
-              : `((${selectedNodeAttributeReadExpression} > 0.5) ? 0.45 : 0.0)`;
-          const circleInteriorDiameterExpression =
-            this.selectedNodeAttributeIndex === undefined
-              ? "uNodeDiameter"
-              : `max(0.0, uNodeDiameter - 2.0 * ${selectedBorderWidthExpression})`;
+              : `((${selectedNodeAttributeReadExpression} > 0.5) ? clamp(0.25 * uNodeDiameter, ${selectedOutlineMinWidth}, ${selectedOutlineMaxWidth}) : 0.0)`;
           let vertexMain = `
 highp uint vertexIndex = uint(gl_InstanceID);
 highp uint pickOffset = vertexIndex * uPickInstanceStride;
@@ -403,8 +411,8 @@ vPickID = uPickID + pickOffset;
 highp vec3 vertexPosition = readAttribute0(vertexIndex);
 emitCircle(
   uProjection * vec4(vertexPosition, 1.0),
-  ${circleInteriorDiameterExpression},
-  ${selectedBorderWidthExpression}
+  uNodeDiameter,
+  ${selectedOutlineWidthExpression}
 );
 `;
 
@@ -434,7 +442,7 @@ void emitDefault() {
             const borderColorExpression =
               selectedNodeExpression === undefined
                 ? "color"
-                : `((${selectedNodeExpression} > 0.5) ? vec4(1.0, 1.0, 1.0, 1.0) : color)`;
+                : `((${selectedNodeExpression} > 0.5) ? vec4(${SELECTED_NODE_OUTLINE_COLOR_RGB}, color.a) : color)`;
             builder.addFragmentCode(`
 vec4 segmentColor() {
   return ${segmentColorExpression};
