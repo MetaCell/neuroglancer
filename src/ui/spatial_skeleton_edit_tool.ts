@@ -15,6 +15,10 @@
  */
 
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
+import {
+  addSegmentToVisibleSets,
+  removeSegmentFromVisibleSets,
+} from "#src/segmentation_display_state/base.js";
 import type { SpatiallyIndexedSkeletonAddNodeResult } from "#src/skeleton/api.js";
 import {
   PerspectiveViewSpatiallyIndexedSkeletonLayer,
@@ -154,6 +158,28 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
     this.layer.selectSegment(BigInt(Math.round(value)), false);
   }
 
+  protected ensureSegmentVisibleByNumber(value: number) {
+    if (!Number.isFinite(value)) return;
+    addSegmentToVisibleSets(
+      this.layer.displayState.segmentationGroupState.value,
+      BigInt(Math.round(value)),
+    );
+  }
+
+  protected removeVisibleSegmentByNumber(
+    value: number,
+    options: {
+      deselect?: boolean;
+    } = {},
+  ) {
+    if (!Number.isFinite(value)) return;
+    removeSegmentFromVisibleSets(
+      this.layer.displayState.segmentationGroupState.value,
+      BigInt(Math.round(value)),
+      options,
+    );
+  }
+
   protected resolvePickedNodeForAction(
     skeletonLayer: SpatiallyIndexedSkeletonLayer,
   ) {
@@ -221,17 +247,15 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
     if (resultSkeletonId === undefined || !Number.isFinite(resultSkeletonId)) {
       return;
     }
-    const segmentationGroupState =
-      this.layer.displayState.segmentationGroupState.value;
-    const { visibleSegments, selectedSegments } = segmentationGroupState;
-    visibleSegments.add(BigInt(resultSkeletonId));
+    this.ensureSegmentVisibleByNumber(resultSkeletonId);
     if (
       deletedSkeletonId !== undefined &&
       Number.isFinite(deletedSkeletonId) &&
       Math.round(deletedSkeletonId) !== Math.round(resultSkeletonId)
     ) {
-      visibleSegments.delete(BigInt(deletedSkeletonId));
-      selectedSegments.delete(BigInt(deletedSkeletonId));
+      this.removeVisibleSegmentByNumber(deletedSkeletonId, {
+        deselect: true,
+      });
     }
     this.selectSegmentByNumber(resultSkeletonId);
   }
@@ -318,7 +342,7 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
       z,
       layerType: skeletonLayer.constructor.name,
     });
-    const nodeInfo = await skeletonSource.addNodeWithInfo(
+    const nodeInfo = await skeletonSource.addNode(
       skeletonId,
       x,
       y,
@@ -725,6 +749,7 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
                 layer.selectSpatialSkeletonNode(committedNode.treenodeId, false, {
                   segmentId: committedNode.skeletonId,
                 });
+                this.ensureSegmentVisibleByNumber(committedNode.skeletonId);
                 this.selectSegmentByNumber(committedNode.skeletonId);
                 layer.markSpatialSkeletonNodeDataChanged({
                   invalidateFullSkeletonCache: false,
@@ -736,6 +761,7 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
               layer.selectSpatialSkeletonNode(newNode.nodeId, false, {
                 segmentId: newNode.segmentId,
               });
+              this.ensureSegmentVisibleByNumber(newNode.segmentId);
               this.selectSegmentByNumber(newNode.segmentId);
               layer.markSpatialSkeletonNodeDataChanged({
                 invalidateFullSkeletonCache: false,
@@ -1077,7 +1103,7 @@ class SpatialSkeletonMergeModeTool extends SpatialSkeletonToolBase {
         updateStatus();
         void (async () => {
           try {
-            const result = await skeletonSource.mergeSkeletonsWithInfo(
+            const result = await skeletonSource.mergeSkeletons(
               firstNode.nodeId,
               secondNode.nodeId,
             );
@@ -1223,7 +1249,7 @@ class SpatialSkeletonSplitModeTool extends SpatialSkeletonToolBase {
         updateStatus();
         void (async () => {
           try {
-            const result = await skeletonSource.splitSkeletonWithInfo(
+            const result = await skeletonSource.splitSkeleton(
               pickedNode.nodeId,
             );
             const newSkeletonId = result.newSkeletonId;
@@ -1240,12 +1266,8 @@ class SpatialSkeletonSplitModeTool extends SpatialSkeletonToolBase {
               );
             }
             skeletonLayer.splitSkeletonAtNode(pickedNode.nodeId, newSkeletonId);
-            const segmentationGroupState =
-              this.layer.displayState.segmentationGroupState.value;
-            segmentationGroupState.visibleSegments.add(
-              BigInt(existingSkeletonId),
-            );
-            segmentationGroupState.visibleSegments.add(BigInt(newSkeletonId));
+            this.ensureSegmentVisibleByNumber(existingSkeletonId);
+            this.ensureSegmentVisibleByNumber(newSkeletonId);
             this.selectSegmentByNumber(newSkeletonId);
             this.layer.selectSpatialSkeletonNode(pickedNode.nodeId, false, {
               segmentId: newSkeletonId,

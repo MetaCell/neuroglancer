@@ -81,13 +81,18 @@ export interface SpatiallyIndexedSkeletonSource {
       includeLabels?: boolean;
     },
   ): Promise<SpatiallyIndexedSkeletonNode[]>;
+}
+
+export interface EditableSpatiallyIndexedSkeletonSource
+  extends SpatiallyIndexedSkeletonSource
+{
   addNode(
     skeletonId: number,
     x: number,
     y: number,
     z: number,
     parentId?: number,
-  ): Promise<number>;
+  ): Promise<SpatiallyIndexedSkeletonAddNodeResult>;
   moveNode(nodeId: number, x: number, y: number, z: number): Promise<void>;
   deleteNode(
     nodeId: number,
@@ -96,28 +101,11 @@ export interface SpatiallyIndexedSkeletonSource {
       childNodeIds?: readonly number[];
     },
   ): Promise<void>;
-
-  mergeSkeletons(skeletonId1: number, skeletonId2: number): Promise<void>;
-  splitSkeleton(nodeId: number): Promise<void>;
-}
-
-export interface EditableSpatiallyIndexedSkeletonSource
-  extends SpatiallyIndexedSkeletonSource
-{
-  addNodeWithInfo(
-    skeletonId: number,
-    x: number,
-    y: number,
-    z: number,
-    parentId?: number,
-  ): Promise<SpatiallyIndexedSkeletonAddNodeResult>;
   addNodeLabel(nodeId: number, label: string): Promise<void>;
   removeNodeLabel(nodeId: number, label: string): Promise<void>;
-  mergeSkeletonsWithInfo(
+  mergeSkeletons(
     fromNodeId: number,
     toNodeId: number,
   ): Promise<SpatiallyIndexedSkeletonMergeResult>;
-  splitSkeletonWithInfo(
-    nodeId: number,
-  ): Promise<SpatiallyIndexedSkeletonSplitResult>;
+  splitSkeleton(nodeId: number): Promise<SpatiallyIndexedSkeletonSplitResult>;
 }

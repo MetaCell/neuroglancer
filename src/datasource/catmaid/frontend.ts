@@ -160,18 +160,8 @@ export class CatmaidSpatiallyIndexedSkeletonSource extends WithParameters(
         y: number,
         z: number,
         parentId?: number,
-    ): Promise<number> {
-        return this.client.addNode(skeletonId, x, y, z, parentId);
-    }
-
-    addNodeWithInfo(
-        skeletonId: number,
-        x: number,
-        y: number,
-        z: number,
-        parentId?: number,
     ): Promise<SpatiallyIndexedSkeletonAddNodeResult> {
-        return this.client.addNodeWithInfo(skeletonId, x, y, z, parentId);
+        return this.client.addNode(skeletonId, x, y, z, parentId);
     }
 
     moveNode(nodeId: number, x: number, y: number, z: number): Promise<void> {
@@ -197,27 +187,14 @@ export class CatmaidSpatiallyIndexedSkeletonSource extends WithParameters(
     }
 
     mergeSkeletons(
-        skeletonId1: number,
-        skeletonId2: number,
-    ): Promise<void> {
-        return this.client.mergeSkeletons(skeletonId1, skeletonId2);
-    }
-
-    mergeSkeletonsWithInfo(
         fromNodeId: number,
         toNodeId: number,
     ): Promise<SpatiallyIndexedSkeletonMergeResult> {
-        return this.client.mergeSkeletonsWithInfo(fromNodeId, toNodeId);
+        return this.client.mergeSkeletons(fromNodeId, toNodeId);
     }
 
-    splitSkeleton(nodeId: number): Promise<void> {
+    splitSkeleton(nodeId: number): Promise<SpatiallyIndexedSkeletonSplitResult> {
         return this.client.splitSkeleton(nodeId);
-    }
-
-    splitSkeletonWithInfo(
-        nodeId: number,
-    ): Promise<SpatiallyIndexedSkeletonSplitResult> {
-        return this.client.splitSkeletonWithInfo(nodeId);
     }
 }
 

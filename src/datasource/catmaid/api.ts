@@ -784,7 +784,7 @@ export class CatmaidClient
     }
   }
 
-  async addNodeWithInfo(
+  async addNode(
     skeletonId: number,
     x: number,
     y: number,
@@ -823,25 +823,6 @@ export class CatmaidClient
       treenodeId,
       skeletonId: nextSkeletonId,
     };
-  }
-
-  async addNode(
-    skeletonId: number,
-    x: number,
-    y: number,
-    z: number,
-    parentId?: number,
-    state?: CatmaidStatePayload,
-  ): Promise<number> {
-    const result = await this.addNodeWithInfo(
-      skeletonId,
-      x,
-      y,
-      z,
-      parentId,
-      state,
-    );
-    return result.treenodeId;
   }
 
   private async updateNodeLabelWithFallback(
@@ -887,7 +868,7 @@ export class CatmaidClient
     ]);
   }
 
-  async mergeSkeletonsWithInfo(
+  async mergeSkeletons(
     fromNodeId: number,
     toNodeId: number,
   ): Promise<CatmaidMergeSkeletonResult> {
@@ -912,20 +893,9 @@ export class CatmaidClient
     };
   }
 
-  async splitSkeletonWithInfo(
+  async splitSkeleton(
     nodeId: number,
   ): Promise<CatmaidSplitSkeletonResult> {
     return this.splitSkeletonAtNode(nodeId);
-  }
-
-  async mergeSkeletons(
-    skeletonId1: number,
-    skeletonId2: number,
-  ): Promise<void> {
-    await this.mergeSkeletonsWithInfo(skeletonId1, skeletonId2);
-  }
-
-  async splitSkeleton(nodeId: number): Promise<void> {
-    await this.splitSkeletonAtNode(nodeId);
   }
 }

@@ -137,14 +137,14 @@ export function getSpatiallyIndexedSkeletonSourceCapabilities(
       hasFunction(value, "getPreviousBranchOrRoot") &&
       hasFunction(value, "getNextBranchOrEnd") &&
       hasFunction(value, "getOpenLeaves"),
-    addNodes: hasFunction(value, "addNodeWithInfo"),
+    addNodes: hasFunction(value, "addNode"),
     moveNodes: hasFunction(value, "moveNode"),
     deleteNodes: hasFunction(value, "deleteNode"),
     editNodeLabels:
       hasFunction(value, "addNodeLabel") &&
       hasFunction(value, "removeNodeLabel"),
-    mergeSkeletons: hasFunction(value, "mergeSkeletonsWithInfo"),
-    splitSkeletons: hasFunction(value, "splitSkeletonWithInfo"),
+    mergeSkeletons: hasFunction(value, "mergeSkeletons"),
+    splitSkeletons: hasFunction(value, "splitSkeleton"),
   };
 }
 

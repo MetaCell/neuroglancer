@@ -18,7 +18,10 @@ import {
   CATMAID_TRUE_END_LABEL,
 } from "#src/datasource/catmaid/api.js";
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
-import { getVisibleSegments } from "#src/segmentation_display_state/base.js";
+import {
+  getVisibleSegments,
+  removeSegmentFromVisibleSets,
+} from "#src/segmentation_display_state/base.js";
 import type {
   SpatiallyIndexedSkeletonBranchNavigationTarget,
   SpatiallyIndexedSkeletonNavigationTarget,
@@ -507,10 +510,11 @@ export class SpatialSkeletonEditTab extends Tab {
           if (deletingIsolatedRoot) {
             const segmentationGroupState =
               layer.displayState.segmentationGroupState.value;
-            const { visibleSegments, selectedSegments } =
-              segmentationGroupState;
-            visibleSegments.delete(BigInt(node.segmentId));
-            selectedSegments.delete(BigInt(node.segmentId));
+            removeSegmentFromVisibleSets(
+              segmentationGroupState,
+              BigInt(node.segmentId),
+              { deselect: true },
+            );
           }
           if (layer.selectedSpatialSkeletonNodeId.value === node.nodeId) {
             layer.clearSpatialSkeletonNodeSelection(false);
