@@ -1793,6 +1793,16 @@ export class SpatiallyIndexedSkeletonLayer
     this.selectedNodeAttributeIndex =
       selectedNodeIndex >= 0 ? selectedNodeIndex : undefined;
     const markDirty = () => this.markFilteredDataDirty();
+    const dirtyWatchables = new Set<object>();
+    const registerNumericDirtyWatchable = (
+      watchable: WatchableValueInterface<number> | undefined,
+    ) => {
+      if (watchable === undefined) return;
+      const key = watchable as object;
+      if (dirtyWatchables.has(key)) return;
+      dirtyWatchables.add(key);
+      this.registerDisposer(watchable.changed.add(() => markDirty()));
+    };
     // Monitor visible segment changes to update filtered buffers.
     this.registerDisposer(
       registerNested((context, segmentationGroup) => {
@@ -1846,9 +1856,16 @@ export class SpatiallyIndexedSkeletonLayer
         }),
       );
     }
-    if (this.gridLevel !== undefined) {
-      this.registerDisposer(this.gridLevel.changed.add(() => markDirty()));
-    }
+    registerNumericDirtyWatchable(this.gridLevel);
+    registerNumericDirtyWatchable(
+      (displayState as any).spatialSkeletonGridLevel2d,
+    );
+    registerNumericDirtyWatchable(
+      (displayState as any).spatialSkeletonGridLevel3d,
+    );
+    registerNumericDirtyWatchable(this.lod);
+    registerNumericDirtyWatchable((displayState as any).spatialSkeletonLod2d);
+    registerNumericDirtyWatchable((displayState as any).skeletonLod);
     if (displayState.hiddenObjectAlpha) {
       this.registerDisposer(
         displayState.hiddenObjectAlpha.changed.add(() => markDirty()),
@@ -2139,7 +2156,7 @@ export class SpatiallyIndexedSkeletonLayer
     } = {},
   ): SpatiallyIndexedSkeletonNodeInfo | undefined {
     if (!Number.isSafeInteger(nodeId) || nodeId <= 0) return undefined;
-    const targetLod = options.lod ?? this.lod.value;
+    const targetLod = options.lod;
     const selectedSources = this.getCurrentSourcesForEditing();
     const entry = this.getPrimaryNodeLocator(
       nodeId,
@@ -2274,60 +2291,42 @@ export class SpatiallyIndexedSkeletonLayer
     const targetLod = options.lod;
     const selectedSources = this.getCurrentSourcesForEditing();
     if (selectedSources.length === 0) return undefined;
-    const selectedSourceIds = this.makeSourceIdSet(selectedSources);
     const parentNodeId = options.parentNodeId;
-    const parentEntry =
-      parentNodeId === undefined
-        ? undefined
-        : this.getPrimaryNodeLocator(
-            parentNodeId,
-            selectedSourceIds,
-            targetLod,
-          );
-
-    let targetChunk = parentEntry?.chunk;
-    if (targetChunk === undefined) {
-      let firstGpuChunk: SpatiallyIndexedSkeletonChunk | undefined;
-      for (const sourceEntry of selectedSources) {
-        const chunks = sourceEntry.chunkSource.chunks;
-        for (const chunk of chunks.values()) {
-          const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
-          if (!this.lodMatches(typedChunk, targetLod)) continue;
-          if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
-          if (firstGpuChunk === undefined) {
-            firstGpuChunk = typedChunk;
-          }
-          const data = this.getChunkPositionAndSegmentArrays(typedChunk);
-          if (data === undefined) continue;
-          const { segmentIds } = data;
-          for (let v = 0; v < typedChunk.numVertices; ++v) {
-            if (Math.round(segmentIds[v]) !== segmentId) continue;
-            targetChunk = typedChunk;
-            break;
-          }
-          if (targetChunk !== undefined) break;
-        }
-        if (targetChunk !== undefined) break;
+    const resolveTargetChunk = (
+      sourceEntry: SpatiallyIndexedSkeletonSourceEntry,
+    ) => {
+      const sourceId = getObjectId(sourceEntry.chunkSource);
+      const sourceIds = new Set([sourceId]);
+      const parentEntry =
+        parentNodeId === undefined
+          ? undefined
+          : this.getPrimaryNodeLocator(parentNodeId, sourceIds, targetLod);
+      let targetChunk = parentEntry?.chunk;
+      if (targetChunk !== undefined) {
+        return { parentEntry, targetChunk };
       }
-      targetChunk = targetChunk ?? firstGpuChunk;
-    }
-    if (targetChunk === undefined) return undefined;
-    if (targetChunk.state !== ChunkState.GPU_MEMORY) return undefined;
 
-    const data = this.getChunkPositionAndSegmentArrays(targetChunk);
-    if (data === undefined) return undefined;
-    const { positions: oldPositions, segmentIds: oldSegmentIds } = data;
-    const oldNumVertices = targetChunk.numVertices;
-    const newVertexIndex = oldNumVertices;
-    const newNumVertices = oldNumVertices + 1;
-    const newPositions = new Float32Array(newNumVertices * 3);
-    newPositions.set(oldPositions);
-    newPositions[newVertexIndex * 3] = x;
-    newPositions[newVertexIndex * 3 + 1] = y;
-    newPositions[newVertexIndex * 3 + 2] = z;
-    const newSegmentIds = new Float32Array(newNumVertices);
-    newSegmentIds.set(oldSegmentIds);
-    newSegmentIds[newVertexIndex] = segmentId;
+      let firstGpuChunk: SpatiallyIndexedSkeletonChunk | undefined;
+      for (const chunk of sourceEntry.chunkSource.chunks.values()) {
+        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
+        if (!this.lodMatches(typedChunk, targetLod)) continue;
+        if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
+        if (firstGpuChunk === undefined) {
+          firstGpuChunk = typedChunk;
+        }
+        const data = this.getChunkPositionAndSegmentArrays(typedChunk);
+        if (data === undefined) continue;
+        const { segmentIds } = data;
+        for (let v = 0; v < typedChunk.numVertices; ++v) {
+          if (Math.round(segmentIds[v]) !== segmentId) continue;
+          return { parentEntry, targetChunk: typedChunk };
+        }
+      }
+      if (firstGpuChunk === undefined) {
+        return undefined;
+      }
+      return { parentEntry, targetChunk: firstGpuChunk };
+    };
 
     const maxNodeId = this.getMaxIndexedNodeId();
     const requestedNodeId = options.nodeId;
@@ -2341,58 +2340,98 @@ export class SpatiallyIndexedSkeletonLayer
     if (requestedNodeId !== undefined && this.hasIndexedNodeId(newNodeId)) {
       return undefined;
     }
-    targetChunk.nodeMap.set(newNodeId, newVertexIndex);
-    targetChunk.source.bumpLookupGeneration();
-
-    const oldIndices = targetChunk.indices;
-    let updatedIndices = oldIndices;
-    if (parentEntry !== undefined && parentNodeId !== undefined) {
-      if (parentEntry.chunk === targetChunk) {
-        updatedIndices = new Uint32Array(oldIndices.length + 2);
-        updatedIndices.set(oldIndices, 0);
-        updatedIndices[oldIndices.length] = newVertexIndex;
-        updatedIndices[oldIndices.length + 1] = parentEntry.vertexIndex;
-      } else {
-        targetChunk.missingConnections.push({
-          nodeId: newNodeId,
-          parentId: parentNodeId,
-          vertexIndex: newVertexIndex,
-          skeletonId: segmentId,
-        });
-      }
+    const targets = selectedSources
+      .map(resolveTargetChunk)
+      .filter(
+        (
+          target,
+        ): target is {
+          parentEntry: SpatiallyIndexedNodeLocatorEntry | undefined;
+          targetChunk: SpatiallyIndexedSkeletonChunk;
+        } => target !== undefined,
+      );
+    if (targets.length === 0) {
+      return undefined;
     }
 
-    const positionBytes = new Uint8Array(newPositions.buffer);
-    const segmentBytes = new Uint8Array(newSegmentIds.buffer);
-    const vertexBytes = new Uint8Array(
-      positionBytes.byteLength + segmentBytes.byteLength,
-    );
-    vertexBytes.set(positionBytes, 0);
-    vertexBytes.set(segmentBytes, positionBytes.byteLength);
-    const vertexOffsets = new Uint32Array([0, positionBytes.byteLength]);
-
+    const changedChunks = new Set<SpatiallyIndexedSkeletonChunk>();
     const gl = this.gl;
-    for (const texture of targetChunk.vertexAttributeTextures) {
-      gl.deleteTexture(texture);
-    }
-    targetChunk.vertexAttributes = vertexBytes;
-    targetChunk.vertexAttributeOffsets = vertexOffsets;
-    targetChunk.numVertices = newNumVertices;
-    targetChunk.vertexAttributeTextures = uploadVertexAttributesToGPU(
-      gl,
-      targetChunk.vertexAttributes,
-      targetChunk.vertexAttributeOffsets,
-      targetChunk.source.attributeTextureFormats,
-    );
+    for (const { parentEntry, targetChunk } of targets) {
+      const data = this.getChunkPositionAndSegmentArrays(targetChunk);
+      if (data === undefined) {
+        continue;
+      }
+      const { positions: oldPositions, segmentIds: oldSegmentIds } = data;
+      const oldNumVertices = targetChunk.numVertices;
+      const newVertexIndex = oldNumVertices;
+      const newNumVertices = oldNumVertices + 1;
+      const newPositions = new Float32Array(newNumVertices * 3);
+      newPositions.set(oldPositions);
+      newPositions[newVertexIndex * 3] = x;
+      newPositions[newVertexIndex * 3 + 1] = y;
+      newPositions[newVertexIndex * 3 + 2] = z;
+      const newSegmentIds = new Float32Array(newNumVertices);
+      newSegmentIds.set(oldSegmentIds);
+      newSegmentIds[newVertexIndex] = segmentId;
 
-    if (updatedIndices !== oldIndices) {
-      targetChunk.indices = updatedIndices;
-      targetChunk.numIndices = updatedIndices.length;
-    }
-    targetChunk.indexBuffer.setData(targetChunk.indices);
+      targetChunk.nodeMap.set(newNodeId, newVertexIndex);
+      targetChunk.source.bumpLookupGeneration();
 
+      const oldIndices = targetChunk.indices;
+      let updatedIndices = oldIndices;
+      if (parentNodeId !== undefined) {
+        if (parentEntry !== undefined && parentEntry.chunk === targetChunk) {
+          updatedIndices = new Uint32Array(oldIndices.length + 2);
+          updatedIndices.set(oldIndices, 0);
+          updatedIndices[oldIndices.length] = newVertexIndex;
+          updatedIndices[oldIndices.length + 1] = parentEntry.vertexIndex;
+        } else {
+          targetChunk.missingConnections.push({
+            nodeId: newNodeId,
+            parentId: parentNodeId,
+            vertexIndex: newVertexIndex,
+            skeletonId: segmentId,
+          });
+        }
+      }
+
+      const positionBytes = new Uint8Array(newPositions.buffer);
+      const segmentBytes = new Uint8Array(newSegmentIds.buffer);
+      const vertexBytes = new Uint8Array(
+        positionBytes.byteLength + segmentBytes.byteLength,
+      );
+      vertexBytes.set(positionBytes, 0);
+      vertexBytes.set(segmentBytes, positionBytes.byteLength);
+      const vertexOffsets = new Uint32Array([0, positionBytes.byteLength]);
+
+      for (const texture of targetChunk.vertexAttributeTextures) {
+        gl.deleteTexture(texture);
+      }
+      targetChunk.vertexAttributes = vertexBytes;
+      targetChunk.vertexAttributeOffsets = vertexOffsets;
+      targetChunk.numVertices = newNumVertices;
+      targetChunk.vertexAttributeTextures = uploadVertexAttributesToGPU(
+        gl,
+        targetChunk.vertexAttributes,
+        targetChunk.vertexAttributeOffsets,
+        targetChunk.source.attributeTextureFormats,
+      );
+
+      if (updatedIndices !== oldIndices) {
+        targetChunk.indices = updatedIndices;
+        targetChunk.numIndices = updatedIndices.length;
+      }
+      targetChunk.indexBuffer.setData(targetChunk.indices);
+      changedChunks.add(targetChunk);
+    }
+
+    if (changedChunks.size === 0) {
+      return undefined;
+    }
     this.invalidateNodeLocatorIndex();
-    this.clearFilteredChunkData(targetChunk);
+    for (const chunk of changedChunks) {
+      this.clearFilteredChunkData(chunk);
+    }
     this.markFilteredDataDirty();
 
     return {
