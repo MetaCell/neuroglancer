@@ -14,7 +14,14 @@
  * limitations under the License.
  */
 
-import type { Uint64Set } from "#src/uint64_set.js";
+import {
+  GPUHashTable,
+  HashSetShaderManager,
+} from "#src/gpu_hash/shader.js";
+import {
+  SegmentColorShaderManager,
+  SegmentStatedColorShaderManager,
+} from "#src/segment_color.js";
 import {
   updateOneDimensionalTextureElement,
   uploadVertexAttributesToGPU,
@@ -58,7 +65,6 @@ import { RenderScaleHistogram } from "#src/render_scale_statistics.js";
 import {
   forEachVisibleSegment,
   getObjectKey,
-  getVisibleSegments,
 } from "#src/segmentation_display_state/base.js";
 import type {
   SegmentationDisplayState3D,
@@ -66,7 +72,6 @@ import type {
 } from "#src/segmentation_display_state/frontend.js";
 import {
   forEachVisibleSegmentToDraw,
-  getBaseObjectColor,
   registerRedrawWhenSegmentationDisplayState3DChanged,
   SegmentationLayerSharedObject,
 } from "#src/segmentation_display_state/frontend.js";
@@ -191,11 +196,6 @@ const segmentTextureFormat = computeTextureFormat(
   DataType.FLOAT32,
   1,
 );
-const segmentColorTextureFormat = computeTextureFormat(
-  new TextureFormat(),
-  DataType.FLOAT32,
-  4,
-);
 const selectedNodeTextureFormat = computeTextureFormat(
   new TextureFormat(),
   DataType.FLOAT32,
@@ -205,6 +205,7 @@ const selectedNodeTextureFormat = computeTextureFormat(
 interface SkeletonLayerInterface {
   vertexAttributes: VertexAttributeRenderInfo[];
   segmentColorAttributeIndex?: number;
+  dynamicSegmentAppearance?: boolean;
   gl: GL;
   fallbackShaderParameters: WatchableValue<ShaderControlsBuilderState>;
   displayState: SkeletonLayerDisplayState;
@@ -245,8 +246,19 @@ class RenderHelper extends RefCounted {
     "vertexData",
   );
   private vertexIdHelper;
+  private dynamicSegmentAppearance: boolean;
+  private segmentAttributeIndex: number | undefined;
   private segmentColorAttributeIndex: number | undefined;
   private selectedNodeAttributeIndex: number | undefined;
+  private visibleSegmentsShaderManager = new HashSetShaderManager(
+    "visibleSegments",
+  );
+  private segmentColorShaderManager = new SegmentColorShaderManager(
+    "segmentColorHash",
+  );
+  private segmentStatedColorShaderManager =
+    new SegmentStatedColorShaderManager("segmentStatedColor");
+  private gpuSegmentStatedColorHashTable: GPUHashTable<any> | undefined;
   get vertexAttributes(): VertexAttributeRenderInfo[] {
     return this.base.vertexAttributes;
   }
@@ -273,12 +285,146 @@ class RenderHelper extends RefCounted {
     return this.base.gl;
   }
 
+  disposed() {
+    this.gpuSegmentStatedColorHashTable?.dispose();
+    super.disposed();
+  }
+
+  private defineDynamicSegmentAppearance(builder: ShaderBuilder) {
+    this.visibleSegmentsShaderManager.defineShader(builder);
+    this.segmentColorShaderManager.defineShader(builder);
+    this.segmentStatedColorShaderManager.defineShader(builder);
+    builder.addUniform("highp float", "uVisibleAlpha");
+    builder.addUniform("highp float", "uHiddenAlpha");
+    builder.addUniform("highp vec3", "uSegmentDefaultColor");
+    builder.addUniform("highp uint", "uSkipVisibleSegments");
+    builder.addUniform("highp uint", "uUseSegmentDefaultColor");
+    builder.addUniform("highp uint", "uUseSegmentStatedColors");
+    builder.addFragmentCode(`
+uint64_t getSegmentAppearanceId(highp float segmentValue) {
+  highp uint segmentId = uint(max(round(segmentValue), 0.0));
+  return uint64_t(uvec2(segmentId, 0u));
+}
+vec3 getSegmentLookupColor(uint64_t segmentId) {
+  vec4 statedColor;
+  if (
+    uUseSegmentStatedColors != 0u &&
+    ${this.segmentStatedColorShaderManager.getFunctionName}(segmentId, statedColor)
+  ) {
+    return statedColor.rgb;
+  }
+  if (uUseSegmentDefaultColor != 0u) {
+    return uSegmentDefaultColor;
+  }
+  return ${this.segmentColorShaderManager.prefix}(segmentId);
+}
+float getSegmentLookupAlpha(uint64_t segmentId) {
+  bool isVisible = ${this.visibleSegmentsShaderManager.hasFunctionName}(segmentId);
+  if (uSkipVisibleSegments != 0u && isVisible) {
+    return 0.0;
+  }
+  return isVisible ? uVisibleAlpha : uHiddenAlpha;
+}
+vec4 getSegmentAppearance(highp float segmentValue) {
+  uint64_t segmentId = getSegmentAppearanceId(segmentValue);
+  return vec4(getSegmentLookupColor(segmentId), getSegmentLookupAlpha(segmentId));
+}
+`);
+  }
+
+  enableDynamicSegmentAppearance(
+    gl: GL,
+    shader: ShaderProgram,
+    skipVisibleSegments: boolean,
+  ) {
+    if (!this.dynamicSegmentAppearance) return;
+    const segmentationGroupState =
+      this.base.displayState.segmentationGroupState.value;
+    const visibleSegments = segmentationGroupState.useTemporaryVisibleSegments
+      .value
+      ? segmentationGroupState.temporaryVisibleSegments
+      : segmentationGroupState.visibleSegments;
+    this.visibleSegmentsShaderManager.enable(
+      gl,
+      shader,
+      GPUHashTable.get(gl, visibleSegments.hashTable),
+    );
+    gl.uniform1f(
+      shader.uniform("uVisibleAlpha"),
+      this.base.displayState.objectAlpha.value,
+    );
+    gl.uniform1f(
+      shader.uniform("uHiddenAlpha"),
+      this.base.displayState.hiddenObjectAlpha?.value ?? 0,
+    );
+    gl.uniform1ui(
+      shader.uniform("uSkipVisibleSegments"),
+      skipVisibleSegments ? 1 : 0,
+    );
+
+    const colorGroupState =
+      this.base.displayState.segmentationColorGroupState.value;
+    this.segmentColorShaderManager.enable(
+      gl,
+      shader,
+      colorGroupState.segmentColorHash.value,
+    );
+    const segmentDefaultColor = colorGroupState.segmentDefaultColor.value;
+    if (segmentDefaultColor === undefined) {
+      gl.uniform1ui(shader.uniform("uUseSegmentDefaultColor"), 0);
+    } else {
+      gl.uniform1ui(shader.uniform("uUseSegmentDefaultColor"), 1);
+      gl.uniform3f(
+        shader.uniform("uSegmentDefaultColor"),
+        segmentDefaultColor[0],
+        segmentDefaultColor[1],
+        segmentDefaultColor[2],
+      );
+    }
+
+    const segmentStatedColors = colorGroupState.segmentStatedColors;
+    if (segmentStatedColors.size === 0) {
+      gl.uniform1ui(shader.uniform("uUseSegmentStatedColors"), 0);
+      this.segmentStatedColorShaderManager.disable(gl, shader);
+      return;
+    }
+    gl.uniform1ui(shader.uniform("uUseSegmentStatedColors"), 1);
+    let { gpuSegmentStatedColorHashTable } = this;
+    if (
+      gpuSegmentStatedColorHashTable === undefined ||
+      gpuSegmentStatedColorHashTable.hashTable !== segmentStatedColors.hashTable
+    ) {
+      gpuSegmentStatedColorHashTable?.dispose();
+      this.gpuSegmentStatedColorHashTable = gpuSegmentStatedColorHashTable =
+        GPUHashTable.get(gl, segmentStatedColors.hashTable);
+    }
+    this.segmentStatedColorShaderManager.enable(
+      gl,
+      shader,
+      gpuSegmentStatedColorHashTable,
+    );
+  }
+
+  disableDynamicSegmentAppearance(gl: GL, shader: ShaderProgram) {
+    if (!this.dynamicSegmentAppearance) return;
+    this.visibleSegmentsShaderManager.disable(gl, shader);
+    this.segmentStatedColorShaderManager.disable(gl, shader);
+  }
+
   constructor(
     public base: SkeletonLayerInterface,
     public targetIsSliceView: boolean,
   ) {
     super();
     this.vertexIdHelper = this.registerDisposer(VertexIdHelper.get(this.gl));
+    const segmentAttrIndex = this.vertexAttributes.findIndex(
+      (x) => x.name === segmentAttribute.name,
+    );
+    this.segmentAttributeIndex =
+      segmentAttrIndex >= 0 ? segmentAttrIndex : undefined;
+    this.dynamicSegmentAppearance =
+      base.dynamicSegmentAppearance === true &&
+      this.segmentAttributeIndex !== undefined;
     this.segmentColorAttributeIndex = base.segmentColorAttributeIndex;
     const selectedNodeAttrIndex = this.vertexAttributes.findIndex(
       (x) => x.name === selectedNodeAttribute.name,
@@ -291,6 +437,7 @@ class RenderHelper extends RefCounted {
       {
         memoizeKey: {
           type: "skeleton/SkeletonShaderManager/edge",
+          dynamicSegmentAppearance: this.dynamicSegmentAppearance,
           vertexAttributes: this.vertexAttributes,
         },
         fallbackParameters: this.base.fallbackShaderParameters,
@@ -307,11 +454,17 @@ class RenderHelper extends RefCounted {
           }
           this.defineCommonShader(builder);
           this.defineAttributeAccess(builder);
+          if (this.dynamicSegmentAppearance) {
+            this.defineDynamicSegmentAppearance(builder);
+          }
           defineLineShader(builder);
           builder.addAttribute("highp uvec2", "aVertexIndex");
           builder.addUniform("highp float", "uLineWidth");
           builder.addUniform("highp uint", "uPickInstanceStride");
           builder.addVarying("highp uint", "vPickID", "flat");
+          if (this.dynamicSegmentAppearance) {
+            builder.addVarying("highp float", "vSegmentValue", "flat");
+          }
           let vertexMain = `
 highp uint pickOffset = uint(gl_InstanceID) * uPickInstanceStride;
 vPickID = uPickID + pickOffset;
@@ -321,13 +474,37 @@ emitLine(uProjection, vertexA, vertexB, uLineWidth);
 highp uint lineEndpointIndex = getLineEndpointIndex();
 highp uint vertexIndex = aVertexIndex.x * (1u - lineEndpointIndex) + aVertexIndex.y * lineEndpointIndex;
 `;
+          if (
+            this.dynamicSegmentAppearance &&
+            this.segmentAttributeIndex !== undefined
+          ) {
+            vertexMain += `vSegmentValue = readAttribute${this.segmentAttributeIndex}(aVertexIndex.x);\n`;
+          }
 
           const segmentColorExpression = this.getSegmentColorExpression();
           const segmentAlphaExpression =
             this.segmentColorAttributeIndex === undefined
               ? "uColor.a"
               : `${segmentColorExpression}.a`;
-          if (this.segmentColorAttributeIndex === undefined) {
+          if (this.dynamicSegmentAppearance) {
+            builder.addFragmentCode(`
+vec4 segmentColor() {
+  return getSegmentAppearance(vSegmentValue);
+}
+void emitRGB(vec3 color) {
+  vec4 baseColor = segmentColor();
+  highp float alpha = baseColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()};
+  if (alpha <= 0.0) discard;
+  emit(vec4(color * alpha, alpha), vPickID);
+}
+void emitDefault() {
+  vec4 baseColor = segmentColor();
+  highp float alpha = baseColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()};
+  if (alpha <= 0.0) discard;
+  emit(vec4(baseColor.rgb * alpha, alpha), vPickID);
+}
+`);
+          } else if (this.segmentColorAttributeIndex === undefined) {
             // Preserve legacy skeleton behavior where `uColor` is already
             // premultiplied by `objectAlpha` in `getObjectColor`.
             builder.addFragmentCode(`
@@ -385,6 +562,7 @@ void emitDefault() {
       {
         memoizeKey: {
           type: "skeleton/SkeletonShaderManager/node",
+          dynamicSegmentAppearance: this.dynamicSegmentAppearance,
           vertexAttributes: this.vertexAttributes,
         },
         fallbackParameters: this.base.fallbackShaderParameters,
@@ -401,6 +579,9 @@ void emitDefault() {
           }
           this.defineCommonShader(builder);
           this.defineAttributeAccess(builder);
+          if (this.dynamicSegmentAppearance) {
+            this.defineDynamicSegmentAppearance(builder);
+          }
           defineCircleShader(
             builder,
             /*crossSectionFade=*/ this.targetIsSliceView,
@@ -435,7 +616,46 @@ emitCircle(
 `;
 
           const segmentColorExpression = this.getSegmentColorExpression();
-          if (this.segmentColorAttributeIndex === undefined) {
+          if (
+            this.dynamicSegmentAppearance &&
+            this.segmentAttributeIndex !== undefined
+          ) {
+            const segmentExpression = `vCustom${this.segmentAttributeIndex}`;
+            const selectedNodeExpression =
+              this.selectedNodeAttributeIndex === undefined
+                ? undefined
+                : `vCustom${this.selectedNodeAttributeIndex}`;
+            const borderColorExpression =
+              selectedNodeExpression === undefined
+                ? "renderColor"
+                : `((${selectedNodeExpression} > 0.5) ? vec4(${SELECTED_NODE_OUTLINE_COLOR_RGB}, renderColor.a) : renderColor)`;
+            builder.addFragmentCode(`
+vec4 segmentColor() {
+  return getSegmentAppearance(${segmentExpression});
+}
+void emitRGBA(vec4 color) {
+  vec4 baseColor = segmentColor();
+  highp float alpha = color.a * baseColor.a;
+  if (alpha <= 0.0) discard;
+  vec4 renderColor = vec4(color.rgb, alpha);
+  vec4 borderColor = ${borderColorExpression};
+  vec4 circleColor = getCircleColor(renderColor, borderColor);
+  emit(vec4(circleColor.rgb * circleColor.a, circleColor.a), vPickID);
+}
+void emitRGB(vec3 color) {
+  emitRGBA(vec4(color, 1.0));
+}
+void emitDefault() {
+  vec4 baseColor = segmentColor();
+  highp float alpha = baseColor.a;
+  if (alpha <= 0.0) discard;
+  vec4 renderColor = vec4(baseColor.rgb, alpha);
+  vec4 borderColor = ${borderColorExpression};
+  vec4 circleColor = getCircleColor(renderColor, borderColor);
+  emit(vec4(circleColor.rgb * circleColor.a, circleColor.a), vPickID);
+}
+`);
+          } else if (this.segmentColorAttributeIndex === undefined) {
             // Preserve legacy skeleton behavior for non-spatial skeletons.
             builder.addFragmentCode(`
 vec4 segmentColor() {
@@ -459,15 +679,16 @@ void emitDefault() {
                 : `vCustom${this.selectedNodeAttributeIndex}`;
             const borderColorExpression =
               selectedNodeExpression === undefined
-                ? "color"
-                : `((${selectedNodeExpression} > 0.5) ? vec4(${SELECTED_NODE_OUTLINE_COLOR_RGB}, color.a) : color)`;
+                ? "renderColor"
+                : `((${selectedNodeExpression} > 0.5) ? vec4(${SELECTED_NODE_OUTLINE_COLOR_RGB}, renderColor.a) : renderColor)`;
             builder.addFragmentCode(`
 vec4 segmentColor() {
   return ${segmentColorExpression};
 }
 void emitRGBA(vec4 color) {
+  vec4 renderColor = color;
   vec4 borderColor = ${borderColorExpression};
-  vec4 circleColor = getCircleColor(color, borderColor);
+  vec4 circleColor = getCircleColor(renderColor, borderColor);
   emit(vec4(circleColor.rgb * circleColor.a, circleColor.a), vPickID);
 }
 void emitRGB(vec3 color) {
@@ -1070,14 +1291,6 @@ const segmentAttribute: VertexAttributeRenderInfo = {
   glslDataType: "float",
 };
 
-const segmentColorAttribute: VertexAttributeRenderInfo = {
-  dataType: DataType.FLOAT32,
-  numComponents: 4,
-  name: "segmentColorAttr",
-  webglDataType: WebGL2RenderingContext.FLOAT,
-  glslDataType: "vec4",
-};
-
 const selectedNodeAttribute: VertexAttributeRenderInfo = {
   dataType: DataType.FLOAT32,
   numComponents: 1,
@@ -1160,7 +1373,6 @@ export class SpatiallyIndexedSkeletonChunk
   // Filtering support
   filteredIndexBuffer: GLBuffer | undefined;
   filteredGeneration: number = -1;
-  filteredSkipVisibleSegments = false;
   filteredMissingConnectionsHash = 0;
   numFilteredIndices: number = 0;
   numFilteredVertices: number = 0;
@@ -1513,6 +1725,7 @@ export class SpatiallyIndexedSkeletonLayer
 {
   layerChunkProgressInfo = new LayerChunkProgressInfo();
   redrawNeeded = new NullarySignal();
+  dynamicSegmentAppearance = true;
   vertexAttributes: VertexAttributeRenderInfo[];
   segmentColorAttributeIndex: number | undefined;
   selectedNodeAttributeIndex: number | undefined;
@@ -1527,7 +1740,6 @@ export class SpatiallyIndexedSkeletonLayer
   private filteredAttributeTextureFormats = [
     vertexPositionTextureFormat,
     segmentTextureFormat,
-    segmentColorTextureFormat,
     selectedNodeTextureFormat,
   ];
   private regularSkeletonLayerWatchable = new WatchableValue(false);
@@ -1584,7 +1796,7 @@ export class SpatiallyIndexedSkeletonLayer
           const nextValue = this.computeHasRegularSkeletonLayer(userLayer);
           if (this.regularSkeletonLayerWatchable.value !== nextValue) {
             this.regularSkeletonLayerWatchable.value = nextValue;
-            this.markFilteredDataDirty();
+            this.redrawNeeded.dispatch();
           }
         };
         update();
@@ -1592,7 +1804,7 @@ export class SpatiallyIndexedSkeletonLayer
           userLayer.layersChanged.add(update);
       } else if (this.regularSkeletonLayerWatchable.value) {
         this.regularSkeletonLayerWatchable.value = false;
-        this.markFilteredDataDirty();
+        this.redrawNeeded.dispatch();
       }
     }
     return this.regularSkeletonLayerWatchable.value;
@@ -1812,22 +2024,15 @@ export class SpatiallyIndexedSkeletonLayer
       }),
     );
 
-    this.vertexAttributes = [
-      ...this.source.vertexAttributes,
-      segmentColorAttribute,
-      selectedNodeAttribute,
-    ];
-    const segmentColorIndex = this.vertexAttributes.findIndex(
-      (x) => x.name === segmentColorAttribute.name,
-    );
-    this.segmentColorAttributeIndex =
-      segmentColorIndex >= 0 ? segmentColorIndex : undefined;
+    this.vertexAttributes = [...this.source.vertexAttributes, selectedNodeAttribute];
+    this.segmentColorAttributeIndex = undefined;
     const selectedNodeIndex = this.vertexAttributes.findIndex(
       (x) => x.name === selectedNodeAttribute.name,
     );
     this.selectedNodeAttributeIndex =
       selectedNodeIndex >= 0 ? selectedNodeIndex : undefined;
     const markDirty = () => this.markFilteredDataDirty();
+    const requestRedraw = () => this.redrawNeeded.dispatch();
     const dirtyWatchables = new Set<object>();
     const registerNumericDirtyWatchable = (
       watchable: WatchableValueInterface<number> | undefined,
@@ -1842,16 +2047,16 @@ export class SpatiallyIndexedSkeletonLayer
     this.registerDisposer(
       registerNested((context, segmentationGroup) => {
         context.registerDisposer(
-          segmentationGroup.visibleSegments.changed.add(() => markDirty()),
+          segmentationGroup.visibleSegments.changed.add(() => requestRedraw()),
         );
         context.registerDisposer(
           segmentationGroup.temporaryVisibleSegments.changed.add(() =>
-            markDirty(),
+            requestRedraw(),
           ),
         );
         context.registerDisposer(
           segmentationGroup.useTemporaryVisibleSegments.changed.add(() =>
-            markDirty(),
+            requestRedraw(),
           ),
         );
       }, this.displayState.segmentationGroupState),
@@ -1860,18 +2065,22 @@ export class SpatiallyIndexedSkeletonLayer
     this.registerDisposer(
       registerNested((context, colorGroupState) => {
         context.registerDisposer(
-          colorGroupState.segmentColorHash.changed.add(() => markDirty()),
+          colorGroupState.segmentColorHash.changed.add(() => requestRedraw()),
         );
         context.registerDisposer(
-          colorGroupState.segmentDefaultColor.changed.add(() => markDirty()),
+          colorGroupState.segmentDefaultColor.changed.add(() =>
+            requestRedraw(),
+          ),
         );
         context.registerDisposer(
-          colorGroupState.segmentStatedColors.changed.add(() => markDirty()),
+          colorGroupState.segmentStatedColors.changed.add(() =>
+            requestRedraw(),
+          ),
         );
       }, this.displayState.segmentationColorGroupState),
     );
     this.registerDisposer(
-      displayState.objectAlpha.changed.add(() => markDirty()),
+      displayState.objectAlpha.changed.add(() => requestRedraw()),
     );
     const selectedNodeWatchable = this.selectedNodeId;
     if (selectedNodeWatchable?.changed) {
@@ -1881,7 +2090,9 @@ export class SpatiallyIndexedSkeletonLayer
     }
     const editModeWatchable = this.editMode;
     if (editModeWatchable?.changed) {
-      this.registerDisposer(editModeWatchable.changed.add(() => markDirty()));
+      this.registerDisposer(
+        editModeWatchable.changed.add(() => requestRedraw()),
+      );
     }
     const pendingNodePositionVersion = options.pendingNodePositionVersion;
     if (pendingNodePositionVersion?.changed) {
@@ -1903,7 +2114,7 @@ export class SpatiallyIndexedSkeletonLayer
     registerNumericDirtyWatchable((displayState as any).skeletonLod);
     if (displayState.hiddenObjectAlpha) {
       this.registerDisposer(
-        displayState.hiddenObjectAlpha.changed.add(() => markDirty()),
+        displayState.hiddenObjectAlpha.changed.add(() => requestRedraw()),
       );
     }
 
@@ -3343,14 +3554,21 @@ export class SpatiallyIndexedSkeletonLayer
       nodeShaderParameters.parseResult.controls,
     );
 
-    const visibleSegments = getVisibleSegments(
-      displayState.segmentationGroupState.value,
-    );
     const baseColor = new Float32Array([1, 1, 1, 1]);
     edgeShader.bind();
     renderHelper.setColor(gl, edgeShader, baseColor);
+    renderHelper.enableDynamicSegmentAppearance(
+      gl,
+      edgeShader,
+      hasRegularSkeletonLayer,
+    );
     nodeShader.bind();
     renderHelper.setColor(gl, nodeShader, baseColor);
+    renderHelper.enableDynamicSegmentAppearance(
+      gl,
+      nodeShader,
+      hasRegularSkeletonLayer,
+    );
     if (renderContext.emitPickID) {
       edgeShader.bind();
       renderHelper.setPickID(gl, edgeShader, 0);
@@ -3373,8 +3591,6 @@ export class SpatiallyIndexedSkeletonLayer
       }
       const filteredChunk = this.updateChunkFilteredBuffer(
         chunk,
-        visibleSegments,
-        hasRegularSkeletonLayer,
         selectedSourceIds,
         targetLod,
       );
@@ -3450,13 +3666,13 @@ export class SpatiallyIndexedSkeletonLayer
       );
     }
 
+    renderHelper.disableDynamicSegmentAppearance(gl, edgeShader);
+    renderHelper.disableDynamicSegmentAppearance(gl, nodeShader);
     renderHelper.endLayer(gl, edgeShader);
   }
 
   updateChunkFilteredBuffer(
     chunk: SpatiallyIndexedSkeletonChunk,
-    visibleSegments: Uint64Set,
-    skipVisibleSegments: boolean,
     selectedSourceIds: ReadonlySet<string>,
     targetLod: number | undefined,
   ): SkeletonChunkInterface | null {
@@ -3477,7 +3693,6 @@ export class SpatiallyIndexedSkeletonLayer
     }
     if (
       chunk.filteredGeneration === this.generation &&
-      chunk.filteredSkipVisibleSegments === skipVisibleSegments &&
       chunk.filteredMissingConnectionsHash === missingConnectionsHash
     ) {
       if (chunk.filteredEmpty) {
@@ -3509,7 +3724,6 @@ export class SpatiallyIndexedSkeletonLayer
     const gl = this.gl;
     const setEmptyFilteredChunkState = () => {
       chunk.filteredGeneration = this.generation;
-      chunk.filteredSkipVisibleSegments = skipVisibleSegments;
       chunk.filteredMissingConnectionsHash = missingConnectionsHash;
       chunk.numFilteredIndices = 0;
       chunk.numFilteredVertices = 0;
@@ -3528,9 +3742,6 @@ export class SpatiallyIndexedSkeletonLayer
         }
         chunk.filteredVertexAttributeTextures = undefined;
       }
-    };
-    const clearRenderableFilteredChunkState = () => {
-      chunk.filteredEmpty = false;
     };
 
     const vertexAttributeOffsets = chunk.vertexAttributeOffsets;
@@ -3552,59 +3763,25 @@ export class SpatiallyIndexedSkeletonLayer
       chunk.vertexAttributes.byteOffset + segmentOffset,
       chunk.numVertices,
     );
-    const segmentInfo = new Map<
-      number,
-      { include: boolean; color: Float32Array }
-    >();
     const selectedNodeId = this.selectedNodeId?.value;
     const selectedLocalVertexIndex =
       selectedNodeId === undefined
         ? undefined
         : chunk.nodeMap.get(selectedNodeId);
 
-    const getSegmentInfo = (segmentId: number) => {
-      let info = segmentInfo.get(segmentId);
-      if (info) return info;
-      const segmentBigInt = BigInt(segmentId);
-      const isVisible = visibleSegments.has(segmentBigInt);
-      const alphaForSegment = isVisible
-        ? this.displayState.objectAlpha.value
-        : (this.displayState.hiddenObjectAlpha?.value ?? 0);
-      const effectiveAlpha =
-        skipVisibleSegments && isVisible ? 0 : alphaForSegment;
-      const color = new Float32Array(4);
-      getBaseObjectColor(this.displayState, segmentBigInt, color);
-      // Encode effectiveAlpha into the alpha channel; do not pre-scale RGB here.
-      color[3] = effectiveAlpha;
-      const include = effectiveAlpha > 0;
-      info = { include, color };
-      segmentInfo.set(segmentId, info);
-      return info;
-    };
-
     const oldToNew = new Int32Array(chunk.numVertices);
-    oldToNew.fill(-1);
     const localNodeIdByVertex = new Int32Array(chunk.numVertices);
-    localNodeIdByVertex.fill(-1);
+    for (let i = 0; i < chunk.numVertices; ++i) {
+      oldToNew[i] = i;
+      localNodeIdByVertex[i] = -1;
+    }
     for (const [nodeId, vertexIndex] of chunk.nodeMap.entries()) {
       if (vertexIndex < 0 || vertexIndex >= chunk.numVertices) continue;
       localNodeIdByVertex[vertexIndex] = nodeId;
     }
-    const vertexList: number[] = [];
-    for (let v = 0; v < chunk.numVertices; ++v) {
-      const rawId = segmentIds[v];
-      const segmentId = Math.round(rawId);
-      if (!Number.isFinite(segmentId)) {
-        continue;
-      }
-      const info = getSegmentInfo(segmentId);
-      if (info.include) {
-        oldToNew[v] = vertexList.length;
-        vertexList.push(v);
-      }
-    }
+    const baseVertexCount = chunk.numVertices;
 
-    if (vertexList.length === 0) {
+    if (baseVertexCount === 0) {
       disposeFilteredTextures();
       setEmptyFilteredChunkState();
       return null;
@@ -3613,19 +3790,11 @@ export class SpatiallyIndexedSkeletonLayer
     const filteredIndices: number[] = [];
     const indices = chunk.indices;
     for (let i = 0; i < chunk.numIndices; i += 2) {
-      const aOld = indices[i];
-      const bOld = indices[i + 1];
-      const aNew = oldToNew[aOld];
-      const bNew = oldToNew[bOld];
-      if (aNew >= 0 && bNew >= 0) {
-        filteredIndices.push(aNew, bNew);
-      }
+      filteredIndices.push(indices[i], indices[i + 1]);
     }
 
-    const interChunkIndices: number[] = [];
     const extraPositions: number[] = [];
     const extraSegments: number[] = [];
-    const extraColors: number[] = [];
     const extraSelected: number[] = [];
     const extraNodeIds: number[] = [];
     const extraVertexMap = new Map<number, number>();
@@ -3651,12 +3820,11 @@ export class SpatiallyIndexedSkeletonLayer
 
     if (chunk.missingConnections.length > 0) {
       for (const conn of chunk.missingConnections) {
-        const segmentId = Math.round(conn.skeletonId);
-        if (!Number.isFinite(segmentId)) {
+        const connectionSegmentId = Math.round(conn.skeletonId);
+        if (!Number.isFinite(connectionSegmentId)) {
           continue;
         }
-        const info = getSegmentInfo(segmentId);
-        if (!info.include) {
+        if (conn.vertexIndex < 0 || conn.vertexIndex >= baseVertexCount) {
           continue;
         }
         const childNew = oldToNew[conn.vertexIndex];
@@ -3673,12 +3841,13 @@ export class SpatiallyIndexedSkeletonLayer
         }
         let parentNew = -1;
         if (parentNode.chunk === chunk) {
-          const localParent = oldToNew[parentNode.vertexIndex];
-          if (localParent >= 0) {
-            parentNew = localParent;
-          } else {
+          if (
+            parentNode.vertexIndex < 0 ||
+            parentNode.vertexIndex >= baseVertexCount
+          ) {
             continue;
           }
+          parentNew = oldToNew[parentNode.vertexIndex];
         } else {
           const cached = extraVertexMap.get(conn.parentId);
           if (cached !== undefined) {
@@ -3687,7 +3856,7 @@ export class SpatiallyIndexedSkeletonLayer
               selectedNodeId !== undefined &&
               conn.parentId === selectedNodeId
             ) {
-              const extraSelectedIndex = cached - vertexList.length;
+              const extraSelectedIndex = cached - baseVertexCount;
               if (
                 extraSelectedIndex >= 0 &&
                 extraSelectedIndex < extraSelected.length
@@ -3704,13 +3873,10 @@ export class SpatiallyIndexedSkeletonLayer
               conn.parentId,
             );
             const posIndex = parentNode.vertexIndex * 3;
-            const extraIndex = extraPositions.length / 3;
-            parentNew = vertexList.length + extraIndex;
+            parentNew = baseVertexCount + extraPositions.length / 3;
             extraVertexMap.set(conn.parentId, parentNew);
             extraPositions.push(
-              Number(
-                pendingParentPosition?.[0] ?? parentPositions[posIndex],
-              ),
+              Number(pendingParentPosition?.[0] ?? parentPositions[posIndex]),
               Number(
                 pendingParentPosition?.[1] ?? parentPositions[posIndex + 1],
               ),
@@ -3718,13 +3884,7 @@ export class SpatiallyIndexedSkeletonLayer
                 pendingParentPosition?.[2] ?? parentPositions[posIndex + 2],
               ),
             );
-            extraSegments.push(segmentId);
-            extraColors.push(
-              info.color[0],
-              info.color[1],
-              info.color[2],
-              info.color[3],
-            );
+            extraSegments.push(connectionSegmentId);
             extraNodeIds.push(conn.parentId);
             extraSelected.push(
               selectedNodeId !== undefined && conn.parentId === selectedNodeId
@@ -3734,13 +3894,9 @@ export class SpatiallyIndexedSkeletonLayer
           }
         }
         if (parentNew >= 0) {
-          interChunkIndices.push(childNew, parentNew);
+          filteredIndices.push(childNew, parentNew);
         }
       }
-    }
-
-    if (interChunkIndices.length > 0) {
-      filteredIndices.push(...interChunkIndices);
     }
 
     if (filteredIndices.length === 0) {
@@ -3750,61 +3906,45 @@ export class SpatiallyIndexedSkeletonLayer
     }
 
     const extraVertexCount = extraPositions.length / 3;
-    const totalVertexCount = vertexList.length + extraVertexCount;
+    const totalVertexCount = baseVertexCount + extraVertexCount;
     const filteredPositions = new Float32Array(totalVertexCount * 3);
     const filteredSegments = new Float32Array(totalVertexCount);
-    const filteredColors = new Float32Array(totalVertexCount * 4);
     const filteredSelected = new Float32Array(totalVertexCount);
     const filteredPickNodeIds = new Int32Array(totalVertexCount);
     filteredPickNodeIds.fill(-1);
     const filteredPickNodePositions = new Float32Array(totalVertexCount * 3);
     const filteredPickSegmentIds = new Int32Array(totalVertexCount);
-    for (let i = 0; i < vertexList.length; ++i) {
-      const oldIndex = vertexList[i];
+    for (let i = 0; i < baseVertexCount; ++i) {
       const dstStart = i * 3;
-      const nodeId = localNodeIdByVertex[oldIndex];
+      const nodeId = localNodeIdByVertex[i];
       const effectivePosition = this.getEffectiveNodePosition(
         positions,
-        oldIndex,
+        i,
         nodeId > 0 ? nodeId : undefined,
       );
       filteredPositions[dstStart] = Number(effectivePosition[0]);
       filteredPositions[dstStart + 1] = Number(effectivePosition[1]);
       filteredPositions[dstStart + 2] = Number(effectivePosition[2]);
-      const rawId = segmentIds[oldIndex];
-      const segmentId = Math.round(rawId);
-      filteredSegments[i] = rawId;
-      const info = segmentInfo.get(segmentId);
-      if (info) {
-        filteredColors.set(info.color, i * 4);
-      }
-      const selectedFlag =
-        selectedLocalVertexIndex !== undefined &&
-        oldIndex === selectedLocalVertexIndex
+      filteredSegments[i] = segmentIds[i];
+      filteredSelected[i] =
+        selectedLocalVertexIndex !== undefined && i === selectedLocalVertexIndex
           ? 1
           : 0;
-      filteredSelected[i] = selectedFlag;
-      filteredPickNodeIds[i] = localNodeIdByVertex[oldIndex];
+      filteredPickNodeIds[i] = nodeId;
       filteredPickNodePositions[dstStart] = filteredPositions[dstStart];
       filteredPickNodePositions[dstStart + 1] = filteredPositions[dstStart + 1];
       filteredPickNodePositions[dstStart + 2] = filteredPositions[dstStart + 2];
-      filteredPickSegmentIds[i] = segmentId;
+      filteredPickSegmentIds[i] = Math.round(segmentIds[i]);
     }
     for (let i = 0; i < extraVertexCount; ++i) {
-      const dstVertex = vertexList.length + i;
+      const dstVertex = baseVertexCount + i;
       const posStart = i * 3;
       const dstStart = dstVertex * 3;
       filteredPositions[dstStart] = extraPositions[posStart];
       filteredPositions[dstStart + 1] = extraPositions[posStart + 1];
       filteredPositions[dstStart + 2] = extraPositions[posStart + 2];
       filteredSegments[dstVertex] = extraSegments[i];
-      const colorStart = i * 4;
-      filteredColors[dstVertex * 4] = extraColors[colorStart];
-      filteredColors[dstVertex * 4 + 1] = extraColors[colorStart + 1];
-      filteredColors[dstVertex * 4 + 2] = extraColors[colorStart + 2];
-      filteredColors[dstVertex * 4 + 3] = extraColors[colorStart + 3];
-      const selectedFlag = extraSelected[i] ?? 0;
-      filteredSelected[dstVertex] = selectedFlag;
+      filteredSelected[dstVertex] = extraSelected[i] ?? 0;
       filteredPickNodeIds[dstVertex] = extraNodeIds[i] ?? -1;
       filteredPickNodePositions[dstStart] = filteredPositions[dstStart];
       filteredPickNodePositions[dstStart + 1] =
@@ -3832,26 +3972,17 @@ export class SpatiallyIndexedSkeletonLayer
 
     const posBytes = new Uint8Array(filteredPositions.buffer);
     const segBytes = new Uint8Array(filteredSegments.buffer);
-    const colorBytes = new Uint8Array(filteredColors.buffer);
     const selectedBytes = new Uint8Array(filteredSelected.buffer);
     const vertexBytes = new Uint8Array(
-      posBytes.byteLength +
-        segBytes.byteLength +
-        colorBytes.byteLength +
-        selectedBytes.byteLength,
+      posBytes.byteLength + segBytes.byteLength + selectedBytes.byteLength,
     );
     vertexBytes.set(posBytes, 0);
     vertexBytes.set(segBytes, posBytes.byteLength);
-    vertexBytes.set(colorBytes, posBytes.byteLength + segBytes.byteLength);
-    vertexBytes.set(
-      selectedBytes,
-      posBytes.byteLength + segBytes.byteLength + colorBytes.byteLength,
-    );
+    vertexBytes.set(selectedBytes, posBytes.byteLength + segBytes.byteLength);
     const vertexOffsets = new Uint32Array([
       0,
       posBytes.byteLength,
       posBytes.byteLength + segBytes.byteLength,
-      posBytes.byteLength + segBytes.byteLength + colorBytes.byteLength,
     ]);
 
     disposeFilteredTextures();
@@ -3870,7 +4001,6 @@ export class SpatiallyIndexedSkeletonLayer
     }
     chunk.filteredIndexBuffer.setData(new Uint32Array(filteredIndices));
     chunk.filteredGeneration = this.generation;
-    chunk.filteredSkipVisibleSegments = skipVisibleSegments;
     chunk.filteredMissingConnectionsHash = missingConnectionsHash;
     chunk.numFilteredIndices = filteredIndices.length;
     chunk.numFilteredVertices = totalVertexCount;
@@ -3880,7 +4010,7 @@ export class SpatiallyIndexedSkeletonLayer
     chunk.filteredPickEdgeSegmentIds = filteredPickEdgeSegmentIds;
     chunk.filteredOldToNew = oldToNew;
     chunk.filteredExtraVertexMap = extraVertexMap;
-    clearRenderableFilteredChunkState();
+    chunk.filteredEmpty = false;
 
     return {
       vertexAttributeTextures: chunk.filteredVertexAttributeTextures,
