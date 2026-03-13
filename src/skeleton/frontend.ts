@@ -2554,8 +2554,9 @@ export class SpatiallyIndexedSkeletonLayer
   private makeEditableChunkEntry(
     chunk: SpatiallyIndexedSkeletonChunk,
     targetLod: number | undefined,
+    editableData?: SpatiallyIndexedEditableChunkData,
   ): SpatiallyIndexedEditableChunkEntry | undefined {
-    const data = this.getEditableChunkData(chunk);
+    const data = editableData ?? this.getEditableChunkData(chunk);
     if (data === undefined) {
       return undefined;
     }
@@ -2573,10 +2574,18 @@ export class SpatiallyIndexedSkeletonLayer
     chunksToRewrite: Iterable<SpatiallyIndexedSkeletonChunk>,
     targetLod: number | undefined,
     parentByNodeId: ReadonlyMap<number, number | undefined>,
+    editableDataByChunk?: ReadonlyMap<
+      SpatiallyIndexedSkeletonChunk,
+      SpatiallyIndexedEditableChunkData
+    >,
   ) {
     const allEntries: SpatiallyIndexedEditableChunkEntry[] = [];
     for (const chunk of this.iterateCandidateChunks(selectedSources, targetLod)) {
-      const entry = this.makeEditableChunkEntry(chunk, targetLod);
+      const entry = this.makeEditableChunkEntry(
+        chunk,
+        targetLod,
+        editableDataByChunk?.get(chunk),
+      );
       if (entry !== undefined) {
         allEntries.push(entry);
       }
@@ -2591,18 +2600,20 @@ export class SpatiallyIndexedSkeletonLayer
     );
     const rewrittenChunks = new Set<SpatiallyIndexedSkeletonChunk>();
     for (const chunk of chunksToRewrite) {
-      const entry = this.makeEditableChunkEntry(chunk, targetLod);
+      const entry = this.makeEditableChunkEntry(
+        chunk,
+        targetLod,
+        editableDataByChunk?.get(chunk),
+      );
       if (entry === undefined) {
         continue;
       }
       const rebuilt = rebuiltByChunkId.get(entry.chunkId);
-      if (rebuilt === undefined) {
-        continue;
-      }
       this.setChunkEditableData(chunk, {
         ...entry.data,
-        indices: rebuilt.indices,
-        missingConnections: rebuilt.missingConnections,
+        indices: rebuilt?.indices ?? entry.data.indices,
+        missingConnections:
+          rebuilt?.missingConnections ?? entry.data.missingConnections,
       });
       rewrittenChunks.add(chunk);
     }
@@ -3002,14 +3013,12 @@ export class SpatiallyIndexedSkeletonLayer
       affectedChunks.add(targetChunk);
     }
     parentByNodeId.set(newNodeId, parentNodeId);
-    for (const [chunk, editableData] of changedChunks) {
-      this.setChunkEditableData(chunk, editableData);
-    }
     const rewrittenChunks = this.rebuildConnectionsForChunks(
       selectedSources,
       affectedChunks,
       targetLod,
       parentByNodeId,
+      changedChunks,
     );
     this.finalizeEditedChunks(
       rewrittenChunks.size === 0 ? changedChunks.keys() : rewrittenChunks,
@@ -3325,11 +3334,9 @@ export class SpatiallyIndexedSkeletonLayer
     } = {},
   ) {
     const targetLod = options.lod;
+    const selectedSources = this.getCurrentSourcesForEditing();
     const childrenByParent = new Map<number, number[]>();
-    for (const chunk of this.iterateCandidateChunks(
-      this.getCurrentSourcesForEditing(),
-      targetLod,
-    )) {
+    for (const chunk of this.iterateCandidateChunks(selectedSources, targetLod)) {
       const vertexToNodeId = new Map<number, number>();
       for (const [nodeId, vertexIndex] of chunk.nodeMap.entries()) {
         vertexToNodeId.set(vertexIndex, nodeId);
@@ -3637,11 +3644,9 @@ export class SpatiallyIndexedSkeletonLayer
     }
 
     const targetLod = options.lod;
+    const selectedSources = this.getCurrentSourcesForEditing();
     let changed = false;
-    for (const chunk of this.iterateCandidateChunks(
-      this.getCurrentSourcesForEditing(),
-      targetLod,
-    )) {
+    for (const chunk of this.iterateCandidateChunks(selectedSources, targetLod)) {
       const data = this.getChunkPositionAndSegmentArrays(chunk);
       if (data === undefined) continue;
       const { segmentIds } = data;
@@ -3806,14 +3811,12 @@ export class SpatiallyIndexedSkeletonLayer
       changedChunkData.set(newChunk, appended.data);
       affectedChunks.add(newChunk);
     }
-    for (const [chunk, editableData] of changedChunkData) {
-      this.setChunkEditableData(chunk, editableData);
-    }
     const rewrittenChunks = this.rebuildConnectionsForChunks(
       selectedSources,
       affectedChunks,
       targetLod,
       parentByNodeId,
+      changedChunkData,
     );
     this.finalizeEditedChunks(
       rewrittenChunks.size === 0 ? affectedChunks : rewrittenChunks,

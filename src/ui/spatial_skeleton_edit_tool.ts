@@ -1113,6 +1113,7 @@ class SpatialSkeletonMergeModeTool extends SpatialSkeletonToolBase {
             this.layer.markSpatialSkeletonNodeDataChanged({
               invalidateFullSkeletonCache: false,
             });
+            skeletonLayer.invalidateSourceCaches();
             anchorNode = undefined;
             const swapSuffix = result.stableAnnotationSwap
               ? " Merge direction was adjusted by the active source."
@@ -1257,7 +1258,7 @@ class SpatialSkeletonSplitModeTool extends SpatialSkeletonToolBase {
             this.layer.markSpatialSkeletonNodeDataChanged({
               invalidateFullSkeletonCache: false,
             });
-            skeletonLayer.invalidateSourceCaches({ editingOnly: true });
+            skeletonLayer.invalidateSourceCaches();
             StatusMessage.showTemporaryMessage(
               `Split skeleton ${existingSkeletonId}. New skeleton: ${newSkeletonId}.`,
             );

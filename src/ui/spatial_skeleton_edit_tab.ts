@@ -525,7 +525,7 @@ export class SpatialSkeletonEditTab extends Tab {
           layer.markSpatialSkeletonNodeDataChanged({
             invalidateFullSkeletonCache: false,
           });
-          skeletonLayer.invalidateSourceCaches({ editingOnly: true });
+          skeletonLayer.invalidateSourceCaches();
           StatusMessage.showTemporaryMessage(`Deleted node ${node.nodeId}.`);
           refreshNodes();
         } catch (error) {
