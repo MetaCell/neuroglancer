@@ -79,42 +79,24 @@ export function selectSpatiallyIndexedSkeletonEntriesByGrid<T>(
   if (entries.length === 0 || gridLevel === undefined) {
     return [...entries];
   }
-  const gridIndexedEntries = entries
-    .map((entry) => ({
-      entry,
-      gridIndex: getGridIndex(entry),
-    }))
-    .filter((entry) => entry.gridIndex !== undefined);
-  if (gridIndexedEntries.length !== entries.length) {
-    return [...entries];
-  }
-  let minGridIndex = Number.POSITIVE_INFINITY;
-  let maxGridIndex = Number.NEGATIVE_INFINITY;
-  for (const entry of gridIndexedEntries) {
-    const gridIndex = entry.gridIndex as number;
-    minGridIndex = Math.min(minGridIndex, gridIndex);
-    maxGridIndex = Math.max(maxGridIndex, gridIndex);
-  }
-  const clampedGridLevel = Math.min(
-    Math.max(gridLevel, minGridIndex),
-    maxGridIndex,
-  );
-  let selectedEntry =
-    gridIndexedEntries.find((entry) => entry.gridIndex === clampedGridLevel) ??
-    gridIndexedEntries[0];
-  if (selectedEntry.gridIndex !== clampedGridLevel) {
-    let bestDistance = Number.POSITIVE_INFINITY;
-    for (const entry of gridIndexedEntries) {
-      const distance = Math.abs(
-        (entry.gridIndex as number) - clampedGridLevel,
-      );
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        selectedEntry = entry;
-      }
+  let exactMatch: T | undefined;
+  let closestMatch: T | undefined;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const entry of entries) {
+    const gridIndex = getGridIndex(entry);
+    if (gridIndex === undefined) {
+      return [...entries];
+    }
+    if (exactMatch === undefined && gridIndex === gridLevel) {
+      exactMatch = entry;
+    }
+    const distance = Math.abs(gridIndex - gridLevel);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      closestMatch = entry;
     }
   }
-  return [selectedEntry.entry];
+  return [exactMatch ?? closestMatch!];
 }
 
 export function filterSpatiallyIndexedSkeletonEntriesByView<T>(

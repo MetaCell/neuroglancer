@@ -3036,8 +3036,8 @@ export class SpatiallyIndexedSkeletonLayer
     const descendants: number[] = [];
     const queue = [rootNodeId];
     const visited = new Set<number>();
-    while (queue.length > 0) {
-      const nodeId = queue.shift()!;
+    for (let queueIndex = 0; queueIndex < queue.length; ++queueIndex) {
+      const nodeId = queue[queueIndex];
       if (visited.has(nodeId)) continue;
       visited.add(nodeId);
       descendants.push(nodeId);
