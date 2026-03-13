@@ -25,7 +25,7 @@ export interface CatmaidMissingConnection {
 
 export interface PackedCatmaidSkeletonData {
   vertexPositions: Float32Array;
-  segmentIds: Float32Array;
+  segmentIds: Uint32Array;
   indices: Uint32Array;
   nodeMap: Map<number, number>;
   missingConnections: CatmaidMissingConnection[];
@@ -38,7 +38,7 @@ export function packCatmaidSkeletonNodes(
   const { recordMissingConnections = false } = options;
   const numVertices = nodes.length;
   const vertexPositions = new Float32Array(numVertices * 3);
-  const segmentIds = new Float32Array(numVertices);
+  const segmentIds = new Uint32Array(numVertices);
   const indices: number[] = [];
   const nodeMap = new Map<number, number>();
   const missingConnections: CatmaidMissingConnection[] = [];

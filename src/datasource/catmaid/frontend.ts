@@ -323,7 +323,7 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
             parameters.metadata = {
                 transform: mat4.create(),
                 vertexAttributes: new Map([
-                    ["segment", { dataType: DataType.FLOAT32, numComponents: 1 }],
+                    ["segment", { dataType: DataType.UINT32, numComponents: 1 }],
                 ]),
                 sharding: undefined
             };
@@ -490,7 +490,7 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
         completeSkeletonParameters.metadata = {
             transform: mat4.create(),
             vertexAttributes: new Map([
-                ["segment", { dataType: DataType.FLOAT32, numComponents: 1 }],
+                ["segment", { dataType: DataType.UINT32, numComponents: 1 }],
             ]),
             sharding: undefined
         };

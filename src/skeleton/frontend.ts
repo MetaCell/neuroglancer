@@ -120,7 +120,7 @@ import {
   WatchableValueInterface,
   registerNested,
 } from "#src/trackable_value.js";
-import { DataType } from "#src/util/data_type.js";
+import { DATA_TYPE_SIGNED, DataType } from "#src/util/data_type.js";
 import { RefCounted } from "#src/util/disposable.js";
 import { mat4 } from "#src/util/geom.js";
 import { verifyFinitePositiveFloat } from "#src/util/json.js";
@@ -154,6 +154,10 @@ import type {
   ShaderProgram,
   ShaderSamplerType,
 } from "#src/webgl/shader.js";
+import {
+  dataTypeShaderDefinition,
+  getShaderType,
+} from "#src/webgl/shader_lib.js";
 import type { ShaderControlsBuilderState } from "#src/webgl/shader_ui_controls.js";
 import {
   addControlsToBuilder,
@@ -199,7 +203,7 @@ const vertexPositionTextureFormat = computeTextureFormat(
 );
 const segmentTextureFormat = computeTextureFormat(
   new TextureFormat(),
-  DataType.FLOAT32,
+  DataType.UINT32,
   1,
 );
 const selectedNodeTextureFormat = computeTextureFormat(
@@ -224,8 +228,8 @@ interface SkeletonChunkInterface {
   numVertices: number;
   pickNodeIds?: Int32Array;
   pickNodePositions?: Float32Array;
-  pickSegmentIds?: Int32Array;
-  pickEdgeSegmentIds?: Int32Array;
+  pickSegmentIds?: Uint32Array;
+  pickEdgeSegmentIds?: Uint32Array;
 }
 
 interface SkeletonChunkData {
@@ -240,11 +244,11 @@ type SpatiallyIndexedSkeletonPickData =
       kind: "node";
       nodeIds: Int32Array;
       nodePositions: Float32Array;
-      segmentIds: Int32Array;
+      segmentIds: Uint32Array;
     }
   | {
       kind: "edge";
-      segmentIds: Int32Array;
+      segmentIds: Uint32Array;
     };
 
 class RenderHelper extends RefCounted {
@@ -307,9 +311,8 @@ class RenderHelper extends RefCounted {
     builder.addUniform("highp uint", "uUseSegmentDefaultColor");
     builder.addUniform("highp uint", "uUseSegmentStatedColors");
     builder.addFragmentCode(`
-uint64_t getSegmentAppearanceId(highp float segmentValue) {
-  highp uint segmentId = uint(max(round(segmentValue), 0.0));
-  return uint64_t(uvec2(segmentId, 0u));
+uint64_t getSegmentAppearanceId(highp uint segmentValue) {
+  return uint64_t(uvec2(segmentValue, 0u));
 }
 vec3 getSegmentLookupColor(uint64_t segmentId) {
   vec4 statedColor;
@@ -331,7 +334,7 @@ float getSegmentLookupAlpha(uint64_t segmentId) {
   }
   return isVisible ? uVisibleAlpha : uHiddenAlpha;
 }
-vec4 getSegmentAppearance(highp float segmentValue) {
+vec4 getSegmentAppearance(highp uint segmentValue) {
   uint64_t segmentId = getSegmentAppearanceId(segmentValue);
   return vec4(getSegmentLookupColor(segmentId), getSegmentLookupAlpha(segmentId));
 }
@@ -469,7 +472,7 @@ vec4 getSegmentAppearance(highp float segmentValue) {
           builder.addUniform("highp uint", "uPickInstanceStride");
           builder.addVarying("highp uint", "vPickID", "flat");
           if (this.dynamicSegmentAppearance) {
-            builder.addVarying("highp float", "vSegmentValue", "flat");
+            builder.addVarying("highp uint", "vSegmentValue", "flat");
           }
           let vertexMain = `
 highp uint pickOffset = uint(gl_InstanceID) * uPickInstanceStride;
@@ -484,7 +487,7 @@ highp uint vertexIndex = aVertexIndex.x * (1u - lineEndpointIndex) + aVertexInde
             this.dynamicSegmentAppearance &&
             this.segmentAttributeIndex !== undefined
           ) {
-            vertexMain += `vSegmentValue = readAttribute${this.segmentAttributeIndex}(aVertexIndex.x);\n`;
+            vertexMain += `vSegmentValue = toRaw(readAttribute${this.segmentAttributeIndex}(aVertexIndex.x));\n`;
           }
 
           const segmentColorExpression = this.getSegmentColorExpression();
@@ -545,11 +548,37 @@ void emitDefault() {
           const numAttributes = vertexAttributes.length;
           for (let i = 1; i < numAttributes; ++i) {
             const info = vertexAttributes[i];
-            builder.addVarying(`highp ${info.glslDataType}`, `vCustom${i}`);
-            vertexMain += `vCustom${i} = readAttribute${i}(vertexIndex);\n`;
-            builder.addFragmentCode(`#define ${info.name} vCustom${i}\n`);
+            if (
+              this.dynamicSegmentAppearance &&
+              i === this.segmentAttributeIndex
+            ) {
+              builder.addFragmentCode(dataTypeShaderDefinition[info.dataType]);
+              builder.addFragmentCode(
+                `#define ${info.name} ${info.glslDataType}(vSegmentValue)\n`,
+              );
+              builder.addFragmentCode(
+                `#define prop_${info.name}() ${info.glslDataType}(vSegmentValue)\n`,
+              );
+              continue;
+            }
+            builder.addVarying(
+              `highp ${getVertexAttributeVaryingType(info)}`,
+              `vCustom${i}`,
+              getVertexAttributeInterpolationMode(info.dataType),
+            );
+            vertexMain += `vCustom${i} = ${getVertexAttributeReadExpression(i, "vertexIndex", info)};\n`;
+            if (info.dataType !== DataType.FLOAT32) {
+              builder.addFragmentCode(dataTypeShaderDefinition[info.dataType]);
+            }
+            const fragmentExpression = getVertexAttributeFragmentExpression(
+              `vCustom${i}`,
+              info,
+            );
             builder.addFragmentCode(
-              `#define prop_${info.name}() vCustom${i}\n`,
+              `#define ${info.name} ${fragmentExpression}\n`,
+            );
+            builder.addFragmentCode(
+              `#define prop_${info.name}() ${fragmentExpression}\n`,
             );
           }
           builder.setVertexMain(vertexMain);
@@ -595,6 +624,9 @@ void emitDefault() {
           builder.addUniform("highp float", "uNodeDiameter");
           builder.addUniform("highp uint", "uPickInstanceStride");
           builder.addVarying("highp uint", "vPickID", "flat");
+          if (this.dynamicSegmentAppearance) {
+            builder.addVarying("highp uint", "vSegmentValue", "flat");
+          }
           const selectedOutlineMinWidth = this.targetIsSliceView
             ? SELECTED_NODE_OUTLINE_MIN_WIDTH_2D
             : SELECTED_NODE_OUTLINE_MIN_WIDTH_3D;
@@ -620,13 +652,19 @@ emitCircle(
   ${selectedOutlineWidthExpression}
 );
 `;
+          if (
+            this.dynamicSegmentAppearance &&
+            this.segmentAttributeIndex !== undefined
+          ) {
+            vertexMain += `vSegmentValue = toRaw(readAttribute${this.segmentAttributeIndex}(vertexIndex));\n`;
+          }
 
           const segmentColorExpression = this.getSegmentColorExpression();
           if (
             this.dynamicSegmentAppearance &&
             this.segmentAttributeIndex !== undefined
           ) {
-            const segmentExpression = `vCustom${this.segmentAttributeIndex}`;
+            const segmentExpression = `vSegmentValue`;
             const selectedNodeExpression =
               this.selectedNodeAttributeIndex === undefined
                 ? undefined
@@ -710,11 +748,37 @@ void emitDefault() {
           const numAttributes = vertexAttributes.length;
           for (let i = 1; i < numAttributes; ++i) {
             const info = vertexAttributes[i];
-            builder.addVarying(`highp ${info.glslDataType}`, `vCustom${i}`);
-            vertexMain += `vCustom${i} = readAttribute${i}(vertexIndex);\n`;
-            builder.addFragmentCode(`#define ${info.name} vCustom${i}\n`);
+            if (
+              this.dynamicSegmentAppearance &&
+              i === this.segmentAttributeIndex
+            ) {
+              builder.addFragmentCode(dataTypeShaderDefinition[info.dataType]);
+              builder.addFragmentCode(
+                `#define ${info.name} ${info.glslDataType}(vSegmentValue)\n`,
+              );
+              builder.addFragmentCode(
+                `#define prop_${info.name}() ${info.glslDataType}(vSegmentValue)\n`,
+              );
+              continue;
+            }
+            builder.addVarying(
+              `highp ${getVertexAttributeVaryingType(info)}`,
+              `vCustom${i}`,
+              getVertexAttributeInterpolationMode(info.dataType),
+            );
+            vertexMain += `vCustom${i} = ${getVertexAttributeReadExpression(i, "vertexIndex", info)};\n`;
+            if (info.dataType !== DataType.FLOAT32) {
+              builder.addFragmentCode(dataTypeShaderDefinition[info.dataType]);
+            }
+            const fragmentExpression = getVertexAttributeFragmentExpression(
+              `vCustom${i}`,
+              info,
+            );
             builder.addFragmentCode(
-              `#define prop_${info.name}() vCustom${i}\n`,
+              `#define ${info.name} ${fragmentExpression}\n`,
+            );
+            builder.addFragmentCode(
+              `#define prop_${info.name}() ${fragmentExpression}\n`,
             );
           }
           builder.setVertexMain(vertexMain);
@@ -1028,8 +1092,7 @@ export class SkeletonLayer extends RefCounted {
         dataType: info.dataType,
         numComponents: info.numComponents,
         webglDataType: getWebglDataType(info.dataType),
-        glslDataType:
-          info.numComponents > 1 ? `vec${info.numComponents}` : "float",
+        glslDataType: getShaderType(info.dataType, info.numComponents),
       });
     }
   }
@@ -1274,11 +1337,68 @@ function getWebglDataType(dataType: DataType) {
   switch (dataType) {
     case DataType.FLOAT32:
       return WebGL2RenderingContext.FLOAT;
+    case DataType.INT32:
+      return WebGL2RenderingContext.INT;
+    case DataType.UINT32:
+      return WebGL2RenderingContext.UNSIGNED_INT;
     default:
       throw new Error(
         `Data type not supported by WebGL: ${DataType[dataType]}`,
       );
   }
+}
+
+function getVertexAttributeInterpolationMode(dataType: DataType) {
+  return dataType === DataType.FLOAT32 ? "" : "flat";
+}
+
+// Custom integer wrapper types like `uint32_t` are defined in fragment code,
+// which is emitted after varying declarations. Keep varyings on raw GLSL
+// scalar/vector types and wrap them back into helper structs in fragment code.
+function getVertexAttributeVaryingType(info: VertexAttributeInfo) {
+  const { dataType, numComponents } = info;
+  if (dataType === DataType.FLOAT32) {
+    return getShaderType(dataType, numComponents);
+  }
+  if (dataType === DataType.UINT64) {
+    if (numComponents === 1) return "uvec2";
+    if (numComponents === 2) return "uvec4";
+  }
+  const vectorTypePrefix = DATA_TYPE_SIGNED[dataType] ? "ivec" : "uvec";
+  if (numComponents === 1) {
+    return DATA_TYPE_SIGNED[dataType] ? "int" : "uint";
+  }
+  if (numComponents >= 2 && numComponents <= 4) {
+    return `${vectorTypePrefix}${numComponents}`;
+  }
+  throw new Error(
+    `No varying type for ${DataType[dataType]}[${numComponents}].`,
+  );
+}
+
+function getVertexAttributeReadExpression(
+  attributeIndex: number,
+  indexExpression: string,
+  info: VertexAttributeInfo,
+) {
+  const readExpression = `readAttribute${attributeIndex}(${indexExpression})`;
+  if (info.dataType === DataType.FLOAT32) {
+    return readExpression;
+  }
+  if (info.dataType === DataType.UINT64) {
+    return `${readExpression}.value`;
+  }
+  return `toRaw(${readExpression})`;
+}
+
+function getVertexAttributeFragmentExpression(
+  varyingName: string,
+  info: VertexAttributeRenderInfo,
+) {
+  if (info.dataType === DataType.FLOAT32) {
+    return varyingName;
+  }
+  return `${info.glslDataType}(${varyingName})`;
 }
 
 const vertexPositionAttribute: VertexAttributeRenderInfo = {
@@ -1290,11 +1410,11 @@ const vertexPositionAttribute: VertexAttributeRenderInfo = {
 };
 
 const segmentAttribute: VertexAttributeRenderInfo = {
-  dataType: DataType.FLOAT32,
+  dataType: DataType.UINT32,
   numComponents: 1,
   name: "segment",
-  webglDataType: WebGL2RenderingContext.FLOAT,
-  glslDataType: "float",
+  webglDataType: WebGL2RenderingContext.UNSIGNED_INT,
+  glslDataType: getShaderType(DataType.UINT32, 1),
 };
 
 const selectedNodeAttribute: VertexAttributeRenderInfo = {
@@ -1386,8 +1506,8 @@ export class SpatiallyIndexedSkeletonChunk
   filteredVertexAttributeTextures?: (WebGLTexture | null)[];
   filteredPickNodeIds?: Int32Array;
   filteredPickNodePositions?: Float32Array;
-  filteredPickSegmentIds?: Int32Array;
-  filteredPickEdgeSegmentIds?: Int32Array;
+  filteredPickSegmentIds?: Uint32Array;
+  filteredPickEdgeSegmentIds?: Uint32Array;
   filteredOldToNew?: Int32Array;
   filteredExtraVertexMap?: Map<number, number>;
   filteredOverlayVertexMap?: Map<number, number>;
@@ -2516,7 +2636,7 @@ export class SpatiallyIndexedSkeletonLayer
     const { positions, segmentIds } = data;
     return {
       nodeId,
-      segmentId: Math.round(segmentIds[entry.vertexIndex]),
+      segmentId: segmentIds[entry.vertexIndex],
       position:
         options.includePendingPosition ?? true
           ? this.getEffectiveNodePosition(positions, entry.vertexIndex, nodeId)
@@ -2914,7 +3034,7 @@ export class SpatiallyIndexedSkeletonLayer
       chunk.vertexAttributes.byteOffset + offsets[0],
       chunk.numVertices * 3,
     );
-    const segmentIds = new Float32Array(
+    const segmentIds = new Uint32Array(
       chunk.vertexAttributes.buffer,
       chunk.vertexAttributes.byteOffset + offsets[1],
       chunk.numVertices,
@@ -3032,7 +3152,7 @@ export class SpatiallyIndexedSkeletonLayer
           continue;
         }
         if (nodes.has(nodeId)) continue;
-        const segmentId = Math.round(segmentIds[vertexIndex]);
+        const segmentId = segmentIds[vertexIndex];
         if (useSegmentFilter && segmentId !== segmentFilter) {
           continue;
         }
@@ -3243,7 +3363,7 @@ export class SpatiallyIndexedSkeletonLayer
       const { positions: oldPositions, segmentIds: oldSegmentIds } = data;
       const newNumVertices = Math.max(0, oldNumVertices - 1);
       const newPositions = new Float32Array(newNumVertices * 3);
-      const newSegmentIds = new Float32Array(newNumVertices);
+      const newSegmentIds = new Uint32Array(newNumVertices);
       let dstVertex = 0;
       for (let srcVertex = 0; srcVertex < oldNumVertices; ++srcVertex) {
         if (srcVertex === targetVertexIndex) continue;
@@ -3618,9 +3738,7 @@ export class SpatiallyIndexedSkeletonLayer
     if (childData === undefined) {
       return false;
     }
-    const childSegmentId = Math.round(
-      childData.segmentIds[childEntry.vertexIndex],
-    );
+    const childSegmentId = childData.segmentIds[childEntry.vertexIndex];
     let changed = false;
     const changedChunks = new Set<SpatiallyIndexedSkeletonChunk>();
 
@@ -3845,7 +3963,7 @@ export class SpatiallyIndexedSkeletonLayer
         if (vertexIndex < 0 || vertexIndex >= chunk.numVertices) {
           continue;
         }
-        if (Math.round(segmentIds[vertexIndex]) === nextSegmentId) {
+        if (segmentIds[vertexIndex] === nextSegmentId) {
           continue;
         }
         segmentIds[vertexIndex] = nextSegmentId;
@@ -4393,7 +4511,7 @@ export class SpatiallyIndexedSkeletonLayer
       residentNodeIndex.set(nodeId, residentIndex);
       residentNodes.push({
         nodeId,
-        segmentId: Math.round(segmentIds[vertexIndex]),
+        segmentId: segmentIds[vertexIndex],
         position: this.getEffectiveNodePosition(positions, vertexIndex, nodeId),
         parentNodeId: this.getEffectiveParentNodeId(nodeId),
         selected:
@@ -4512,12 +4630,12 @@ export class SpatiallyIndexedSkeletonLayer
     const extraVertexCount = extraPositions.length / 3;
     const totalVertexCount = residentNodes.length + extraVertexCount;
     const filteredPositions = new Float32Array(totalVertexCount * 3);
-    const filteredSegments = new Float32Array(totalVertexCount);
+    const filteredSegments = new Uint32Array(totalVertexCount);
     const filteredSelected = new Float32Array(totalVertexCount);
     const filteredPickNodeIds = new Int32Array(totalVertexCount);
     filteredPickNodeIds.fill(-1);
     const filteredPickNodePositions = new Float32Array(totalVertexCount * 3);
-    const filteredPickSegmentIds = new Int32Array(totalVertexCount);
+    const filteredPickSegmentIds = new Uint32Array(totalVertexCount);
     for (let i = 0; i < residentNodes.length; ++i) {
       const residentNode = residentNodes[i];
       const dstStart = i * 3;
@@ -4549,7 +4667,7 @@ export class SpatiallyIndexedSkeletonLayer
         filteredPositions[dstStart + 2];
       filteredPickSegmentIds[dstVertex] = extraSegments[i] ?? 0;
     }
-    const filteredPickEdgeSegmentIds = new Int32Array(
+    const filteredPickEdgeSegmentIds = new Uint32Array(
       filteredIndices.length / 2,
     );
     for (

@@ -615,8 +615,8 @@ export class SpatialSkeletonState extends RefCounted {
     }
     const movedNodeIds = new Set<number>();
     const queue = [nodeId];
-    while (queue.length > 0) {
-      const currentNodeId = queue.shift()!;
+    for (let queueIndex = 0; queueIndex < queue.length; ++queueIndex) {
+      const currentNodeId = queue[queueIndex];
       if (movedNodeIds.has(currentNodeId)) continue;
       movedNodeIds.add(currentNodeId);
       for (const childNodeId of childrenByParent.get(currentNodeId) ?? []) {

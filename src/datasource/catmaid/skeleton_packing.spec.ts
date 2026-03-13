@@ -18,7 +18,7 @@ describe("datasource/catmaid/skeleton_packing", () => {
     expect(packed.vertexPositions).toEqual(
       Float32Array.of(1, 2, 3, 4, 5, 6, 7, 8, 9),
     );
-    expect(packed.segmentIds).toEqual(Float32Array.of(10, 10, 11));
+    expect(packed.segmentIds).toEqual(Uint32Array.of(10, 10, 11));
     expect(packed.indices).toEqual(Uint32Array.of(1, 0));
     expect(Array.from(packed.nodeMap.entries())).toEqual([
       [1, 0],
@@ -45,5 +45,16 @@ describe("datasource/catmaid/skeleton_packing", () => {
 
     expect(packed.indices).toEqual(new Uint32Array());
     expect(packed.missingConnections).toEqual([]);
+  });
+
+  it("preserves large segment ids exactly", () => {
+    const largeSegmentId = 16_777_217;
+    const nodes: SpatiallyIndexedSkeletonNode[] = [
+      { id: 1, parent_id: null, x: 1, y: 2, z: 3, skeleton_id: largeSegmentId },
+    ];
+
+    const packed = packCatmaidSkeletonNodes(nodes);
+
+    expect(packed.segmentIds).toEqual(Uint32Array.of(largeSegmentId));
   });
 });
