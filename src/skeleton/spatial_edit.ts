@@ -26,6 +26,11 @@ export interface SpatiallyIndexedRebuiltChunkConnections {
   missingConnections: SpatiallyIndexedMissingConnection[];
 }
 
+export interface SpatiallyIndexedChunkNodeLocator {
+  chunkKey: string;
+  vertexIndex: number;
+}
+
 export function appendNodeToSpatialChunk(
   data: SpatiallyIndexedEditableChunkData,
   options: {
@@ -190,9 +195,23 @@ export function rebuildSpatialChunkConnections(
     }
   }
 
+  return rebuildTargetSpatialChunkConnections(
+    targetChunks,
+    parentByNodeId,
+    (sourceId, nodeId) => locatorsBySource.get(sourceId)?.get(nodeId),
+  );
+}
+
+export function rebuildTargetSpatialChunkConnections(
+  targetChunks: readonly SpatiallyIndexedEditableChunkEntry[],
+  parentByNodeId: ReadonlyMap<number, number | undefined>,
+  resolveNodeLocator: (
+    sourceId: string,
+    nodeId: number,
+  ) => SpatiallyIndexedChunkNodeLocator | undefined,
+) {
   const rebuilt: SpatiallyIndexedRebuiltChunkConnections[] = [];
   for (const chunk of targetChunks) {
-    const sourceLocators = locatorsBySource.get(chunk.sourceId) ?? new Map();
     const indices: number[] = [];
     const missingConnections: SpatiallyIndexedMissingConnection[] = [];
     for (const [nodeId, vertexIndex] of chunk.data.nodeMap.entries()) {
@@ -207,7 +226,7 @@ export function rebuildSpatialChunkConnections(
       ) {
         continue;
       }
-      const parentLocator = sourceLocators.get(parentNodeId);
+      const parentLocator = resolveNodeLocator(chunk.sourceId, parentNodeId);
       if (parentLocator?.chunkKey === chunk.chunkKey) {
         indices.push(vertexIndex, parentLocator.vertexIndex);
         continue;

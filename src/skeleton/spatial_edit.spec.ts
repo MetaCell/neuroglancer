@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   appendNodeToSpatialChunk,
   rebuildSpatialChunkConnections,
+  rebuildTargetSpatialChunkConnections,
   removeNodeFromSpatialChunk,
   updateNodePositionInSpatialChunk,
   type SpatiallyIndexedEditableChunkData,
@@ -164,6 +165,65 @@ describe("skeleton/spatial_edit", () => {
       {
         chunkId: "s:1,0,0:0",
         indices: Uint32Array.of(),
+        missingConnections: [
+          {
+            nodeId: 2,
+            parentId: 1,
+            vertexIndex: 0,
+            skeletonId: 10,
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("rebuilds only the target chunks when locators are resolved externally", () => {
+    const targetChunk = makeChunkEntry({
+      chunkId: "s:1,0,0:0",
+      chunkKey: "1,0,0:0",
+      sourceId: "s",
+      nodes: [
+        {
+          nodeId: 2,
+          position: [10, 10, 10],
+          segmentId: 10,
+        },
+        {
+          nodeId: 3,
+          position: [11, 11, 11],
+          segmentId: 10,
+        },
+      ],
+    });
+
+    const rebuilt = rebuildTargetSpatialChunkConnections(
+      [targetChunk],
+      new Map<number, number | undefined>([
+        [2, 1],
+        [3, 2],
+      ]),
+      (sourceId, nodeId) => {
+        if (sourceId !== "s") return undefined;
+        if (nodeId === 1) {
+          return {
+            chunkKey: "0,0,0:0",
+            vertexIndex: 0,
+          };
+        }
+        if (nodeId === 2) {
+          return {
+            chunkKey: "1,0,0:0",
+            vertexIndex: 0,
+          };
+        }
+        return undefined;
+      },
+    );
+
+    expect(rebuilt).toEqual([
+      {
+        chunkId: "s:1,0,0:0",
+        indices: Uint32Array.of(1, 0),
         missingConnections: [
           {
             nodeId: 2,
