@@ -31,7 +31,6 @@ import type { SpatiallyIndexedSkeletonLayer } from "#src/skeleton/frontend.js";
 import type { SpatiallyIndexedSkeletonNodeInfo } from "#src/skeleton/frontend.js";
 import {
   getEditableSpatiallyIndexedSkeletonSource,
-  getSpatiallyIndexedSkeletonInspectionSource,
   getSpatiallyIndexedSkeletonNavigationSource,
 } from "#src/skeleton/state.js";
 import { StatusMessage } from "#src/status.js";
@@ -1001,17 +1000,6 @@ export class SpatialSkeletonEditTab extends Tab {
       }
 
       skeletonState.evictInactiveSegmentNodes(activeSegmentIds);
-      const skeletonSource =
-        getSpatiallyIndexedSkeletonInspectionSource(skeletonLayer);
-      if (skeletonSource === undefined) {
-        allNodes = [];
-        nodesBySegment = new Map();
-        layer.clearSpatialSkeletonNodeSelection(false);
-        nodesSummary.textContent =
-          "Unable to load full skeleton data from the active spatial skeleton source.";
-        updateList();
-        return;
-      }
 
       void (async () => {
         try {

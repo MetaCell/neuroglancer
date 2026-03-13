@@ -170,6 +170,7 @@ export function removeNodeFromSpatialChunk(
 export function rebuildSpatialChunkConnections(
   chunks: readonly SpatiallyIndexedEditableChunkEntry[],
   parentByNodeId: ReadonlyMap<number, number | undefined>,
+  targetChunks: readonly SpatiallyIndexedEditableChunkEntry[] = chunks,
 ) {
   const locatorsBySource = new Map<
     string,
@@ -190,7 +191,7 @@ export function rebuildSpatialChunkConnections(
   }
 
   const rebuilt: SpatiallyIndexedRebuiltChunkConnections[] = [];
-  for (const chunk of chunks) {
+  for (const chunk of targetChunks) {
     const sourceLocators = locatorsBySource.get(chunk.sourceId) ?? new Map();
     const indices: number[] = [];
     const missingConnections: SpatiallyIndexedMissingConnection[] = [];

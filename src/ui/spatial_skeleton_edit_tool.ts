@@ -304,11 +304,17 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
     const y = Number(position[1]);
     const z = Number(position[2]);
     await skeletonSource.moveNode(nodeId, x, y, z);
-    skeletonLayer.setNodePosition(nodeId, position);
+    const localUpdateResult = skeletonLayer.setNodePosition(nodeId, position);
     this.layer.spatialSkeletonState.moveCachedNode(nodeId, position);
     this.layer.markSpatialSkeletonNodeDataChanged({
       invalidateFullSkeletonCache: false,
     });
+    if (!localUpdateResult.localUpdateApplied) {
+      StatusMessage.showTemporaryMessage(
+        `Moved node ${nodeId}, but the visible chunk did not update locally.`,
+      );
+      return;
+    }
     StatusMessage.showTemporaryMessage(
       `Moved node ${nodeId} to (${Math.round(x)}, ${Math.round(y)}, ${Math.round(z)}).`,
     );
@@ -731,20 +737,24 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
                 });
                 return;
               }
-              const newNode = skeletonLayer.addNode(clickPosition, {
+              const addResult = skeletonLayer.addNode(clickPosition, {
                 segmentId: committedNode.skeletonId,
                 parentNodeId: selectedParentNodeId,
                 nodeId: committedNode.treenodeId,
               });
+              const localUpdateApplied = addResult?.localUpdateApplied ?? false;
+              const newNode = addResult?.node;
               if (newNode === undefined) {
                 StatusMessage.showTemporaryMessage(
-                  `Added node ${committedNode.treenodeId} in the active source, but local preview update failed.`,
+                  `Added node ${committedNode.treenodeId}, but the visible chunk did not update locally.`,
                 );
                 layer.spatialSkeletonState.upsertCachedNode({
                   nodeId: committedNode.treenodeId,
                   segmentId: committedNode.skeletonId,
                   position: new Float32Array(clickPosition),
                   parentNodeId: selectedParentNodeId,
+                }, {
+                  allowUncachedSegment: selectedParentNodeId === undefined,
                 });
                 layer.selectSpatialSkeletonNode(committedNode.treenodeId, false, {
                   segmentId: committedNode.skeletonId,
@@ -757,7 +767,9 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
                 setReadyStatus();
                 return;
               }
-              layer.spatialSkeletonState.upsertCachedNode(newNode);
+              layer.spatialSkeletonState.upsertCachedNode(newNode, {
+                allowUncachedSegment: selectedParentNodeId === undefined,
+              });
               layer.selectSpatialSkeletonNode(newNode.nodeId, false, {
                 segmentId: newNode.segmentId,
               });
@@ -766,11 +778,17 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
               layer.markSpatialSkeletonNodeDataChanged({
                 invalidateFullSkeletonCache: false,
               });
+              if (!localUpdateApplied) {
+                StatusMessage.showTemporaryMessage(
+                  `Added node ${newNode.nodeId}, but the visible chunk did not update locally.`,
+                );
+              }
               debugLog("add-node-committed", {
                 nodeId: newNode.nodeId,
                 segmentId: newNode.segmentId,
                 parentNodeId: selectedParentNodeId,
                 position: formatVec3(newNode.position),
+                localUpdateApplied,
               });
               setReadyStatus();
             })();

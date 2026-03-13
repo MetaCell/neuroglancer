@@ -1803,6 +1803,16 @@ interface SpatiallyIndexedResidentNodeState
   selected: boolean;
 }
 
+interface SpatiallyIndexedLocalAddNodeResult {
+  node: SpatiallyIndexedSkeletonNodeInfo;
+  localUpdateApplied: boolean;
+}
+
+interface SpatiallyIndexedLocalMoveNodeResult {
+  localUpdateApplied: boolean;
+  changed: boolean;
+}
+
 function getSpatialSkeletonGridSpacing(
   transformedSource: TransformedSource,
   levels: Array<{ size: { x: number; y: number; z: number } }> | undefined,
@@ -1882,6 +1892,11 @@ type VisibleSpatialChunksBySource = Map<
   readonly SpatiallyIndexedSkeletonChunk[]
 >;
 
+type VisibleSpatialChunkSetsBySource = Map<
+  string,
+  ReadonlySet<SpatiallyIndexedSkeletonChunk>
+>;
+
 export class SpatiallyIndexedSkeletonLayer
   extends RefCounted
   implements SkeletonLayerInterface
@@ -1921,6 +1936,18 @@ export class SpatiallyIndexedSkeletonLayer
     SpatiallyIndexedSkeletonView,
     VisibleSpatialChunksBySource
   >();
+  private visibleChunkSetsByView = new Map<
+    SpatiallyIndexedSkeletonView,
+    VisibleSpatialChunkSetsBySource
+  >();
+  private visibleSourceIdsByView = new Map<
+    SpatiallyIndexedSkeletonView,
+    ReadonlySet<string>
+  >();
+  private visibleChunkLodByView = new Map<
+    SpatiallyIndexedSkeletonView,
+    number | undefined
+  >();
   gridLevel: WatchableValueInterface<number>;
   lod: WatchableValueInterface<number>;
   private selectedNodeId:
@@ -1933,6 +1960,10 @@ export class SpatiallyIndexedSkeletonLayer
 
   private markFilteredDataDirty() {
     this.generation++;
+    this.redrawNeeded.dispatch();
+  }
+
+  private requestFilteredDataRedraw() {
     this.redrawNeeded.dispatch();
   }
 
@@ -2098,6 +2129,9 @@ export class SpatiallyIndexedSkeletonLayer
     nodeId: number,
     selectedSourceIds: ReadonlySet<string>,
     targetLod: number | undefined,
+    options: {
+      requireVisible?: boolean;
+    } = {},
   ) {
     this.ensureNodeLocatorIndex();
     const entries = this.nodeLocatorIndex.get(nodeId);
@@ -2106,7 +2140,9 @@ export class SpatiallyIndexedSkeletonLayer
       (entry) =>
         selectedSourceIds.has(entry.sourceId) &&
         entry.chunk.state === ChunkState.GPU_MEMORY &&
-        this.lodMatches(entry.chunk, targetLod),
+        this.lodMatches(entry.chunk, targetLod) &&
+        (!(options.requireVisible ?? false) ||
+          this.isChunkVisibleForEditing(entry.chunk, targetLod)),
     );
   }
 
@@ -2114,6 +2150,9 @@ export class SpatiallyIndexedSkeletonLayer
     nodeId: number,
     selectedSourceIds: ReadonlySet<string>,
     targetLod: number | undefined,
+    options: {
+      requireVisible?: boolean;
+    } = {},
   ) {
     this.ensureNodeLocatorIndex();
     const entries = this.nodeLocatorIndex.get(nodeId);
@@ -2122,6 +2161,12 @@ export class SpatiallyIndexedSkeletonLayer
       if (!selectedSourceIds.has(entry.sourceId)) continue;
       if (entry.chunk.state !== ChunkState.GPU_MEMORY) continue;
       if (!this.lodMatches(entry.chunk, targetLod)) continue;
+      if (
+        (options.requireVisible ?? false) &&
+        !this.isChunkVisibleForEditing(entry.chunk, targetLod)
+      ) {
+        continue;
+      }
       return entry;
     }
     return undefined;
@@ -2385,6 +2430,58 @@ export class SpatiallyIndexedSkeletonLayer
     );
   }
 
+  private getCurrentVisibleSourcesForEditing(targetLod: number | undefined) {
+    const selectedSources = this.getCurrentSourcesForEditing();
+    const visibleSourceIds = new Set<string>();
+    for (const view of ["3d", "2d"] as const) {
+      if (!this.visibleChunksMatchTargetLod(view, targetLod)) {
+        continue;
+      }
+      const viewVisibleSourceIds = this.visibleSourceIdsByView.get(view);
+      if (viewVisibleSourceIds === undefined) continue;
+      for (const sourceId of viewVisibleSourceIds) {
+        visibleSourceIds.add(sourceId);
+      }
+    }
+    return selectedSources.filter((sourceEntry) =>
+      visibleSourceIds.has(getObjectId(sourceEntry.chunkSource)),
+    );
+  }
+
+  private visibleChunksMatchTargetLod(
+    view: SpatiallyIndexedSkeletonView,
+    targetLod: number | undefined,
+  ) {
+    const visibleLod = this.visibleChunkLodByView.get(view);
+    if (visibleLod === undefined || targetLod === undefined) {
+      return visibleLod === targetLod;
+    }
+    return Math.abs(visibleLod - targetLod) < 1e-6;
+  }
+
+  private isChunkVisibleForEditing(
+    chunk: SpatiallyIndexedSkeletonChunk,
+    targetLod: number | undefined,
+  ) {
+    if (chunk.state !== ChunkState.GPU_MEMORY) {
+      return false;
+    }
+    if (!this.lodMatches(chunk, targetLod)) {
+      return false;
+    }
+    const sourceId = getObjectId(chunk.source);
+    for (const view of ["3d", "2d"] as const) {
+      if (!this.visibleChunksMatchTargetLod(view, targetLod)) {
+        continue;
+      }
+      const visibleChunkSet = this.visibleChunkSetsByView.get(view)?.get(sourceId);
+      if (visibleChunkSet?.has(chunk)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private resolveTargetLod(targetLod: number | undefined) {
     return targetLod ?? this.lod.value;
   }
@@ -2462,9 +2559,15 @@ export class SpatiallyIndexedSkeletonLayer
     targetLod: number | undefined,
     options: {
       includePendingPosition?: boolean;
+      requireVisible?: boolean;
     } = {},
   ): SpatiallyIndexedEffectiveNodeState | undefined {
-    const entry = this.getPrimaryNodeLocator(nodeId, selectedSourceIds, targetLod);
+    const entry = this.getPrimaryNodeLocator(
+      nodeId,
+      selectedSourceIds,
+      targetLod,
+      { requireVisible: options.requireVisible },
+    );
     if (entry === undefined) {
       return undefined;
     }
@@ -2510,6 +2613,22 @@ export class SpatiallyIndexedSkeletonLayer
       missingConnections: chunk.missingConnections.map((connection) => ({
         ...connection,
       })),
+    };
+  }
+
+  private getChunkReadonlyData(
+    chunk: SpatiallyIndexedSkeletonChunk,
+  ): SpatiallyIndexedEditableChunkData | undefined {
+    const data = this.getChunkPositionAndSegmentArrays(chunk);
+    if (data === undefined) {
+      return undefined;
+    }
+    return {
+      nodeMap: chunk.nodeMap,
+      positions: data.positions,
+      segmentIds: data.segmentIds,
+      indices: chunk.indices,
+      missingConnections: chunk.missingConnections,
     };
   }
 
@@ -2560,7 +2679,7 @@ export class SpatiallyIndexedSkeletonLayer
     targetLod: number | undefined,
     editableData?: SpatiallyIndexedEditableChunkData,
   ): SpatiallyIndexedEditableChunkEntry | undefined {
-    const data = editableData ?? this.getEditableChunkData(chunk);
+    const data = editableData ?? this.getChunkReadonlyData(chunk);
     if (data === undefined) {
       return undefined;
     }
@@ -2584,7 +2703,14 @@ export class SpatiallyIndexedSkeletonLayer
     >,
   ) {
     const allEntries: SpatiallyIndexedEditableChunkEntry[] = [];
-    for (const chunk of this.iterateCandidateChunks(selectedSources, targetLod)) {
+    const targetPairs: Array<{
+      chunk: SpatiallyIndexedSkeletonChunk;
+      entry: SpatiallyIndexedEditableChunkEntry;
+    }> = [];
+    for (const chunk of this.iterateVisibleCandidateChunks(
+      selectedSources,
+      targetLod,
+    )) {
       const entry = this.makeEditableChunkEntry(
         chunk,
         targetLod,
@@ -2594,24 +2720,28 @@ export class SpatiallyIndexedSkeletonLayer
         allEntries.push(entry);
       }
     }
-    if (allEntries.length === 0) {
-      return new Set<SpatiallyIndexedSkeletonChunk>();
-    }
-    const rebuiltByChunkId = new Map(
-      rebuildSpatialChunkConnections(allEntries, parentByNodeId).map(
-        (rebuilt) => [rebuilt.chunkId, rebuilt],
-      ),
-    );
-    const rewrittenChunks = new Set<SpatiallyIndexedSkeletonChunk>();
     for (const chunk of chunksToRewrite) {
       const entry = this.makeEditableChunkEntry(
         chunk,
         targetLod,
         editableDataByChunk?.get(chunk),
       );
-      if (entry === undefined) {
-        continue;
+      if (entry !== undefined) {
+        targetPairs.push({ chunk, entry });
       }
+    }
+    if (allEntries.length === 0 || targetPairs.length === 0) {
+      return new Set<SpatiallyIndexedSkeletonChunk>();
+    }
+    const rebuiltByChunkId = new Map(
+      rebuildSpatialChunkConnections(
+        allEntries,
+        parentByNodeId,
+        targetPairs.map(({ entry }) => entry),
+      ).map((rebuilt) => [rebuilt.chunkId, rebuilt]),
+    );
+    const rewrittenChunks = new Set<SpatiallyIndexedSkeletonChunk>();
+    for (const { chunk, entry } of targetPairs) {
       const rebuilt = rebuiltByChunkId.get(entry.chunkId);
       this.setChunkEditableData(chunk, {
         ...entry.data,
@@ -2624,6 +2754,27 @@ export class SpatiallyIndexedSkeletonLayer
     return rewrittenChunks;
   }
 
+  private *iterateVisibleCandidateChunks(
+    selectedSources: readonly SpatiallyIndexedSkeletonSourceEntry[],
+    targetLod: number | undefined,
+  ): Iterable<SpatiallyIndexedSkeletonChunk> {
+    const selectedSourceIds = this.makeSourceIdSet(selectedSources);
+    const yieldedChunkIds = new Set<string>();
+    for (const visibleChunksBySource of this.visibleChunksByView.values()) {
+      for (const [sourceId, visibleChunks] of visibleChunksBySource) {
+        if (!selectedSourceIds.has(sourceId)) continue;
+        for (const chunk of visibleChunks) {
+          if (!this.lodMatches(chunk, targetLod)) continue;
+          if (chunk.state !== ChunkState.GPU_MEMORY) continue;
+          const chunkId = getObjectId(chunk);
+          if (yieldedChunkIds.has(chunkId)) continue;
+          yieldedChunkIds.add(chunkId);
+          yield chunk;
+        }
+      }
+    }
+  }
+
   private finalizeEditedChunks(changedChunks: Iterable<SpatiallyIndexedSkeletonChunk>) {
     const seenChunks = new Set<SpatiallyIndexedSkeletonChunk>();
     for (const chunk of changedChunks) {
@@ -2634,11 +2785,7 @@ export class SpatiallyIndexedSkeletonLayer
       this.clearFilteredChunkData(chunk);
     }
     this.invalidateNodeLocatorIndex();
-    this.markFilteredDataDirty();
-  }
-
-  private refreshEditingSourcesAfterFailedLocalEdit() {
-    this.invalidateSourceCaches({ editingOnly: true });
+    this.requestFilteredDataRedraw();
   }
 
   private getVisibleChunksForView(view: SpatiallyIndexedSkeletonView) {
@@ -2673,7 +2820,7 @@ export class SpatiallyIndexedSkeletonLayer
       nodeId,
       selectedSourceIds,
       targetLod,
-      { includePendingPosition: false },
+      { includePendingPosition: false, requireVisible: true },
     );
     if (baseNodeState !== undefined) {
       return new Float32Array([
@@ -2686,6 +2833,7 @@ export class SpatiallyIndexedSkeletonLayer
       nodeId,
       selectedSourceIds,
       targetLod,
+      { requireVisible: true },
     );
     if (entry === undefined) {
       return undefined;
@@ -2750,6 +2898,7 @@ export class SpatiallyIndexedSkeletonLayer
       nodeId,
       selectedSourceIds,
       targetLod,
+      { requireVisible: true },
     )) {
       affectedChunks.add(entry.chunk);
     }
@@ -2762,10 +2911,8 @@ export class SpatiallyIndexedSkeletonLayer
     return affectedChunks;
   }
 
-  invalidateSourceCaches(options: { editingOnly?: boolean } = {}) {
-    const sourceEntries = options.editingOnly
-      ? this.getCurrentSourcesForEditing()
-      : [...this.sources, ...this.sources2d];
+  invalidateSourceCaches() {
+    const sourceEntries = [...this.sources, ...this.sources2d];
     const seenSourceIds = new Set<string>();
     let invalidated = false;
     for (const sourceEntry of sourceEntries) {
@@ -2809,10 +2956,14 @@ export class SpatiallyIndexedSkeletonLayer
   ) {
     if (lod === undefined) {
       this.visibleChunksByView.delete(view);
+      this.visibleChunkSetsByView.delete(view);
+      this.visibleSourceIdsByView.delete(view);
+      this.visibleChunkLodByView.delete(view);
       return;
     }
     const lodSuffix = `:${lod}`;
     const chunksBySource: VisibleSpatialChunksBySource = new Map();
+    const chunkSetsBySource: VisibleSpatialChunkSetsBySource = new Map();
     const seenChunkKeysBySource = new Map<string, Set<string>>();
     for (const scales of transformedSources) {
       for (const tsource of scales) {
@@ -2821,6 +2972,11 @@ export class SpatiallyIndexedSkeletonLayer
         if (visibleChunks === undefined) {
           visibleChunks = [];
           chunksBySource.set(sourceId, visibleChunks);
+        }
+        let visibleChunkSet = chunkSetsBySource.get(sourceId);
+        if (visibleChunkSet === undefined) {
+          visibleChunkSet = new Set<SpatiallyIndexedSkeletonChunk>();
+          chunkSetsBySource.set(sourceId, visibleChunkSet);
         }
         let seenChunkKeys = seenChunkKeysBySource.get(sourceId);
         if (seenChunkKeys === undefined) {
@@ -2846,11 +3002,15 @@ export class SpatiallyIndexedSkeletonLayer
               return;
             }
             (visibleChunks as SpatiallyIndexedSkeletonChunk[]).push(chunk);
+            (visibleChunkSet as Set<SpatiallyIndexedSkeletonChunk>).add(chunk);
           },
         );
       }
     }
     this.visibleChunksByView.set(view, chunksBySource);
+    this.visibleChunkSetsByView.set(view, chunkSetsBySource);
+    this.visibleSourceIdsByView.set(view, new Set(chunkSetsBySource.keys()));
+    this.visibleChunkLodByView.set(view, lod);
   }
 
   private areVisibleChunksReady(
@@ -2993,7 +3153,7 @@ export class SpatiallyIndexedSkeletonLayer
       nodeId?: number;
       lod?: number;
     },
-  ): SpatiallyIndexedSkeletonNodeInfo | undefined {
+  ): SpatiallyIndexedLocalAddNodeResult | undefined {
     const x = Number(position[0]);
     const y = Number(position[1]);
     const z = Number(position[2]);
@@ -3005,7 +3165,7 @@ export class SpatiallyIndexedSkeletonLayer
       return undefined;
     }
     const targetLod = this.resolveTargetLod(options.lod);
-    const selectedSources = this.getCurrentSourcesForEditing();
+    const selectedSources = this.getCurrentVisibleSourcesForEditing(targetLod);
     if (selectedSources.length === 0) return undefined;
     const parentNodeId = options.parentNodeId;
 
@@ -3019,8 +3179,21 @@ export class SpatiallyIndexedSkeletonLayer
       return undefined;
     }
     if (requestedNodeId !== undefined && this.hasIndexedNodeId(newNodeId)) {
-      return this.getNode(newNodeId, { lod: targetLod });
+      const existingNode = this.getNode(newNodeId, { lod: targetLod });
+      if (existingNode === undefined) {
+        return undefined;
+      }
+      return {
+        node: existingNode,
+        localUpdateApplied: true,
+      };
     }
+    const localNode: SpatiallyIndexedSkeletonNodeInfo = {
+      nodeId: newNodeId,
+      segmentId: Math.round(segmentId),
+      position: new Float32Array([x, y, z]),
+      parentNodeId,
+    };
     this.ensureNodeLocatorIndex();
     const parentByNodeId = new Map<number, number | undefined>(
       this.baseParentByNodeId,
@@ -3028,15 +3201,13 @@ export class SpatiallyIndexedSkeletonLayer
     const selectedSourcesById = this.makeSourceIdSet(selectedSources);
     if (
       parentNodeId !== undefined &&
-      this.getEffectiveNodeState(parentNodeId, selectedSourcesById, targetLod) ===
-        undefined
+      this.getBaseNodeState(parentNodeId, selectedSourcesById, targetLod, {
+        requireVisible: true,
+      }) === undefined
     ) {
-      this.refreshEditingSourcesAfterFailedLocalEdit();
       return {
-        nodeId: newNodeId,
-        segmentId: Math.round(segmentId),
-        position: new Float32Array([x, y, z]),
-        parentNodeId,
+        node: localNode,
+        localUpdateApplied: false,
       };
     }
     const changedChunks = new Map<
@@ -3052,13 +3223,14 @@ export class SpatiallyIndexedSkeletonLayer
       );
       const editableData =
         targetChunk === undefined ? undefined : this.getEditableChunkData(targetChunk);
-      if (targetChunk === undefined || editableData === undefined) {
-        this.refreshEditingSourcesAfterFailedLocalEdit();
+      if (
+        targetChunk === undefined ||
+        !this.isChunkVisibleForEditing(targetChunk, targetLod) ||
+        editableData === undefined
+      ) {
         return {
-          nodeId: newNodeId,
-          segmentId: Math.round(segmentId),
-          position: new Float32Array([x, y, z]),
-          parentNodeId,
+          node: localNode,
+          localUpdateApplied: false,
         };
       }
       const appended = appendNodeToSpatialChunk(editableData, {
@@ -3082,10 +3254,8 @@ export class SpatiallyIndexedSkeletonLayer
     );
 
     return {
-      nodeId: newNodeId,
-      segmentId: Math.round(segmentId),
-      position: new Float32Array([x, y, z]),
-      parentNodeId,
+      node: localNode,
+      localUpdateApplied: true,
     };
   }
 
@@ -3095,23 +3265,20 @@ export class SpatiallyIndexedSkeletonLayer
       lod?: number;
     } = {},
   ) {
-    const targetLod = options.lod;
-    const selectedSources = this.getCurrentSourcesForEditing();
+    const targetLod = this.resolveTargetLod(options.lod);
+    const selectedSources = this.getCurrentVisibleSourcesForEditing(targetLod);
     const deletedVertexByChunk = new Map<
       SpatiallyIndexedSkeletonChunk,
       number
     >();
-    for (const sourceEntry of selectedSources) {
-      const chunks = sourceEntry.chunkSource.chunks;
-      for (const chunk of chunks.values()) {
-        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
-        if (!this.lodMatches(typedChunk, targetLod)) continue;
-        if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
-        const vertexIndex = typedChunk.nodeMap.get(nodeId);
-        if (vertexIndex === undefined) continue;
-        if (vertexIndex < 0 || vertexIndex >= typedChunk.numVertices) continue;
-        deletedVertexByChunk.set(typedChunk, vertexIndex);
-      }
+    for (const chunk of this.iterateVisibleCandidateChunks(
+      selectedSources,
+      targetLod,
+    )) {
+      const vertexIndex = chunk.nodeMap.get(nodeId);
+      if (vertexIndex === undefined) continue;
+      if (vertexIndex < 0 || vertexIndex >= chunk.numVertices) continue;
+      deletedVertexByChunk.set(chunk, vertexIndex);
     }
     if (deletedVertexByChunk.size === 0) {
       return false;
@@ -3191,41 +3358,38 @@ export class SpatiallyIndexedSkeletonLayer
       changedChunks.add(targetChunk);
     }
 
-    for (const sourceEntry of selectedSources) {
-      const chunks = sourceEntry.chunkSource.chunks;
-      for (const chunk of chunks.values()) {
-        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
-        if (!this.lodMatches(typedChunk, targetLod)) continue;
-        if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
-        if (typedChunk.missingConnections.length === 0) continue;
-        const deletedVertexIndex = deletedVertexByChunk.get(typedChunk);
-        let chunkChanged = false;
-        const nextConnections: typeof typedChunk.missingConnections = [];
-        for (const connection of typedChunk.missingConnections) {
-          if (connection.nodeId === nodeId || connection.parentId === nodeId) {
+    for (const chunk of this.iterateVisibleCandidateChunks(
+      selectedSources,
+      targetLod,
+    )) {
+      if (chunk.missingConnections.length === 0) continue;
+      const deletedVertexIndex = deletedVertexByChunk.get(chunk);
+      let chunkChanged = false;
+      const nextConnections: typeof chunk.missingConnections = [];
+      for (const connection of chunk.missingConnections) {
+        if (connection.nodeId === nodeId || connection.parentId === nodeId) {
+          chunkChanged = true;
+          continue;
+        }
+        if (deletedVertexIndex !== undefined) {
+          if (connection.vertexIndex === deletedVertexIndex) {
             chunkChanged = true;
             continue;
           }
-          if (deletedVertexIndex !== undefined) {
-            if (connection.vertexIndex === deletedVertexIndex) {
-              chunkChanged = true;
-              continue;
-            }
-            if (connection.vertexIndex > deletedVertexIndex) {
-              chunkChanged = true;
-              nextConnections.push({
-                ...connection,
-                vertexIndex: connection.vertexIndex - 1,
-              });
-              continue;
-            }
+          if (connection.vertexIndex > deletedVertexIndex) {
+            chunkChanged = true;
+            nextConnections.push({
+              ...connection,
+              vertexIndex: connection.vertexIndex - 1,
+            });
+            continue;
           }
-          nextConnections.push(connection);
         }
-        if (chunkChanged) {
-          typedChunk.missingConnections = nextConnections;
-          changedChunks.add(typedChunk);
-        }
+        nextConnections.push(connection);
+      }
+      if (chunkChanged) {
+        chunk.missingConnections = nextConnections;
+        changedChunks.add(chunk);
       }
     }
 
@@ -3237,7 +3401,7 @@ export class SpatiallyIndexedSkeletonLayer
       this.clearFilteredChunkData(chunk);
     }
     this.invalidateNodeLocatorIndex();
-    this.markFilteredDataDirty();
+    this.requestFilteredDataRedraw();
     return true;
   }
 
@@ -3380,6 +3544,7 @@ export class SpatiallyIndexedSkeletonLayer
       if (!selectedSourceIds.has(entry.sourceId)) continue;
       if (entry.chunk.state !== ChunkState.GPU_MEMORY) continue;
       if (!this.lodMatches(entry.chunk, targetLod)) continue;
+      if (!this.isChunkVisibleForEditing(entry.chunk, targetLod)) continue;
       affectedChunks.add(entry.chunk);
     }
   }
@@ -3390,10 +3555,13 @@ export class SpatiallyIndexedSkeletonLayer
       lod?: number;
     } = {},
   ) {
-    const targetLod = options.lod;
-    const selectedSources = this.getCurrentSourcesForEditing();
+    const targetLod = this.resolveTargetLod(options.lod);
+    const selectedSources = this.getCurrentVisibleSourcesForEditing(targetLod);
     const childrenByParent = new Map<number, number[]>();
-    for (const chunk of this.iterateCandidateChunks(selectedSources, targetLod)) {
+    for (const chunk of this.iterateVisibleCandidateChunks(
+      selectedSources,
+      targetLod,
+    )) {
       const vertexToNodeId = new Map<number, number>();
       for (const [nodeId, vertexIndex] of chunk.nodeMap.entries()) {
         vertexToNodeId.set(vertexIndex, nodeId);
@@ -3471,13 +3639,14 @@ export class SpatiallyIndexedSkeletonLayer
       return false;
     }
 
-    const targetLod = options.lod;
-    const selectedSources = this.getCurrentSourcesForEditing();
+    const targetLod = this.resolveTargetLod(options.lod);
+    const selectedSources = this.getCurrentVisibleSourcesForEditing(targetLod);
     const selectedSourceIds = this.makeSourceIdSet(selectedSources);
     const childEntry = this.getPrimaryNodeLocator(
       normalizedNodeId,
       selectedSourceIds,
       targetLod,
+      { requireVisible: true },
     );
     if (childEntry === undefined) {
       return false;
@@ -3533,16 +3702,12 @@ export class SpatiallyIndexedSkeletonLayer
       }
     };
 
-    for (const sourceEntry of selectedSources) {
-      const chunks = sourceEntry.chunkSource.chunks;
-      for (const chunk of chunks.values()) {
-        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
-        if (!this.lodMatches(typedChunk, targetLod)) continue;
-        if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
-        const vertexIndex =
-          typedChunk === childChunk ? childEntry.vertexIndex : undefined;
-        removeExistingParentEdge(typedChunk, vertexIndex);
-      }
+    for (const chunk of this.iterateVisibleCandidateChunks(
+      selectedSources,
+      targetLod,
+    )) {
+      const vertexIndex = chunk === childChunk ? childEntry.vertexIndex : undefined;
+      removeExistingParentEdge(chunk, vertexIndex);
     }
 
     if (normalizedParentNodeId !== undefined) {
@@ -3550,6 +3715,7 @@ export class SpatiallyIndexedSkeletonLayer
         normalizedParentNodeId,
         selectedSourceIds,
         targetLod,
+        { requireVisible: true },
       );
       if (
         parentEntry !== undefined &&
@@ -3621,7 +3787,7 @@ export class SpatiallyIndexedSkeletonLayer
       this.invalidateEditedChunk(chunk);
     }
     this.invalidateNodeLocatorIndex();
-    this.markFilteredDataDirty();
+    this.requestFilteredDataRedraw();
     return true;
   }
 
@@ -3700,13 +3866,18 @@ export class SpatiallyIndexedSkeletonLayer
       return false;
     }
 
-    const targetLod = options.lod;
-    const selectedSources = this.getCurrentSourcesForEditing();
+    const targetLod = this.resolveTargetLod(options.lod);
+    const selectedSources = this.getCurrentVisibleSourcesForEditing(targetLod);
     let changed = false;
-    for (const chunk of this.iterateCandidateChunks(selectedSources, targetLod)) {
+    const changedChunks = new Set<SpatiallyIndexedSkeletonChunk>();
+    for (const chunk of this.iterateVisibleCandidateChunks(
+      selectedSources,
+      targetLod,
+    )) {
       const data = this.getChunkPositionAndSegmentArrays(chunk);
       if (data === undefined) continue;
       const { segmentIds } = data;
+      let chunkChanged = false;
       for (const [nodeId, vertexIndex] of chunk.nodeMap.entries()) {
         const nextSegmentId = segmentByNodeId.get(nodeId);
         if (nextSegmentId === undefined) continue;
@@ -3718,8 +3889,12 @@ export class SpatiallyIndexedSkeletonLayer
         }
         segmentIds[vertexIndex] = nextSegmentId;
         changed = true;
+        chunkChanged = true;
       }
       if (chunk.missingConnections.length === 0) {
+        if (chunkChanged) {
+          changedChunks.add(chunk);
+        }
         continue;
       }
       let chunkConnectionsChanged = false;
@@ -3743,9 +3918,15 @@ export class SpatiallyIndexedSkeletonLayer
         chunk.missingConnections = nextConnections;
         changed = true;
       }
+      if (chunkChanged || chunkConnectionsChanged) {
+        changedChunks.add(chunk);
+      }
     }
     if (changed) {
-      this.markFilteredDataDirty();
+      for (const chunk of changedChunks) {
+        this.clearFilteredChunkData(chunk);
+      }
+      this.requestFilteredDataRedraw();
     }
     return changed;
   }
@@ -3756,17 +3937,23 @@ export class SpatiallyIndexedSkeletonLayer
     options: {
       lod?: number;
     } = {},
-  ) {
+  ): SpatiallyIndexedLocalMoveNodeResult {
     const x = Number(position[0]);
     const y = Number(position[1]);
     const z = Number(position[2]);
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
-      return false;
+      return {
+        localUpdateApplied: false,
+        changed: false,
+      };
     }
     const targetLod = this.resolveTargetLod(options.lod);
-    const selectedSources = this.getCurrentSourcesForEditing();
+    const selectedSources = this.getCurrentVisibleSourcesForEditing(targetLod);
     if (selectedSources.length === 0) {
-      return false;
+      return {
+        localUpdateApplied: false,
+        changed: false,
+      };
     }
     const selectedSourceIds = this.makeSourceIdSet(selectedSources);
     const nextPosition = new Float32Array([x, y, z]);
@@ -3775,14 +3962,19 @@ export class SpatiallyIndexedSkeletonLayer
       nodeId,
       selectedSourceIds,
       targetLod,
-      { includePendingPosition: false },
+      { includePendingPosition: false, requireVisible: true },
     );
     if (baseNodeState === undefined) {
-      this.refreshEditingSourcesAfterFailedLocalEdit();
-      return true;
+      return {
+        localUpdateApplied: false,
+        changed: false,
+      };
     }
     if (this.positionsEqual(baseNodeState.position, nextPosition)) {
-      return false;
+      return {
+        localUpdateApplied: true,
+        changed: false,
+      };
     }
     const changedChunkData = new Map<
       SpatiallyIndexedSkeletonChunk,
@@ -3803,15 +3995,22 @@ export class SpatiallyIndexedSkeletonLayer
         nodeId,
         sourceIds,
         targetLod,
+        { requireVisible: true },
       );
       const newChunk = this.findLoadedChunkForPosition(
         sourceEntry,
         nextPosition,
         targetLod,
       );
-      if (oldEntries.length === 0 || newChunk === undefined) {
-        this.refreshEditingSourcesAfterFailedLocalEdit();
-        return true;
+      if (
+        oldEntries.length === 0 ||
+        newChunk === undefined ||
+        !this.isChunkVisibleForEditing(newChunk, targetLod)
+      ) {
+        return {
+          localUpdateApplied: false,
+          changed: false,
+        };
       }
       const oldChunks = new Set<SpatiallyIndexedSkeletonChunk>();
       for (const entry of oldEntries) {
@@ -3823,8 +4022,10 @@ export class SpatiallyIndexedSkeletonLayer
         const oldChunkData =
           changedChunkData.get(newChunk) ?? this.getEditableChunkData(newChunk);
         if (oldChunkData === undefined) {
-          this.refreshEditingSourcesAfterFailedLocalEdit();
-          return true;
+          return {
+            localUpdateApplied: false,
+            changed: false,
+          };
         }
         const updated = updateNodePositionInSpatialChunk(
           oldChunkData,
@@ -3832,8 +4033,10 @@ export class SpatiallyIndexedSkeletonLayer
           nextPosition,
         );
         if (updated === undefined) {
-          this.refreshEditingSourcesAfterFailedLocalEdit();
-          return true;
+          return {
+            localUpdateApplied: false,
+            changed: false,
+          };
         }
         changedChunkData.set(newChunk, updated.data);
         affectedChunks.add(newChunk);
@@ -3843,13 +4046,17 @@ export class SpatiallyIndexedSkeletonLayer
         const oldChunkData =
           changedChunkData.get(oldChunk) ?? this.getEditableChunkData(oldChunk);
         if (oldChunkData === undefined) {
-          this.refreshEditingSourcesAfterFailedLocalEdit();
-          return true;
+          return {
+            localUpdateApplied: false,
+            changed: false,
+          };
         }
         const removed = removeNodeFromSpatialChunk(oldChunkData, nodeId);
         if (removed === undefined) {
-          this.refreshEditingSourcesAfterFailedLocalEdit();
-          return true;
+          return {
+            localUpdateApplied: false,
+            changed: false,
+          };
         }
         changedChunkData.set(oldChunk, removed.data);
         affectedChunks.add(oldChunk);
@@ -3857,8 +4064,10 @@ export class SpatiallyIndexedSkeletonLayer
       const newChunkData =
         changedChunkData.get(newChunk) ?? this.getEditableChunkData(newChunk);
       if (newChunkData === undefined) {
-        this.refreshEditingSourcesAfterFailedLocalEdit();
-        return true;
+        return {
+          localUpdateApplied: false,
+          changed: false,
+        };
       }
       const appended = appendNodeToSpatialChunk(newChunkData, {
         nodeId,
@@ -3878,7 +4087,10 @@ export class SpatiallyIndexedSkeletonLayer
     this.finalizeEditedChunks(
       rewrittenChunks.size === 0 ? affectedChunks : rewrittenChunks,
     );
-    return true;
+    return {
+      localUpdateApplied: true,
+      changed: true,
+    };
   }
 
   previewNodePosition(
@@ -3895,7 +4107,7 @@ export class SpatiallyIndexedSkeletonLayer
       return false;
     }
     const targetLod = this.resolveTargetLod(options.lod);
-    const selectedSources = this.getCurrentSourcesForEditing();
+    const selectedSources = this.getCurrentVisibleSourcesForEditing(targetLod);
     const affectedChunks = this.collectAffectedChunksForNodePosition(
       nodeId,
       selectedSources,
@@ -3916,7 +4128,7 @@ export class SpatiallyIndexedSkeletonLayer
     } = {},
   ) {
     const targetLod = this.resolveTargetLod(options.lod);
-    const selectedSources = this.getCurrentSourcesForEditing();
+    const selectedSources = this.getCurrentVisibleSourcesForEditing(targetLod);
     const committedPosition = this.getCommittedNodePosition(
       nodeId,
       selectedSources,
