@@ -349,10 +349,10 @@ export class SpatialSkeletonState extends RefCounted {
   }
 
   markNodeDataChanged(options: { invalidateFullSkeletonCache?: boolean } = {}) {
-    this.nodeDataVersion.value = this.nodeDataVersion.value + 1;
     if (options.invalidateFullSkeletonCache ?? true) {
       this.clearFullSkeletonCache();
     }
+    this.nodeDataVersion.value = this.nodeDataVersion.value + 1;
   }
 
   updateChunkLoadState(needed: number, available: number) {

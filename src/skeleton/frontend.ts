@@ -62,7 +62,10 @@ import type {
   VisibleLayerInfo,
 } from "#src/layer/index.js";
 import type { PerspectivePanel } from "#src/perspective_view/panel.js";
-import type { PerspectiveViewRenderContext } from "#src/perspective_view/render_layer.js";
+import type {
+  PerspectiveViewReadyRenderContext,
+  PerspectiveViewRenderContext,
+} from "#src/perspective_view/render_layer.js";
 import { PerspectiveViewRenderLayer } from "#src/perspective_view/render_layer.js";
 import type {
   RenderLayer,
@@ -100,6 +103,7 @@ import {
   SliceViewSingleResolutionSource,
 } from "#src/sliceview/frontend.js";
 import {
+  type SliceViewPanelReadyRenderContext,
   SliceViewPanelRenderLayer,
   SliceViewPanelRenderContext,
   SliceViewRenderLayer,
@@ -2849,6 +2853,59 @@ export class SpatiallyIndexedSkeletonLayer
     this.visibleChunksByView.set(view, chunksBySource);
   }
 
+  private areVisibleChunksReady(
+    transformedSources: readonly TransformedSource[][],
+    projectionParameters: any,
+    lod: number | undefined,
+  ) {
+    if (this.displayState.objectAlpha.value <= 0.0) {
+      return true;
+    }
+    if (lod === undefined || transformedSources.length === 0) {
+      return false;
+    }
+    const lodSuffix = `:${lod}`;
+    const seenChunkKeysBySource = new Map<string, Set<string>>();
+    let ready = true;
+    for (const scales of transformedSources) {
+      for (const tsource of scales) {
+        const sourceId = getObjectId(tsource.source);
+        let seenChunkKeys = seenChunkKeysBySource.get(sourceId);
+        if (seenChunkKeys === undefined) {
+          seenChunkKeys = new Set<string>();
+          seenChunkKeysBySource.set(sourceId, seenChunkKeys);
+        }
+        forEachVisibleVolumetricChunk(
+          projectionParameters,
+          this.localPosition.value,
+          tsource,
+          (positionInChunks) => {
+            if (!ready) {
+              return;
+            }
+            const chunkKey = `${positionInChunks.join()}${lodSuffix}`;
+            if (seenChunkKeys!.has(chunkKey)) {
+              return;
+            }
+            seenChunkKeys!.add(chunkKey);
+            const chunkSource =
+              tsource.source as SpatiallyIndexedSkeletonSource;
+            const chunk = chunkSource.chunks.get(chunkKey) as
+              | SpatiallyIndexedSkeletonChunk
+              | undefined;
+            if (chunk?.state !== ChunkState.GPU_MEMORY) {
+              ready = false;
+            }
+          },
+        );
+        if (!ready) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
   getNode(
     nodeId: number,
     options: {
@@ -4353,8 +4410,19 @@ export class SpatiallyIndexedSkeletonLayer
     };
   }
 
-  isReady() {
-    return true;
+  isReady(
+    transformedSources?: readonly TransformedSource[][],
+    projectionParameters?: any,
+    lod?: number | undefined,
+  ) {
+    if (transformedSources === undefined || projectionParameters === undefined) {
+      return this.displayState.objectAlpha.value <= 0.0;
+    }
+    return this.areVisibleChunksReady(
+      transformedSources,
+      projectionParameters,
+      lod,
+    );
   }
 }
 
@@ -4599,8 +4667,20 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
     );
   }
 
-  isReady() {
-    return this.base.isReady();
+  isReady(
+    renderContext: PerspectiveViewReadyRenderContext,
+    _attachment: VisibleLayerInfo<
+      PerspectivePanel,
+      ThreeDimensionalRenderLayerAttachmentState
+    >,
+  ) {
+    const displayState = this.base.displayState as any;
+    const lodValue = displayState.skeletonLod?.value as number | undefined;
+    return this.base.isReady(
+      this.transformedSources,
+      renderContext.projectionParameters,
+      lodValue,
+    );
   }
 }
 
@@ -4865,8 +4945,22 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
     );
   }
 
-  isReady() {
-    return this.base.isReady();
+  isReady(
+    renderContext: SliceViewPanelReadyRenderContext,
+    _attachment: VisibleLayerInfo<
+      SliceViewPanel,
+      ThreeDimensionalRenderLayerAttachmentState
+    >,
+  ) {
+    const displayState = this.base.displayState as any;
+    const lodValue = displayState.spatialSkeletonLod2d?.value as
+      | number
+      | undefined;
+    return this.base.isReady(
+      this.transformedSources,
+      renderContext.projectionParameters,
+      lodValue,
+    );
   }
 }
 
