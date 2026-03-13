@@ -1405,6 +1405,11 @@ interface SpatiallyIndexedNodeLocatorEntry {
   sourceId: string;
 }
 
+interface SpatiallyIndexedParentReferenceEntry {
+  chunk: SpatiallyIndexedSkeletonChunk;
+  sourceId: string;
+}
+
 interface SpatiallyIndexedSkeletonLayerOptions {
   gridLevel?: WatchableValueInterface<number>;
   lod?: WatchableValueInterface<number>;
@@ -1532,6 +1537,10 @@ export class SpatiallyIndexedSkeletonLayer
     | undefined;
   private nodeLocatorIndexKey: string | undefined;
   private nodeLocatorIndex = new Map<number, SpatiallyIndexedNodeLocatorEntry[]>();
+  private parentReferenceIndex = new Map<
+    number,
+    SpatiallyIndexedParentReferenceEntry[]
+  >();
   private visibleChunksByView = new Map<
     SpatiallyIndexedSkeletonView,
     VisibleSpatialChunksBySource
@@ -1619,6 +1628,7 @@ export class SpatiallyIndexedSkeletonLayer
 
   private invalidateNodeLocatorIndex() {
     this.nodeLocatorIndex.clear();
+    this.parentReferenceIndex.clear();
     this.nodeLocatorIndexKey = undefined;
   }
 
@@ -1628,6 +1638,7 @@ export class SpatiallyIndexedSkeletonLayer
     if (this.nodeLocatorIndexKey === key) return;
     this.nodeLocatorIndexKey = key;
     this.nodeLocatorIndex.clear();
+    this.parentReferenceIndex.clear();
     for (const sourceEntry of sourceEntries) {
       const sourceId = getObjectId(sourceEntry.chunkSource);
       for (const chunk of sourceEntry.chunkSource.chunks.values()) {
@@ -1642,6 +1653,30 @@ export class SpatiallyIndexedSkeletonLayer
           entries.push({
             chunk: typedChunk,
             vertexIndex,
+            sourceId,
+          });
+        }
+        if (typedChunk.missingConnections.length === 0) continue;
+        const seenParentIds = new Set<number>();
+        for (const connection of typedChunk.missingConnections) {
+          if (
+            !Number.isFinite(connection.nodeId) ||
+            !Number.isFinite(connection.parentId) ||
+            connection.nodeId === connection.parentId
+          ) {
+            continue;
+          }
+          if (seenParentIds.has(connection.parentId)) {
+            continue;
+          }
+          seenParentIds.add(connection.parentId);
+          let entries = this.parentReferenceIndex.get(connection.parentId);
+          if (entries === undefined) {
+            entries = [];
+            this.parentReferenceIndex.set(connection.parentId, entries);
+          }
+          entries.push({
+            chunk: typedChunk,
             sourceId,
           });
         }
@@ -2051,7 +2086,7 @@ export class SpatiallyIndexedSkeletonLayer
     }
     this.collectChunksReferencingParentNode(
       nodeId,
-      selectedSources,
+      selectedSourceIds,
       targetLod,
       affectedChunks,
     );
@@ -2724,25 +2759,16 @@ export class SpatiallyIndexedSkeletonLayer
 
   private collectChunksReferencingParentNode(
     nodeId: number,
-    selectedSources: SpatiallyIndexedSkeletonSourceEntry[],
+    selectedSourceIds: ReadonlySet<string>,
     targetLod: number | undefined,
     affectedChunks: Set<SpatiallyIndexedSkeletonChunk>,
   ) {
-    for (const sourceEntry of selectedSources) {
-      const chunks = sourceEntry.chunkSource.chunks;
-      for (const chunk of chunks.values()) {
-        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
-        if (!this.lodMatches(typedChunk, targetLod)) continue;
-        if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
-        if (typedChunk.missingConnections.length === 0) continue;
-        if (
-          typedChunk.missingConnections.some(
-            (connection) => connection.parentId === nodeId,
-          )
-        ) {
-          affectedChunks.add(typedChunk);
-        }
-      }
+    this.ensureNodeLocatorIndex();
+    for (const entry of this.parentReferenceIndex.get(nodeId) ?? []) {
+      if (!selectedSourceIds.has(entry.sourceId)) continue;
+      if (entry.chunk.state !== ChunkState.GPU_MEMORY) continue;
+      if (!this.lodMatches(entry.chunk, targetLod)) continue;
+      affectedChunks.add(entry.chunk);
     }
   }
 
@@ -3167,7 +3193,7 @@ export class SpatiallyIndexedSkeletonLayer
     }
     this.collectChunksReferencingParentNode(
       nodeId,
-      selectedSources,
+      selectedSourceIds,
       targetLod,
       affectedChunks,
     );
