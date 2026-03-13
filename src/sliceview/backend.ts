@@ -78,6 +78,8 @@ class SliceViewCounterpartBase extends SliceViewBase<
   SliceViewChunkSourceBackend,
   SliceViewRenderLayerBackend
 > {
+  protected invalidateVisibleSourcesBound = () => this.invalidateVisibleSources();
+
   constructor(rpc: RPC, options: any) {
     super(rpc.get(options.projectionParameters));
     this.initializeSharedObject(rpc, options.id);
@@ -245,9 +247,9 @@ export class SliceViewBackend extends SliceViewIntermediateBase {
     const layerInfo = visibleLayers.get(layer)!;
     visibleLayers.delete(layer);
     disposeTransformedSources(layerInfo.allSources);
-    layer.renderScaleTarget.changed.remove(this.invalidateVisibleSources);
+    layer.renderScaleTarget.changed.remove(this.invalidateVisibleSourcesBound);
     for (const watchable of layer.visibleSourcesInvalidation) {
-      watchable.changed.remove(this.invalidateVisibleSources);
+      watchable.changed.remove(this.invalidateVisibleSourcesBound);
     }
     layer.localPosition.changed.remove(this.handleLayerChanged);
     this.invalidateVisibleSources();
@@ -273,7 +275,7 @@ export class SliceViewBackend extends SliceViewIntermediateBase {
         this.invalidateVisibleSources(),
       );
       for (const watchable of layer.visibleSourcesInvalidation) {
-        watchable.changed.add(this.invalidateVisibleSources);
+        watchable.changed.add(this.invalidateVisibleSourcesBound);
       }
       layer.localPosition.changed.add(this.handleLayerChanged);
     } else {
