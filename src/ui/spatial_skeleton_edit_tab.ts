@@ -14,9 +14,7 @@
  * limitations under the License.
  */
 
-import {
-  CATMAID_TRUE_END_LABEL,
-} from "#src/datasource/catmaid/api.js";
+import { CATMAID_TRUE_END_LABEL } from "#src/datasource/catmaid/api.js";
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import {
   getVisibleSegments,
@@ -25,14 +23,19 @@ import {
 import type {
   SpatiallyIndexedSkeletonBranchNavigationTarget,
   SpatiallyIndexedSkeletonNavigationTarget,
-  SpatiallyIndexedSkeletonSource as SpatiallyIndexedSkeletonApi,
+  SpatiallyIndexedSkeletonOpenLeaf,
 } from "#src/skeleton/api.js";
-import type { SpatiallyIndexedSkeletonLayer } from "#src/skeleton/frontend.js";
 import type { SpatiallyIndexedSkeletonNodeInfo } from "#src/skeleton/frontend.js";
+import { getEditableSpatiallyIndexedSkeletonSource } from "#src/skeleton/state.js";
 import {
-  getEditableSpatiallyIndexedSkeletonSource,
-  getSpatiallyIndexedSkeletonNavigationSource,
-} from "#src/skeleton/state.js";
+  buildSpatiallyIndexedSkeletonNavigationGraph,
+  getCurrentBranchContext,
+  getNextBranchOrEnd as getNextBranchOrEndFromGraph,
+  getOpenLeaves as getOpenLeavesFromGraph,
+  getPreviousBranchOrRoot as getPreviousBranchOrRootFromGraph,
+  getSkeletonRootNode as getSkeletonRootNodeFromGraph,
+  type SpatiallyIndexedSkeletonNavigationGraph,
+} from "#src/skeleton/navigation.js";
 import { StatusMessage } from "#src/status.js";
 import { observeWatchable, registerNested } from "#src/trackable_value.js";
 import {
@@ -43,9 +46,12 @@ import {
 import { makeToolButton } from "#src/ui/tool.js";
 import { makeIcon } from "#src/widget/icon.js";
 import { Tab } from "#src/widget/tab_view.js";
+import svg_arrow_right from "ikonate/icons/arrow-right.svg?raw";
 import svg_bin from "ikonate/icons/bin.svg?raw";
-import svg_chevrons_down from "ikonate/icons/chevrons-down.svg?raw";
-import svg_chevrons_up from "ikonate/icons/chevrons-up.svg?raw";
+import svg_chevron_left from "ikonate/icons/chevron-left.svg?raw";
+import svg_chevron_right from "ikonate/icons/chevron-right.svg?raw";
+import svg_chevrons_left from "ikonate/icons/chevrons-left.svg?raw";
+import svg_chevrons_right from "ikonate/icons/chevrons-right.svg?raw";
 import svg_circle from "ikonate/icons/circle.svg?raw";
 import svg_flag from "ikonate/icons/flag.svg?raw";
 import svg_minus from "ikonate/icons/minus.svg?raw";
@@ -55,6 +61,23 @@ import svg_share_android from "ikonate/icons/share-android.svg?raw";
 const MAX_LISTED_NODES = 300;
 
 type SkeletonNodeType = "root" | "branchStart" | "regular" | "virtualEnd";
+
+interface SpatiallyIndexedSkeletonNavigationApi {
+  getSkeletonRootNode(
+    skeletonId: number,
+  ): Promise<SpatiallyIndexedSkeletonNavigationTarget>;
+  getPreviousBranchOrRoot(
+    nodeId: number,
+    options?: { alt?: boolean },
+  ): Promise<SpatiallyIndexedSkeletonNavigationTarget>;
+  getNextBranchOrEnd(
+    nodeId: number,
+  ): Promise<SpatiallyIndexedSkeletonBranchNavigationTarget[]>;
+  getOpenLeaves(
+    skeletonId: number,
+    nodeId: number,
+  ): Promise<SpatiallyIndexedSkeletonOpenLeaf[]>;
+}
 
 const NODE_TYPE_ICONS: Record<SkeletonNodeType, string> = {
   root: svg_origin,
@@ -199,6 +222,13 @@ export class SpatialSkeletonEditTab extends Tab {
     const pendingDeleteNodes = new Set<number>();
     const pendingTrueEndNodes = new Set<number>();
     const skeletonState = layer.spatialSkeletonState;
+    const navigationGraphCache = new Map<
+      number,
+      {
+        nodes: readonly SpatiallyIndexedSkeletonNodeInfo[];
+        graph: SpatiallyIndexedSkeletonNavigationGraph;
+      }
+    >();
 
     const getSelectedNode = () => {
       const selectedId = layer.selectedSpatialSkeletonNodeId.value;
@@ -237,10 +267,9 @@ export class SpatialSkeletonEditTab extends Tab {
     const ensureActionsAllowed = (
       requiredCapabilities:
         | "inspectSkeletons"
-        | "navigateSkeletons"
         | "editNodeLabels"
         | "deleteNodes"
-        | readonly ("inspectSkeletons" | "navigateSkeletons" | "editNodeLabels" | "deleteNodes")[],
+        | readonly ("inspectSkeletons" | "editNodeLabels" | "deleteNodes")[],
       options: {
         requireMaxLod?: boolean;
         requireVisibleChunks?: boolean;
@@ -299,25 +328,76 @@ export class SpatialSkeletonEditTab extends Tab {
       localPosition.value = nextLocal;
     };
 
-    const getSkeletonNavigationApi = (
-      skeletonLayer: SpatiallyIndexedSkeletonLayer,
-    ): Pick<
-      SpatiallyIndexedSkeletonApi,
-      | "getSkeletonRootNode"
-      | "getPreviousBranchOrRoot"
-      | "getNextBranchOrEnd"
-      | "getOpenLeaves"
-    >
-      | undefined => {
-      return getSpatiallyIndexedSkeletonNavigationSource(skeletonLayer) as
-        | Pick<
-            SpatiallyIndexedSkeletonApi,
-            | "getSkeletonRootNode"
-            | "getPreviousBranchOrRoot"
-            | "getNextBranchOrEnd"
-            | "getOpenLeaves"
-          >
-        | undefined;
+    const getNavigationNode = (nodeId: number) => {
+      return skeletonState.getCachedNode(nodeId);
+    };
+
+    const getSegmentNavigationNodes = (segmentId: number) => {
+      return (
+        nodesBySegment.get(segmentId) ??
+        skeletonState.getCachedSegmentNodes(segmentId)
+      );
+    };
+
+    const getSegmentNavigationGraph = (segmentId: number) => {
+      const segmentNodes = getSegmentNavigationNodes(segmentId);
+      if (segmentNodes === undefined || segmentNodes.length === 0) {
+        throw new Error(
+          `Skeleton graph for segment ${segmentId} is not loaded yet.`,
+        );
+      }
+      const cached = navigationGraphCache.get(segmentId);
+      if (cached !== undefined && cached.nodes === segmentNodes) {
+        return cached.graph;
+      }
+      const graph = buildSpatiallyIndexedSkeletonNavigationGraph(segmentNodes);
+      navigationGraphCache.set(segmentId, {
+        nodes: segmentNodes,
+        graph,
+      });
+      return graph;
+    };
+
+    const skeletonNavigationApi: SpatiallyIndexedSkeletonNavigationApi = {
+      async getSkeletonRootNode(skeletonId: number) {
+        return getSkeletonRootNodeFromGraph(
+          getSegmentNavigationGraph(skeletonId),
+        );
+      },
+      async getPreviousBranchOrRoot(
+        nodeId: number,
+        options: { alt?: boolean } = {},
+      ) {
+        const node = getNavigationNode(nodeId);
+        if (node === undefined) {
+          throw new Error(
+            `Node ${nodeId} is not available in the loaded skeleton cache.`,
+          );
+        }
+        return getPreviousBranchOrRootFromGraph(
+          getSegmentNavigationGraph(node.segmentId),
+          nodeId,
+          options,
+        );
+      },
+      async getNextBranchOrEnd(nodeId: number) {
+        const node = getNavigationNode(nodeId);
+        if (node === undefined) {
+          throw new Error(
+            `Node ${nodeId} is not available in the loaded skeleton cache.`,
+          );
+        }
+        return getNextBranchOrEndFromGraph(
+          getSegmentNavigationGraph(node.segmentId),
+          nodeId,
+        );
+      },
+      async getOpenLeaves(skeletonId: number, nodeId: number) {
+        return getOpenLeavesFromGraph(
+          getSegmentNavigationGraph(skeletonId),
+          nodeId,
+        );
+      },
     };
 
     const navigateToNodeTarget = (target: {
@@ -341,7 +421,7 @@ export class SpatialSkeletonEditTab extends Tab {
 
     const getSelectedNavigationContext = () => {
       if (
-        !ensureActionsAllowed("navigateSkeletons", {
+        !ensureActionsAllowed("inspectSkeletons", {
           requireMaxLod: false,
           requireVisibleChunks: false,
         })
@@ -353,27 +433,45 @@ export class SpatialSkeletonEditTab extends Tab {
         StatusMessage.showTemporaryMessage("No skeleton node is selected.");
         return undefined;
       }
-      const skeletonLayer = layer.getSpatiallyIndexedSkeletonLayer();
-      if (skeletonLayer === undefined) {
+      try {
+        return {
+          selectedNode,
+          skeletonApi: skeletonNavigationApi,
+          navigationGraph: getSegmentNavigationGraph(selectedNode.segmentId),
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         StatusMessage.showTemporaryMessage(
-          "No active spatial skeleton layer found for navigation.",
+          `Unable to resolve the local skeleton graph for navigation: ${message}`,
         );
         return undefined;
       }
-      const skeletonApi = getSkeletonNavigationApi(skeletonLayer);
-      if (skeletonApi === undefined) {
-        StatusMessage.showTemporaryMessage(
-          "Unable to resolve a skeleton source API for the active layer.",
-        );
-        return undefined;
-      }
-      return { selectedNode, skeletonApi };
     };
 
-    const getCurrentBranchEndTarget = (
-      branches: readonly SpatiallyIndexedSkeletonBranchNavigationTarget[],
-    ): SpatiallyIndexedSkeletonNavigationTarget | undefined => {
-      return branches[0]?.branchEnd;
+    const getSelectedBranchNavigationContext = () => {
+      const context = getSelectedNavigationContext();
+      if (context === undefined) return undefined;
+      const branchContext = getCurrentBranchContext(
+        context.navigationGraph,
+        context.selectedNode.nodeId,
+        {
+          anchorNodeId: layer.spatialSkeletonTreeEndNodeId.value,
+        },
+      );
+      return {
+        ...context,
+        branchContext,
+      };
+    };
+
+    const navigateToBranchTarget = (
+      target: SpatiallyIndexedSkeletonNavigationTarget,
+      options: {
+        branchEndNodeId?: number;
+      } = {},
+    ) => {
+      layer.spatialSkeletonTreeEndNodeId.value = options.branchEndNodeId;
+      navigateToNodeTarget(target);
     };
 
     const updateTrueEndLabel = (
@@ -389,9 +487,8 @@ export class SpatialSkeletonEditTab extends Tab {
         );
         return;
       }
-      const skeletonSource = getEditableSpatiallyIndexedSkeletonSource(
-        skeletonLayer,
-      );
+      const skeletonSource =
+        getEditableSpatiallyIndexedSkeletonSource(skeletonLayer);
       if (skeletonSource === undefined) {
         StatusMessage.showTemporaryMessage(
           "Unable to resolve editable skeleton source for the active layer.",
@@ -486,9 +583,8 @@ export class SpatialSkeletonEditTab extends Tab {
         );
         return;
       }
-      const skeletonSource = getEditableSpatiallyIndexedSkeletonSource(
-        skeletonLayer,
-      );
+      const skeletonSource =
+        getEditableSpatiallyIndexedSkeletonSource(skeletonLayer);
       if (skeletonSource === undefined) {
         StatusMessage.showTemporaryMessage(
           "Unable to resolve editable skeleton source for the active layer.",
@@ -545,31 +641,27 @@ export class SpatialSkeletonEditTab extends Tab {
       })();
     };
 
-    const goRootButton = makeNavIconButton(
-      svg_chevrons_up,
-      "go to root of skeleton",
-      () => {
-        const context = getSelectedNavigationContext();
-        if (context === undefined) return;
-        const { selectedNode, skeletonApi } = context;
-        void (async () => {
-          try {
-            navigateToNodeTarget(
-              await skeletonApi.getSkeletonRootNode(selectedNode.segmentId),
-            );
-          } catch (error) {
-            const message =
-              error instanceof Error ? error.message : String(error);
-            StatusMessage.showTemporaryMessage(
-              `Failed to locate skeleton root: ${message}`,
-            );
-          }
-        })();
-      },
-    );
+    const goRootButton = makeNavIconButton(svg_origin, "Go to root", () => {
+      const context = getSelectedNavigationContext();
+      if (context === undefined) return;
+      const { selectedNode, skeletonApi } = context;
+      void (async () => {
+        try {
+          navigateToNodeTarget(
+            await skeletonApi.getSkeletonRootNode(selectedNode.segmentId),
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          StatusMessage.showTemporaryMessage(
+            `Failed to locate skeleton root: ${message}`,
+          );
+        }
+      })();
+    });
     const goBranchStartButton = makeNavIconButton(
-      svg_origin,
-      "go to start of current branch",
+      svg_chevrons_left,
+      "Start of branch",
       () => {
         const context = getSelectedNavigationContext();
         if (context === undefined) return;
@@ -589,41 +681,93 @@ export class SpatialSkeletonEditTab extends Tab {
         })();
       },
     );
-    const goUnfinishedBranchButton = makeNavIconButton(
-      svg_flag,
-      "go to closest unfinished branch",
+    const goPreviousBranchButton = makeNavIconButton(
+      svg_chevron_left,
+      "Previous branch",
       () => {
-        goToClosestUnfinishedBranch();
+        const context = getSelectedBranchNavigationContext();
+        if (context === undefined) return;
+        const { branchContext } = context;
+        const { branches, currentBranchIndex } = branchContext;
+        if (branches.length <= 1 || currentBranchIndex === undefined) {
+          StatusMessage.showTemporaryMessage(
+            "No previous branch was found from the selected node.",
+          );
+          return;
+        }
+        if (currentBranchIndex <= 0) {
+          StatusMessage.showTemporaryMessage(
+            "The selected branch is already the first branch in this branch set.",
+          );
+          return;
+        }
+        const targetBranch = branches[currentBranchIndex - 1];
+        navigateToBranchTarget(targetBranch.branchStartOrEnd, {
+          branchEndNodeId: targetBranch.branchEnd.nodeId,
+        });
+      },
+    );
+    const goNextBranchButton = makeNavIconButton(
+      svg_chevron_right,
+      "Next branch",
+      () => {
+        const context = getSelectedBranchNavigationContext();
+        if (context === undefined) return;
+        const { branchContext } = context;
+        const { branches, currentBranchIndex } = branchContext;
+        if (branches.length <= 1 || currentBranchIndex === undefined) {
+          StatusMessage.showTemporaryMessage(
+            "No next branch was found from the selected node.",
+          );
+          return;
+        }
+        if (currentBranchIndex >= branches.length - 1) {
+          StatusMessage.showTemporaryMessage(
+            "The selected branch is already the last branch in this branch set.",
+          );
+          return;
+        }
+        const targetBranch = branches[currentBranchIndex + 1];
+        navigateToBranchTarget(targetBranch.branchStartOrEnd, {
+          branchEndNodeId: targetBranch.branchEnd.nodeId,
+        });
       },
     );
     const goTreeEndButton = makeNavIconButton(
-      svg_chevrons_down,
-      "go to end of current branch",
+      svg_chevrons_right,
+      "End of branch",
       () => {
-        const context = getSelectedNavigationContext();
+        const context = getSelectedBranchNavigationContext();
         if (context === undefined) return;
-        const { selectedNode, skeletonApi } = context;
-        void (async () => {
-          try {
-            const branches = await skeletonApi.getNextBranchOrEnd(
-              selectedNode.nodeId,
-            );
-            const target = getCurrentBranchEndTarget(branches);
-            if (target === undefined) {
-              StatusMessage.showTemporaryMessage(
-                "No branch end was found from the selected node.",
-              );
-              return;
-            }
-            navigateToNodeTarget(target);
-          } catch (error) {
-            const message =
-              error instanceof Error ? error.message : String(error);
-            StatusMessage.showTemporaryMessage(
-              `Failed to locate branch end: ${message}`,
-            );
-          }
-        })();
+        const { branchContext, selectedNode } = context;
+        const targetBranch =
+          branchContext.currentBranchIndex === undefined
+            ? undefined
+            : branchContext.branches[branchContext.currentBranchIndex];
+        if (targetBranch === undefined) {
+          navigateToBranchTarget(
+            {
+              nodeId: selectedNode.nodeId,
+              x: Number(selectedNode.position[0]),
+              y: Number(selectedNode.position[1]),
+              z: Number(selectedNode.position[2]),
+            },
+            {
+              branchEndNodeId: selectedNode.nodeId,
+            },
+          );
+          return;
+        }
+        navigateToBranchTarget(targetBranch.branchEnd, {
+          branchEndNodeId: targetBranch.branchEnd.nodeId,
+        });
+      },
+    );
+    const goUnfinishedBranchButton = makeNavIconButton(
+      svg_arrow_right,
+      "Nearest unfinished branch",
+      () => {
+        goToClosestUnfinishedBranch();
       },
     );
     toolbox.appendChild(navTools);
@@ -632,45 +776,21 @@ export class SpatialSkeletonEditTab extends Tab {
     const gatedControls = [
       goRootButton,
       goBranchStartButton,
-      goUnfinishedBranchButton,
+      goPreviousBranchButton,
+      goNextBranchButton,
       goTreeEndButton,
+      goUnfinishedBranchButton,
     ];
 
     const buildSegmentTreeRows = (
+      segmentId: number,
       segmentNodes: SpatiallyIndexedSkeletonNodeInfo[],
     ) => {
-      const nodeById = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
-      for (const node of segmentNodes) {
-        nodeById.set(node.nodeId, node);
+      if (segmentNodes.length === 0) {
+        return [];
       }
-      const childrenByParent = new Map<number, number[]>();
-      for (const node of segmentNodes) {
-        const parentNodeId = node.parentNodeId;
-        if (parentNodeId === undefined || !nodeById.has(parentNodeId)) {
-          continue;
-        }
-        let children = childrenByParent.get(parentNodeId);
-        if (children === undefined) {
-          children = [];
-          childrenByParent.set(parentNodeId, children);
-        }
-        children.push(node.nodeId);
-      }
-      for (const children of childrenByParent.values()) {
-        children.sort((a, b) => a - b);
-      }
-
-      const roots: number[] = [];
-      for (const node of segmentNodes) {
-        const parentNodeId = node.parentNodeId;
-        if (parentNodeId === undefined || !nodeById.has(parentNodeId)) {
-          roots.push(node.nodeId);
-        }
-      }
-      roots.sort((a, b) => a - b);
-      if (roots.length === 0 && segmentNodes.length > 0) {
-        roots.push(segmentNodes[0].nodeId);
-      }
+      const { nodeById, childrenByParent, rootNodeIds } =
+        getSegmentNavigationGraph(segmentId);
 
       const visibleMemo = new Map<number, boolean>();
       const isNodeVisible = (nodeId: number): boolean => {
@@ -722,12 +842,12 @@ export class SpatialSkeletonEditTab extends Tab {
         }
       };
 
-      for (const rootNodeId of roots) {
+      for (const rootNodeId of rootNodeIds) {
         walk(rootNodeId, 0);
       }
-      for (const node of segmentNodes) {
-        if (!visited.has(node.nodeId)) {
-          walk(node.nodeId, 0);
+      for (const nodeId of nodeById.keys()) {
+        if (!visited.has(nodeId)) {
+          walk(nodeId, 0);
         }
       }
       return rows;
@@ -768,7 +888,7 @@ export class SpatialSkeletonEditTab extends Tab {
         })`;
         section.appendChild(header);
 
-        const rows = buildSegmentTreeRows(segmentNodes);
+        const rows = buildSegmentTreeRows(segmentId, segmentNodes);
         if (rows.length === 0) {
           const empty = document.createElement("div");
           empty.className = "neuroglancer-spatial-skeleton-summary";
@@ -913,6 +1033,7 @@ export class SpatialSkeletonEditTab extends Tab {
       summarySuffix = "",
     ) => {
       loadedNodeSummarySuffix = summarySuffix;
+      navigationGraphCache.clear();
       nodesBySegment = nextNodesBySegment;
       const allNodesById = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
       for (const segmentNodes of nextNodesBySegment.values()) {
@@ -1051,11 +1172,7 @@ export class SpatialSkeletonEditTab extends Tab {
           requireMaxLod: false,
           requireVisibleChunks: false,
         }) === undefined;
-      navigationAllowed =
-        layer.getSpatialSkeletonActionsDisabledReason("navigateSkeletons", {
-          requireMaxLod: false,
-          requireVisibleChunks: false,
-        }) === undefined;
+      navigationAllowed = inspectionAllowed;
       labelEditingAllowed =
         layer.getSpatialSkeletonActionsDisabledReason("editNodeLabels") ===
         undefined;

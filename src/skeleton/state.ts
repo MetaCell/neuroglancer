@@ -31,7 +31,6 @@ interface SpatialSkeletonSourceAccess {
 
 export interface SpatiallyIndexedSkeletonSourceCapabilities {
   inspectSkeletons: boolean;
-  navigateSkeletons: boolean;
   addNodes: boolean;
   moveNodes: boolean;
   deleteNodes: boolean;
@@ -49,19 +48,9 @@ export interface SpatiallyIndexedSkeletonInspectionSource {
   ): Promise<readonly SpatiallyIndexedSkeletonNode[]>;
 }
 
-export interface SpatiallyIndexedSkeletonNavigationSource {
-  getSkeletonRootNode(
-    skeletonId: number,
-  ): Promise<unknown>;
-  getPreviousBranchOrRoot(nodeId: number, options?: { alt?: boolean }): Promise<unknown>;
-  getNextBranchOrEnd(nodeId: number): Promise<unknown>;
-  getOpenLeaves(skeletonId: number, nodeId: number): Promise<unknown>;
-}
-
 export const NO_SPATIALLY_INDEXED_SKELETON_SOURCE_CAPABILITIES: SpatiallyIndexedSkeletonSourceCapabilities =
   {
     inspectSkeletons: false,
-    navigateSkeletons: false,
     addNodes: false,
     moveNodes: false,
     deleteNodes: false,
@@ -87,7 +76,6 @@ export function isEditableSpatiallyIndexedSkeletonSource(
   const capabilities = getSpatiallyIndexedSkeletonSourceCapabilities(value);
   return (
     capabilities.inspectSkeletons &&
-    capabilities.navigateSkeletons &&
     capabilities.addNodes &&
     capabilities.moveNodes &&
     capabilities.deleteNodes &&
@@ -115,28 +103,11 @@ export function getSpatiallyIndexedSkeletonInspectionSource(
     : undefined;
 }
 
-export function getSpatiallyIndexedSkeletonNavigationSource(
-  value: SpatialSkeletonSourceAccess | undefined,
-): SpatiallyIndexedSkeletonNavigationSource | undefined {
-  if (value === undefined) return undefined;
-  return hasFunction(value.source, "getSkeletonRootNode") &&
-    hasFunction(value.source, "getPreviousBranchOrRoot") &&
-    hasFunction(value.source, "getNextBranchOrEnd") &&
-    hasFunction(value.source, "getOpenLeaves")
-    ? (value.source as SpatiallyIndexedSkeletonNavigationSource)
-    : undefined;
-}
-
 export function getSpatiallyIndexedSkeletonSourceCapabilities(
   value: unknown,
 ): SpatiallyIndexedSkeletonSourceCapabilities {
   return {
     inspectSkeletons: hasFunction(value, "getSkeleton"),
-    navigateSkeletons:
-      hasFunction(value, "getSkeletonRootNode") &&
-      hasFunction(value, "getPreviousBranchOrRoot") &&
-      hasFunction(value, "getNextBranchOrEnd") &&
-      hasFunction(value, "getOpenLeaves"),
     addNodes: hasFunction(value, "addNode"),
     moveNodes: hasFunction(value, "moveNode"),
     deleteNodes: hasFunction(value, "deleteNode"),
@@ -174,7 +145,6 @@ function spatiallyIndexedSkeletonSourceCapabilitiesEqual(
 ) {
   return (
     a.inspectSkeletons === b.inspectSkeletons &&
-    a.navigateSkeletons === b.navigateSkeletons &&
     a.addNodes === b.addNodes &&
     a.moveNodes === b.moveNodes &&
     a.deleteNodes === b.deleteNodes &&
@@ -437,7 +407,9 @@ export class SpatialSkeletonState extends RefCounted {
       this.fullSegmentNodeCache.set(normalizedNode.segmentId, [normalizedNode]);
       changed = true;
     } else if (targetSegmentCached && !foundInTargetSegment) {
-      const targetNodes = this.fullSegmentNodeCache.get(normalizedNode.segmentId)!;
+      const targetNodes = this.fullSegmentNodeCache.get(
+        normalizedNode.segmentId,
+      )!;
       this.fullSegmentNodeCache.set(
         normalizedNode.segmentId,
         [...targetNodes, normalizedNode].sort((a, b) => a.nodeId - b.nodeId),

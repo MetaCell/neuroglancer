@@ -49,20 +49,6 @@ export interface SpatiallyIndexedSkeletonSplitResult {
 export interface SpatiallyIndexedSkeletonSource {
   listSkeletons(): Promise<number[]>;
   getSkeleton(skeletonId: number): Promise<SpatiallyIndexedSkeletonNode[]>;
-  getSkeletonRootNode(
-    skeletonId: number,
-  ): Promise<SpatiallyIndexedSkeletonNavigationTarget>;
-  getPreviousBranchOrRoot(
-    nodeId: number,
-    options?: { alt?: boolean },
-  ): Promise<SpatiallyIndexedSkeletonNavigationTarget>;
-  getNextBranchOrEnd(
-    nodeId: number,
-  ): Promise<SpatiallyIndexedSkeletonBranchNavigationTarget[]>;
-  getOpenLeaves(
-    skeletonId: number,
-    nodeId: number,
-  ): Promise<SpatiallyIndexedSkeletonOpenLeaf[]>;
   getDimensions(): Promise<{
     min: { x: number; y: number; z: number };
     max: { x: number; y: number; z: number };
@@ -84,8 +70,7 @@ export interface SpatiallyIndexedSkeletonSource {
 }
 
 export interface EditableSpatiallyIndexedSkeletonSource
-  extends SpatiallyIndexedSkeletonSource
-{
+  extends SpatiallyIndexedSkeletonSource {
   addNode(
     skeletonId: number,
     x: number,
