@@ -1388,6 +1388,7 @@ export class TrackableDataSelectionState
     userLayer: Borrowed<T>,
     capture: (state: T["selectionState"]) => boolean,
     pin: boolean | "toggle" = true,
+    options: { position?: ArrayLike<number> } = {},
   ) {
     if (pin === false && (!this.location.visible || this.pin.value)) return;
     const state = {} as UserLayerSelectionState;
@@ -1402,7 +1403,10 @@ export class TrackableDataSelectionState
       this.value = {
         layers: [{ layer: userLayer, state }],
         coordinateSpace: this.coordinateSpace.value,
-        position: undefined,
+        position:
+          options.position === undefined
+            ? undefined
+            : new Float32Array(options.position),
       };
     }
   }

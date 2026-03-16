@@ -264,9 +264,13 @@ export class SpatialSkeletonEditTab extends Tab {
     let pendingScrollToSelectedNode = false;
     let refreshRequestId = 0;
     let loadedNodeSummarySuffix = "";
+    let hoveredViewerNodeId: number | undefined;
     const pendingDeleteNodes = new Set<number>();
     const pendingTrueEndNodes = new Set<number>();
+    const renderedRowsByNodeId = new Map<number, HTMLDivElement>();
+    const renderedEntriesByNodeId = new Map<number, HTMLDivElement>();
     const skeletonState = layer.spatialSkeletonState;
+    const mouseState = layer.manager.root.layerSelectedValues.mouseState;
     const navigationGraphCache = new Map<
       number,
       {
@@ -362,18 +366,21 @@ export class SpatialSkeletonEditTab extends Tab {
       node: SpatiallyIndexedSkeletonNodeInfo | undefined,
       options: {
         moveView?: boolean;
+        pin?: boolean;
       } = {},
     ) => {
       if (node === undefined) return;
-      const moveView = options.moveView ?? true;
+      const moveView = options.moveView ?? false;
+      const pin = options.pin ?? false;
       pendingScrollToSelectedNode = true;
-      layer.selectSpatialSkeletonNode(node.nodeId, false, {
+      layer.selectSpatialSkeletonNode(node.nodeId, pin, {
         segmentId: node.segmentId,
+        position: node.position,
       });
       if (moveView) {
         moveViewToNodePosition(node.position);
       }
-      updateList();
+      applyRowInteractionState({ scrollSelectedIntoView: true });
     };
 
     const moveViewToNodePosition = (position: ArrayLike<number>) => {
@@ -463,6 +470,50 @@ export class SpatialSkeletonEditTab extends Tab {
 
     const getNodeDisplayId = (node: SpatiallyIndexedSkeletonNodeInfo) => {
       return node.nodeId;
+    };
+
+    const getHoveredNodeIdFromViewer = () => {
+      if (!mouseState.active) return undefined;
+      const pickedRenderLayer = mouseState.pickedRenderLayer;
+      if (
+        pickedRenderLayer !== null &&
+        !layer.renderLayers.includes(pickedRenderLayer)
+      ) {
+        return undefined;
+      }
+      const pickedNodeId = mouseState.pickedSpatialSkeletonNodeId;
+      return typeof pickedNodeId === "number" &&
+        Number.isSafeInteger(pickedNodeId) &&
+        pickedNodeId > 0
+        ? pickedNodeId
+        : undefined;
+    };
+
+    const applyRowInteractionState = (
+      options: { scrollSelectedIntoView?: boolean } = {},
+    ) => {
+      const selectedNodeId = layer.selectedSpatialSkeletonNodeId.value;
+      let selectedRow: HTMLDivElement | undefined;
+      for (const [nodeId, entry] of renderedEntriesByNodeId) {
+        const isSelected = nodeId === selectedNodeId;
+        const isHovered = nodeId === hoveredViewerNodeId;
+        entry.dataset.selected = String(isSelected);
+        entry.dataset.viewerHovered = String(isHovered);
+        if (isSelected) {
+          selectedRow = renderedRowsByNodeId.get(nodeId);
+        }
+      }
+      if (options.scrollSelectedIntoView) {
+        pendingScrollToSelectedNode = false;
+        selectedRow?.scrollIntoView({ block: "nearest" });
+      }
+    };
+
+    const updateHoveredViewerNode = () => {
+      const nextHoveredNodeId = getHoveredNodeIdFromViewer();
+      if (hoveredViewerNodeId === nextHoveredNodeId) return;
+      hoveredViewerNodeId = nextHoveredNodeId;
+      applyRowInteractionState();
     };
 
     const getNodeTypeDisplayLabel = (
@@ -1282,6 +1333,8 @@ export class SpatialSkeletonEditTab extends Tab {
 
     const updateList = () => {
       nodesList.textContent = "";
+      renderedRowsByNodeId.clear();
+      renderedEntriesByNodeId.clear();
       if (activeSegmentIds.length === 0) {
         return;
       }
@@ -1309,7 +1362,6 @@ export class SpatialSkeletonEditTab extends Tab {
       let renderedNodeCount = 0;
       let overflowNodeCount = 0;
       let matchedRows = 0;
-      let selectedRow: HTMLDivElement | undefined;
       for (const segmentId of activeSegmentIds) {
         const segmentNodes = nodesBySegment.get(segmentId) ?? [];
         const rows = buildSegmentListRows(segmentId, segmentNodes);
@@ -1322,17 +1374,27 @@ export class SpatialSkeletonEditTab extends Tab {
           renderedNodeCount++;
           const entry = document.createElement("div");
           entry.className = "neuroglancer-spatial-skeleton-tree-entry";
-          const isSelected =
-            node.nodeId === layer.selectedSpatialSkeletonNodeId.value;
-          entry.dataset.selected = String(isSelected);
+          renderedEntriesByNodeId.set(node.nodeId, entry);
 
           const row = document.createElement("div");
           row.className = "neuroglancer-spatial-skeleton-tree-row";
           row.dataset.nodeType = type;
+          renderedRowsByNodeId.set(node.nodeId, row);
           if (inspectionAllowed) {
             row.tabIndex = 0;
             row.setAttribute("role", "button");
-            row.addEventListener("click", () => {
+            row.title =
+              "Click to select. Right-click to move to node. Ctrl+right-click to pin selection.";
+            row.addEventListener("click", (event: MouseEvent) => {
+              const target = event.target;
+              if (
+                target instanceof HTMLElement &&
+                target.closest(
+                  ".neuroglancer-spatial-skeleton-node-actions, .neuroglancer-spatial-skeleton-node-type-toggle",
+                ) !== null
+              ) {
+                return;
+              }
               if (
                 !ensureActionsAllowed("inspectSkeletons", {
                   requireMaxLod: false,
@@ -1341,7 +1403,32 @@ export class SpatialSkeletonEditTab extends Tab {
               ) {
                 return;
               }
-              selectNode(node);
+              selectNode(node, { moveView: false });
+            });
+            row.addEventListener("contextmenu", (event: MouseEvent) => {
+              const target = event.target;
+              if (
+                target instanceof HTMLElement &&
+                target.closest(
+                  ".neuroglancer-spatial-skeleton-node-actions, .neuroglancer-spatial-skeleton-node-type-toggle",
+                ) !== null
+              ) {
+                return;
+              }
+              event.preventDefault();
+              if (
+                !ensureActionsAllowed("inspectSkeletons", {
+                  requireMaxLod: false,
+                  requireVisibleChunks: false,
+                })
+              ) {
+                return;
+              }
+              if (event.ctrlKey || event.metaKey) {
+                selectNode(node, { moveView: false, pin: true });
+                return;
+              }
+              moveViewToNodePosition(node.position);
             });
             row.addEventListener("keydown", (event: KeyboardEvent) => {
               if (event.key !== "Enter" && event.key !== " ") return;
@@ -1354,13 +1441,10 @@ export class SpatialSkeletonEditTab extends Tab {
               ) {
                 return;
               }
-              selectNode(node);
+              selectNode(node, { moveView: false });
             });
           } else {
             row.setAttribute("aria-disabled", "true");
-          }
-          if (isSelected) {
-            selectedRow = row;
           }
 
           const nodeIsTrueEnd = hasTrueEndLabel(node);
@@ -1481,10 +1565,9 @@ export class SpatialSkeletonEditTab extends Tab {
         nodesList.appendChild(more);
       }
       if (pendingScrollToSelectedNode) {
-        pendingScrollToSelectedNode = false;
-        selectedRow?.scrollIntoView({
-          block: "nearest",
-        });
+        applyRowInteractionState({ scrollSelectedIntoView: true });
+      } else {
+        applyRowInteractionState();
       }
     };
 
@@ -1794,7 +1877,12 @@ export class SpatialSkeletonEditTab extends Tab {
     this.registerDisposer(
       layer.selectedSpatialSkeletonNodeId.changed.add(() => {
         pendingScrollToSelectedNode = true;
-        updateList();
+        applyRowInteractionState({ scrollSelectedIntoView: true });
+      }),
+    );
+    this.registerDisposer(
+      mouseState.changed.add(() => {
+        updateHoveredViewerNode();
       }),
     );
     this.registerDisposer(
@@ -1815,6 +1903,7 @@ export class SpatialSkeletonEditTab extends Tab {
 
     updateCollapseButton();
     updateGateStatus();
+    updateHoveredViewerNode();
     refreshNodes();
   }
 }
