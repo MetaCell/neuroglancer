@@ -71,16 +71,13 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
             cacheProvider,
             signal,
         });
-        const packed = packCatmaidSkeletonNodes(nodes, {
-            recordMissingConnections: true,
-        });
+        const packed = packCatmaidSkeletonNodes(nodes);
 
         chunk.vertexPositions = packed.vertexPositions;
         chunk.indices = packed.indices;
 
         // Pack only segment IDs into vertexAttributes (positions are in vertexPositions)
         chunk.vertexAttributes = [packed.segmentIds];
-        chunk.missingConnections = packed.missingConnections;
         chunk.nodeMap = packed.nodeMap;
     }
 }

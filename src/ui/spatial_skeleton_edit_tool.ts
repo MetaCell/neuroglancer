@@ -229,6 +229,7 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
     if (pickedSegmentId === undefined) {
       return false;
     }
+    const skeletonLayer = this.layer.getSpatiallyIndexedSkeletonLayer();
     const isVisible = this.isSpatialSkeletonSegmentVisible(pickedSegmentId);
     if (isVisible) {
       this.removeVisibleSegmentByNumber(pickedSegmentId, { deselect: true });
@@ -246,12 +247,19 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
       ) {
         this.layer.clearSpatialSkeletonMergeAnchor();
       }
-      this.layer.spatialSkeletonState.evictInactiveSegmentNodes(
+      const cachedSegmentIds = new Set<number>(
         [...getVisibleSegments(this.layer.displayState.segmentationGroupState.value).keys()]
           .map((segmentId) => Number(segmentId))
           .filter(
             (segmentId) => Number.isSafeInteger(segmentId) && segmentId > 0,
           ),
+      );
+      for (const retainedSegmentId of skeletonLayer?.getRetainedOverlaySegmentIds() ??
+        []) {
+        cachedSegmentIds.add(retainedSegmentId);
+      }
+      this.layer.spatialSkeletonState.evictInactiveSegmentNodes(
+        cachedSegmentIds,
       );
       StatusMessage.showTemporaryMessage(
         `Removed skeleton ${pickedSegmentId} from visible/editable skeletons.`,
@@ -444,8 +452,16 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
     const x = Number(position[0]);
     const y = Number(position[1]);
     const z = Number(position[2]);
+    const cachedNode =
+      this.layer.spatialSkeletonState.getCachedNode(nodeId) ??
+      skeletonLayer.getNode(nodeId);
+    if (cachedNode?.segmentId === undefined) {
+      throw new Error(
+        `Moved node ${nodeId} is missing from the source-backed overlay cache.`,
+      );
+    }
     await skeletonSource.moveNode(nodeId, x, y, z);
-    skeletonLayer.setNodePosition(nodeId, position);
+    skeletonLayer.retainOverlaySegment(cachedNode.segmentId);
     this.layer.spatialSkeletonState.moveCachedNode(nodeId, position);
     this.layer.markSpatialSkeletonNodeDataChanged({
       invalidateFullSkeletonCache: false,

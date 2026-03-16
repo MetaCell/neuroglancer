@@ -1726,7 +1726,11 @@ export class SpatialSkeletonEditTab extends Tab {
         return;
       }
 
-      skeletonState.evictInactiveSegmentNodes(activeSegmentIds);
+      const cachedSegmentIds = new Set<number>(activeSegmentIds);
+      for (const retainedSegmentId of skeletonLayer.getRetainedOverlaySegmentIds()) {
+        cachedSegmentIds.add(retainedSegmentId);
+      }
+      skeletonState.evictInactiveSegmentNodes(cachedSegmentIds);
 
       void (async () => {
         try {

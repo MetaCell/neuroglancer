@@ -16,32 +16,21 @@
 
 import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
 
-export interface CatmaidMissingConnection {
-  nodeId: number;
-  parentId: number;
-  vertexIndex: number;
-  skeletonId: number;
-}
-
 export interface PackedCatmaidSkeletonData {
   vertexPositions: Float32Array;
   segmentIds: Uint32Array;
   indices: Uint32Array;
   nodeMap: Map<number, number>;
-  missingConnections: CatmaidMissingConnection[];
 }
 
 export function packCatmaidSkeletonNodes(
   nodes: readonly SpatiallyIndexedSkeletonNode[],
-  options: { recordMissingConnections?: boolean } = {},
 ): PackedCatmaidSkeletonData {
-  const { recordMissingConnections = false } = options;
   const numVertices = nodes.length;
   const vertexPositions = new Float32Array(numVertices * 3);
   const segmentIds = new Uint32Array(numVertices);
   const indices: number[] = [];
   const nodeMap = new Map<number, number>();
-  const missingConnections: CatmaidMissingConnection[] = [];
 
   for (let i = 0; i < numVertices; ++i) {
     const node = nodes[i];
@@ -58,15 +47,7 @@ export function packCatmaidSkeletonNodes(
     const parentIndex = nodeMap.get(node.parent_id);
     if (parentIndex !== undefined) {
       indices.push(i, parentIndex);
-      continue;
     }
-    if (!recordMissingConnections) continue;
-    missingConnections.push({
-      nodeId: node.id,
-      parentId: node.parent_id,
-      vertexIndex: i,
-      skeletonId: node.skeleton_id,
-    });
   }
 
   return {
@@ -74,6 +55,5 @@ export function packCatmaidSkeletonNodes(
     segmentIds,
     indices: new Uint32Array(indices),
     nodeMap,
-    missingConnections,
   };
 }

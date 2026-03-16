@@ -2018,9 +2018,6 @@ export class SegmentationUserLayer extends Base {
                   lod: displayState.skeletonLod,
                   sources2d: slicePanelSources,
                   selectedNodeId: this.selectedSpatialSkeletonNodeId,
-                  editMode: this.spatialSkeletonEditMode,
-                  mergeMode: this.spatialSkeletonMergeMode,
-                  splitMode: this.spatialSkeletonSplitMode,
                   pendingNodePositionVersion:
                     this.spatialSkeletonState.pendingNodePositionVersion,
                   getPendingNodePosition: (nodeId) =>
@@ -2056,9 +2053,6 @@ export class SegmentationUserLayer extends Base {
                 gridLevel: displayState.spatialSkeletonGridLevel3d,
                 lod: displayState.skeletonLod,
                 selectedNodeId: this.selectedSpatialSkeletonNodeId,
-                editMode: this.spatialSkeletonEditMode,
-                mergeMode: this.spatialSkeletonMergeMode,
-                splitMode: this.spatialSkeletonSplitMode,
                 pendingNodePositionVersion:
                   this.spatialSkeletonState.pendingNodePositionVersion,
                 getPendingNodePosition: (nodeId) =>
