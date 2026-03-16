@@ -5,6 +5,8 @@ export interface SpatiallyIndexedSkeletonNode {
   y: number;
   z: number;
   skeleton_id: number;
+  radius?: number;
+  confidence?: number;
   labels?: string[];
 }
 

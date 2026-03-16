@@ -224,9 +224,7 @@ function fetchWithCatmaidCredentials(
   );
 }
 
-export class CatmaidClient
-  implements EditableSpatiallyIndexedSkeletonSource
-{
+export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
   private metadataInfoPromiseByKey = new Map<
     string,
     Promise<CatmaidStackInfo | null>
@@ -448,6 +446,8 @@ export class CatmaidClient
       y: n[4],
       z: n[5],
       skeleton_id: skeletonId,
+      radius: Number.isFinite(n[6]) ? n[6] : undefined,
+      confidence: Number.isFinite(n[7]) ? n[7] : undefined,
       labels: Array.isArray(labels?.[n[0]]) ? labels[n[0]] : undefined,
     }));
   }
@@ -661,6 +661,8 @@ export class CatmaidClient
       x: n[2],
       y: n[3],
       z: n[4],
+      radius: Number.isFinite(n[5]) ? n[5] : undefined,
+      confidence: Number.isFinite(n[6]) ? n[6] : undefined,
       skeleton_id: n[7],
       labels: Array.isArray(labels?.[n[0]]) ? labels[n[0]] : undefined,
     }));
@@ -685,6 +687,8 @@ export class CatmaidClient
               x: n[2],
               y: n[3],
               z: n[4],
+              radius: Number.isFinite(n[5]) ? n[5] : undefined,
+              confidence: Number.isFinite(n[6]) ? n[6] : undefined,
               skeleton_id: n[7],
               labels: Array.isArray(lodLabels?.[n[0]])
                 ? lodLabels[n[0]]
@@ -893,9 +897,7 @@ export class CatmaidClient
     };
   }
 
-  async splitSkeleton(
-    nodeId: number,
-  ): Promise<CatmaidSplitSkeletonResult> {
+  async splitSkeleton(nodeId: number): Promise<CatmaidSplitSkeletonResult> {
     return this.splitSkeletonAtNode(nodeId);
   }
 }

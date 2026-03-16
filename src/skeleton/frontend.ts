@@ -14,10 +14,7 @@
  * limitations under the License.
  */
 
-import {
-  GPUHashTable,
-  HashSetShaderManager,
-} from "#src/gpu_hash/shader.js";
+import { GPUHashTable, HashSetShaderManager } from "#src/gpu_hash/shader.js";
 import {
   SegmentColorShaderManager,
   SegmentStatedColorShaderManager,
@@ -274,8 +271,9 @@ class RenderHelper extends RefCounted {
   private segmentColorShaderManager = new SegmentColorShaderManager(
     "segmentColorHash",
   );
-  private segmentStatedColorShaderManager =
-    new SegmentStatedColorShaderManager("segmentStatedColor");
+  private segmentStatedColorShaderManager = new SegmentStatedColorShaderManager(
+    "segmentStatedColor",
+  );
   private gpuSegmentStatedColorHashTable: GPUHashTable<any> | undefined;
   get vertexAttributes(): VertexAttributeRenderInfo[] {
     return this.base.vertexAttributes;
@@ -1790,6 +1788,8 @@ export interface SpatiallyIndexedSkeletonNodeInfo {
   segmentId: number;
   position: Float32Array;
   parentNodeId?: number;
+  radius?: number;
+  confidence?: number;
   labels?: readonly string[];
 }
 
@@ -1928,7 +1928,10 @@ export class SpatiallyIndexedSkeletonLayer
     | (() => boolean)
     | undefined;
   private nodeLocatorIndexKey: string | undefined;
-  private nodeLocatorIndex = new Map<number, SpatiallyIndexedNodeLocatorEntry[]>();
+  private nodeLocatorIndex = new Map<
+    number,
+    SpatiallyIndexedNodeLocatorEntry[]
+  >();
   private baseParentByNodeId = new Map<number, number>();
   private parentReferenceIndex = new Map<
     number,
@@ -2069,7 +2072,8 @@ export class SpatiallyIndexedSkeletonLayer
         }
         const vertexToNodeId = new Map<number, number>();
         for (const [nodeId, vertexIndex] of typedChunk.nodeMap.entries()) {
-          if (vertexIndex < 0 || vertexIndex >= typedChunk.numVertices) continue;
+          if (vertexIndex < 0 || vertexIndex >= typedChunk.numVertices)
+            continue;
           vertexToNodeId.set(vertexIndex, nodeId);
         }
         const indices = typedChunk.indices;
@@ -2259,7 +2263,10 @@ export class SpatiallyIndexedSkeletonLayer
       }),
     );
 
-    this.vertexAttributes = [...this.source.vertexAttributes, selectedNodeAttribute];
+    this.vertexAttributes = [
+      ...this.source.vertexAttributes,
+      selectedNodeAttribute,
+    ];
     this.segmentColorAttributeIndex = undefined;
     const selectedNodeIndex = this.vertexAttributes.findIndex(
       (x) => x.name === selectedNodeAttribute.name,
@@ -2476,7 +2483,9 @@ export class SpatiallyIndexedSkeletonLayer
       if (!this.visibleChunksMatchTargetLod(view, targetLod)) {
         continue;
       }
-      const visibleChunkSet = this.visibleChunkSetsByView.get(view)?.get(sourceId);
+      const visibleChunkSet = this.visibleChunkSetsByView
+        .get(view)
+        ?.get(sourceId);
       if (visibleChunkSet?.has(chunk)) {
         return true;
       }
@@ -2582,7 +2591,7 @@ export class SpatiallyIndexedSkeletonLayer
       nodeId,
       segmentId: segmentIds[entry.vertexIndex],
       position:
-        options.includePendingPosition ?? true
+        (options.includePendingPosition ?? true)
           ? this.getEffectiveNodePosition(positions, entry.vertexIndex, nodeId)
           : positions.subarray(
               entry.vertexIndex * 3,
@@ -2817,7 +2826,9 @@ export class SpatiallyIndexedSkeletonLayer
     }
   }
 
-  private finalizeEditedChunks(changedChunks: Iterable<SpatiallyIndexedSkeletonChunk>) {
+  private finalizeEditedChunks(
+    changedChunks: Iterable<SpatiallyIndexedSkeletonChunk>,
+  ) {
     const seenChunks = new Set<SpatiallyIndexedSkeletonChunk>();
     for (const chunk of changedChunks) {
       if (seenChunks.has(chunk)) {
@@ -3264,7 +3275,9 @@ export class SpatiallyIndexedSkeletonLayer
         targetLod,
       );
       const editableData =
-        targetChunk === undefined ? undefined : this.getEditableChunkData(targetChunk);
+        targetChunk === undefined
+          ? undefined
+          : this.getEditableChunkData(targetChunk);
       if (
         targetChunk === undefined ||
         !this.isChunkVisibleForEditing(targetChunk, targetLod) ||
@@ -3527,7 +3540,9 @@ export class SpatiallyIndexedSkeletonLayer
     }
     if (
       chunk.missingConnections.length > 0 &&
-      chunk.missingConnections.some((connection) => connection.parentId === nodeId)
+      chunk.missingConnections.some(
+        (connection) => connection.parentId === nodeId,
+      )
     ) {
       const filteredExtraVertexMap = chunk.filteredExtraVertexMap;
       if (filteredExtraVertexMap === undefined) {
@@ -3748,7 +3763,8 @@ export class SpatiallyIndexedSkeletonLayer
       selectedSources,
       targetLod,
     )) {
-      const vertexIndex = chunk === childChunk ? childEntry.vertexIndex : undefined;
+      const vertexIndex =
+        chunk === childChunk ? childEntry.vertexIndex : undefined;
       removeExistingParentEdge(chunk, vertexIndex);
     }
 
@@ -4157,7 +4173,11 @@ export class SpatiallyIndexedSkeletonLayer
     if (affectedChunks.size === 0) {
       return false;
     }
-    this.applyNodePositionChangeToFilteredChunks(affectedChunks, nodeId, position);
+    this.applyNodePositionChangeToFilteredChunks(
+      affectedChunks,
+      nodeId,
+      position,
+    );
     this.redrawNeeded.dispatch();
     return true;
   }
@@ -4303,9 +4323,13 @@ export class SpatiallyIndexedSkeletonLayer
     const nodeLocatorIndexKey = this.makeNodeLocatorIndexKey(
       this.getIndexedSources(),
     );
-    for (const chunk of this.iterateCandidateChunks(selectedSources, targetLod, {
-      view,
-    })) {
+    for (const chunk of this.iterateCandidateChunks(
+      selectedSources,
+      targetLod,
+      {
+        view,
+      },
+    )) {
       const filteredChunk = this.updateChunkFilteredBuffer(
         chunk,
         selectedSourceIds,
@@ -4362,18 +4386,10 @@ export class SpatiallyIndexedSkeletonLayer
         }
         edgeShader.bind();
         renderHelper.setPickID(gl, edgeShader, edgePickId);
-        renderHelper.setEdgePickInstanceStride(
-          gl,
-          edgeShader,
-          edgePickStride,
-        );
+        renderHelper.setEdgePickInstanceStride(gl, edgeShader, edgePickStride);
         nodeShader.bind();
         renderHelper.setPickID(gl, nodeShader, nodePickId);
-        renderHelper.setNodePickInstanceStride(
-          gl,
-          nodeShader,
-          nodePickStride,
-        );
+        renderHelper.setNodePickInstanceStride(gl, nodeShader, nodePickStride);
       }
       renderHelper.drawSkeleton(
         gl,
@@ -4395,7 +4411,10 @@ export class SpatiallyIndexedSkeletonLayer
     targetLod: number | undefined,
     nodeLocatorIndexKey: string,
   ): SkeletonChunkInterface | null {
-    const getCachedFilteredChunk = (): SkeletonChunkInterface | null | undefined => {
+    const getCachedFilteredChunk = ():
+      | SkeletonChunkInterface
+      | null
+      | undefined => {
       if (
         chunk.filteredGeneration !== this.generation ||
         chunk.filteredNodeLocatorIndexKey !== nodeLocatorIndexKey
@@ -4496,8 +4515,7 @@ export class SpatiallyIndexedSkeletonLayer
         segmentId: segmentIds[vertexIndex],
         position: this.getEffectiveNodePosition(positions, vertexIndex, nodeId),
         parentNodeId: this.getEffectiveParentNodeId(nodeId),
-        selected:
-          selectedNodeId !== undefined && selectedNodeId === nodeId,
+        selected: selectedNodeId !== undefined && selectedNodeId === nodeId,
       });
     }
 
@@ -4610,10 +4628,8 @@ export class SpatiallyIndexedSkeletonLayer
       filteredSelected[dstVertex] = extraSelected[i] ?? 0;
       filteredPickNodeIds[dstVertex] = extraNodeIds[i] ?? -1;
       filteredPickNodePositions[dstStart] = filteredPositions[dstStart];
-      filteredPickNodePositions[dstStart + 1] =
-        filteredPositions[dstStart + 1];
-      filteredPickNodePositions[dstStart + 2] =
-        filteredPositions[dstStart + 2];
+      filteredPickNodePositions[dstStart + 1] = filteredPositions[dstStart + 1];
+      filteredPickNodePositions[dstStart + 2] = filteredPositions[dstStart + 2];
       filteredPickSegmentIds[dstVertex] = extraSegments[i] ?? 0;
     }
     const filteredPickEdgeSegmentIds = new Uint32Array(
@@ -4693,7 +4709,10 @@ export class SpatiallyIndexedSkeletonLayer
     projectionParameters?: any,
     lod?: number | undefined,
   ) {
-    if (transformedSources === undefined || projectionParameters === undefined) {
+    if (
+      transformedSources === undefined ||
+      projectionParameters === undefined
+    ) {
       return this.displayState.objectAlpha.value <= 0.0;
     }
     return this.areVisibleChunksReady(

@@ -194,13 +194,22 @@
 }
 
 .neuroglancer-spatial-skeleton-section {
+  --neuroglancer-skeleton-actions-width: 3.3em;
+  --neuroglancer-skeleton-type-width: 1.55em;
   border: 1px solid #2f2f2f;
-  padding: 0.4em;
   display: flex;
   flex-direction: column;
-  gap: 0.35em;
   flex: 1 1 auto;
   min-height: 0;
+  overflow: hidden;
+}
+
+.neuroglancer-spatial-skeleton-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5em;
+  padding: 0.35em 0.4em 0 0.4em;
 }
 
 .neuroglancer-spatial-skeleton-section-title {
@@ -209,13 +218,43 @@
   text-transform: uppercase;
 }
 
+.neuroglancer-spatial-skeleton-section-toggle {
+  border: 1px solid #2f2f2f;
+  background: #101010;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+  width: 1.5em;
+  height: 1.5em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.neuroglancer-spatial-skeleton-section-toggle .neuroglancer-icon {
+  min-width: 14px;
+  min-height: 14px;
+}
+
+.neuroglancer-spatial-skeleton-section-toggle:hover .neuroglancer-icon {
+  background-color: #3a3a3a;
+}
+
 .neuroglancer-spatial-skeleton-filter {
-  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0.4em;
+  width: calc(100% - 0.8em);
+  background: #050505;
+  border: 1px solid #2f2f2f;
+  color: #dedede;
+  font-family: monospace;
+  padding: 0.32em 0.45em;
 }
 
 .neuroglancer-spatial-skeleton-summary {
   font-size: small;
   color: #c6c6c6;
+  padding: 0 0.4em 0.25em 0.4em;
 }
 
 .neuroglancer-spatial-skeleton-tree {
@@ -225,107 +264,178 @@
   max-height: 60vh;
   flex: 1 1 auto;
   overflow-y: auto;
-  gap: 0.3em;
+  background: #050505;
+  border-top: 1px solid #1e1e1e;
 }
 
-.neuroglancer-spatial-skeleton-tree-segment {
+.neuroglancer-spatial-skeleton-list-header,
+.neuroglancer-spatial-skeleton-tree-row {
+  display: grid;
+  grid-template-columns:
+    var(--neuroglancer-skeleton-actions-width)
+    var(--neuroglancer-skeleton-type-width)
+    minmax(4.5em, 8em)
+    minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.2em;
+  padding: 0 0.3em;
+}
+
+.neuroglancer-spatial-skeleton-list-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-height: 1.7em;
+  background: #3a3a3a;
+  color: #f0f0f0;
+  font-family: monospace;
+  font-size: 11px;
+  text-transform: lowercase;
+}
+
+.neuroglancer-spatial-skeleton-list-header-spacer {
+  display: block;
+}
+
+.neuroglancer-spatial-skeleton-list-header-actions {
+  width: var(--neuroglancer-skeleton-actions-width);
+}
+
+.neuroglancer-spatial-skeleton-list-header-type {
+  width: var(--neuroglancer-skeleton-type-width);
+}
+
+.neuroglancer-spatial-skeleton-list-header-cell {
+  min-width: 0;
+}
+
+.neuroglancer-spatial-skeleton-tree-entry {
   display: flex;
   flex-direction: column;
-  gap: 0.15em;
-}
-
-.neuroglancer-spatial-skeleton-tree-segment-header {
-  font-family: monospace;
-  font-size: small;
-  color: #bfbfbf;
 }
 
 .neuroglancer-spatial-skeleton-tree-row {
-  display: flex;
-  align-items: stretch;
-  gap: 0.15em;
-}
-
-.neuroglancer-spatial-skeleton-node-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.2em;
-  border: 1px solid #2f2f2f;
-  background: #0a0a0a;
+  min-height: 1.6em;
   color: #d2d2d2;
-  text-align: left;
   font-family: monospace;
   font-size: small;
-  padding: 0.2em 0.35em;
+  background: #050505;
+  transition: background-color 0.12s ease-in-out;
+}
+
+.neuroglancer-spatial-skeleton-tree-row[role="button"] {
   cursor: pointer;
 }
 
-.neuroglancer-spatial-skeleton-node-main[data-selected="true"] {
-  border-color: #6ca4ff;
-  background: #10213e;
+.neuroglancer-spatial-skeleton-tree-row[role="button"]:focus-visible {
+  outline: 1px solid #6ca4ff;
+  outline-offset: -1px;
 }
 
-.neuroglancer-spatial-skeleton-node-main[data-node-type="root"] {
-  border-left-width: 2px;
-  border-left-color: #f0c04f;
+.neuroglancer-spatial-skeleton-tree-entry[data-selected="true"]
+  .neuroglancer-spatial-skeleton-tree-row {
+  background: #242d3c;
 }
 
-.neuroglancer-spatial-skeleton-node-main:disabled {
-  opacity: 0.75;
-  cursor: default;
+.neuroglancer-spatial-skeleton-tree-row[data-node-type="root"] {
+  background: #2e2e2e;
 }
 
-.neuroglancer-spatial-skeleton-node-type {
-  display: inline-flex;
-  align-items: center;
-  flex: none;
+.neuroglancer-spatial-skeleton-tree-entry[data-selected="true"]
+  .neuroglancer-spatial-skeleton-tree-row[data-node-type="root"] {
+  background: #394558;
 }
 
-.neuroglancer-spatial-skeleton-node-type .neuroglancer-icon {
-  min-width: 14px;
-  min-height: 14px;
+.neuroglancer-spatial-skeleton-tree-entry:not([data-selected="true"]):hover
+  .neuroglancer-spatial-skeleton-tree-row:not([data-node-type="root"]) {
+  background: #121212;
 }
 
-.neuroglancer-spatial-skeleton-node-main[data-node-type="root"]
-  .neuroglancer-spatial-skeleton-node-type
-  .neuroglancer-icon {
-  color: #f0c04f;
-}
-
-.neuroglancer-spatial-skeleton-node-text {
+.neuroglancer-spatial-skeleton-node-id {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.neuroglancer-spatial-skeleton-node-root-tag {
-  margin-left: auto;
-  font-size: 10px;
-  color: #f0c04f;
-  text-transform: uppercase;
+.neuroglancer-spatial-skeleton-node-coordinate-cell {
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.neuroglancer-spatial-skeleton-node-coordinates {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #d7d7d7;
+}
+
+.neuroglancer-spatial-skeleton-node-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #a7a7a7;
+  font-size: 11px;
 }
 
 .neuroglancer-spatial-skeleton-node-actions {
   display: inline-flex;
   align-items: center;
   gap: 0.1em;
+  width: var(--neuroglancer-skeleton-actions-width);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.12s ease-in-out;
+  justify-content: flex-start;
 }
 
-.neuroglancer-spatial-skeleton-tree-row:hover
+.neuroglancer-spatial-skeleton-tree-entry:hover
   .neuroglancer-spatial-skeleton-node-actions {
   opacity: 1;
   pointer-events: auto;
 }
 
+.neuroglancer-spatial-skeleton-node-type,
+.neuroglancer-spatial-skeleton-node-type-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--neuroglancer-skeleton-type-width);
+  min-height: 1.4em;
+  color: #cfcfcf;
+}
+
+.neuroglancer-spatial-skeleton-node-type-toggle {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.neuroglancer-spatial-skeleton-node-type .neuroglancer-icon,
+.neuroglancer-spatial-skeleton-node-type-toggle .neuroglancer-icon {
+  min-width: 14px;
+  min-height: 14px;
+}
+
+.neuroglancer-spatial-skeleton-node-type-toggle:hover .neuroglancer-icon {
+  background-color: #3a3a3a;
+}
+
+.neuroglancer-spatial-skeleton-node-type-toggle:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.neuroglancer-spatial-skeleton-node-type-toggle:disabled .neuroglancer-icon {
+  background-color: transparent;
+}
+
 .neuroglancer-spatial-skeleton-node-action {
   border: 1px solid #2f2f2f;
-  background: #0a0a0a;
+  background: #0d0d0d;
   color: inherit;
   padding: 0;
   cursor: pointer;
@@ -351,6 +461,163 @@
 
 .neuroglancer-spatial-skeleton-node-action:disabled .neuroglancer-icon {
   background-color: transparent;
+}
+
+.neuroglancer-spatial-skeleton-node-segment-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.2em;
+  padding: 0 0.35em;
+  font-weight: 600;
+}
+
+.overlay.neuroglancer-spatial-skeleton-properties-overlay {
+  background-color: rgba(0, 0, 0, 0.85);
+}
+
+.overlay-content.neuroglancer-spatial-skeleton-properties-dialog {
+  width: min(24rem, calc(100vw - 2rem));
+  background: #252525;
+  color: #efefef;
+  padding: 0;
+  border: 1px solid #404040;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  font-family: sans-serif;
+}
+
+.neuroglancer-spatial-skeleton-properties-header,
+.neuroglancer-spatial-skeleton-properties-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid #484848;
+}
+
+.neuroglancer-spatial-skeleton-properties-footer {
+  justify-content: flex-end;
+  border-top: 1px solid #484848;
+  border-bottom: 0;
+}
+
+.neuroglancer-spatial-skeleton-properties-title {
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.neuroglancer-spatial-skeleton-properties-close {
+  border: 0;
+  background: transparent;
+  color: #bfbfbf;
+  padding: 0;
+  cursor: pointer;
+}
+
+.neuroglancer-spatial-skeleton-properties-close .neuroglancer-icon {
+  min-width: 16px;
+  min-height: 16px;
+}
+
+.neuroglancer-spatial-skeleton-properties-close:hover .neuroglancer-icon {
+  background-color: #3d3d3d;
+}
+
+.neuroglancer-spatial-skeleton-properties-preview {
+  display: grid;
+  grid-template-columns: 1.3rem auto 1fr;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 1rem 1rem 0.9rem 1rem;
+  padding: 0.3rem 0.45rem;
+  background: #373737;
+  font-family: monospace;
+}
+
+.neuroglancer-spatial-skeleton-properties-preview-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.neuroglancer-spatial-skeleton-properties-preview-icon .neuroglancer-icon {
+  min-width: 14px;
+  min-height: 14px;
+}
+
+.neuroglancer-spatial-skeleton-properties-preview-id {
+  justify-self: start;
+}
+
+.neuroglancer-spatial-skeleton-properties-preview-coordinates {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.neuroglancer-spatial-skeleton-properties-body {
+  padding: 0 1rem 0.9rem 1rem;
+}
+
+.neuroglancer-spatial-skeleton-properties-row {
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 0.65rem;
+}
+
+.neuroglancer-spatial-skeleton-properties-label {
+  color: #e0e0e0;
+  font-size: 0.98rem;
+}
+
+.neuroglancer-spatial-skeleton-properties-value {
+  min-width: 0;
+  color: #f1f1f1;
+  text-align: right;
+  font-size: 0.98rem;
+}
+
+.neuroglancer-spatial-skeleton-properties-coordinates {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.neuroglancer-spatial-skeleton-properties-coordinate-axis {
+  color: #e4d35e;
+  font-weight: 500;
+}
+
+.neuroglancer-spatial-skeleton-properties-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #717171;
+  background: #8b8b8b;
+  color: #111;
+  padding: 0.18rem 0.35rem;
+  text-align: left;
+  font: inherit;
+}
+
+.neuroglancer-spatial-skeleton-properties-input::placeholder {
+  color: #2a2a2a;
+}
+
+.neuroglancer-spatial-skeleton-properties-save {
+  border: 0;
+  border-radius: 0.6rem;
+  background: #575757;
+  color: #f5f5f5;
+  padding: 0.7rem 1rem;
+  cursor: default;
+  font: inherit;
+}
+
+.neuroglancer-spatial-skeleton-properties-save:disabled {
+  opacity: 0.8;
 }
 
 .neuroglancer-spatial-skeleton-actions {

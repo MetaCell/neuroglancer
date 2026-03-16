@@ -185,6 +185,14 @@ export function mapSpatiallyIndexedSkeletonNodeToNodeInfo(
     ),
     position: new Float32Array([x, y, z]),
     parentNodeId,
+    radius:
+      node.radius === undefined || !Number.isFinite(Number(node.radius))
+        ? undefined
+        : Number(node.radius),
+    confidence:
+      node.confidence === undefined || !Number.isFinite(Number(node.confidence))
+        ? undefined
+        : Number(node.confidence),
     labels: node.labels,
   };
 }
