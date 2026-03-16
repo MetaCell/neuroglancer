@@ -1930,10 +1930,14 @@ export class SegmentationUserLayer extends Base {
                   sources2d: slicePanelSources,
                   selectedNodeId: this.selectedSpatialSkeletonNodeId,
                   editMode: this.spatialSkeletonEditMode,
+                  mergeMode: this.spatialSkeletonMergeMode,
+                  splitMode: this.spatialSkeletonSplitMode,
                   pendingNodePositionVersion:
                     this.spatialSkeletonState.pendingNodePositionVersion,
                   getPendingNodePosition: (nodeId) =>
                     this.spatialSkeletonState.getPendingNodePosition(nodeId),
+                  getCachedNode: (nodeId) =>
+                    this.spatialSkeletonState.getCachedNode(nodeId),
                 },
               );
               if (perspectiveSources.length > 0) {
@@ -1963,10 +1967,14 @@ export class SegmentationUserLayer extends Base {
                 lod: displayState.skeletonLod,
                 selectedNodeId: this.selectedSpatialSkeletonNodeId,
                 editMode: this.spatialSkeletonEditMode,
+                mergeMode: this.spatialSkeletonMergeMode,
+                splitMode: this.spatialSkeletonSplitMode,
                 pendingNodePositionVersion:
                   this.spatialSkeletonState.pendingNodePositionVersion,
                 getPendingNodePosition: (nodeId) =>
                   this.spatialSkeletonState.getPendingNodePosition(nodeId),
+                getCachedNode: (nodeId) =>
+                  this.spatialSkeletonState.getCachedNode(nodeId),
               },
             );
             loadedSubsource.addRenderLayer(
