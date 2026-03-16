@@ -136,6 +136,10 @@ function formatNodeCoordinates(position: ArrayLike<number>) {
   return `${Math.round(x)} ${Math.round(y)} ${Math.round(z)}`;
 }
 
+function formatEditableNumber(value: number | undefined, fallback = "0") {
+  return value === undefined ? fallback : `${value}`;
+}
+
 function classifyNodeType(
   node: SpatiallyIndexedSkeletonNodeInfo,
   childCount: number,
@@ -226,11 +230,6 @@ export class SpatialSkeletonEditTab extends Tab {
 
     const nodesSection = document.createElement("div");
     nodesSection.className = "neuroglancer-spatial-skeleton-section";
-    const nodesHeader = document.createElement("div");
-    nodesHeader.className = "neuroglancer-spatial-skeleton-section-header";
-    const nodesTitle = document.createElement("div");
-    nodesTitle.className = "neuroglancer-spatial-skeleton-section-title";
-    nodesTitle.textContent = "Active Skeleton Nodes";
     const collapseButton = document.createElement("button");
     collapseButton.className = "neuroglancer-spatial-skeleton-section-toggle";
     collapseButton.type = "button";
@@ -238,15 +237,16 @@ export class SpatialSkeletonEditTab extends Tab {
     filterInput.type = "text";
     filterInput.placeholder = "Enter ID, coordinates, tags or description";
     filterInput.className = "neuroglancer-spatial-skeleton-filter";
+    const nodesSummaryBar = document.createElement("div");
+    nodesSummaryBar.className = "neuroglancer-spatial-skeleton-summary-bar";
     const nodesSummary = document.createElement("div");
     nodesSummary.className = "neuroglancer-spatial-skeleton-summary";
     const nodesList = document.createElement("div");
     nodesList.className = "neuroglancer-spatial-skeleton-tree";
-    nodesHeader.appendChild(nodesTitle);
-    nodesHeader.appendChild(collapseButton);
-    nodesSection.appendChild(nodesHeader);
     nodesSection.appendChild(filterInput);
-    nodesSection.appendChild(nodesSummary);
+    nodesSummaryBar.appendChild(nodesSummary);
+    nodesSummaryBar.appendChild(collapseButton);
+    nodesSection.appendChild(nodesSummaryBar);
     nodesSection.appendChild(nodesList);
     element.appendChild(nodesSection);
 
@@ -257,6 +257,7 @@ export class SpatialSkeletonEditTab extends Tab {
     let inspectionAllowed = false;
     let navigationAllowed = false;
     let labelEditingAllowed = false;
+    let nodePropertyEditingAllowed = false;
     let nodeDeletionAllowed = false;
     let listCollapsed = false;
     let propertiesDialog: Overlay | undefined;
@@ -332,9 +333,15 @@ export class SpatialSkeletonEditTab extends Tab {
     const ensureActionsAllowed = (
       requiredCapabilities:
         | "inspectSkeletons"
+        | "editNodeProperties"
         | "editNodeLabels"
         | "deleteNodes"
-        | readonly ("inspectSkeletons" | "editNodeLabels" | "deleteNodes")[],
+        | readonly (
+            | "inspectSkeletons"
+            | "editNodeProperties"
+            | "editNodeLabels"
+            | "deleteNodes"
+          )[],
       options: {
         requireMaxLod?: boolean;
         requireVisibleChunks?: boolean;
@@ -455,7 +462,7 @@ export class SpatialSkeletonEditTab extends Tab {
     };
 
     const getNodeDisplayId = (node: SpatiallyIndexedSkeletonNodeInfo) => {
-      return node.segmentId;
+      return node.nodeId;
     };
 
     const getNodeTypeDisplayLabel = (
@@ -498,6 +505,8 @@ export class SpatialSkeletonEditTab extends Tab {
       const typeIconSvg = nodeIsTrueEnd ? svg_flag : NODE_TYPE_ICONS[type];
       const typeIconTitle = nodeIsTrueEnd ? "true end" : NODE_TYPE_LABELS[type];
       const description = getNodeDescriptionText(node);
+      const initialRadius = node.radius ?? 0;
+      const initialConfidence = node.confidence ?? 0;
 
       const header = document.createElement("div");
       header.className = "neuroglancer-spatial-skeleton-properties-header";
@@ -554,7 +563,6 @@ export class SpatialSkeletonEditTab extends Tab {
       const appendPropertyRow = (
         label: string,
         value: string | HTMLElement,
-        options: { readonlyInput?: boolean; placeholder?: string } = {},
       ) => {
         const row = document.createElement("div");
         row.className = "neuroglancer-spatial-skeleton-properties-row";
@@ -565,18 +573,7 @@ export class SpatialSkeletonEditTab extends Tab {
         const valueElement = document.createElement("div");
         valueElement.className =
           "neuroglancer-spatial-skeleton-properties-value";
-        if (options.readonlyInput) {
-          const input = document.createElement("input");
-          input.className = "neuroglancer-spatial-skeleton-properties-input";
-          input.type = "text";
-          input.readOnly = true;
-          input.value =
-            typeof value === "string" ? value : (value.textContent ?? "");
-          if (options.placeholder !== undefined) {
-            input.placeholder = options.placeholder;
-          }
-          valueElement.appendChild(input);
-        } else if (typeof value === "string") {
+        if (typeof value === "string") {
           valueElement.textContent = value;
         } else {
           valueElement.appendChild(value);
@@ -586,7 +583,7 @@ export class SpatialSkeletonEditTab extends Tab {
         body.appendChild(row);
       };
 
-      const coordinatesValue = document.createElement("div");
+      const coordinatesValue = document.createElement("span");
       coordinatesValue.className =
         "neuroglancer-spatial-skeleton-properties-coordinates";
       for (const [axis, value] of [
@@ -594,10 +591,13 @@ export class SpatialSkeletonEditTab extends Tab {
         ["y", Math.round(Number(node.position[1]))],
         ["z", Math.round(Number(node.position[2]))],
       ] as const) {
+        if (coordinatesValue.childNodes.length > 0) {
+          coordinatesValue.appendChild(document.createTextNode(" "));
+        }
         const axisLabel = document.createElement("span");
         axisLabel.className =
           "neuroglancer-spatial-skeleton-properties-coordinate-axis";
-        axisLabel.textContent = axis;
+        axisLabel.textContent = `${axis} `;
         const axisValue = document.createElement("span");
         axisValue.className =
           "neuroglancer-spatial-skeleton-properties-coordinate-value";
@@ -612,22 +612,21 @@ export class SpatialSkeletonEditTab extends Tab {
         "Node type",
         getNodeTypeDisplayLabel(type, nodeIsTrueEnd),
       );
-      appendPropertyRow(
-        "Radius",
-        node.radius === undefined ? "" : String(node.radius),
-        {
-          readonlyInput: true,
-          placeholder: "0",
-        },
-      );
-      appendPropertyRow(
-        "Confidence level",
-        node.confidence === undefined ? "" : String(node.confidence),
-        {
-          readonlyInput: true,
-          placeholder: "0-1/0-100",
-        },
-      );
+      const radiusInput = document.createElement("input");
+      radiusInput.className = "neuroglancer-spatial-skeleton-properties-input";
+      radiusInput.type = "number";
+      radiusInput.step = "any";
+      radiusInput.value = formatEditableNumber(node.radius);
+      appendPropertyRow("Radius", radiusInput);
+      const confidenceInput = document.createElement("input");
+      confidenceInput.className =
+        "neuroglancer-spatial-skeleton-properties-input";
+      confidenceInput.type = "number";
+      confidenceInput.min = "0";
+      confidenceInput.max = "100";
+      confidenceInput.step = "any";
+      confidenceInput.value = formatEditableNumber(node.confidence);
+      appendPropertyRow("Confidence level", confidenceInput);
       if (description !== undefined) {
         appendPropertyRow("Description", description);
       }
@@ -637,10 +636,130 @@ export class SpatialSkeletonEditTab extends Tab {
       const saveButton = document.createElement("button");
       saveButton.className = "neuroglancer-spatial-skeleton-properties-save";
       saveButton.type = "button";
-      saveButton.disabled = true;
       saveButton.textContent = "Save changes";
       footer.appendChild(saveButton);
       overlay.content.appendChild(footer);
+
+      let savePending = false;
+      const setInputValidity = (
+        input: HTMLInputElement,
+        valid: boolean,
+        title: string | undefined,
+      ) => {
+        input.classList.toggle(
+          "neuroglancer-spatial-skeleton-properties-input-invalid",
+          !valid,
+        );
+        if (title === undefined) {
+          input.removeAttribute("title");
+        } else {
+          input.title = title;
+        }
+      };
+      const getParsedProperties = () => {
+        const radius = Number(radiusInput.value);
+        const confidence = Number(confidenceInput.value);
+        const radiusValid = Number.isFinite(radius);
+        const confidenceValid =
+          Number.isFinite(confidence) && confidence >= 0 && confidence <= 100;
+        return {
+          radius,
+          confidence,
+          radiusValid,
+          confidenceValid,
+        };
+      };
+      const updateDialogState = () => {
+        const disabledReason = nodePropertyEditingAllowed
+          ? undefined
+          : layer.getSpatialSkeletonActionsDisabledReason("editNodeProperties");
+        const { radiusValid, confidenceValid } = getParsedProperties();
+        const editable = disabledReason === undefined && !savePending;
+        radiusInput.disabled = !editable;
+        confidenceInput.disabled = !editable;
+        saveButton.disabled = !editable || !radiusValid || !confidenceValid;
+        saveButton.title =
+          disabledReason ??
+          (savePending
+            ? "Saving changes"
+            : radiusValid && confidenceValid
+              ? "Save changes"
+              : "Enter a valid radius and a confidence between 0 and 100");
+        setInputValidity(
+          radiusInput,
+          radiusValid,
+          radiusValid ? undefined : "Radius must be a finite number.",
+        );
+        setInputValidity(
+          confidenceInput,
+          confidenceValid,
+          confidenceValid ? undefined : "Confidence must be between 0 and 100.",
+        );
+      };
+      radiusInput.addEventListener("input", updateDialogState);
+      confidenceInput.addEventListener("input", updateDialogState);
+      saveButton.addEventListener("click", () => {
+        if (!ensureActionsAllowed("editNodeProperties")) return;
+        const { radius, confidence, radiusValid, confidenceValid } =
+          getParsedProperties();
+        if (!radiusValid || !confidenceValid) {
+          updateDialogState();
+          return;
+        }
+        const skeletonLayer = layer.getSpatiallyIndexedSkeletonLayer();
+        if (skeletonLayer === undefined) {
+          StatusMessage.showTemporaryMessage(
+            "No active spatial skeleton layer found for property update.",
+          );
+          return;
+        }
+        const skeletonSource =
+          getEditableSpatiallyIndexedSkeletonSource(skeletonLayer);
+        if (skeletonSource === undefined) {
+          StatusMessage.showTemporaryMessage(
+            "Unable to resolve editable skeleton source for the active layer.",
+          );
+          return;
+        }
+        const radiusChanged = radius !== initialRadius;
+        const confidenceChanged = confidence !== initialConfidence;
+        if (!radiusChanged && !confidenceChanged) {
+          overlay.close();
+          return;
+        }
+        savePending = true;
+        updateDialogState();
+        void (async () => {
+          try {
+            if (radiusChanged) {
+              await skeletonSource.updateRadius(node.nodeId, radius);
+            }
+            if (confidenceChanged) {
+              await skeletonSource.updateConfidence(node.nodeId, confidence);
+            }
+            applyNodePropertiesLocally(node.nodeId, {
+              radius,
+              confidence,
+            });
+            StatusMessage.showTemporaryMessage(
+              `Updated node ${node.nodeId} properties.`,
+            );
+            overlay.close();
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            StatusMessage.showTemporaryMessage(
+              `Failed to update node properties: ${message}`,
+            );
+          } finally {
+            savePending = false;
+            if (propertiesDialog === overlay) {
+              updateDialogState();
+            }
+          }
+        })();
+      });
+      updateDialogState();
     };
 
     const skeletonNavigationApi: SpatiallyIndexedSkeletonNavigationApi = {
@@ -1465,6 +1584,51 @@ export class SpatialSkeletonEditTab extends Tab {
       }
     };
 
+    const applyNodePropertiesLocally = (
+      nodeId: number,
+      updates: {
+        radius: number;
+        confidence: number;
+      },
+    ) => {
+      const updateNode = (node: SpatiallyIndexedSkeletonNodeInfo) => {
+        if (
+          node.radius === updates.radius &&
+          node.confidence === updates.confidence
+        ) {
+          return node;
+        }
+        return {
+          ...node,
+          radius: updates.radius,
+          confidence: updates.confidence,
+        };
+      };
+      skeletonState.updateCachedNode(nodeId, updateNode);
+      let changed = false;
+      const nextNodesBySegment = new Map<
+        number,
+        SpatiallyIndexedSkeletonNodeInfo[]
+      >();
+      for (const [segmentId, segmentNodes] of nodesBySegment) {
+        let segmentChanged = false;
+        const nextSegmentNodes = segmentNodes.map((candidate) => {
+          if (candidate.nodeId !== nodeId) return candidate;
+          const updatedNode = updateNode(candidate);
+          segmentChanged ||= updatedNode !== candidate;
+          return updatedNode;
+        });
+        nextNodesBySegment.set(
+          segmentId,
+          segmentChanged ? nextSegmentNodes : segmentNodes,
+        );
+        changed ||= segmentChanged;
+      }
+      if (changed) {
+        applyNodesBySegment(nextNodesBySegment, loadedNodeSummarySuffix);
+      }
+    };
+
     const refreshNodes = () => {
       const requestId = ++refreshRequestId;
       const skeletonLayer = layer.getSpatiallyIndexedSkeletonLayer();
@@ -1546,6 +1710,9 @@ export class SpatialSkeletonEditTab extends Tab {
       navigationAllowed = inspectionAllowed;
       labelEditingAllowed =
         layer.getSpatialSkeletonActionsDisabledReason("editNodeLabels") ===
+        undefined;
+      nodePropertyEditingAllowed =
+        layer.getSpatialSkeletonActionsDisabledReason("editNodeProperties") ===
         undefined;
       nodeDeletionAllowed =
         layer.getSpatialSkeletonActionsDisabledReason("deleteNodes") ===

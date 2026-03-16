@@ -35,6 +35,7 @@ export interface SpatiallyIndexedSkeletonSourceCapabilities {
   moveNodes: boolean;
   deleteNodes: boolean;
   editNodeLabels: boolean;
+  editNodeProperties: boolean;
   mergeSkeletons: boolean;
   splitSkeletons: boolean;
 }
@@ -55,6 +56,7 @@ export const NO_SPATIALLY_INDEXED_SKELETON_SOURCE_CAPABILITIES: SpatiallyIndexed
     moveNodes: false,
     deleteNodes: false,
     editNodeLabels: false,
+    editNodeProperties: false,
     mergeSkeletons: false,
     splitSkeletons: false,
   };
@@ -80,6 +82,7 @@ export function isEditableSpatiallyIndexedSkeletonSource(
     capabilities.moveNodes &&
     capabilities.deleteNodes &&
     capabilities.editNodeLabels &&
+    capabilities.editNodeProperties &&
     capabilities.mergeSkeletons &&
     capabilities.splitSkeletons
   );
@@ -114,6 +117,9 @@ export function getSpatiallyIndexedSkeletonSourceCapabilities(
     editNodeLabels:
       hasFunction(value, "addNodeLabel") &&
       hasFunction(value, "removeNodeLabel"),
+    editNodeProperties:
+      hasFunction(value, "updateRadius") &&
+      hasFunction(value, "updateConfidence"),
     mergeSkeletons: hasFunction(value, "mergeSkeletons"),
     splitSkeletons: hasFunction(value, "splitSkeleton"),
   };
@@ -134,6 +140,7 @@ export function hasAnySpatiallyIndexedSkeletonEditingCapability(
     capabilities.moveNodes ||
     capabilities.deleteNodes ||
     capabilities.editNodeLabels ||
+    capabilities.editNodeProperties ||
     capabilities.mergeSkeletons ||
     capabilities.splitSkeletons
   );
@@ -149,6 +156,7 @@ function spatiallyIndexedSkeletonSourceCapabilitiesEqual(
     a.moveNodes === b.moveNodes &&
     a.deleteNodes === b.deleteNodes &&
     a.editNodeLabels === b.editNodeLabels &&
+    a.editNodeProperties === b.editNodeProperties &&
     a.mergeSkeletons === b.mergeSkeletons &&
     a.splitSkeletons === b.splitSkeletons
   );

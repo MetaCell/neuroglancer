@@ -1509,6 +1509,9 @@ export class SegmentationUserLayer extends Base {
               editNodeLabels:
                 capabilities.editNodeLabels ||
                 sourceCapabilities.editNodeLabels,
+              editNodeProperties:
+                capabilities.editNodeProperties ||
+                sourceCapabilities.editNodeProperties,
               mergeSkeletons:
                 capabilities.mergeSkeletons ||
                 sourceCapabilities.mergeSkeletons,
@@ -1530,6 +1533,7 @@ export class SegmentationUserLayer extends Base {
         moveNodes: false,
         deleteNodes: false,
         editNodeLabels: false,
+        editNodeProperties: false,
         mergeSkeletons: false,
         splitSkeletons: false,
       },
@@ -1566,6 +1570,8 @@ export class SegmentationUserLayer extends Base {
           return "node deletion";
         case "editNodeLabels":
           return "node label editing";
+        case "editNodeProperties":
+          return "node property editing";
         case "mergeSkeletons":
           return "skeleton merging";
         case "splitSkeletons":

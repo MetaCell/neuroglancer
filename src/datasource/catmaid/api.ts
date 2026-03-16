@@ -123,6 +123,17 @@ async function tryReadErrorPayload(
   }
 }
 
+function mapCatmaidConfidenceToPercent(confidence: number | undefined) {
+  if (confidence === undefined) return undefined;
+  const normalized = Math.max(1, Math.min(5, confidence));
+  return ((normalized - 1) / 4) * 100;
+}
+
+function mapPercentConfidenceToCatmaid(confidence: number) {
+  const normalized = Math.max(0, Math.min(100, confidence));
+  return Math.round(1 + (normalized / 100) * 4);
+}
+
 export function getCatmaidProjectSpaceBounds(info: CatmaidStackInfo): {
   min: { x: number; y: number; z: number };
   max: { x: number; y: number; z: number };
@@ -447,7 +458,9 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
       z: n[5],
       skeleton_id: skeletonId,
       radius: Number.isFinite(n[6]) ? n[6] : undefined,
-      confidence: Number.isFinite(n[7]) ? n[7] : undefined,
+      confidence: Number.isFinite(n[7])
+        ? mapCatmaidConfidenceToPercent(n[7])
+        : undefined,
       labels: Array.isArray(labels?.[n[0]]) ? labels[n[0]] : undefined,
     }));
   }
@@ -662,7 +675,9 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
       y: n[3],
       z: n[4],
       radius: Number.isFinite(n[5]) ? n[5] : undefined,
-      confidence: Number.isFinite(n[6]) ? n[6] : undefined,
+      confidence: Number.isFinite(n[6])
+        ? mapCatmaidConfidenceToPercent(n[6])
+        : undefined,
       skeleton_id: n[7],
       labels: Array.isArray(labels?.[n[0]]) ? labels[n[0]] : undefined,
     }));
@@ -688,7 +703,9 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
               y: n[3],
               z: n[4],
               radius: Number.isFinite(n[5]) ? n[5] : undefined,
-              confidence: Number.isFinite(n[6]) ? n[6] : undefined,
+              confidence: Number.isFinite(n[6])
+                ? mapCatmaidConfidenceToPercent(n[6])
+                : undefined,
               skeleton_id: n[7],
               labels: Array.isArray(lodLabels?.[n[0]])
                 ? lodLabels[n[0]]
@@ -870,6 +887,34 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
       () => new URLSearchParams({ label: normalizedLabel }),
       () => new URLSearchParams({ tags: normalizedLabel }),
     ]);
+  }
+
+  async updateRadius(nodeId: number, radius: number): Promise<void> {
+    if (!Number.isFinite(radius)) {
+      throw new Error("Radius must be a finite number.");
+    }
+    const body = new URLSearchParams({
+      radius: radius.toString(),
+    });
+    appendCatmaidState(body);
+    await this.fetch(`treenode/${nodeId}/radius`, {
+      method: "POST",
+      body,
+    });
+  }
+
+  async updateConfidence(nodeId: number, confidence: number): Promise<void> {
+    if (!Number.isFinite(confidence) || confidence < 0 || confidence > 100) {
+      throw new Error("Confidence must be between 0 and 100.");
+    }
+    const body = new URLSearchParams({
+      new_confidence: mapPercentConfidenceToCatmaid(confidence).toString(),
+    });
+    appendCatmaidState(body);
+    await this.fetch(`treenodes/${nodeId}/confidence`, {
+      method: "POST",
+      body,
+    });
   }
 
   async mergeSkeletons(

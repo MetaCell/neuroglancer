@@ -90,6 +90,8 @@ export interface EditableSpatiallyIndexedSkeletonSource
   ): Promise<void>;
   addNodeLabel(nodeId: number, label: string): Promise<void>;
   removeNodeLabel(nodeId: number, label: string): Promise<void>;
+  updateRadius(nodeId: number, radius: number): Promise<void>;
+  updateConfidence(nodeId: number, confidence: number): Promise<void>;
   mergeSkeletons(
     fromNodeId: number,
     toNodeId: number,
