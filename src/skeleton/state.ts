@@ -223,6 +223,18 @@ export class SpatialSkeletonState extends RefCounted {
   readonly editMode = new WatchableValue(false);
   readonly mergeMode = new WatchableValue(false);
   readonly splitMode = new WatchableValue(false);
+  readonly primaryInspectedSegmentId = new WatchableValue<number | undefined>(
+    undefined,
+  );
+  readonly secondaryInspectedSegmentId = new WatchableValue<
+    number | undefined
+  >(undefined);
+  readonly mergeAnchorNodeId = new WatchableValue<number | undefined>(
+    undefined,
+  );
+  readonly mergeAnchorSegmentId = new WatchableValue<number | undefined>(
+    undefined,
+  );
   readonly selectedNodeId = new WatchableValue<number | undefined>(undefined);
   readonly treeEndNodeId = new WatchableValue<number | undefined>(undefined);
   readonly visibleChunksNeeded = new WatchableValue(0);
@@ -265,14 +277,145 @@ export class SpatialSkeletonState extends RefCounted {
     return this.pendingNodePositions.get(nodeId);
   }
 
-  setPendingNodePosition(nodeId: number, position: ArrayLike<number>) {
+  private normalizeNodeId(nodeId: number | undefined) {
+    if (nodeId === undefined) return undefined;
     const normalizedNodeId = Math.round(Number(nodeId));
+    if (
+      !Number.isSafeInteger(normalizedNodeId) ||
+      normalizedNodeId <= 0
+    ) {
+      return undefined;
+    }
+    return normalizedNodeId;
+  }
+
+  private normalizeSegmentId(segmentId: number | undefined) {
+    if (segmentId === undefined) return undefined;
+    const normalizedSegmentId = Math.round(Number(segmentId));
+    if (
+      !Number.isSafeInteger(normalizedSegmentId) ||
+      normalizedSegmentId <= 0
+    ) {
+      return undefined;
+    }
+    return normalizedSegmentId;
+  }
+
+  getInspectedSegmentIds() {
+    const segments: number[] = [];
+    const primarySegmentId = this.primaryInspectedSegmentId.value;
+    if (primarySegmentId !== undefined) {
+      segments.push(primarySegmentId);
+    }
+    const secondarySegmentId = this.secondaryInspectedSegmentId.value;
+    if (
+      secondarySegmentId !== undefined &&
+      secondarySegmentId !== primarySegmentId
+    ) {
+      segments.push(secondarySegmentId);
+    }
+    return segments;
+  }
+
+  setInspectedSegments(
+    primarySegmentId: number | undefined,
+    secondarySegmentId: number | undefined = undefined,
+  ) {
+    const normalizedPrimarySegmentId =
+      this.normalizeSegmentId(primarySegmentId);
+    let normalizedSecondarySegmentId =
+      this.normalizeSegmentId(secondarySegmentId);
+    if (normalizedSecondarySegmentId === normalizedPrimarySegmentId) {
+      normalizedSecondarySegmentId = undefined;
+    }
+    let changed = false;
+    if (this.primaryInspectedSegmentId.value !== normalizedPrimarySegmentId) {
+      this.primaryInspectedSegmentId.value = normalizedPrimarySegmentId;
+      changed = true;
+    }
+    if (
+      this.secondaryInspectedSegmentId.value !== normalizedSecondarySegmentId
+    ) {
+      this.secondaryInspectedSegmentId.value = normalizedSecondarySegmentId;
+      changed = true;
+    }
+    if (changed) {
+      this.evictInactiveSegmentNodes(this.getInspectedSegmentIds());
+    }
+    return changed;
+  }
+
+  inspectSegment(
+    segmentId: number,
+    options: {
+      secondary?: boolean;
+    } = {},
+  ) {
+    const normalizedSegmentId = this.normalizeSegmentId(segmentId);
+    if (normalizedSegmentId === undefined) {
+      return false;
+    }
+    if (options.secondary) {
+      const primarySegmentId = this.primaryInspectedSegmentId.value;
+      if (primarySegmentId === undefined) {
+        return this.setInspectedSegments(normalizedSegmentId);
+      }
+      if (primarySegmentId === normalizedSegmentId) {
+        return this.setInspectedSegments(normalizedSegmentId, undefined);
+      }
+      return this.setInspectedSegments(
+        primarySegmentId,
+        normalizedSegmentId,
+      );
+    }
+    return this.setInspectedSegments(normalizedSegmentId);
+  }
+
+  clearInspectedSegments() {
+    return this.setInspectedSegments(undefined, undefined);
+  }
+
+  clearSecondaryInspectedSegment() {
+    return this.setInspectedSegments(this.primaryInspectedSegmentId.value);
+  }
+
+  setMergeAnchor(
+    nodeId: number | undefined,
+    segmentId: number | undefined,
+  ) {
+    const normalizedNodeId = this.normalizeNodeId(nodeId);
+    const normalizedSegmentId = this.normalizeSegmentId(segmentId);
+    const nextNodeId =
+      normalizedNodeId !== undefined && normalizedSegmentId !== undefined
+        ? normalizedNodeId
+        : undefined;
+    const nextSegmentId =
+      normalizedNodeId !== undefined && normalizedSegmentId !== undefined
+        ? normalizedSegmentId
+        : undefined;
+    let changed = false;
+    if (this.mergeAnchorNodeId.value !== nextNodeId) {
+      this.mergeAnchorNodeId.value = nextNodeId;
+      changed = true;
+    }
+    if (this.mergeAnchorSegmentId.value !== nextSegmentId) {
+      this.mergeAnchorSegmentId.value = nextSegmentId;
+      changed = true;
+    }
+    return changed;
+  }
+
+  clearMergeAnchor() {
+    return this.setMergeAnchor(undefined, undefined);
+  }
+
+  setPendingNodePosition(nodeId: number, position: ArrayLike<number>) {
+    const normalizedNodeId = this.normalizeNodeId(nodeId);
     const x = Number(position[0]);
     const y = Number(position[1]);
     const z = Number(position[2]);
     if (
-      !Number.isSafeInteger(normalizedNodeId) ||
-      normalizedNodeId <= 0 ||
+      normalizedNodeId === undefined ||
       !Number.isFinite(x) ||
       !Number.isFinite(y) ||
       !Number.isFinite(z)
@@ -298,10 +441,9 @@ export class SpatialSkeletonState extends RefCounted {
   }
 
   clearPendingNodePosition(nodeId: number) {
-    const normalizedNodeId = Math.round(Number(nodeId));
+    const normalizedNodeId = this.normalizeNodeId(nodeId);
     if (
-      !Number.isSafeInteger(normalizedNodeId) ||
-      normalizedNodeId <= 0 ||
+      normalizedNodeId === undefined ||
       !this.pendingNodePositions.delete(normalizedNodeId)
     ) {
       return false;

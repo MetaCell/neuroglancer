@@ -125,4 +125,61 @@ describe("skeleton/state", () => {
     expect(state.getCachedSegmentNodes(11)).toBeUndefined();
     expect(state.getCachedNode(5)).toBeUndefined();
   });
+
+  it("keeps inspection bounded to a primary and secondary segment", () => {
+    const state = new SpatialSkeletonState();
+    (state as any).fullSegmentNodeCache.set(11, [
+      {
+        nodeId: 1,
+        segmentId: 11,
+        position: new Float32Array([1, 2, 3]),
+      },
+    ]);
+    (state as any).fullSegmentNodeCache.set(13, [
+      {
+        nodeId: 2,
+        segmentId: 13,
+        position: new Float32Array([4, 5, 6]),
+      },
+    ]);
+    (state as any).fullSegmentNodeCache.set(17, [
+      {
+        nodeId: 3,
+        segmentId: 17,
+        position: new Float32Array([7, 8, 9]),
+      },
+    ]);
+
+    expect(state.setInspectedSegments(11, 13)).toBe(true);
+    expect(state.getInspectedSegmentIds()).toEqual([11, 13]);
+    expect(state.getCachedSegmentNodes(17)).toBeUndefined();
+
+    expect(state.inspectSegment(17)).toBe(true);
+    expect(state.getInspectedSegmentIds()).toEqual([17]);
+    expect(state.getCachedSegmentNodes(11)).toBeUndefined();
+    expect(state.getCachedSegmentNodes(13)).toBeUndefined();
+  });
+
+  it("stores merge anchor state only when both node and segment ids are valid", () => {
+    const state = new SpatialSkeletonState();
+
+    expect(state.setMergeAnchor(5, 11)).toBe(true);
+    expect(state.mergeAnchorNodeId.value).toBe(5);
+    expect(state.mergeAnchorSegmentId.value).toBe(11);
+
+    expect(state.setMergeAnchor(7, undefined)).toBe(true);
+    expect(state.mergeAnchorNodeId.value).toBeUndefined();
+    expect(state.mergeAnchorSegmentId.value).toBeUndefined();
+  });
+
+  it("keeps primary inspection stable when adding a secondary segment", () => {
+    const state = new SpatialSkeletonState();
+
+    expect(state.inspectSegment(11)).toBe(true);
+    expect(state.inspectSegment(13, { secondary: true })).toBe(true);
+    expect(state.getInspectedSegmentIds()).toEqual([11, 13]);
+
+    expect(state.inspectSegment(11, { secondary: true })).toBe(true);
+    expect(state.getInspectedSegmentIds()).toEqual([11]);
+  });
 });

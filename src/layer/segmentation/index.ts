@@ -74,7 +74,11 @@ import type {
   PreprocessedSegmentPropertyMap,
   SegmentPropertyMap,
 } from "#src/segmentation_display_state/property_map.js";
-import { removeSegmentFromVisibleSets } from "#src/segmentation_display_state/base.js";
+import {
+  addSegmentToVisibleSets,
+  getVisibleSegments,
+  removeSegmentFromVisibleSets,
+} from "#src/segmentation_display_state/base.js";
 import { getPreprocessedSegmentPropertyMap } from "#src/segmentation_display_state/property_map.js";
 import { LocalSegmentationGraphSource } from "#src/segmentation_graph/local.js";
 import { VisibleSegmentEquivalencePolicy } from "#src/segmentation_graph/segment_id.js";
@@ -1363,6 +1367,93 @@ export class SegmentationUserLayer extends Base {
     );
   };
 
+  inspectSpatialSkeletonSegment = (
+    segmentId: number,
+    options: { secondary?: boolean } = {},
+  ) => {
+    void options;
+    const normalizedSegmentId = Math.round(Number(segmentId));
+    if (
+      !Number.isSafeInteger(normalizedSegmentId) ||
+      normalizedSegmentId <= 0
+    ) {
+      return false;
+    }
+    const visibleSegments = getVisibleSegments(
+      this.displayState.segmentationGroupState.value,
+    );
+    if (visibleSegments.has(BigInt(normalizedSegmentId))) {
+      return false;
+    }
+    addSegmentToVisibleSets(
+      this.displayState.segmentationGroupState.value,
+      BigInt(normalizedSegmentId),
+    );
+    return true;
+  };
+
+  getInspectedSpatialSkeletonSegmentIds = () => {
+    return [...getVisibleSegments(this.displayState.segmentationGroupState.value)
+      .keys()]
+      .map((segmentId) => Number(segmentId))
+      .filter(
+        (segmentId) => Number.isSafeInteger(segmentId) && segmentId > 0,
+      )
+      .sort((a, b) => a - b);
+  };
+
+  clearInspectedSpatialSkeletonSegments = () => {
+    return false;
+  };
+
+  clearSecondaryInspectedSpatialSkeletonSegment = () => {
+    return false;
+  };
+
+  setSpatialSkeletonMergeAnchor = (
+    nodeId: number | undefined,
+    segmentId: number | undefined,
+  ) => {
+    return this.spatialSkeletonState.setMergeAnchor(nodeId, segmentId);
+  };
+
+  clearSpatialSkeletonMergeAnchor = () => {
+    return this.spatialSkeletonState.clearMergeAnchor();
+  };
+
+  ensureSpatialSkeletonInspectionFromSelection = () => {
+    const selectedNodeId = this.selectedSpatialSkeletonNodeId.value;
+    const selectedNode =
+      selectedNodeId === undefined
+        ? undefined
+        : this.spatialSkeletonState.getCachedNode(selectedNodeId);
+    const visibleSegments = getVisibleSegments(
+      this.displayState.segmentationGroupState.value,
+    );
+    if (
+      selectedNode !== undefined &&
+      visibleSegments.has(BigInt(selectedNode.segmentId))
+    ) {
+      return selectedNode.segmentId;
+    }
+    const selectedSegmentValue =
+      this.displayState.segmentSelectionState.baseValue ?? undefined;
+    const selectedSegmentId =
+      selectedSegmentValue === undefined
+        ? undefined
+        : Number(selectedSegmentValue);
+    if (
+      selectedSegmentId === undefined ||
+      !Number.isSafeInteger(selectedSegmentId) ||
+      selectedSegmentId <= 0
+    ) {
+      return undefined;
+    }
+    return visibleSegments.has(BigInt(selectedSegmentId))
+      ? selectedSegmentId
+      : undefined;
+  };
+
   clearSpatialSkeletonNodeSelection = (pin: boolean | "toggle" = false) => {
     this.selectedSpatialSkeletonNodeId.value = undefined;
     this.manager.root.selectionState.captureSingleLayerState(
@@ -1422,14 +1513,12 @@ export class SegmentationUserLayer extends Base {
   );
   readonly spatialSkeletonActionsAllowed = this.registerDisposer(
     makeCachedDerivedWatchableValue(
-      (sourceCapabilities, maxLodSelected, visibleChunksLoaded) =>
+      (sourceCapabilities, maxLodSelected) =>
         hasAnySpatiallyIndexedSkeletonEditingCapability(sourceCapabilities) &&
-        maxLodSelected &&
-        visibleChunksLoaded,
+        maxLodSelected,
       [
         this.spatialSkeletonSourceCapabilities,
         this.spatialSkeletonEditModeAllowed,
-        this.spatialSkeletonVisibleChunksLoaded,
       ],
     ),
   );
@@ -1794,7 +1883,7 @@ export class SegmentationUserLayer extends Base {
       requireVisibleChunks?: boolean;
     } = {},
   ) {
-    const { requireMaxLod = true, requireVisibleChunks = true } = options;
+    const { requireMaxLod = true, requireVisibleChunks = false } = options;
     const missingCapabilityReason =
       this.getMissingSpatialSkeletonCapabilityReason(requiredCapabilities);
     if (missingCapabilityReason !== undefined) {
@@ -1938,6 +2027,7 @@ export class SegmentationUserLayer extends Base {
                     this.spatialSkeletonState.getPendingNodePosition(nodeId),
                   getCachedNode: (nodeId) =>
                     this.spatialSkeletonState.getCachedNode(nodeId),
+                  inspectionState: this.spatialSkeletonState,
                 },
               );
               if (perspectiveSources.length > 0) {
@@ -1975,6 +2065,7 @@ export class SegmentationUserLayer extends Base {
                   this.spatialSkeletonState.getPendingNodePosition(nodeId),
                 getCachedNode: (nodeId) =>
                   this.spatialSkeletonState.getCachedNode(nodeId),
+                inspectionState: this.spatialSkeletonState,
               },
             );
             loadedSubsource.addRenderLayer(

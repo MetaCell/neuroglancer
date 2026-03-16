@@ -1708,12 +1708,9 @@ export class SpatialSkeletonEditTab extends Tab {
     const refreshNodes = () => {
       const requestId = ++refreshRequestId;
       const skeletonLayer = layer.getSpatiallyIndexedSkeletonLayer();
-      const activeSegmentBigints = [
-        ...getVisibleSegments(
-          layer.displayState.segmentationGroupState.value,
-        ).keys(),
-      ];
-      activeSegmentIds = activeSegmentBigints
+      activeSegmentIds = [...getVisibleSegments(
+        layer.displayState.segmentationGroupState.value,
+      ).keys()]
         .map((segmentId) => Number(segmentId))
         .filter((segmentId) => Number.isFinite(segmentId))
         .sort((a, b) => a - b);
@@ -1724,7 +1721,7 @@ export class SpatialSkeletonEditTab extends Tab {
         layer.clearSpatialSkeletonNodeSelection(false);
         nodesSummary.removeAttribute("title");
         nodesSummary.textContent =
-          "Set one or more segments active in Seg tab to inspect skeleton nodes.";
+          "Make one or more segments visible in Seg tab to load editable skeleton nodes.";
         updateList();
         return;
       }
