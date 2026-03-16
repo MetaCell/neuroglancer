@@ -955,22 +955,15 @@ export class SpatialSkeletonEditTab extends Tab {
       void (async () => {
         try {
           if (present) {
-            await skeletonSource.addNodeLabel(
-              node.nodeId,
-              CATMAID_TRUE_END_LABEL,
-            );
-            StatusMessage.showTemporaryMessage(
-              `Set node ${node.nodeId} as true end.`,
-            );
+            await skeletonSource.setTrueEnd(node.nodeId);
           } else {
-            await skeletonSource.removeNodeLabel(
-              node.nodeId,
-              CATMAID_TRUE_END_LABEL,
-            );
-            StatusMessage.showTemporaryMessage(
-              `Removed true end from node ${node.nodeId}.`,
-            );
+            await skeletonSource.removeTrueEnd(node.nodeId);
           }
+          StatusMessage.showTemporaryMessage(
+            present
+              ? `Set node ${node.nodeId} as true end.`
+              : `Removed true end from node ${node.nodeId}.`,
+          );
           applyTrueEndLabelLocally(node.nodeId, present);
         } catch (error) {
           const message =

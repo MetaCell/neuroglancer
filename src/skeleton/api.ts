@@ -48,6 +48,10 @@ export interface SpatiallyIndexedSkeletonSplitResult {
   newSkeletonId: number | undefined;
 }
 
+export interface SpatiallyIndexedSkeletonDescriptionUpdateOptions {
+  trueEnd: boolean;
+}
+
 export interface SpatiallyIndexedSkeletonSource {
   listSkeletons(): Promise<number[]>;
   getSkeleton(skeletonId: number): Promise<SpatiallyIndexedSkeletonNode[]>;
@@ -88,8 +92,13 @@ export interface EditableSpatiallyIndexedSkeletonSource
       childNodeIds?: readonly number[];
     },
   ): Promise<void>;
-  addNodeLabel(nodeId: number, label: string): Promise<void>;
-  removeNodeLabel(nodeId: number, label: string): Promise<void>;
+  updateDescription(
+    nodeId: number,
+    description: string,
+    options: SpatiallyIndexedSkeletonDescriptionUpdateOptions,
+  ): Promise<void>;
+  setTrueEnd(nodeId: number): Promise<void>;
+  removeTrueEnd(nodeId: number): Promise<void>;
   updateRadius(nodeId: number, radius: number): Promise<void>;
   updateConfidence(nodeId: number, confidence: number): Promise<void>;
   mergeSkeletons(

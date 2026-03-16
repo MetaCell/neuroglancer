@@ -209,6 +209,86 @@ function isSpatialSkeletonClosedEndLabel(label: string) {
   );
 }
 
+function normalizeSpatialSkeletonLabel(label: string) {
+  return label.trim().toLowerCase();
+}
+
+function getSpatialSkeletonDescriptionLabels(
+  labels: readonly string[] | undefined,
+) {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const label of labels ?? []) {
+    const trimmed = label.trim();
+    if (trimmed.length === 0 || isSpatialSkeletonClosedEndLabel(trimmed)) {
+      continue;
+    }
+    const key = normalizeSpatialSkeletonLabel(trimmed);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(trimmed);
+  }
+  return result;
+}
+
+function parseSpatialSkeletonDescriptionLabels(value: string) {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const rawLabel of value.split(/\r?\n/)) {
+    const trimmed = rawLabel.trim();
+    if (trimmed.length === 0 || isSpatialSkeletonClosedEndLabel(trimmed)) {
+      continue;
+    }
+    const key = normalizeSpatialSkeletonLabel(trimmed);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(trimmed);
+  }
+  return result;
+}
+
+function spatialSkeletonLabelListsEqual(
+  a: readonly string[] | undefined,
+  b: readonly string[] | undefined,
+) {
+  if (a === b) return true;
+  if (a === undefined || b === undefined) {
+    return a === undefined && b === undefined;
+  }
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function mergeSpatialSkeletonNodeLabels(
+  labels: readonly string[] | undefined,
+  descriptionLabels: readonly string[],
+) {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const label of labels ?? []) {
+    const trimmed = label.trim();
+    if (trimmed.length === 0 || !isSpatialSkeletonClosedEndLabel(trimmed)) {
+      continue;
+    }
+    const key = normalizeSpatialSkeletonLabel(trimmed);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(trimmed);
+  }
+  for (const label of descriptionLabels) {
+    const trimmed = label.trim();
+    if (trimmed.length === 0) continue;
+    const key = normalizeSpatialSkeletonLabel(trimmed);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(trimmed);
+  }
+  return result.length === 0 ? undefined : result;
+}
+
 function getSpatialSkeletonDisplayNodeType(
   node: SpatiallyIndexedSkeletonNodeInfo,
   childCount: number | undefined,
@@ -1754,11 +1834,7 @@ export class SegmentationUserLayer extends Base {
     if (localDescription !== undefined && localDescription.length > 0) {
       return localDescription;
     }
-    const descriptiveLabels = (node.labels ?? [])
-      .map((label) => label.trim())
-      .filter(
-        (label) => label.length > 0 && !isSpatialSkeletonClosedEndLabel(label),
-      );
+    const descriptiveLabels = getSpatialSkeletonDescriptionLabels(node.labels);
     return descriptiveLabels.length === 0
       ? undefined
       : descriptiveLabels.join(", ");
@@ -2602,13 +2678,94 @@ export class SegmentationUserLayer extends Base {
     if (this.spatialSkeletonTreeEndNodeId.value === nodeId) {
       appendValue("Branch", "Current tree-end anchor");
     }
-    const description = this.getSpatialSkeletonNodeDisplayDescription(nodeInfo);
-    if (description !== undefined) {
+    const descriptionLabels = getSpatialSkeletonDescriptionLabels(
+      cachedNodeInfo?.labels ?? nodeInfo.labels,
+    );
+    const descriptionText = descriptionLabels.join("\n");
+    const descriptionEditingDisabledReason =
+      skeletonSource === undefined
+        ? "Unable to resolve editable skeleton source for the active layer."
+        : cachedNodeInfo === undefined
+          ? "Load the active skeleton in the Skeleton tab before editing description."
+          : this.getSpatialSkeletonActionsDisabledReason("editNodeLabels");
+    if (descriptionEditingDisabledReason === undefined) {
+      const descriptionElement = document.createElement("textarea");
+      descriptionElement.classList.add(
+        "neuroglancer-spatial-skeleton-selection-description",
+      );
+      descriptionElement.rows = 3;
+      descriptionElement.placeholder = "Description";
+      descriptionElement.value = descriptionText;
+      descriptionElement.addEventListener("change", () => {
+        if (skeletonSource === undefined || cachedNodeInfo === undefined) {
+          return;
+        }
+        const nextDescriptionLabels = parseSpatialSkeletonDescriptionLabels(
+          descriptionElement.value,
+        );
+        if (
+          spatialSkeletonLabelListsEqual(
+            descriptionLabels,
+            nextDescriptionLabels,
+          )
+        ) {
+          descriptionElement.value = nextDescriptionLabels.join("\n");
+          return;
+        }
+        descriptionElement.disabled = true;
+        void (async () => {
+          try {
+            const nextLabels = mergeSpatialSkeletonNodeLabels(
+              cachedNodeInfo.labels,
+              nextDescriptionLabels,
+            );
+            await skeletonSource.updateDescription(
+              nodeInfo.nodeId,
+              descriptionElement.value,
+              {
+                trueEnd: hasSpatialSkeletonTrueEndLabel(cachedNodeInfo.labels),
+              },
+            );
+            this.spatialSkeletonState.updateCachedNode(
+              nodeInfo.nodeId,
+              (node) => {
+                if (spatialSkeletonLabelListsEqual(node.labels, nextLabels)) {
+                  return node;
+                }
+                return {
+                  ...node,
+                  labels: nextLabels,
+                };
+              },
+            );
+            this.markSpatialSkeletonNodeDataChanged({
+              invalidateFullSkeletonCache: false,
+            });
+            StatusMessage.showTemporaryMessage(
+              nextDescriptionLabels.length === 0
+                ? `Cleared description for node ${nodeInfo.nodeId}.`
+                : `Updated description for node ${nodeInfo.nodeId}.`,
+            );
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            descriptionElement.value = descriptionText;
+            StatusMessage.showTemporaryMessage(
+              `Failed to update description: ${message}`,
+            );
+          } finally {
+            descriptionElement.disabled = false;
+          }
+        })();
+      });
+      container.appendChild(descriptionElement);
+    } else if (descriptionText.length > 0) {
       const descriptionElement = document.createElement("div");
       descriptionElement.classList.add(
         "neuroglancer-spatial-skeleton-selection-description",
       );
-      descriptionElement.textContent = description;
+      descriptionElement.textContent = descriptionLabels.join(", ");
+      descriptionElement.title = descriptionEditingDisabledReason;
       container.appendChild(descriptionElement);
     }
     return true;

@@ -28,6 +28,7 @@ import type {
   EditableSpatiallyIndexedSkeletonSource,
   SpatiallyIndexedSkeletonAddNodeResult,
   SpatiallyIndexedSkeletonBranchNavigationTarget,
+  SpatiallyIndexedSkeletonDescriptionUpdateOptions,
   SpatiallyIndexedSkeletonMergeResult,
   SpatiallyIndexedSkeletonNavigationTarget,
   SpatiallyIndexedSkeletonNode,
@@ -183,12 +184,20 @@ export class CatmaidSpatiallyIndexedSkeletonSource
     return this.client.deleteNode(nodeId, options);
   }
 
-  addNodeLabel(nodeId: number, label: string): Promise<void> {
-    return this.client.addNodeLabel(nodeId, label);
+  updateDescription(
+    nodeId: number,
+    description: string,
+    options: SpatiallyIndexedSkeletonDescriptionUpdateOptions,
+  ): Promise<void> {
+    return this.client.updateDescription(nodeId, description, options);
   }
 
-  removeNodeLabel(nodeId: number, label: string): Promise<void> {
-    return this.client.removeNodeLabel(nodeId, label);
+  setTrueEnd(nodeId: number): Promise<void> {
+    return this.client.setTrueEnd(nodeId);
+  }
+
+  removeTrueEnd(nodeId: number): Promise<void> {
+    return this.client.removeTrueEnd(nodeId);
   }
 
   updateRadius(nodeId: number, radius: number): Promise<void> {

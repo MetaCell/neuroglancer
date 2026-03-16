@@ -115,8 +115,9 @@ export function getSpatiallyIndexedSkeletonSourceCapabilities(
     moveNodes: hasFunction(value, "moveNode"),
     deleteNodes: hasFunction(value, "deleteNode"),
     editNodeLabels:
-      hasFunction(value, "addNodeLabel") &&
-      hasFunction(value, "removeNodeLabel"),
+      hasFunction(value, "updateDescription") &&
+      hasFunction(value, "setTrueEnd") &&
+      hasFunction(value, "removeTrueEnd"),
     editNodeProperties:
       hasFunction(value, "updateRadius") &&
       hasFunction(value, "updateConfidence"),
