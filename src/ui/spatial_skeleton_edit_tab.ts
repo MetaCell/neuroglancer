@@ -14,41 +14,6 @@
  * limitations under the License.
  */
 
-import { CATMAID_TRUE_END_LABEL } from "#src/datasource/catmaid/api.js";
-import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
-import { Overlay } from "#src/overlay.js";
-import {
-  getVisibleSegments,
-  removeSegmentFromVisibleSets,
-} from "#src/segmentation_display_state/base.js";
-import { getBaseObjectColor } from "#src/segmentation_display_state/frontend.js";
-import type {
-  SpatiallyIndexedSkeletonBranchNavigationTarget,
-  SpatiallyIndexedSkeletonNavigationTarget,
-  SpatiallyIndexedSkeletonOpenLeaf,
-} from "#src/skeleton/api.js";
-import type { SpatiallyIndexedSkeletonNodeInfo } from "#src/skeleton/frontend.js";
-import { getEditableSpatiallyIndexedSkeletonSource } from "#src/skeleton/state.js";
-import {
-  buildSpatiallyIndexedSkeletonNavigationGraph,
-  getCurrentBranchContext,
-  getNextBranchOrEnd as getNextBranchOrEndFromGraph,
-  getOpenLeaves as getOpenLeavesFromGraph,
-  getPreviousBranchOrRoot as getPreviousBranchOrRootFromGraph,
-  getSkeletonRootNode as getSkeletonRootNodeFromGraph,
-  type SpatiallyIndexedSkeletonNavigationGraph,
-} from "#src/skeleton/navigation.js";
-import { StatusMessage } from "#src/status.js";
-import { observeWatchable, registerNested } from "#src/trackable_value.js";
-import {
-  SPATIAL_SKELETON_EDIT_MODE_TOOL_ID,
-  SPATIAL_SKELETON_MERGE_MODE_TOOL_ID,
-  SPATIAL_SKELETON_SPLIT_MODE_TOOL_ID,
-} from "#src/ui/spatial_skeleton_edit_tool.js";
-import { makeToolButton } from "#src/ui/tool.js";
-import { makeCloseButton } from "#src/widget/close_button.js";
-import { makeIcon } from "#src/widget/icon.js";
-import { Tab } from "#src/widget/tab_view.js";
 import svg_arrow_right from "ikonate/icons/arrow-right.svg?raw";
 import svg_bin from "ikonate/icons/bin.svg?raw";
 import svg_chevron_down from "ikonate/icons/chevron-down.svg?raw";
@@ -63,6 +28,41 @@ import svg_info from "ikonate/icons/info.svg?raw";
 import svg_minus from "ikonate/icons/minus.svg?raw";
 import svg_origin from "ikonate/icons/origin.svg?raw";
 import svg_share_android from "ikonate/icons/share-android.svg?raw";
+import { CATMAID_TRUE_END_LABEL } from "#src/datasource/catmaid/api.js";
+import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
+import { Overlay } from "#src/overlay.js";
+import {
+  getVisibleSegments,
+  removeSegmentFromVisibleSets,
+} from "#src/segmentation_display_state/base.js";
+import { getBaseObjectColor } from "#src/segmentation_display_state/frontend.js";
+import type {
+  SpatiallyIndexedSkeletonBranchNavigationTarget,
+  SpatiallyIndexedSkeletonNavigationTarget,
+  SpatiallyIndexedSkeletonOpenLeaf,
+} from "#src/skeleton/api.js";
+import type { SpatiallyIndexedSkeletonNodeInfo } from "#src/skeleton/frontend.js";
+import {
+  buildSpatiallyIndexedSkeletonNavigationGraph,
+  getCurrentBranchContext,
+  getNextBranchOrEnd as getNextBranchOrEndFromGraph,
+  getOpenLeaves as getOpenLeavesFromGraph,
+  getPreviousBranchOrRoot as getPreviousBranchOrRootFromGraph,
+  getSkeletonRootNode as getSkeletonRootNodeFromGraph,
+  type SpatiallyIndexedSkeletonNavigationGraph,
+} from "#src/skeleton/navigation.js";
+import { getEditableSpatiallyIndexedSkeletonSource } from "#src/skeleton/state.js";
+import { StatusMessage } from "#src/status.js";
+import { observeWatchable, registerNested } from "#src/trackable_value.js";
+import {
+  SPATIAL_SKELETON_EDIT_MODE_TOOL_ID,
+  SPATIAL_SKELETON_MERGE_MODE_TOOL_ID,
+  SPATIAL_SKELETON_SPLIT_MODE_TOOL_ID,
+} from "#src/ui/spatial_skeleton_edit_tool.js";
+import { makeToolButton } from "#src/ui/tool.js";
+import { makeCloseButton } from "#src/widget/close_button.js";
+import { makeIcon } from "#src/widget/icon.js";
+import { Tab } from "#src/widget/tab_view.js";
 
 const MAX_LISTED_NODES = 300;
 
@@ -1377,7 +1377,7 @@ export class SpatialSkeletonEditTab extends Tab {
             row.tabIndex = 0;
             row.setAttribute("role", "button");
             row.title =
-              "Click to select. Right-click to move to node. Ctrl+right-click to pin selection.";
+              "Click to move to node and pin selection. Right-click to move to node. Ctrl+right-click to pin selection without moving.";
             row.addEventListener("click", (event: MouseEvent) => {
               const target = event.target;
               if (
@@ -1396,7 +1396,7 @@ export class SpatialSkeletonEditTab extends Tab {
               ) {
                 return;
               }
-              selectNode(node, { moveView: false });
+              selectNode(node, { moveView: true, pin: true });
             });
             row.addEventListener("contextmenu", (event: MouseEvent) => {
               const target = event.target;
@@ -1434,7 +1434,7 @@ export class SpatialSkeletonEditTab extends Tab {
               ) {
                 return;
               }
-              selectNode(node, { moveView: false });
+              selectNode(node, { moveView: true, pin: true });
             });
           } else {
             row.setAttribute("aria-disabled", "true");
@@ -1708,9 +1708,11 @@ export class SpatialSkeletonEditTab extends Tab {
     const refreshNodes = () => {
       const requestId = ++refreshRequestId;
       const skeletonLayer = layer.getSpatiallyIndexedSkeletonLayer();
-      activeSegmentIds = [...getVisibleSegments(
-        layer.displayState.segmentationGroupState.value,
-      ).keys()]
+      activeSegmentIds = [
+        ...getVisibleSegments(
+          layer.displayState.segmentationGroupState.value,
+        ).keys(),
+      ]
         .map((segmentId) => Number(segmentId))
         .filter((segmentId) => Number.isFinite(segmentId))
         .sort((a, b) => a - b);
