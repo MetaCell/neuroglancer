@@ -1532,7 +1532,7 @@ export class SpatiallyIndexedSkeletonChunk
   numIndices: number;
   numVertices: number;
   vertexAttributeOffsets: Uint32Array;
-  vertexAttributeTextures: (WebGLTexture | null)[];
+  vertexAttributeTextures: (WebGLTexture | null)[] = [];
   nodeMap: Map<number, number> = new Map(); // Maps node ID to vertex index
   lod: number | undefined;
 
@@ -1555,43 +1555,39 @@ export class SpatiallyIndexedSkeletonChunk
     } else {
       this.nodeMap = new Map();
     }
+  }
 
-    const gl = source.gl;
-    this.indexBuffer = GLBuffer.fromData(
-      gl,
-      indices,
-      WebGL2RenderingContext.ARRAY_BUFFER,
-      WebGL2RenderingContext.STATIC_DRAW,
-    );
-
-    const { attributeTextureFormats } = source;
+  copyToGPU(gl: GL) {
+    const wasGpuResident = this.state === ChunkState.GPU_MEMORY;
+    super.copyToGPU(gl);
+    if (wasGpuResident) return;
+    const { attributeTextureFormats } = this.source;
     this.vertexAttributeTextures = uploadVertexAttributesToGPU(
       gl,
       this.vertexAttributes,
       this.vertexAttributeOffsets,
       attributeTextureFormats,
     );
-  }
-
-  copyToGPU(gl: GL) {
-    const wasGpuResident = this.state === ChunkState.GPU_MEMORY;
-    super.copyToGPU(gl);
-    if (!wasGpuResident) {
-      this.source.bumpLookupGeneration();
-    }
+    this.indexBuffer = GLBuffer.fromData(
+      gl,
+      this.indices,
+      WebGL2RenderingContext.ARRAY_BUFFER,
+      WebGL2RenderingContext.STATIC_DRAW,
+    );
+    this.source.bumpLookupGeneration();
   }
 
   freeGPUMemory(gl: GL) {
     const wasGpuResident = this.state === ChunkState.GPU_MEMORY;
     super.freeGPUMemory(gl);
+    if (!wasGpuResident) return;
     this.indexBuffer.dispose();
     const { vertexAttributeTextures } = this;
     for (let i = 0, length = vertexAttributeTextures.length; i < length; ++i) {
       gl.deleteTexture(vertexAttributeTextures[i]);
     }
-    if (wasGpuResident) {
-      this.source.bumpLookupGeneration();
-    }
+    vertexAttributeTextures.length = 0;
+    this.source.bumpLookupGeneration();
   }
 }
 
