@@ -44,6 +44,7 @@ import type {
 import type { SpatiallyIndexedSkeletonNodeInfo } from "#src/skeleton/frontend.js";
 import {
   buildSpatiallyIndexedSkeletonNavigationGraph,
+  getFlatListNodeIds,
   getCurrentBranchContext,
   getNextBranchOrEnd as getNextBranchOrEndFromGraph,
   getOpenLeaves as getOpenLeavesFromGraph,
@@ -1238,8 +1239,8 @@ export class SpatialSkeletonEditTab extends Tab {
       if (segmentNodes.length === 0) {
         return [];
       }
-      const { nodeById, childrenByParent, rootNodeIds } =
-        getSegmentNavigationGraph(segmentId);
+      const graph = getSegmentNavigationGraph(segmentId);
+      const { nodeById, childrenByParent } = graph;
 
       const visibleMemo = new Map<number, boolean>();
       const isNodeVisible = (nodeId: number): boolean => {
@@ -1276,31 +1277,16 @@ export class SpatialSkeletonEditTab extends Tab {
         type: SkeletonNodeType;
         isLeaf: boolean;
       }> = [];
-      const visited = new Set<number>();
-      const walk = (nodeId: number) => {
-        if (visited.has(nodeId)) return;
-        visited.add(nodeId);
-        if (!isNodeVisible(nodeId)) return;
+      for (const nodeId of getFlatListNodeIds(graph)) {
+        if (!isNodeVisible(nodeId)) continue;
         const node = nodeById.get(nodeId);
-        if (node === undefined) return;
+        if (node === undefined) continue;
         const children = childrenByParent.get(nodeId) ?? [];
         const parentInTree =
           node.parentNodeId !== undefined && nodeById.has(node.parentNodeId);
         const type = classifyNodeType(node, children.length, parentInTree);
         if (!(listCollapsed && type === "regular")) {
           rows.push({ node, type, isLeaf: children.length === 0 });
-        }
-        for (const childNodeId of children) {
-          walk(childNodeId);
-        }
-      };
-
-      for (const rootNodeId of rootNodeIds) {
-        walk(rootNodeId);
-      }
-      for (const nodeId of nodeById.keys()) {
-        if (!visited.has(nodeId)) {
-          walk(nodeId);
         }
       }
       return rows;
@@ -1782,26 +1768,41 @@ export class SpatialSkeletonEditTab extends Tab {
     };
 
     const updateGateStatus = () => {
-      inspectionAllowed =
+      const nextInspectionAllowed =
         layer.getSpatialSkeletonActionsDisabledReason("inspectSkeletons", {
           requireMaxLod: false,
           requireVisibleChunks: false,
         }) === undefined;
-      navigationAllowed = inspectionAllowed;
-      labelEditingAllowed =
+      const nextNavigationAllowed = nextInspectionAllowed;
+      const nextLabelEditingAllowed =
         layer.getSpatialSkeletonActionsDisabledReason("editNodeLabels") ===
         undefined;
-      nodePropertyEditingAllowed =
+      const nextNodePropertyEditingAllowed =
         layer.getSpatialSkeletonActionsDisabledReason("editNodeProperties") ===
         undefined;
-      nodeDeletionAllowed =
+      const nextNodeDeletionAllowed =
         layer.getSpatialSkeletonActionsDisabledReason("deleteNodes") ===
         undefined;
+      const gateStateChanged =
+        inspectionAllowed !== nextInspectionAllowed ||
+        navigationAllowed !== nextNavigationAllowed ||
+        labelEditingAllowed !== nextLabelEditingAllowed ||
+        nodePropertyEditingAllowed !== nextNodePropertyEditingAllowed ||
+        nodeDeletionAllowed !== nextNodeDeletionAllowed;
+
+      inspectionAllowed = nextInspectionAllowed;
+      navigationAllowed = nextNavigationAllowed;
+      labelEditingAllowed = nextLabelEditingAllowed;
+      nodePropertyEditingAllowed = nextNodePropertyEditingAllowed;
+      nodeDeletionAllowed = nextNodeDeletionAllowed;
+
       filterInput.disabled = !inspectionAllowed;
       for (const control of gatedControls) {
         control.disabled = !navigationAllowed;
       }
-      updateList();
+      if (gateStateChanged) {
+        updateList();
+      }
     };
 
     filterInput.addEventListener("input", () => {

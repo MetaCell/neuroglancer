@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildSpatiallyIndexedSkeletonNavigationGraph,
+  getFlatListNodeIds,
   getCurrentBranchContext,
   getNextBranchOrEnd,
   getOpenLeaves,
@@ -76,6 +77,22 @@ describe("skeleton/navigation", () => {
       [8, 9, 9],
       [7, 7, 7],
     ]);
+  });
+
+  it("orders flat-list rows breadth-first with leaf and true-end siblings first", () => {
+    const listGraph = buildSpatiallyIndexedSkeletonNavigationGraph([
+      makeNode(1, undefined),
+      makeNode(2, 1),
+      makeNode(3, 1),
+      makeNode(4, 1),
+      makeNode(5, 2),
+      makeNode(6, 4),
+      makeNode(7, 4),
+      makeNode(8, 1, { labels: ["ends"] }),
+      makeNode(9, 8),
+    ]);
+
+    expect(getFlatListNodeIds(listGraph)).toEqual([1, 3, 8, 4, 2, 9, 6, 7, 5]);
   });
 
   it("tracks the active sibling branch from the selected node or anchor", () => {

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { CATMAID_TRUE_END_LABEL } from "#src/datasource/catmaid/api.js";
 import type {
   SpatiallyIndexedSkeletonBranchNavigationTarget,
   SpatiallyIndexedSkeletonNavigationTarget,
@@ -82,6 +83,87 @@ export function buildSpatiallyIndexedSkeletonNavigationGraph(
     childrenByParent,
     rootNodeIds,
   };
+}
+
+function hasTrueEndLabel(node: SpatiallyIndexedSkeletonNodeInfo) {
+  return (
+    node.labels?.some(
+      (label) => label.trim().toLowerCase() === CATMAID_TRUE_END_LABEL,
+    ) ?? false
+  );
+}
+
+function getFlatListNodeSortPriority(
+  graph: SpatiallyIndexedSkeletonNavigationGraph,
+  nodeId: number,
+) {
+  const node = getNodeOrThrow(graph, nodeId);
+  if (hasTrueEndLabel(node)) {
+    return 0;
+  }
+  const childCount = getChildNodeIds(graph, nodeId).length;
+  if (childCount === 0) {
+    return 0;
+  }
+  const parentNodeId = getParentNodeId(graph, nodeId);
+  if (parentNodeId === undefined) {
+    return 3;
+  }
+  if (childCount > 1) {
+    return 1;
+  }
+  return 2;
+}
+
+function compareFlatListNodeIds(
+  graph: SpatiallyIndexedSkeletonNavigationGraph,
+  a: number,
+  b: number,
+) {
+  const priorityDelta =
+    getFlatListNodeSortPriority(graph, a) -
+    getFlatListNodeSortPriority(graph, b);
+  return priorityDelta !== 0 ? priorityDelta : a - b;
+}
+
+export function getFlatListNodeIds(
+  graph: SpatiallyIndexedSkeletonNavigationGraph,
+) {
+  const orderedNodeIds: number[] = [];
+  const visited = new Set<number>();
+
+  const appendBreadthFirst = (startNodeIds: readonly number[]) => {
+    const queue = [...startNodeIds].sort((a, b) =>
+      compareFlatListNodeIds(graph, a, b),
+    );
+    for (let queueIndex = 0; queueIndex < queue.length; ++queueIndex) {
+      const nodeId = queue[queueIndex];
+      if (visited.has(nodeId)) continue;
+      visited.add(nodeId);
+      orderedNodeIds.push(nodeId);
+      const childNodeIds = [...getChildNodeIds(graph, nodeId)].sort((a, b) =>
+        compareFlatListNodeIds(graph, a, b),
+      );
+      for (const childNodeId of childNodeIds) {
+        if (!visited.has(childNodeId)) {
+          queue.push(childNodeId);
+        }
+      }
+    }
+  };
+
+  appendBreadthFirst(graph.rootNodeIds);
+
+  const remainingNodeIds = [...graph.nodeById.keys()].sort((a, b) =>
+    compareFlatListNodeIds(graph, a, b),
+  );
+  for (const nodeId of remainingNodeIds) {
+    if (!visited.has(nodeId)) {
+      appendBreadthFirst([nodeId]);
+    }
+  }
+
+  return orderedNodeIds;
 }
 
 function getNodeOrThrow(
