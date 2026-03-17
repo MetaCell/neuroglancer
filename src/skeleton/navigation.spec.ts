@@ -65,7 +65,7 @@ describe("skeleton/navigation", () => {
     expect(getPreviousBranchOrRoot(graph, 6, { alt: true }).nodeId).toBe(5);
   });
 
-  it("returns downstream branches in deterministic local order", () => {
+  it("returns downstream branches in flat-list sibling order", () => {
     expect(
       getNextBranchOrEnd(graph, 3).map((branch) => [
         branch.child.nodeId,
@@ -73,9 +73,9 @@ describe("skeleton/navigation", () => {
         branch.branchEnd.nodeId,
       ]),
     ).toEqual([
+      [7, 7, 7],
       [4, 5, 6],
       [8, 9, 9],
-      [7, 7, 7],
     ]);
   });
 
@@ -98,7 +98,7 @@ describe("skeleton/navigation", () => {
   it("tracks the active sibling branch from the selected node or anchor", () => {
     expect(getCurrentBranchContext(graph, 6)).toMatchObject({
       branchNode: { nodeId: 3 },
-      currentBranchIndex: 0,
+      currentBranchIndex: 1,
     });
     expect(getCurrentBranchContext(graph, 3)).toMatchObject({
       branchNode: { nodeId: 3 },
@@ -108,13 +108,13 @@ describe("skeleton/navigation", () => {
       getCurrentBranchContext(graph, 3, { anchorNodeId: 11 }),
     ).toMatchObject({
       branchNode: { nodeId: 3 },
-      currentBranchIndex: 1,
+      currentBranchIndex: 2,
     });
     expect(
       getCurrentBranchContext(graph, 3, { anchorNodeId: 10 }),
     ).toMatchObject({
       branchNode: { nodeId: 3 },
-      currentBranchIndex: 1,
+      currentBranchIndex: 2,
     });
   });
 

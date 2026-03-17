@@ -17,8 +17,6 @@
 import svg_arrow_right from "ikonate/icons/arrow-right.svg?raw";
 import svg_bin from "ikonate/icons/bin.svg?raw";
 import svg_chevron_down from "ikonate/icons/chevron-down.svg?raw";
-import svg_chevron_left from "ikonate/icons/chevron-left.svg?raw";
-import svg_chevron_right from "ikonate/icons/chevron-right.svg?raw";
 import svg_chevron_up from "ikonate/icons/chevron-up.svg?raw";
 import svg_chevrons_left from "ikonate/icons/chevrons-left.svg?raw";
 import svg_chevrons_right from "ikonate/icons/chevrons-right.svg?raw";
@@ -1131,58 +1129,6 @@ export class SpatialSkeletonEditTab extends Tab {
         })();
       },
     );
-    const goPreviousBranchButton = makeNavIconButton(
-      svg_chevron_left,
-      "Previous branch",
-      () => {
-        const context = getSelectedBranchNavigationContext();
-        if (context === undefined) return;
-        const { branchContext } = context;
-        const { branches, currentBranchIndex } = branchContext;
-        if (branches.length <= 1 || currentBranchIndex === undefined) {
-          StatusMessage.showTemporaryMessage(
-            "No previous branch was found from the selected node.",
-          );
-          return;
-        }
-        if (currentBranchIndex <= 0) {
-          StatusMessage.showTemporaryMessage(
-            "The selected branch is already the first branch in this branch set.",
-          );
-          return;
-        }
-        const targetBranch = branches[currentBranchIndex - 1];
-        navigateToBranchTarget(targetBranch.branchStartOrEnd, {
-          branchEndNodeId: targetBranch.branchEnd.nodeId,
-        });
-      },
-    );
-    const goNextBranchButton = makeNavIconButton(
-      svg_chevron_right,
-      "Next branch",
-      () => {
-        const context = getSelectedBranchNavigationContext();
-        if (context === undefined) return;
-        const { branchContext } = context;
-        const { branches, currentBranchIndex } = branchContext;
-        if (branches.length <= 1 || currentBranchIndex === undefined) {
-          StatusMessage.showTemporaryMessage(
-            "No next branch was found from the selected node.",
-          );
-          return;
-        }
-        if (currentBranchIndex >= branches.length - 1) {
-          StatusMessage.showTemporaryMessage(
-            "The selected branch is already the last branch in this branch set.",
-          );
-          return;
-        }
-        const targetBranch = branches[currentBranchIndex + 1];
-        navigateToBranchTarget(targetBranch.branchStartOrEnd, {
-          branchEndNodeId: targetBranch.branchEnd.nodeId,
-        });
-      },
-    );
     const goTreeEndButton = makeNavIconButton(
       svg_chevrons_right,
       "End of branch",
@@ -1226,8 +1172,6 @@ export class SpatialSkeletonEditTab extends Tab {
     const gatedControls = [
       goRootButton,
       goBranchStartButton,
-      goPreviousBranchButton,
-      goNextBranchButton,
       goTreeEndButton,
       goUnfinishedBranchButton,
     ];

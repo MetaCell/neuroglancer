@@ -224,29 +224,7 @@ function getFirstInterestingNodeId(
   return sequence[sequence.length - 1];
 }
 
-function countDownstreamArborSize(
-  graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
-) {
-  let count = 0;
-  const stack = [nodeId];
-  const visited = new Set<number>();
-  while (stack.length > 0) {
-    const currentNodeId = stack.pop()!;
-    if (visited.has(currentNodeId)) continue;
-    visited.add(currentNodeId);
-    const childNodeIds = getChildNodeIds(graph, currentNodeId);
-    if (childNodeIds.length > 0) {
-      count++;
-      for (let i = childNodeIds.length - 1; i >= 0; --i) {
-        stack.push(childNodeIds[i]);
-      }
-    }
-  }
-  return count;
-}
-
-function getOrderedChildNodeIds(
+function getFlatListOrderedChildNodeIds(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
   nodeId: number,
 ) {
@@ -254,11 +232,7 @@ function getOrderedChildNodeIds(
   if (childNodeIds.length <= 1) {
     return childNodeIds;
   }
-  childNodeIds.sort((a, b) => {
-    const sizeDelta =
-      countDownstreamArborSize(graph, b) - countDownstreamArborSize(graph, a);
-    return sizeDelta !== 0 ? sizeDelta : a - b;
-  });
+  childNodeIds.sort((a, b) => compareFlatListNodeIds(graph, a, b));
   return childNodeIds;
 }
 
@@ -316,7 +290,7 @@ function getNextBranchTargets(
   nodeId: number,
 ) {
   getNodeOrThrow(graph, nodeId);
-  const childNodeIds = getOrderedChildNodeIds(graph, nodeId);
+  const childNodeIds = getFlatListOrderedChildNodeIds(graph, nodeId);
   return childNodeIds.map((childNodeId) => {
     const sequence = [childNodeId];
     let branchEndNodeId = childNodeId;
