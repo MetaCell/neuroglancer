@@ -865,12 +865,13 @@ export class SpatialSkeletonEditTab extends Tab {
         (node) => node.nodeId === target.nodeId,
       );
       if (existingNode !== undefined) {
-        selectNode(existingNode);
+        selectNode(existingNode, { moveView: true, pin: true });
         return;
       }
       pendingScrollToSelectedNode = true;
-      layer.selectSpatialSkeletonNode(target.nodeId, false);
-      moveViewToNodePosition([target.x, target.y, target.z]);
+      const position = [target.x, target.y, target.z];
+      layer.selectSpatialSkeletonNode(target.nodeId, true, { position });
+      moveViewToNodePosition(position);
       updateList();
     };
 
