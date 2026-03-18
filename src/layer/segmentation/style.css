@@ -171,14 +171,27 @@
 .neuroglancer-spatial-skeleton-toolbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 0.1em 0.2em;
   width: 100%;
+}
+
+.neuroglancer-spatial-skeleton-toolbar
+  .neuroglancer-tool-button
+  + .neuroglancer-tool-button {
+  margin-left: 0.35em;
 }
 
 .neuroglancer-spatial-skeleton-nav-tools {
   display: inline-flex;
   align-items: center;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   margin-left: auto;
-  gap: 0.1em;
+  gap: 0;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .neuroglancer-spatial-skeleton-nav-tool {
@@ -191,10 +204,10 @@
 }
 
 .neuroglancer-spatial-skeleton-nav-tool .neuroglancer-icon {
-  min-width: 16px;
-  min-height: 16px;
-  padding-left: 1px;
-  padding-right: 1px;
+  min-width: 14px;
+  min-height: 14px;
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .neuroglancer-spatial-skeleton-nav-tool:hover .neuroglancer-icon {

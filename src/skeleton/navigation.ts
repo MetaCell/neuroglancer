@@ -236,6 +236,70 @@ function getFlatListOrderedChildNodeIds(
   return childNodeIds;
 }
 
+function isCollapsedRegularNode(
+  graph: SpatiallyIndexedSkeletonNavigationGraph,
+  nodeId: number,
+) {
+  return (
+    getParentNodeId(graph, nodeId) !== undefined &&
+    getChildNodeIds(graph, nodeId).length === 1
+  );
+}
+
+function getCollapsedChildNodeIds(
+  graph: SpatiallyIndexedSkeletonNavigationGraph,
+  nodeId: number,
+) {
+  const collapsedChildNodeIds: number[] = [];
+  for (const childNodeId of getFlatListOrderedChildNodeIds(graph, nodeId)) {
+    let currentNodeId = childNodeId;
+    const visited = new Set<number>([nodeId]);
+    while (!visited.has(currentNodeId)) {
+      visited.add(currentNodeId);
+      if (!isCollapsedRegularNode(graph, currentNodeId)) {
+        collapsedChildNodeIds.push(currentNodeId);
+        break;
+      }
+      const nextNodeId = getFlatListOrderedChildNodeIds(graph, currentNodeId)[0];
+      if (nextNodeId === undefined) {
+        collapsedChildNodeIds.push(currentNodeId);
+        break;
+      }
+      currentNodeId = nextNodeId;
+    }
+  }
+  return collapsedChildNodeIds;
+}
+
+function getCollapsedLevelContext(
+  graph: SpatiallyIndexedSkeletonNavigationGraph,
+) {
+  const levelByNodeId = new Map<number, number>();
+  const nodeIdsByLevel = new Map<number, number[]>();
+  const queue = graph.rootNodeIds.map((nodeId) => ({ nodeId, level: 0 }));
+  const visited = new Set<number>();
+
+  for (let queueIndex = 0; queueIndex < queue.length; ++queueIndex) {
+    const { nodeId, level } = queue[queueIndex];
+    if (visited.has(nodeId)) continue;
+    visited.add(nodeId);
+    levelByNodeId.set(nodeId, level);
+    let nodeIds = nodeIdsByLevel.get(level);
+    if (nodeIds === undefined) {
+      nodeIds = [];
+      nodeIdsByLevel.set(level, nodeIds);
+    }
+    nodeIds.push(nodeId);
+    for (const childNodeId of getCollapsedChildNodeIds(graph, nodeId)) {
+      if (!visited.has(childNodeId)) {
+        queue.push({ nodeId: childNodeId, level: level + 1 });
+      }
+    }
+  }
+
+  return { levelByNodeId, nodeIdsByLevel };
+}
+
 function getPreviousBranchOrRootNodeId(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
   nodeId: number,
@@ -342,11 +406,95 @@ export function getPreviousBranchOrRoot(
   );
 }
 
+export function getBranchStart(
+  graph: SpatiallyIndexedSkeletonNavigationGraph,
+  nodeId: number,
+) {
+  getNodeOrThrow(graph, nodeId);
+  let currentNodeId = nodeId;
+  const visited = new Set<number>([currentNodeId]);
+  while (true) {
+    const parentNodeId = getParentNodeId(graph, currentNodeId);
+    if (parentNodeId === undefined || visited.has(parentNodeId)) {
+      return getNodeTarget(graph, nodeId);
+    }
+    currentNodeId = parentNodeId;
+    visited.add(currentNodeId);
+    if (getChildNodeIds(graph, currentNodeId).length > 1) {
+      return getNodeTarget(graph, currentNodeId);
+    }
+  }
+}
+
 export function getNextBranchOrEnd(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
   nodeId: number,
 ): SpatiallyIndexedSkeletonBranchNavigationTarget[] {
   return getNextBranchTargets(graph, nodeId);
+}
+
+export function getBranchEnd(
+  graph: SpatiallyIndexedSkeletonNavigationGraph,
+  nodeId: number,
+) {
+  getNodeOrThrow(graph, nodeId);
+  const branchTargets = getNextBranchTargets(graph, nodeId);
+  if (branchTargets.length === 0) {
+    return getNodeTarget(graph, nodeId);
+  }
+  const preferredTarget =
+    branchTargets.find(
+      (target) => getChildNodeIds(graph, target.branchEnd.nodeId).length > 1,
+    ) ?? branchTargets[0];
+  return preferredTarget.branchEnd;
+}
+
+export function getParentNode(
+  graph: SpatiallyIndexedSkeletonNavigationGraph,
+  nodeId: number,
+) {
+  const parentNodeId = getParentNodeId(graph, nodeId);
+  return parentNodeId === undefined
+    ? undefined
+    : getNodeTarget(graph, parentNodeId);
+}
+
+export function getChildNode(
+  graph: SpatiallyIndexedSkeletonNavigationGraph,
+  nodeId: number,
+) {
+  const childNodeId = getFlatListOrderedChildNodeIds(graph, nodeId)[0];
+  return childNodeId === undefined
+    ? undefined
+    : getNodeTarget(graph, childNodeId);
+}
+
+export function getNextCollapsedLevelNode(
+  graph: SpatiallyIndexedSkeletonNavigationGraph,
+  nodeId: number,
+) {
+  getNodeOrThrow(graph, nodeId);
+  if (getParentNodeId(graph, nodeId) === undefined) {
+    return getNodeTarget(graph, nodeId);
+  }
+  if (isCollapsedRegularNode(graph, nodeId)) {
+    return getNodeTarget(graph, nodeId);
+  }
+
+  const { levelByNodeId, nodeIdsByLevel } = getCollapsedLevelContext(graph);
+  const level = levelByNodeId.get(nodeId);
+  if (level === undefined) {
+    return getNodeTarget(graph, nodeId);
+  }
+  const nodeIds = nodeIdsByLevel.get(level);
+  if (nodeIds === undefined || nodeIds.length <= 1) {
+    return getNodeTarget(graph, nodeId);
+  }
+  const currentIndex = nodeIds.indexOf(nodeId);
+  if (currentIndex === -1) {
+    return getNodeTarget(graph, nodeId);
+  }
+  return getNodeTarget(graph, nodeIds[(currentIndex + 1) % nodeIds.length]);
 }
 
 export function getOpenLeaves(

@@ -18,10 +18,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildSpatiallyIndexedSkeletonNavigationGraph,
+  getBranchEnd,
+  getBranchStart,
+  getChildNode,
   getFlatListNodeIds,
   getCurrentBranchContext,
+  getNextCollapsedLevelNode,
   getNextBranchOrEnd,
   getOpenLeaves,
+  getParentNode,
   getPreviousBranchOrRoot,
   getSkeletonRootNode,
 } from "#src/skeleton/navigation.js";
@@ -63,6 +68,10 @@ describe("skeleton/navigation", () => {
     expect(getPreviousBranchOrRoot(graph, 6).nodeId).toBe(3);
     expect(getPreviousBranchOrRoot(graph, 3).nodeId).toBe(1);
     expect(getPreviousBranchOrRoot(graph, 6, { alt: true }).nodeId).toBe(5);
+    expect(getBranchStart(graph, 6).nodeId).toBe(3);
+    expect(getBranchStart(graph, 3).nodeId).toBe(3);
+    expect(getBranchStart(graph, 2).nodeId).toBe(2);
+    expect(getBranchStart(graph, 1).nodeId).toBe(1);
   });
 
   it("returns downstream branches in flat-list sibling order", () => {
@@ -77,6 +86,21 @@ describe("skeleton/navigation", () => {
       [4, 5, 6],
       [8, 9, 9],
     ]);
+  });
+
+  it("prefers a downstream branch over a leaf for branch-end navigation", () => {
+    const preferenceGraph = buildSpatiallyIndexedSkeletonNavigationGraph([
+      makeNode(1, undefined),
+      makeNode(2, 1),
+      makeNode(3, 1),
+      makeNode(4, 3),
+      makeNode(5, 4),
+      makeNode(6, 4),
+    ]);
+
+    expect(getBranchEnd(preferenceGraph, 1).nodeId).toBe(4);
+    expect(getBranchEnd(preferenceGraph, 3).nodeId).toBe(4);
+    expect(getBranchEnd(preferenceGraph, 2).nodeId).toBe(2);
   });
 
   it("orders flat-list rows breadth-first with leaf and true-end siblings first", () => {
@@ -116,6 +140,31 @@ describe("skeleton/navigation", () => {
       branchNode: { nodeId: 3 },
       currentBranchIndex: 2,
     });
+  });
+
+  it("returns deterministic direct parent and child navigation targets", () => {
+    expect(getParentNode(graph, 6)?.nodeId).toBe(5);
+    expect(getParentNode(graph, 1)).toBeUndefined();
+    expect(getChildNode(graph, 3)?.nodeId).toBe(7);
+    expect(getChildNode(graph, 11)).toBeUndefined();
+  });
+
+  it("cycles through collapsed-level nodes and skips regular nodes", () => {
+    const collapsedGraph = buildSpatiallyIndexedSkeletonNavigationGraph([
+      makeNode(1, undefined),
+      makeNode(2, 1),
+      makeNode(3, 2),
+      makeNode(4, 1),
+      makeNode(5, 1),
+      makeNode(6, 4),
+      makeNode(7, 4),
+    ]);
+
+    expect(getNextCollapsedLevelNode(collapsedGraph, 1).nodeId).toBe(1);
+    expect(getNextCollapsedLevelNode(collapsedGraph, 2).nodeId).toBe(2);
+    expect(getNextCollapsedLevelNode(collapsedGraph, 5).nodeId).toBe(4);
+    expect(getNextCollapsedLevelNode(collapsedGraph, 4).nodeId).toBe(3);
+    expect(getNextCollapsedLevelNode(collapsedGraph, 3).nodeId).toBe(5);
   });
 
   it("finds unfinished leaves from any selected node and filters closed ends", () => {

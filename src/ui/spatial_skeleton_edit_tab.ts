@@ -14,8 +14,10 @@
  * limitations under the License.
  */
 
+import svg_arrow_left from "ikonate/icons/arrow-left.svg?raw";
 import svg_arrow_right from "ikonate/icons/arrow-right.svg?raw";
 import svg_bin from "ikonate/icons/bin.svg?raw";
+import svg_chevron_right from "ikonate/icons/chevron-right.svg?raw";
 import svg_chevron_down from "ikonate/icons/chevron-down.svg?raw";
 import svg_chevron_up from "ikonate/icons/chevron-up.svg?raw";
 import svg_chevrons_left from "ikonate/icons/chevrons-left.svg?raw";
@@ -25,6 +27,7 @@ import svg_flag from "ikonate/icons/flag.svg?raw";
 import svg_info from "ikonate/icons/info.svg?raw";
 import svg_minus from "ikonate/icons/minus.svg?raw";
 import svg_origin from "ikonate/icons/origin.svg?raw";
+import svg_retweet from "ikonate/icons/retweet.svg?raw";
 import svg_share_android from "ikonate/icons/share-android.svg?raw";
 import { CATMAID_TRUE_END_LABEL } from "#src/datasource/catmaid/api.js";
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
@@ -35,18 +38,19 @@ import {
 } from "#src/segmentation_display_state/base.js";
 import { getBaseObjectColor } from "#src/segmentation_display_state/frontend.js";
 import type {
-  SpatiallyIndexedSkeletonBranchNavigationTarget,
   SpatiallyIndexedSkeletonNavigationTarget,
   SpatiallyIndexedSkeletonOpenLeaf,
 } from "#src/skeleton/api.js";
 import type { SpatiallyIndexedSkeletonNodeInfo } from "#src/skeleton/frontend.js";
 import {
   buildSpatiallyIndexedSkeletonNavigationGraph,
+  getBranchEnd as getBranchEndFromGraph,
+  getBranchStart as getBranchStartFromGraph,
+  getChildNode as getChildNodeFromGraph,
   getFlatListNodeIds,
-  getCurrentBranchContext,
-  getNextBranchOrEnd as getNextBranchOrEndFromGraph,
+  getNextCollapsedLevelNode as getNextCollapsedLevelNodeFromGraph,
   getOpenLeaves as getOpenLeavesFromGraph,
-  getPreviousBranchOrRoot as getPreviousBranchOrRootFromGraph,
+  getParentNode as getParentNodeFromGraph,
   getSkeletonRootNode as getSkeletonRootNodeFromGraph,
   type SpatiallyIndexedSkeletonNavigationGraph,
 } from "#src/skeleton/navigation.js";
@@ -71,17 +75,25 @@ interface SpatiallyIndexedSkeletonNavigationApi {
   getSkeletonRootNode(
     skeletonId: number,
   ): Promise<SpatiallyIndexedSkeletonNavigationTarget>;
-  getPreviousBranchOrRoot(
+  getBranchStart(
     nodeId: number,
-    options?: { alt?: boolean },
   ): Promise<SpatiallyIndexedSkeletonNavigationTarget>;
-  getNextBranchOrEnd(
+  getBranchEnd(
     nodeId: number,
-  ): Promise<SpatiallyIndexedSkeletonBranchNavigationTarget[]>;
+  ): Promise<SpatiallyIndexedSkeletonNavigationTarget>;
+  getNextCollapsedLevelNode(
+    nodeId: number,
+  ): Promise<SpatiallyIndexedSkeletonNavigationTarget>;
   getOpenLeaves(
     skeletonId: number,
     nodeId: number,
   ): Promise<SpatiallyIndexedSkeletonOpenLeaf[]>;
+  getParentNode(
+    nodeId: number,
+  ): Promise<SpatiallyIndexedSkeletonNavigationTarget | undefined>;
+  getChildNode(
+    nodeId: number,
+  ): Promise<SpatiallyIndexedSkeletonNavigationTarget | undefined>;
 }
 
 const NODE_TYPE_ICONS: Record<SkeletonNodeType, string> = {
@@ -258,7 +270,7 @@ export class SpatialSkeletonEditTab extends Tab {
     let labelEditingAllowed = false;
     let nodePropertyEditingAllowed = false;
     let nodeDeletionAllowed = false;
-    let listCollapsed = false;
+    let listCollapsed = true;
     let propertiesDialog: Overlay | undefined;
     let pendingScrollToSelectedNode = false;
     let refreshRequestId = 0;
@@ -404,6 +416,10 @@ export class SpatialSkeletonEditTab extends Tab {
         }
       }
       localPosition.value = nextLocal;
+    };
+
+    const clearBranchEndAnchor = () => {
+      layer.spatialSkeletonTreeEndNodeId.value = undefined;
     };
 
     const getNavigationNode = (nodeId: number) => {
@@ -818,30 +834,38 @@ export class SpatialSkeletonEditTab extends Tab {
           getSegmentNavigationGraph(skeletonId),
         );
       },
-      async getPreviousBranchOrRoot(
-        nodeId: number,
-        options: { alt?: boolean } = {},
-      ) {
+      async getBranchStart(nodeId: number) {
         const node = getNavigationNode(nodeId);
         if (node === undefined) {
           throw new Error(
             `Node ${nodeId} is not available in the loaded skeleton cache.`,
           );
         }
-        return getPreviousBranchOrRootFromGraph(
+        return getBranchStartFromGraph(
           getSegmentNavigationGraph(node.segmentId),
           nodeId,
-          options,
         );
       },
-      async getNextBranchOrEnd(nodeId: number) {
+      async getBranchEnd(nodeId: number) {
         const node = getNavigationNode(nodeId);
         if (node === undefined) {
           throw new Error(
             `Node ${nodeId} is not available in the loaded skeleton cache.`,
           );
         }
-        return getNextBranchOrEndFromGraph(
+        return getBranchEndFromGraph(
+          getSegmentNavigationGraph(node.segmentId),
+          nodeId,
+        );
+      },
+      async getNextCollapsedLevelNode(nodeId: number) {
+        const node = getNavigationNode(nodeId);
+        if (node === undefined) {
+          throw new Error(
+            `Node ${nodeId} is not available in the loaded skeleton cache.`,
+          );
+        }
+        return getNextCollapsedLevelNodeFromGraph(
           getSegmentNavigationGraph(node.segmentId),
           nodeId,
         );
@@ -849,6 +873,30 @@ export class SpatialSkeletonEditTab extends Tab {
       async getOpenLeaves(skeletonId: number, nodeId: number) {
         return getOpenLeavesFromGraph(
           getSegmentNavigationGraph(skeletonId),
+          nodeId,
+        );
+      },
+      async getParentNode(nodeId: number) {
+        const node = getNavigationNode(nodeId);
+        if (node === undefined) {
+          throw new Error(
+            `Node ${nodeId} is not available in the loaded skeleton cache.`,
+          );
+        }
+        return getParentNodeFromGraph(
+          getSegmentNavigationGraph(node.segmentId),
+          nodeId,
+        );
+      },
+      async getChildNode(nodeId: number) {
+        const node = getNavigationNode(nodeId);
+        if (node === undefined) {
+          throw new Error(
+            `Node ${nodeId} is not available in the loaded skeleton cache.`,
+          );
+        }
+        return getChildNodeFromGraph(
+          getSegmentNavigationGraph(node.segmentId),
           nodeId,
         );
       },
@@ -889,11 +937,8 @@ export class SpatialSkeletonEditTab extends Tab {
         return undefined;
       }
       try {
-        return {
-          selectedNode,
-          skeletonApi: skeletonNavigationApi,
-          navigationGraph: getSegmentNavigationGraph(selectedNode.segmentId),
-        };
+        getSegmentNavigationGraph(selectedNode.segmentId);
+        return { selectedNode, skeletonApi: skeletonNavigationApi };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         StatusMessage.showTemporaryMessage(
@@ -901,32 +946,6 @@ export class SpatialSkeletonEditTab extends Tab {
         );
         return undefined;
       }
-    };
-
-    const getSelectedBranchNavigationContext = () => {
-      const context = getSelectedNavigationContext();
-      if (context === undefined) return undefined;
-      const branchContext = getCurrentBranchContext(
-        context.navigationGraph,
-        context.selectedNode.nodeId,
-        {
-          anchorNodeId: layer.spatialSkeletonTreeEndNodeId.value,
-        },
-      );
-      return {
-        ...context,
-        branchContext,
-      };
-    };
-
-    const navigateToBranchTarget = (
-      target: SpatiallyIndexedSkeletonNavigationTarget,
-      options: {
-        branchEndNodeId?: number;
-      } = {},
-    ) => {
-      layer.spatialSkeletonTreeEndNodeId.value = options.branchEndNodeId;
-      navigateToNodeTarget(target);
     };
 
     const updateTrueEndLabel = (
@@ -1095,6 +1114,7 @@ export class SpatialSkeletonEditTab extends Tab {
       const { selectedNode, skeletonApi } = context;
       void (async () => {
         try {
+          clearBranchEndAnchor();
           navigateToNodeTarget(
             await skeletonApi.getSkeletonRootNode(selectedNode.segmentId),
           );
@@ -1109,15 +1129,16 @@ export class SpatialSkeletonEditTab extends Tab {
     });
     const goBranchStartButton = makeNavIconButton(
       svg_chevrons_left,
-      "Start of branch",
+      "Go to start of the branch",
       () => {
         const context = getSelectedNavigationContext();
         if (context === undefined) return;
         const { selectedNode, skeletonApi } = context;
         void (async () => {
           try {
+            clearBranchEndAnchor();
             navigateToNodeTarget(
-              await skeletonApi.getPreviousBranchOrRoot(selectedNode.nodeId),
+              await skeletonApi.getBranchStart(selectedNode.nodeId),
             );
           } catch (error) {
             const message =
@@ -1131,38 +1152,105 @@ export class SpatialSkeletonEditTab extends Tab {
     );
     const goTreeEndButton = makeNavIconButton(
       svg_chevrons_right,
-      "End of branch",
+      "Go to end of the branch",
       () => {
-        const context = getSelectedBranchNavigationContext();
+        const context = getSelectedNavigationContext();
         if (context === undefined) return;
-        const { branchContext, selectedNode } = context;
-        const targetBranch =
-          branchContext.currentBranchIndex === undefined
-            ? undefined
-            : branchContext.branches[branchContext.currentBranchIndex];
-        if (targetBranch === undefined) {
-          navigateToBranchTarget(
-            {
-              nodeId: selectedNode.nodeId,
-              x: Number(selectedNode.position[0]),
-              y: Number(selectedNode.position[1]),
-              z: Number(selectedNode.position[2]),
-            },
-            {
-              branchEndNodeId: selectedNode.nodeId,
-            },
-          );
-          return;
-        }
-        navigateToBranchTarget(targetBranch.branchEnd, {
-          branchEndNodeId: targetBranch.branchEnd.nodeId,
-        });
+        const { selectedNode, skeletonApi } = context;
+        void (async () => {
+          try {
+            clearBranchEndAnchor();
+            navigateToNodeTarget(await skeletonApi.getBranchEnd(selectedNode.nodeId));
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            StatusMessage.showTemporaryMessage(
+              `Failed to locate branch end: ${message}`,
+            );
+          }
+        })();
+      },
+    );
+    const cycleBranchesButton = makeNavIconButton(
+      svg_retweet,
+      "Cycle through level nodes",
+      () => {
+        const context = getSelectedNavigationContext();
+        if (context === undefined) return;
+        const { selectedNode, skeletonApi } = context;
+        void (async () => {
+          try {
+            clearBranchEndAnchor();
+            navigateToNodeTarget(
+              await skeletonApi.getNextCollapsedLevelNode(selectedNode.nodeId),
+            );
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            StatusMessage.showTemporaryMessage(
+              `Failed to cycle through level nodes: ${message}`,
+            );
+          }
+        })();
+      },
+    );
+    const goParentButton = makeNavIconButton(
+      svg_arrow_left,
+      "Go to parent",
+      () => {
+        const context = getSelectedNavigationContext();
+        if (context === undefined) return;
+        const { selectedNode, skeletonApi } = context;
+        void (async () => {
+          try {
+            clearBranchEndAnchor();
+            const target = await skeletonApi.getParentNode(selectedNode.nodeId);
+            if (target === undefined) {
+              StatusMessage.showTemporaryMessage("Selected node has no parent.");
+              return;
+            }
+            navigateToNodeTarget(target);
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            StatusMessage.showTemporaryMessage(
+              `Failed to locate parent node: ${message}`,
+            );
+          }
+        })();
+      },
+    );
+    const goChildButton = makeNavIconButton(
+      svg_arrow_right,
+      "Go to child",
+      () => {
+        const context = getSelectedNavigationContext();
+        if (context === undefined) return;
+        const { selectedNode, skeletonApi } = context;
+        void (async () => {
+          try {
+            clearBranchEndAnchor();
+            const target = await skeletonApi.getChildNode(selectedNode.nodeId);
+            if (target === undefined) {
+              StatusMessage.showTemporaryMessage("Selected node has no child.");
+              return;
+            }
+            navigateToNodeTarget(target);
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            StatusMessage.showTemporaryMessage(
+              `Failed to locate child node: ${message}`,
+            );
+          }
+        })();
       },
     );
     const goUnfinishedBranchButton = makeNavIconButton(
-      svg_arrow_right,
-      "Nearest unfinished branch",
+      svg_chevron_right,
+      "Go to unfinished node",
       () => {
+        clearBranchEndAnchor();
         goToClosestUnfinishedBranch();
       },
     );
@@ -1173,6 +1261,9 @@ export class SpatialSkeletonEditTab extends Tab {
       goRootButton,
       goBranchStartButton,
       goTreeEndButton,
+      cycleBranchesButton,
+      goParentButton,
+      goChildButton,
       goUnfinishedBranchButton,
     ];
 
