@@ -649,7 +649,7 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
       layer.getSpatialSkeletonActionsDisabledReason(["addNodes", "moveNodes"]);
     const setReadyStatus = () => {
       setStatus(
-        "Edit mode enabled. Ctrl+right-click selects and pins the hovered node. Ctrl+shift+right-click clears node selection and unpins. Ctrl+click adds a node (root if no node is selected). Alt+drag moves nodes.",
+        "Edit mode enabled. You can move nodes, append new nodes to an existing skeleton, and create new skeletons.",
       );
     };
     const updateInteractionStatus = () => {
@@ -1189,10 +1189,10 @@ class SpatialSkeletonMergeModeTool extends SpatialSkeletonToolBase {
       }
       if (anchorNode === undefined) {
         body.textContent =
-          "Ctrl+right-click a node to choose the merge anchor, then ctrl+right-click a node in a different skeleton.";
+          "Choose a merge anchor node, then choose a node in a different skeleton to merge into it.";
         return;
       }
-      body.textContent = `Anchor node ${anchorNode.nodeId} on skeleton ${anchorNode.segmentId}. Ctrl+right-click a node in a different skeleton to merge into it.`;
+      body.textContent = `Anchor node ${anchorNode.nodeId} on skeleton ${anchorNode.segmentId}. Choose a node in a different skeleton to complete the merge.`;
     };
     updateStatus();
     activation.bindInputEventMap(SPATIAL_SKELETON_PICK_INPUT_EVENT_MAP);
@@ -1400,7 +1400,7 @@ class SpatialSkeletonSplitModeTool extends SpatialSkeletonToolBase {
         return;
       }
       body.textContent =
-        "Ctrl+right-click the node where the skeleton should be split. Root nodes cannot be split.";
+        "Choose the node where the skeleton should be split. Root nodes cannot be split.";
     };
     updateStatus();
     activation.bindInputEventMap(SPATIAL_SKELETON_PICK_INPUT_EVENT_MAP);
