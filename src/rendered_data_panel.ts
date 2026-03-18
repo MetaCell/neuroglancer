@@ -53,6 +53,41 @@ declare let NEUROGLANCER_SHOW_OBJECT_SELECTION_TOOLTIP: boolean | undefined;
 
 const tempVec3 = vec3.create();
 
+interface SpatialSkeletonSelectableLayer {
+  selectSpatialSkeletonNode: (
+    nodeId: number,
+    pin: boolean | "toggle" | "force-unpin",
+    options?: { segmentId?: number; position?: ArrayLike<number> },
+  ) => void;
+  clearSpatialSkeletonNodeSelection: (
+    pin: boolean | "toggle" | "force-unpin",
+  ) => void;
+}
+
+function isSpatialSkeletonSelectableLayer(
+  layer: unknown,
+): layer is SpatialSkeletonSelectableLayer {
+  return (
+    typeof layer === "object" &&
+    layer !== null &&
+    "selectSpatialSkeletonNode" in layer &&
+    typeof layer.selectSpatialSkeletonNode === "function" &&
+    "clearSpatialSkeletonNodeSelection" in layer &&
+    typeof layer.clearSpatialSkeletonNodeSelection === "function"
+  );
+}
+
+function isSpatialSkeletonNodeSelectionValue(
+  value: unknown,
+): value is { kind: "spatialSkeletonNode" } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "kind" in value &&
+    value.kind === "spatialSkeletonNode"
+  );
+}
+
 export interface RenderedDataViewerState extends ViewerState {
   inputEventMap: EventActionMap;
   pickRadius: TrackableValue<number>;
@@ -543,11 +578,75 @@ export abstract class RenderedDataPanel extends RenderedPanel {
       /*capture=*/ true,
     );
 
+    const getPickedSpatialSkeletonLayerSelection = () => {
+      const { mouseState } = this.viewer;
+      if (!mouseState.updateUnconditionally()) {
+        return undefined;
+      }
+      const pickedNodeId = mouseState.pickedSpatialSkeletonNodeId;
+      if (
+        typeof pickedNodeId !== "number" ||
+        !Number.isSafeInteger(pickedNodeId) ||
+        pickedNodeId <= 0
+      ) {
+        return undefined;
+      }
+      const pickedLayer = mouseState.pickedRenderLayer?.userLayer;
+      if (!isSpatialSkeletonSelectableLayer(pickedLayer)) {
+        return undefined;
+      }
+      const pickedSegmentId = mouseState.pickedSpatialSkeletonSegmentId;
+      return {
+        layer: pickedLayer,
+        nodeId: pickedNodeId,
+        segmentId:
+          typeof pickedSegmentId === "number" &&
+          Number.isSafeInteger(pickedSegmentId) &&
+          pickedSegmentId > 0
+            ? pickedSegmentId
+            : undefined,
+        position: mouseState.position,
+      };
+    };
+
+    const clearPinnedSpatialSkeletonSelection = () => {
+      const selectionValue = this.viewer.selectionDetailsState.value;
+      if (selectionValue === undefined) {
+        return false;
+      }
+      for (const { layer, state } of selectionValue.layers) {
+        if (
+          !isSpatialSkeletonSelectableLayer(layer) ||
+          !isSpatialSkeletonNodeSelectionValue(state.value)
+        ) {
+          continue;
+        }
+        layer.clearSpatialSkeletonNodeSelection("force-unpin");
+        return true;
+      }
+      return false;
+    };
+
     registerActionListener(element, "select-position", () => {
+      const pickedSelection = getPickedSpatialSkeletonLayerSelection();
+      if (pickedSelection !== undefined) {
+        pickedSelection.layer.selectSpatialSkeletonNode(
+          pickedSelection.nodeId,
+          true,
+          {
+            segmentId: pickedSelection.segmentId,
+            position: pickedSelection.position,
+          },
+        );
+        return;
+      }
       this.viewer.selectionDetailsState.select();
     });
 
     registerActionListener(element, "unpin-selected-position", () => {
+      if (clearPinnedSpatialSkeletonSelection()) {
+        return;
+      }
       this.viewer.selectionDetailsState.unpin();
     });
 

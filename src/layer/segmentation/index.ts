@@ -28,7 +28,11 @@ import {
   LocalDataSource,
   localEquivalencesUrl,
 } from "#src/datasource/local.js";
-import type { LayerActionContext, ManagedUserLayer } from "#src/layer/index.js";
+import type {
+  LayerActionContext,
+  ManagedUserLayer,
+  MouseSelectionState,
+} from "#src/layer/index.js";
 import {
   LinkedLayerGroup,
   registerLayerType,
@@ -1470,7 +1474,9 @@ export class SegmentationUserLayer extends Base {
       : undefined;
   };
 
-  clearSpatialSkeletonNodeSelection = (pin: boolean | "toggle" = false) => {
+  clearSpatialSkeletonNodeSelection = (
+    pin: boolean | "toggle" | "force-unpin" = false,
+  ) => {
     this.selectedSpatialSkeletonNodeId.value = undefined;
     this.manager.root.selectionState.captureSingleLayerState(
       this,
@@ -2437,6 +2443,36 @@ export class SegmentationUserLayer extends Base {
       return value;
     }
     return maybeAugmentSegmentId(this.displayState, value);
+  }
+
+  captureSelectionState(
+    state: this["selectionState"],
+    mouseState: MouseSelectionState,
+  ) {
+    super.captureSelectionState(state, mouseState);
+    const pickedRenderLayer = mouseState.pickedRenderLayer;
+    if (pickedRenderLayer?.userLayer !== this) {
+      return;
+    }
+    const pickedNodeId = mouseState.pickedSpatialSkeletonNodeId;
+    if (
+      typeof pickedNodeId !== "number" ||
+      !Number.isSafeInteger(pickedNodeId) ||
+      pickedNodeId <= 0
+    ) {
+      return;
+    }
+    const pickedSegmentId = mouseState.pickedSpatialSkeletonSegmentId;
+    state.value = {
+      kind: "spatialSkeletonNode",
+      nodeId: pickedNodeId,
+      segmentId:
+        typeof pickedSegmentId === "number" &&
+        Number.isSafeInteger(pickedSegmentId) &&
+        pickedSegmentId > 0
+          ? pickedSegmentId
+          : undefined,
+    } satisfies SpatialSkeletonNodeSelectionValue;
   }
 
   handleAction(action: string, context: SegmentationActionContext) {
