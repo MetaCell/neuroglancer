@@ -226,9 +226,9 @@ export class SpatialSkeletonState extends RefCounted {
   readonly primaryInspectedSegmentId = new WatchableValue<number | undefined>(
     undefined,
   );
-  readonly secondaryInspectedSegmentId = new WatchableValue<
-    number | undefined
-  >(undefined);
+  readonly secondaryInspectedSegmentId = new WatchableValue<number | undefined>(
+    undefined,
+  );
   readonly mergeAnchorNodeId = new WatchableValue<number | undefined>(
     undefined,
   );
@@ -244,6 +244,10 @@ export class SpatialSkeletonState extends RefCounted {
   readonly pendingNodePositionVersion = new WatchableValue(0);
 
   private nodeDescriptions = new Map<number, string>();
+  private nodePropertyOverrides = new Map<
+    number,
+    { radius: number; confidence: number }
+  >();
   private pendingNodePositions = new Map<number, Float32Array>();
   private fullSkeletonCacheGeneration = 0;
   private fullSegmentNodeCache = new Map<
@@ -269,6 +273,48 @@ export class SpatialSkeletonState extends RefCounted {
     return this.nodeDescriptions.get(nodeId);
   }
 
+  getNodePropertyOverride(nodeId: number) {
+    const normalizedNodeId = this.normalizeNodeId(nodeId);
+    if (normalizedNodeId === undefined) {
+      return undefined;
+    }
+    return this.nodePropertyOverrides.get(normalizedNodeId);
+  }
+
+  setNodeProperties(
+    nodeId: number,
+    properties: { radius: number; confidence: number },
+  ) {
+    const normalizedNodeId = this.normalizeNodeId(nodeId);
+    const radius = Number(properties.radius);
+    const confidence = Number(properties.confidence);
+    if (
+      normalizedNodeId === undefined ||
+      !Number.isFinite(radius) ||
+      !Number.isFinite(confidence)
+    ) {
+      return false;
+    }
+    let changed = false;
+    const existing = this.nodePropertyOverrides.get(normalizedNodeId);
+    if (existing?.radius !== radius || existing?.confidence !== confidence) {
+      this.nodePropertyOverrides.set(normalizedNodeId, { radius, confidence });
+      changed = true;
+    }
+    return (
+      this.updateCachedNode(normalizedNodeId, (node) => {
+        if (node.radius === radius && node.confidence === confidence) {
+          return node;
+        }
+        return {
+          ...node,
+          radius,
+          confidence,
+        };
+      }) || changed
+    );
+  }
+
   getPendingNodeIds() {
     return this.pendingNodePositions.keys();
   }
@@ -280,10 +326,7 @@ export class SpatialSkeletonState extends RefCounted {
   private normalizeNodeId(nodeId: number | undefined) {
     if (nodeId === undefined) return undefined;
     const normalizedNodeId = Math.round(Number(nodeId));
-    if (
-      !Number.isSafeInteger(normalizedNodeId) ||
-      normalizedNodeId <= 0
-    ) {
+    if (!Number.isSafeInteger(normalizedNodeId) || normalizedNodeId <= 0) {
       return undefined;
     }
     return normalizedNodeId;
@@ -363,10 +406,7 @@ export class SpatialSkeletonState extends RefCounted {
       if (primarySegmentId === normalizedSegmentId) {
         return this.setInspectedSegments(normalizedSegmentId, undefined);
       }
-      return this.setInspectedSegments(
-        primarySegmentId,
-        normalizedSegmentId,
-      );
+      return this.setInspectedSegments(primarySegmentId, normalizedSegmentId);
     }
     return this.setInspectedSegments(normalizedSegmentId);
   }
@@ -379,10 +419,7 @@ export class SpatialSkeletonState extends RefCounted {
     return this.setInspectedSegments(this.primaryInspectedSegmentId.value);
   }
 
-  setMergeAnchor(
-    nodeId: number | undefined,
-    segmentId: number | undefined,
-  ) {
+  setMergeAnchor(nodeId: number | undefined, segmentId: number | undefined) {
     const normalizedNodeId = this.normalizeNodeId(nodeId);
     const normalizedSegmentId = this.normalizeSegmentId(segmentId);
     const nextNodeId =
@@ -610,6 +647,10 @@ export class SpatialSkeletonState extends RefCounted {
       childNodeIds?: Iterable<number>;
     } = {},
   ) {
+    const normalizedNodeId = this.normalizeNodeId(nodeId);
+    if (normalizedNodeId !== undefined) {
+      this.nodePropertyOverrides.delete(normalizedNodeId);
+    }
     const childNodeIds = options.childNodeIds
       ? new Set(options.childNodeIds)
       : undefined;

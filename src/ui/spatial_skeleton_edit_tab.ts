@@ -24,14 +24,12 @@ import svg_chevrons_left from "ikonate/icons/chevrons-left.svg?raw";
 import svg_chevrons_right from "ikonate/icons/chevrons-right.svg?raw";
 import svg_circle from "ikonate/icons/circle.svg?raw";
 import svg_flag from "ikonate/icons/flag.svg?raw";
-import svg_info from "ikonate/icons/info.svg?raw";
 import svg_minus from "ikonate/icons/minus.svg?raw";
 import svg_origin from "ikonate/icons/origin.svg?raw";
 import svg_retweet from "ikonate/icons/retweet.svg?raw";
 import svg_share_android from "ikonate/icons/share-android.svg?raw";
 import { CATMAID_TRUE_END_LABEL } from "#src/datasource/catmaid/api.js";
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
-import { Overlay } from "#src/overlay.js";
 import {
   getVisibleSegments,
   removeSegmentFromVisibleSets,
@@ -63,7 +61,6 @@ import {
   SPATIAL_SKELETON_SPLIT_MODE_TOOL_ID,
 } from "#src/ui/spatial_skeleton_edit_tool.js";
 import { makeToolButton } from "#src/ui/tool.js";
-import { makeCloseButton } from "#src/widget/close_button.js";
 import { makeIcon } from "#src/widget/icon.js";
 import { Tab } from "#src/widget/tab_view.js";
 
@@ -145,10 +142,6 @@ function formatNodeCoordinates(position: ArrayLike<number>) {
   const y = Number(position[1]);
   const z = Number(position[2]);
   return `${Math.round(x)} ${Math.round(y)} ${Math.round(z)}`;
-}
-
-function formatEditableNumber(value: number | undefined, fallback = "0") {
-  return value === undefined ? fallback : `${value}`;
 }
 
 function classifyNodeType(
@@ -268,10 +261,8 @@ export class SpatialSkeletonEditTab extends Tab {
     let inspectionAllowed = false;
     let navigationAllowed = false;
     let labelEditingAllowed = false;
-    let nodePropertyEditingAllowed = false;
     let nodeDeletionAllowed = false;
     let listCollapsed = true;
-    let propertiesDialog: Overlay | undefined;
     let pendingScrollToSelectedNode = false;
     let refreshRequestId = 0;
     let loadedNodeSummarySuffix = "";
@@ -312,11 +303,6 @@ export class SpatialSkeletonEditTab extends Tab {
       );
     };
 
-    const closePropertiesDialog = () => {
-      propertiesDialog?.close();
-      propertiesDialog = undefined;
-    };
-
     const updateTrueEndLabels = (
       labels: readonly string[] | undefined,
       present: boolean,
@@ -348,15 +334,9 @@ export class SpatialSkeletonEditTab extends Tab {
     const ensureActionsAllowed = (
       requiredCapabilities:
         | "inspectSkeletons"
-        | "editNodeProperties"
         | "editNodeLabels"
         | "deleteNodes"
-        | readonly (
-            | "inspectSkeletons"
-            | "editNodeProperties"
-            | "editNodeLabels"
-            | "deleteNodes"
-          )[],
+        | readonly ("inspectSkeletons" | "editNodeLabels" | "deleteNodes")[],
       options: {
         requireMaxLod?: boolean;
         requireVisibleChunks?: boolean;
@@ -483,10 +463,6 @@ export class SpatialSkeletonEditTab extends Tab {
         : undefined;
     };
 
-    const getNodeDisplayId = (node: SpatiallyIndexedSkeletonNodeInfo) => {
-      return node.nodeId;
-    };
-
     const getHoveredNodeIdFromViewer = () => {
       if (!mouseState.active) return undefined;
       const pickedRenderLayer = mouseState.pickedRenderLayer;
@@ -529,303 +505,6 @@ export class SpatialSkeletonEditTab extends Tab {
       if (hoveredViewerNodeId === nextHoveredNodeId) return;
       hoveredViewerNodeId = nextHoveredNodeId;
       applyRowInteractionState();
-    };
-
-    const getNodeTypeDisplayLabel = (
-      type: SkeletonNodeType,
-      nodeIsTrueEnd: boolean,
-    ) => {
-      if (nodeIsTrueEnd) return "True end";
-      switch (type) {
-        case "root":
-          return "Root";
-        case "branchStart":
-          return "Branch start";
-        case "virtualEnd":
-          return "End";
-        default:
-          return "Regular";
-      }
-    };
-
-    const openNodePropertiesDialog = (
-      node: SpatiallyIndexedSkeletonNodeInfo,
-      type: SkeletonNodeType,
-    ) => {
-      closePropertiesDialog();
-      const overlay = new Overlay();
-      propertiesDialog = overlay;
-      overlay.registerDisposer(() => {
-        if (propertiesDialog === overlay) {
-          propertiesDialog = undefined;
-        }
-      });
-      overlay.content.classList.add(
-        "neuroglancer-spatial-skeleton-properties-dialog",
-      );
-      overlay.container.classList.add(
-        "neuroglancer-spatial-skeleton-properties-overlay",
-      );
-
-      const nodeIsTrueEnd = hasTrueEndLabel(node);
-      const typeIconSvg = nodeIsTrueEnd ? svg_flag : NODE_TYPE_ICONS[type];
-      const typeIconTitle = nodeIsTrueEnd ? "true end" : NODE_TYPE_LABELS[type];
-      const description = getNodeDescriptionText(node);
-      const initialRadius = node.radius ?? 0;
-      const initialConfidence = node.confidence ?? 0;
-
-      const header = document.createElement("div");
-      header.className = "neuroglancer-spatial-skeleton-properties-header";
-      const title = document.createElement("div");
-      title.className = "neuroglancer-spatial-skeleton-properties-title";
-      title.textContent = "Node properties";
-      const closeButton = document.createElement("button");
-      closeButton.className = "neuroglancer-spatial-skeleton-properties-close";
-      closeButton.type = "button";
-      closeButton.title = "Close";
-      closeButton.appendChild(
-        makeCloseButton({
-          title: "Close",
-          clickable: false,
-        }),
-      );
-      closeButton.addEventListener("click", () => overlay.close());
-      header.appendChild(title);
-      header.appendChild(closeButton);
-      overlay.content.appendChild(header);
-
-      const preview = document.createElement("div");
-      preview.className = "neuroglancer-spatial-skeleton-properties-preview";
-      const previewIcon = document.createElement("span");
-      previewIcon.className =
-        "neuroglancer-spatial-skeleton-properties-preview-icon";
-      previewIcon.appendChild(
-        makeIcon({
-          svg: typeIconSvg,
-          title: typeIconTitle,
-          clickable: false,
-        }),
-      );
-      const previewId = document.createElement("span");
-      previewId.className =
-        "neuroglancer-spatial-skeleton-properties-preview-id neuroglancer-spatial-skeleton-node-segment-chip";
-      const segmentChipColors = getSegmentChipColors(node.segmentId);
-      previewId.textContent = String(node.segmentId);
-      previewId.style.backgroundColor = segmentChipColors.background;
-      previewId.style.color = segmentChipColors.foreground;
-      const previewCoordinates = document.createElement("span");
-      previewCoordinates.className =
-        "neuroglancer-spatial-skeleton-properties-preview-coordinates";
-      previewCoordinates.textContent = formatNodeCoordinates(node.position);
-      preview.appendChild(previewIcon);
-      preview.appendChild(previewId);
-      preview.appendChild(previewCoordinates);
-      overlay.content.appendChild(preview);
-
-      const body = document.createElement("div");
-      body.className = "neuroglancer-spatial-skeleton-properties-body";
-      overlay.content.appendChild(body);
-
-      const appendPropertyRow = (
-        label: string,
-        value: string | HTMLElement,
-      ) => {
-        const row = document.createElement("div");
-        row.className = "neuroglancer-spatial-skeleton-properties-row";
-        const labelElement = document.createElement("div");
-        labelElement.className =
-          "neuroglancer-spatial-skeleton-properties-label";
-        labelElement.textContent = label;
-        const valueElement = document.createElement("div");
-        valueElement.className =
-          "neuroglancer-spatial-skeleton-properties-value";
-        if (typeof value === "string") {
-          valueElement.textContent = value;
-        } else {
-          valueElement.appendChild(value);
-        }
-        row.appendChild(labelElement);
-        row.appendChild(valueElement);
-        body.appendChild(row);
-      };
-
-      const coordinatesValue = document.createElement("span");
-      coordinatesValue.className =
-        "neuroglancer-spatial-skeleton-properties-coordinates";
-      for (const [axis, value] of [
-        ["x", Math.round(Number(node.position[0]))],
-        ["y", Math.round(Number(node.position[1]))],
-        ["z", Math.round(Number(node.position[2]))],
-      ] as const) {
-        if (coordinatesValue.childNodes.length > 0) {
-          coordinatesValue.appendChild(document.createTextNode(" "));
-        }
-        const axisLabel = document.createElement("span");
-        axisLabel.className =
-          "neuroglancer-spatial-skeleton-properties-coordinate-axis";
-        axisLabel.textContent = `${axis} `;
-        const axisValue = document.createElement("span");
-        axisValue.className =
-          "neuroglancer-spatial-skeleton-properties-coordinate-value";
-        axisValue.textContent = String(value);
-        coordinatesValue.appendChild(axisLabel);
-        coordinatesValue.appendChild(axisValue);
-      }
-
-      appendPropertyRow("Coordinates", coordinatesValue);
-      appendPropertyRow("ID", String(getNodeDisplayId(node)));
-      appendPropertyRow(
-        "Node type",
-        getNodeTypeDisplayLabel(type, nodeIsTrueEnd),
-      );
-      const radiusInput = document.createElement("input");
-      radiusInput.className = "neuroglancer-spatial-skeleton-properties-input";
-      radiusInput.type = "number";
-      radiusInput.step = "any";
-      radiusInput.value = formatEditableNumber(node.radius);
-      appendPropertyRow("Radius", radiusInput);
-      const confidenceInput = document.createElement("input");
-      confidenceInput.className =
-        "neuroglancer-spatial-skeleton-properties-input";
-      confidenceInput.type = "number";
-      confidenceInput.min = "0";
-      confidenceInput.max = "100";
-      confidenceInput.step = "any";
-      confidenceInput.value = formatEditableNumber(node.confidence);
-      appendPropertyRow("Confidence level", confidenceInput);
-      if (description !== undefined) {
-        appendPropertyRow("Description", description);
-      }
-
-      const footer = document.createElement("div");
-      footer.className = "neuroglancer-spatial-skeleton-properties-footer";
-      const saveButton = document.createElement("button");
-      saveButton.className = "neuroglancer-spatial-skeleton-properties-save";
-      saveButton.type = "button";
-      saveButton.textContent = "Save changes";
-      footer.appendChild(saveButton);
-      overlay.content.appendChild(footer);
-
-      let savePending = false;
-      const setInputValidity = (
-        input: HTMLInputElement,
-        valid: boolean,
-        title: string | undefined,
-      ) => {
-        input.classList.toggle(
-          "neuroglancer-spatial-skeleton-properties-input-invalid",
-          !valid,
-        );
-        if (title === undefined) {
-          input.removeAttribute("title");
-        } else {
-          input.title = title;
-        }
-      };
-      const getParsedProperties = () => {
-        const radius = Number(radiusInput.value);
-        const confidence = Number(confidenceInput.value);
-        const radiusValid = Number.isFinite(radius);
-        const confidenceValid =
-          Number.isFinite(confidence) && confidence >= 0 && confidence <= 100;
-        return {
-          radius,
-          confidence,
-          radiusValid,
-          confidenceValid,
-        };
-      };
-      const updateDialogState = () => {
-        const disabledReason = nodePropertyEditingAllowed
-          ? undefined
-          : layer.getSpatialSkeletonActionsDisabledReason("editNodeProperties");
-        const { radiusValid, confidenceValid } = getParsedProperties();
-        const editable = disabledReason === undefined && !savePending;
-        radiusInput.disabled = !editable;
-        confidenceInput.disabled = !editable;
-        saveButton.disabled = !editable || !radiusValid || !confidenceValid;
-        saveButton.title =
-          disabledReason ??
-          (savePending
-            ? "Saving changes"
-            : radiusValid && confidenceValid
-              ? "Save changes"
-              : "Enter a valid radius and a confidence between 0 and 100");
-        setInputValidity(
-          radiusInput,
-          radiusValid,
-          radiusValid ? undefined : "Radius must be a finite number.",
-        );
-        setInputValidity(
-          confidenceInput,
-          confidenceValid,
-          confidenceValid ? undefined : "Confidence must be between 0 and 100.",
-        );
-      };
-      radiusInput.addEventListener("input", updateDialogState);
-      confidenceInput.addEventListener("input", updateDialogState);
-      saveButton.addEventListener("click", () => {
-        if (!ensureActionsAllowed("editNodeProperties")) return;
-        const { radius, confidence, radiusValid, confidenceValid } =
-          getParsedProperties();
-        if (!radiusValid || !confidenceValid) {
-          updateDialogState();
-          return;
-        }
-        const skeletonLayer = layer.getSpatiallyIndexedSkeletonLayer();
-        if (skeletonLayer === undefined) {
-          StatusMessage.showTemporaryMessage(
-            "No active spatial skeleton layer found for property update.",
-          );
-          return;
-        }
-        const skeletonSource =
-          getEditableSpatiallyIndexedSkeletonSource(skeletonLayer);
-        if (skeletonSource === undefined) {
-          StatusMessage.showTemporaryMessage(
-            "Unable to resolve editable skeleton source for the active layer.",
-          );
-          return;
-        }
-        const radiusChanged = radius !== initialRadius;
-        const confidenceChanged = confidence !== initialConfidence;
-        if (!radiusChanged && !confidenceChanged) {
-          overlay.close();
-          return;
-        }
-        savePending = true;
-        updateDialogState();
-        void (async () => {
-          try {
-            if (radiusChanged) {
-              await skeletonSource.updateRadius(node.nodeId, radius);
-            }
-            if (confidenceChanged) {
-              await skeletonSource.updateConfidence(node.nodeId, confidence);
-            }
-            applyNodePropertiesLocally(node.nodeId, {
-              radius,
-              confidence,
-            });
-            StatusMessage.showTemporaryMessage(
-              `Updated node ${node.nodeId} properties.`,
-            );
-            overlay.close();
-          } catch (error) {
-            const message =
-              error instanceof Error ? error.message : String(error);
-            StatusMessage.showTemporaryMessage(
-              `Failed to update node properties: ${message}`,
-            );
-          } finally {
-            savePending = false;
-            if (propertiesDialog === overlay) {
-              updateDialogState();
-            }
-          }
-        })();
-      });
-      updateDialogState();
     };
 
     const skeletonNavigationApi: SpatiallyIndexedSkeletonNavigationApi = {
@@ -1160,7 +839,9 @@ export class SpatialSkeletonEditTab extends Tab {
         void (async () => {
           try {
             clearBranchEndAnchor();
-            navigateToNodeTarget(await skeletonApi.getBranchEnd(selectedNode.nodeId));
+            navigateToNodeTarget(
+              await skeletonApi.getBranchEnd(selectedNode.nodeId),
+            );
           } catch (error) {
             const message =
               error instanceof Error ? error.message : String(error);
@@ -1206,7 +887,9 @@ export class SpatialSkeletonEditTab extends Tab {
             clearBranchEndAnchor();
             const target = await skeletonApi.getParentNode(selectedNode.nodeId);
             if (target === undefined) {
-              StatusMessage.showTemporaryMessage("Selected node has no parent.");
+              StatusMessage.showTemporaryMessage(
+                "Selected node has no parent.",
+              );
               return;
             }
             navigateToNodeTarget(target);
@@ -1544,17 +1227,6 @@ export class SpatialSkeletonEditTab extends Tab {
               !nodeDeletionAllowed || pendingDeleteNodes.has(node.nodeId),
             ),
           );
-          actions.appendChild(
-            makeRowActionButton(
-              svg_info,
-              "show node properties",
-              () => {
-                selectNode(node, { moveView: false });
-                openNodePropertiesDialog(node, type);
-              },
-              !inspectionAllowed,
-            ),
-          );
 
           row.appendChild(actions);
           row.appendChild(typeIcon);
@@ -1682,51 +1354,6 @@ export class SpatialSkeletonEditTab extends Tab {
       }
     };
 
-    const applyNodePropertiesLocally = (
-      nodeId: number,
-      updates: {
-        radius: number;
-        confidence: number;
-      },
-    ) => {
-      const updateNode = (node: SpatiallyIndexedSkeletonNodeInfo) => {
-        if (
-          node.radius === updates.radius &&
-          node.confidence === updates.confidence
-        ) {
-          return node;
-        }
-        return {
-          ...node,
-          radius: updates.radius,
-          confidence: updates.confidence,
-        };
-      };
-      skeletonState.updateCachedNode(nodeId, updateNode);
-      let changed = false;
-      const nextNodesBySegment = new Map<
-        number,
-        SpatiallyIndexedSkeletonNodeInfo[]
-      >();
-      for (const [segmentId, segmentNodes] of nodesBySegment) {
-        let segmentChanged = false;
-        const nextSegmentNodes = segmentNodes.map((candidate) => {
-          if (candidate.nodeId !== nodeId) return candidate;
-          const updatedNode = updateNode(candidate);
-          segmentChanged ||= updatedNode !== candidate;
-          return updatedNode;
-        });
-        nextNodesBySegment.set(
-          segmentId,
-          segmentChanged ? nextSegmentNodes : segmentNodes,
-        );
-        changed ||= segmentChanged;
-      }
-      if (changed) {
-        applyNodesBySegment(nextNodesBySegment, loadedNodeSummarySuffix);
-      }
-    };
-
     const refreshNodes = () => {
       const requestId = ++refreshRequestId;
       const skeletonLayer = layer.getSpatiallyIndexedSkeletonLayer();
@@ -1741,7 +1368,6 @@ export class SpatialSkeletonEditTab extends Tab {
       if (skeletonLayer === undefined || activeSegmentIds.length === 0) {
         allNodes = [];
         nodesBySegment = new Map();
-        closePropertiesDialog();
         layer.clearSpatialSkeletonNodeSelection(false);
         nodesSummary.removeAttribute("title");
         nodesSummary.textContent =
@@ -1792,7 +1418,6 @@ export class SpatialSkeletonEditTab extends Tab {
           );
           allNodes = [];
           nodesBySegment = new Map();
-          closePropertiesDialog();
           layer.clearSpatialSkeletonNodeSelection(false);
           nodesSummary.removeAttribute("title");
           nodesSummary.textContent =
@@ -1812,9 +1437,6 @@ export class SpatialSkeletonEditTab extends Tab {
       const nextLabelEditingAllowed =
         layer.getSpatialSkeletonActionsDisabledReason("editNodeLabels") ===
         undefined;
-      const nextNodePropertyEditingAllowed =
-        layer.getSpatialSkeletonActionsDisabledReason("editNodeProperties") ===
-        undefined;
       const nextNodeDeletionAllowed =
         layer.getSpatialSkeletonActionsDisabledReason("deleteNodes") ===
         undefined;
@@ -1822,13 +1444,11 @@ export class SpatialSkeletonEditTab extends Tab {
         inspectionAllowed !== nextInspectionAllowed ||
         navigationAllowed !== nextNavigationAllowed ||
         labelEditingAllowed !== nextLabelEditingAllowed ||
-        nodePropertyEditingAllowed !== nextNodePropertyEditingAllowed ||
         nodeDeletionAllowed !== nextNodeDeletionAllowed;
 
       inspectionAllowed = nextInspectionAllowed;
       navigationAllowed = nextNavigationAllowed;
       labelEditingAllowed = nextLabelEditingAllowed;
-      nodePropertyEditingAllowed = nextNodePropertyEditingAllowed;
       nodeDeletionAllowed = nextNodeDeletionAllowed;
 
       filterInput.disabled = !inspectionAllowed;
@@ -1850,9 +1470,6 @@ export class SpatialSkeletonEditTab extends Tab {
       updateList();
     });
 
-    this.registerDisposer(() => {
-      closePropertiesDialog();
-    });
     this.registerDisposer(
       observeWatchable(() => updateGateStatus(), layer.spatialSkeletonEditMode),
     );

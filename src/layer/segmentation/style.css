@@ -529,125 +529,6 @@
   font-weight: 600;
 }
 
-.overlay.neuroglancer-spatial-skeleton-properties-overlay {
-  background-color: rgba(0, 0, 0, 0.85);
-}
-
-.overlay-content.neuroglancer-spatial-skeleton-properties-dialog {
-  width: min(32rem, calc(100vw - 2rem));
-  background: #252525;
-  color: #efefef;
-  padding: 0;
-  border: 1px solid #404040;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
-  font-family: sans-serif;
-}
-
-.neuroglancer-spatial-skeleton-properties-header,
-.neuroglancer-spatial-skeleton-properties-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.9rem 1rem;
-  border-bottom: 1px solid #484848;
-}
-
-.neuroglancer-spatial-skeleton-properties-footer {
-  justify-content: flex-end;
-  border-top: 1px solid #484848;
-  border-bottom: 0;
-}
-
-.neuroglancer-spatial-skeleton-properties-title {
-  font-size: 1.1rem;
-  font-weight: 500;
-}
-
-.neuroglancer-spatial-skeleton-properties-close {
-  border: 0;
-  background: transparent;
-  color: #bfbfbf;
-  padding: 0;
-  cursor: pointer;
-}
-
-.neuroglancer-spatial-skeleton-properties-close .neuroglancer-icon {
-  min-width: 16px;
-  min-height: 16px;
-}
-
-.neuroglancer-spatial-skeleton-properties-close:hover .neuroglancer-icon {
-  background-color: #3d3d3d;
-}
-
-.neuroglancer-spatial-skeleton-properties-preview {
-  display: grid;
-  grid-template-columns: 1.3rem auto 1fr;
-  align-items: center;
-  gap: 0.35rem;
-  margin: 1rem 1rem 0.9rem 1rem;
-  padding: 0.3rem 0.45rem;
-  background: #373737;
-  font-family: monospace;
-}
-
-.neuroglancer-spatial-skeleton-properties-preview-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.neuroglancer-spatial-skeleton-properties-preview-icon .neuroglancer-icon {
-  min-width: 14px;
-  min-height: 14px;
-}
-
-.neuroglancer-spatial-skeleton-properties-preview-id {
-  justify-self: start;
-}
-
-.neuroglancer-spatial-skeleton-properties-preview-coordinates {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.neuroglancer-spatial-skeleton-properties-body {
-  padding: 0 1rem 0.9rem 1rem;
-}
-
-.neuroglancer-spatial-skeleton-properties-row {
-  display: grid;
-  grid-template-columns: 7.5rem minmax(0, 1fr);
-  gap: 0.75rem;
-  align-items: center;
-  margin-bottom: 0.65rem;
-}
-
-.neuroglancer-spatial-skeleton-properties-label {
-  color: #e0e0e0;
-  font-size: 0.98rem;
-}
-
-.neuroglancer-spatial-skeleton-properties-value {
-  min-width: 0;
-  overflow: hidden;
-  color: #f1f1f1;
-  text-align: right;
-  font-size: 0.98rem;
-}
-
-.neuroglancer-spatial-skeleton-properties-coordinates {
-  display: inline-block;
-  white-space: nowrap;
-  font-size: 0.9rem;
-}
-
-.neuroglancer-spatial-skeleton-properties-coordinate-axis {
-  color: #e4d35e;
-  font-weight: 500;
-}
-
 .neuroglancer-spatial-skeleton-properties-input {
   width: 100%;
   box-sizing: border-box;
@@ -666,29 +547,6 @@
 
 .neuroglancer-spatial-skeleton-properties-input::placeholder {
   color: #2a2a2a;
-}
-
-.neuroglancer-spatial-skeleton-properties-save {
-  border: 0;
-  border-radius: 0.6rem;
-  background: #575757;
-  color: #f5f5f5;
-  padding: 0.7rem 1rem;
-  cursor: pointer;
-  font: inherit;
-  transition:
-    background-color 0.12s ease-in-out,
-    transform 0.12s ease-in-out;
-}
-
-.neuroglancer-spatial-skeleton-properties-save:disabled {
-  opacity: 0.8;
-  cursor: default;
-}
-
-.neuroglancer-spatial-skeleton-properties-save:not(:disabled):hover {
-  background: #696969;
-  transform: translateY(-1px);
 }
 
 .neuroglancer-spatial-skeleton-selection {
@@ -750,6 +608,10 @@
 }
 
 .neuroglancer-spatial-skeleton-selection .neuroglancer-annotation-property {
+  display: grid;
+  grid-template-columns: 8rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
   padding: 0 0.1rem;
 }
 
@@ -761,6 +623,10 @@
 .neuroglancer-spatial-skeleton-selection
   .neuroglancer-annotation-property-value {
   color: #f0f0f0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 .neuroglancer-spatial-skeleton-selection-description {

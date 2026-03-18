@@ -343,15 +343,30 @@ function formatSpatialSkeletonPosition(position: ArrayLike<number>) {
   };
 }
 
-function formatSpatialSkeletonRadius(radius: number | undefined) {
-  if (radius === undefined || !Number.isFinite(radius)) return "-";
-  return `${radius}nm`;
+function formatSpatialSkeletonEditableNumber(
+  value: number | undefined,
+  fallback = "0",
+) {
+  return value === undefined ? fallback : `${value}`;
 }
 
-function formatSpatialSkeletonConfidence(confidence: number | undefined) {
-  if (confidence === undefined || !Number.isFinite(confidence)) return "-";
-  const normalized = Math.max(0, Math.min(100, confidence));
-  return `${Math.round(1 + (normalized / 100) * 4)}/5`;
+function getSpatialSkeletonSegmentChipColors(
+  displayState: SegmentationDisplayState | undefined | null,
+  segmentId: number,
+) {
+  const color = getBaseObjectColor(
+    displayState,
+    BigInt(segmentId),
+    new Float32Array(4),
+  );
+  const r = Math.round(color[0] * 255);
+  const g = Math.round(color[1] * 255);
+  const b = Math.round(color[2] * 255);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return {
+    background: getCssColor(color),
+    foreground: luminance > 0.6 ? "#101010" : "#f5f5f5",
+  };
 }
 
 export class SegmentationUserLayerGroupState
@@ -1393,12 +1408,13 @@ export class SegmentationUserLayer extends Base {
   };
 
   getInspectedSpatialSkeletonSegmentIds = () => {
-    return [...getVisibleSegments(this.displayState.segmentationGroupState.value)
-      .keys()]
+    return [
+      ...getVisibleSegments(
+        this.displayState.segmentationGroupState.value,
+      ).keys(),
+    ]
       .map((segmentId) => Number(segmentId))
-      .filter(
-        (segmentId) => Number.isSafeInteger(segmentId) && segmentId > 0,
-      )
+      .filter((segmentId) => Number.isSafeInteger(segmentId) && segmentId > 0)
       .sort((a, b) => a - b);
   };
 
@@ -2617,7 +2633,9 @@ export class SegmentationUserLayer extends Base {
     const skeletonLayer = this.getSpatiallyIndexedSkeletonLayer();
     const liveNodeInfo = skeletonLayer?.getNode(nodeId);
     const cachedNodeInfo = this.spatialSkeletonState.getCachedNode(nodeId);
-    const nodeInfo =
+    const propertyOverride =
+      this.spatialSkeletonState.getNodePropertyOverride(nodeId);
+    const nodeInfoBase =
       liveNodeInfo === undefined
         ? cachedNodeInfo
         : cachedNodeInfo === undefined
@@ -2628,11 +2646,19 @@ export class SegmentationUserLayer extends Base {
               parentNodeId: liveNodeInfo.parentNodeId,
               position: liveNodeInfo.position,
             };
+    const nodeInfo =
+      nodeInfoBase === undefined || propertyOverride === undefined
+        ? nodeInfoBase
+        : {
+            ...nodeInfoBase,
+            radius: propertyOverride.radius,
+            confidence: propertyOverride.confidence,
+          };
     const container = document.createElement("div");
     container.classList.add("neuroglancer-spatial-skeleton-selection");
     parent.appendChild(container);
 
-    const appendValue = (label: string, value: string) => {
+    const appendValue = (label: string, value: string | HTMLElement) => {
       const row = document.createElement("div");
       row.classList.add("neuroglancer-annotation-property");
       const nameElement = document.createElement("div");
@@ -2640,7 +2666,11 @@ export class SegmentationUserLayer extends Base {
       nameElement.textContent = label;
       const valueElement = document.createElement("div");
       valueElement.classList.add("neuroglancer-annotation-property-value");
-      valueElement.textContent = value;
+      if (typeof value === "string") {
+        valueElement.textContent = value;
+      } else {
+        valueElement.appendChild(value);
+      }
       row.appendChild(nameElement);
       row.appendChild(valueElement);
       container.appendChild(row);
@@ -2761,13 +2791,166 @@ export class SegmentationUserLayer extends Base {
     summaryCoordinates.title = position.fullText;
     summaryRow.appendChild(summaryCoordinates);
 
-    appendValue("Segment ID", `${nodeInfo.segmentId}`);
-    appendValue("Node type", nodeTypeLabel);
-    appendValue("Radius", formatSpatialSkeletonRadius(nodeInfo.radius));
-    appendValue(
-      "Confidence level",
-      formatSpatialSkeletonConfidence(nodeInfo.confidence),
+    const segmentChipColors = getSpatialSkeletonSegmentChipColors(
+      this.displayState,
+      nodeInfo.segmentId,
     );
+    const segmentIdChip = document.createElement("span");
+    segmentIdChip.className = "neuroglancer-spatial-skeleton-node-segment-chip";
+    segmentIdChip.textContent = `${nodeInfo.segmentId}`;
+    segmentIdChip.style.backgroundColor = segmentChipColors.background;
+    segmentIdChip.style.color = segmentChipColors.foreground;
+    appendValue("Segment ID", segmentIdChip);
+    appendValue("Node ID", `${nodeInfo.nodeId}`);
+    appendValue("Node type", nodeTypeLabel);
+    let committedRadius = nodeInfo.radius ?? 0;
+    let committedConfidence = nodeInfo.confidence ?? 0;
+    const radiusInput = document.createElement("input");
+    radiusInput.className = "neuroglancer-spatial-skeleton-properties-input";
+    radiusInput.type = "number";
+    radiusInput.step = "any";
+    radiusInput.value = formatSpatialSkeletonEditableNumber(nodeInfo.radius);
+    appendValue("Radius", radiusInput);
+    const confidenceInput = document.createElement("input");
+    confidenceInput.className =
+      "neuroglancer-spatial-skeleton-properties-input";
+    confidenceInput.type = "number";
+    confidenceInput.min = "0";
+    confidenceInput.max = "100";
+    confidenceInput.step = "any";
+    confidenceInput.value = formatSpatialSkeletonEditableNumber(
+      nodeInfo.confidence,
+    );
+    appendValue("Confidence level", confidenceInput);
+    let savePending = false;
+    const getPropertyEditingDisabledReason = () =>
+      skeletonSource === undefined
+        ? "Unable to resolve editable skeleton source for the active layer."
+        : this.getSpatialSkeletonActionsDisabledReason("editNodeProperties");
+    const setPropertyInputValidity = (
+      input: HTMLInputElement,
+      valid: boolean,
+      invalidTitle: string,
+    ) => {
+      input.classList.toggle(
+        "neuroglancer-spatial-skeleton-properties-input-invalid",
+        !valid,
+      );
+      const disabledReason = getPropertyEditingDisabledReason();
+      if (disabledReason !== undefined) {
+        input.title = disabledReason;
+      } else if (!valid) {
+        input.title = invalidTitle;
+      } else {
+        input.removeAttribute("title");
+      }
+    };
+    const getParsedProperties = () => {
+      const radius = Number(radiusInput.value);
+      const confidence = Number(confidenceInput.value);
+      const radiusValid = Number.isFinite(radius);
+      const confidenceValid =
+        Number.isFinite(confidence) && confidence >= 0 && confidence <= 100;
+      return {
+        radius,
+        confidence,
+        radiusValid,
+        confidenceValid,
+      };
+    };
+    const updatePropertyEditorState = () => {
+      const disabledReason = getPropertyEditingDisabledReason();
+      const { radiusValid, confidenceValid } = getParsedProperties();
+      const editable = disabledReason === undefined && !savePending;
+      radiusInput.disabled = !editable;
+      confidenceInput.disabled = !editable;
+      setPropertyInputValidity(
+        radiusInput,
+        radiusValid,
+        "Radius must be a finite number.",
+      );
+      setPropertyInputValidity(
+        confidenceInput,
+        confidenceValid,
+        "Confidence must be between 0 and 100.",
+      );
+    };
+    const resetPropertyInputs = () => {
+      radiusInput.value = formatSpatialSkeletonEditableNumber(committedRadius);
+      confidenceInput.value =
+        formatSpatialSkeletonEditableNumber(committedConfidence);
+      updatePropertyEditorState();
+    };
+    const handlePropertyInputKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      (event.currentTarget as HTMLInputElement).blur();
+    };
+    const commitProperties = () => {
+      if (savePending) return;
+      const disabledReason = getPropertyEditingDisabledReason();
+      if (disabledReason !== undefined) {
+        StatusMessage.showTemporaryMessage(disabledReason);
+        resetPropertyInputs();
+        return;
+      }
+      const { radius, confidence, radiusValid, confidenceValid } =
+        getParsedProperties();
+      if (!radiusValid || !confidenceValid) {
+        StatusMessage.showTemporaryMessage(
+          "Enter a valid radius and a confidence between 0 and 100.",
+        );
+        resetPropertyInputs();
+        return;
+      }
+      const radiusChanged = radius !== committedRadius;
+      const confidenceChanged = confidence !== committedConfidence;
+      if (!radiusChanged && !confidenceChanged) {
+        updatePropertyEditorState();
+        return;
+      }
+      savePending = true;
+      updatePropertyEditorState();
+      void (async () => {
+        try {
+          if (radiusChanged) {
+            await skeletonSource!.updateRadius(nodeInfo.nodeId, radius);
+          }
+          if (confidenceChanged) {
+            await skeletonSource!.updateConfidence(nodeInfo.nodeId, confidence);
+          }
+          committedRadius = radius;
+          committedConfidence = confidence;
+          this.spatialSkeletonState.setNodeProperties(nodeInfo.nodeId, {
+            radius,
+            confidence,
+          });
+          this.markSpatialSkeletonNodeDataChanged({
+            invalidateFullSkeletonCache: false,
+          });
+          StatusMessage.showTemporaryMessage(
+            `Updated node ${nodeInfo.nodeId} properties.`,
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          StatusMessage.showTemporaryMessage(
+            `Failed to update node properties: ${message}`,
+          );
+          resetPropertyInputs();
+        } finally {
+          savePending = false;
+          updatePropertyEditorState();
+        }
+      })();
+    };
+    radiusInput.addEventListener("input", updatePropertyEditorState);
+    confidenceInput.addEventListener("input", updatePropertyEditorState);
+    radiusInput.addEventListener("keydown", handlePropertyInputKeyDown);
+    confidenceInput.addEventListener("keydown", handlePropertyInputKeyDown);
+    radiusInput.addEventListener("change", commitProperties);
+    confidenceInput.addEventListener("change", commitProperties);
+    updatePropertyEditorState();
     if (this.spatialSkeletonTreeEndNodeId.value === nodeId) {
       appendValue("Branch", "Current tree-end anchor");
     }
