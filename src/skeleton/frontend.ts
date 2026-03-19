@@ -26,6 +26,7 @@ import {
 import {
   buildSpatiallyIndexedSkeletonOverlayGeometry,
 } from "#src/skeleton/overlay_geometry.js";
+import { SkeletonRenderMode } from "#src/skeleton/render_mode.js";
 import {
   DEFAULT_MAX_RETAINED_OVERLAY_SEGMENTS,
   mergeSpatiallyIndexedSkeletonOverlaySegmentIds,
@@ -974,10 +975,7 @@ void emitDefault() {
   }
 }
 
-export enum SkeletonRenderMode {
-  LINES = 0,
-  LINES_AND_POINTS = 1,
-}
+export { SkeletonRenderMode } from "#src/skeleton/render_mode.js";
 
 export class TrackableSkeletonRenderMode extends TrackableEnum<SkeletonRenderMode> {
   constructor(

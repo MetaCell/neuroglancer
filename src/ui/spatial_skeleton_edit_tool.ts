@@ -21,6 +21,7 @@ import {
   removeSegmentFromVisibleSets,
 } from "#src/segmentation_display_state/base.js";
 import type { SpatiallyIndexedSkeletonAddNodeResult } from "#src/skeleton/api.js";
+import { setSpatialSkeletonMode3dToLinesAndPoints } from "#src/skeleton/edit_mode_rendering.js";
 import {
   PerspectiveViewSpatiallyIndexedSkeletonLayer,
   SpatiallyIndexedSkeletonLayer,
@@ -416,6 +417,7 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
     activation: ToolActivation<this>,
     modeWatchable: { value: boolean },
   ) {
+    setSpatialSkeletonMode3dToLinesAndPoints(this.layer);
     modeWatchable.value = true;
     activation.registerDisposer(() => {
       modeWatchable.value = false;
@@ -675,10 +677,7 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
       return;
     }
 
-    layer.spatialSkeletonEditMode.value = true;
-    activation.registerDisposer(() => {
-      layer.spatialSkeletonEditMode.value = false;
-    });
+    this.activateModeWatchable(activation, layer.spatialSkeletonEditMode);
     setDebug("mode", "on");
     setDebug(
       "editableSource",
