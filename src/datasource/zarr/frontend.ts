@@ -22,7 +22,6 @@ import { WithParameters } from "#src/chunk_manager/frontend.js";
 import type { CoordinateSpace } from "#src/coordinate_transform.js";
 import {
   makeCoordinateSpace,
-  makeIdentityTransform,
   makeIdentityTransformedBoundingBox,
 } from "#src/coordinate_transform.js";
 import type {
@@ -225,7 +224,6 @@ interface ZarrMultiscaleInfo {
   dataType: DataType;
   scales: ZarrScaleInfo[];
   baseTransform: Float64Array;
-  shouldExposeBaseTransform: boolean;
 }
 
 function getNormalizedDimensionNames(
@@ -294,7 +292,6 @@ function getMultiscaleInfoForSingleArray(
       },
     ],
     baseTransform: transform,
-    shouldExposeBaseTransform: false, // Uses identity, no need to expose
   };
 }
 
@@ -378,7 +375,6 @@ async function resolveOmeMultiscale(
       };
     }),
     baseTransform: multiscale.baseInfo.baseTransform,
-    shouldExposeBaseTransform: multiscale.baseInfo.shouldExposeBaseTransform,
   };
 }
 
@@ -553,15 +549,13 @@ export class ZarrDataSource implements KvStoreBasedDataSourceProvider {
           sharedKvStoreContext,
           multiscaleInfo,
         );
-        const modelTransform = multiscaleInfo.shouldExposeBaseTransform
-          ? {
-              rank: volume.modelSpace.rank,
-              sourceRank: volume.modelSpace.rank,
-              inputSpace: volume.modelSpace,
-              outputSpace: volume.modelSpace,
-              transform: multiscaleInfo.baseTransform,
-            }
-          : makeIdentityTransform(volume.modelSpace);
+        const modelTransform = {
+          rank: volume.modelSpace.rank,
+          sourceRank: volume.modelSpace.rank,
+          inputSpace: volume.modelSpace,
+          outputSpace: volume.modelSpace,
+          transform: multiscaleInfo.baseTransform,
+        };
         return {
           canonicalUrl: `${kvStoreUrl}|zarr${metadata.zarrVersion}:`,
           modelTransform,
