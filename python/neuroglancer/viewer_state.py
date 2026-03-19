@@ -1847,6 +1847,12 @@ class LayerSelectionState(JsonObjectWrapper):
     annotation_subsource = annotationSubsource = wrapped_property(
         "annotationSubsource", optional(str)
     )
+    spatial_skeleton_node_id = spatialSkeletonNodeId = wrapped_property(
+        "spatialSkeletonNodeId", optional(int)
+    )
+    spatial_skeleton_segment_id = spatialSkeletonSegmentId = wrapped_property(
+        "spatialSkeletonSegmentId", optional(int)
+    )
 
 
 if typing.TYPE_CHECKING or _BUILDING_DOCS:

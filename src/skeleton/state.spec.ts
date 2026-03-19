@@ -126,6 +126,46 @@ describe("skeleton/state", () => {
     expect(state.getCachedNode(5)).toBeUndefined();
   });
 
+  it("notifies node data listeners after caching a fetched full segment", async () => {
+    const state = new SpatialSkeletonState();
+    const getSkeleton = vi.fn(async () => [
+      {
+        id: 5,
+        parent_id: null,
+        x: 1,
+        y: 2,
+        z: 3,
+        skeleton_id: 11,
+      },
+    ]);
+    const skeletonLayer = {
+      source: { getSkeleton },
+    } as any;
+    let notifications = 0;
+    state.nodeDataVersion.changed.add(() => {
+      notifications += 1;
+    });
+
+    await expect(state.getFullSegmentNodes(skeletonLayer, 11)).resolves.toEqual([
+      {
+        nodeId: 5,
+        segmentId: 11,
+        position: new Float32Array([1, 2, 3]),
+        parentNodeId: undefined,
+        labels: undefined,
+      },
+    ]);
+
+    expect(notifications).toBe(1);
+    expect(state.getCachedNode(5)).toEqual({
+      nodeId: 5,
+      segmentId: 11,
+      position: new Float32Array([1, 2, 3]),
+      parentNodeId: undefined,
+      labels: undefined,
+    });
+  });
+
   it("keeps inspection bounded to a primary and secondary segment", () => {
     const state = new SpatialSkeletonState();
     (state as any).fullSegmentNodeCache.set(11, [

@@ -95,6 +95,7 @@ import {
   verifyObject,
   verifyObjectProperty,
   verifyOptionalObjectProperty,
+  verifyPositiveInt,
   verifyOptionalString,
   verifyString,
 } from "#src/util/json.js";
@@ -142,6 +143,8 @@ export interface UserLayerSelectionState {
   annotationSubsource: string | undefined;
   annotationSubsubsourceId: string | undefined;
   annotationPartIndex: number | undefined;
+  spatialSkeletonNodeId: number | undefined;
+  spatialSkeletonSegmentId: number | undefined;
 
   value: any;
 }
@@ -222,12 +225,16 @@ export class UserLayer extends RefCounted {
     state.annotationPartIndex = undefined;
     state.annotationInstanceIndex = undefined;
     state.annotationInstanceCount = undefined;
+    state.spatialSkeletonNodeId = undefined;
+    state.spatialSkeletonSegmentId = undefined;
     state.value = undefined;
   }
 
   resetSelectionState(state: this["selectionState"]) {
     state.localPositionValid = false;
     state.annotationId = undefined;
+    state.spatialSkeletonNodeId = undefined;
+    state.spatialSkeletonSegmentId = undefined;
     state.value = undefined;
   }
 
@@ -276,6 +283,19 @@ export class UserLayer extends RefCounted {
         verifyString,
       );
     }
+    const spatialSkeletonNodeId = verifyOptionalObjectProperty(
+      json,
+      "spatialSkeletonNodeId",
+      verifyPositiveInt,
+    );
+    if (spatialSkeletonNodeId !== undefined) {
+      state.spatialSkeletonNodeId = spatialSkeletonNodeId;
+      state.spatialSkeletonSegmentId = verifyOptionalObjectProperty(
+        json,
+        "spatialSkeletonSegmentId",
+        verifyPositiveInt,
+      );
+    }
 
     state.value = json.value;
   }
@@ -306,6 +326,12 @@ export class UserLayer extends RefCounted {
       json.annotationPart = state.annotationPartIndex;
       json.annotationSource = state.annotationSourceIndex;
       json.annotationSubsource = state.annotationSubsource;
+    }
+    if (state.spatialSkeletonNodeId !== undefined) {
+      json.spatialSkeletonNodeId = state.spatialSkeletonNodeId;
+      if (state.spatialSkeletonSegmentId !== undefined) {
+        json.spatialSkeletonSegmentId = state.spatialSkeletonSegmentId;
+      }
     }
     if (state.value != null) {
       json.value = state.value;
@@ -353,6 +379,8 @@ export class UserLayer extends RefCounted {
     dest.annotationSourceIndex = source.annotationSourceIndex;
     dest.annotationSubsource = source.annotationSubsource;
     dest.annotationPartIndex = source.annotationPartIndex;
+    dest.spatialSkeletonNodeId = source.spatialSkeletonNodeId;
+    dest.spatialSkeletonSegmentId = source.spatialSkeletonSegmentId;
     dest.value = source.value;
   }
 

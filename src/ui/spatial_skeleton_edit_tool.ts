@@ -15,6 +15,8 @@
  */
 
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
+import { hasSpatialSkeletonNodeSelection } from "#src/layer/segmentation/selection.js";
+import { RenderedDataPanel } from "#src/rendered_data_panel.js";
 import {
   addSegmentToVisibleSets,
   getVisibleSegments,
@@ -22,14 +24,14 @@ import {
 } from "#src/segmentation_display_state/base.js";
 import type { SpatiallyIndexedSkeletonAddNodeResult } from "#src/skeleton/api.js";
 import { setSpatialSkeletonMode3dToLinesAndPoints } from "#src/skeleton/edit_mode_rendering.js";
+import type { SpatiallyIndexedSkeletonLayer } from "#src/skeleton/frontend.js";
 import {
   PerspectiveViewSpatiallyIndexedSkeletonLayer,
-  SpatiallyIndexedSkeletonLayer,
   SliceViewPanelSpatiallyIndexedSkeletonLayer,
   SliceViewSpatiallyIndexedSkeletonLayer,
 } from "#src/skeleton/frontend.js";
+import type { SpatiallyIndexedSkeletonSourceCapability } from "#src/skeleton/state.js";
 import { getEditableSpatiallyIndexedSkeletonSource } from "#src/skeleton/state.js";
-import { RenderedDataPanel } from "#src/rendered_data_panel.js";
 import { StatusMessage } from "#src/status.js";
 import type { ToolActivation } from "#src/ui/tool.js";
 import {
@@ -41,7 +43,6 @@ import type { ActionEvent } from "#src/util/event_action_map.js";
 import { EventActionMap } from "#src/util/event_action_map.js";
 import type { vec3 } from "#src/util/geom.js";
 import { startRelativeMouseDrag } from "#src/util/mouse_drag.js";
-import type { SpatiallyIndexedSkeletonSourceCapability } from "#src/skeleton/state.js";
 
 export const SPATIAL_SKELETON_EDIT_MODE_TOOL_ID = "spatialSkeletonEditMode";
 export const SPATIAL_SKELETON_MERGE_MODE_TOOL_ID = "spatialSkeletonMergeMode";
@@ -393,12 +394,7 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
         const hasSpatialSkeletonSelection =
           this.layer.selectedSpatialSkeletonNodeId.value !== undefined ||
           (pinnedSelection?.layers.some(
-            ({ layer, state }) =>
-              layer === this.layer &&
-              typeof state.value === "object" &&
-              state.value !== null &&
-              "kind" in state.value &&
-              state.value.kind === "spatialSkeletonNode",
+            ({ layer, state }) => layer === this.layer && hasSpatialSkeletonNodeSelection(state),
           ) ??
             false);
         if (hasSpatialSkeletonSelection) {

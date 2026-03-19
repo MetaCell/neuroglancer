@@ -871,8 +871,10 @@ export class SpatialSkeletonState extends RefCounted {
       );
     }
     const fetchVersion = this.fullSkeletonCacheGeneration;
-    let fetchPromise!: Promise<SpatiallyIndexedSkeletonNodeInfo[]>;
-    fetchPromise = (async () => {
+    const pendingFetch: {
+      promise?: Promise<SpatiallyIndexedSkeletonNodeInfo[]>;
+    } = {};
+    const fetchPromise = (async () => {
       const fetchedNodes = await skeletonSource.getSkeleton(segmentId);
       const dedupedNodes = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
       for (const fetchedNode of fetchedNodes) {
@@ -890,17 +892,20 @@ export class SpatialSkeletonState extends RefCounted {
       );
       if (
         this.fullSkeletonCacheGeneration === fetchVersion &&
-        this.pendingFullSegmentNodeFetches.get(segmentId) === fetchPromise
+        pendingFetch.promise !== undefined &&
+        this.pendingFullSegmentNodeFetches.get(segmentId) === pendingFetch.promise
       ) {
         this.fullSegmentNodeCache.set(segmentId, normalizedNodes);
         this.rebuildCachedNodesById();
+        this.markNodeDataChanged({ invalidateFullSkeletonCache: false });
       }
       return normalizedNodes;
     })().finally(() => {
-      if (this.pendingFullSegmentNodeFetches.get(segmentId) === fetchPromise) {
+      if (this.pendingFullSegmentNodeFetches.get(segmentId) === pendingFetch.promise) {
         this.pendingFullSegmentNodeFetches.delete(segmentId);
       }
     });
+    pendingFetch.promise = fetchPromise;
     this.pendingFullSegmentNodeFetches.set(segmentId, fetchPromise);
     return fetchPromise;
   }

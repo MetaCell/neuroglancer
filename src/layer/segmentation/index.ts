@@ -32,6 +32,7 @@ import type {
   LayerActionContext,
   ManagedUserLayer,
   MouseSelectionState,
+  UserLayerSelectionState,
 } from "#src/layer/index.js";
 import {
   LinkedLayerGroup,
@@ -44,6 +45,13 @@ import type { LoadedDataSubsource } from "#src/layer/layer_data_source.js";
 import { layerDataSourceSpecificationFromJson } from "#src/layer/layer_data_source.js";
 import * as json_keys from "#src/layer/segmentation/json_keys.js";
 import { registerLayerControls } from "#src/layer/segmentation/layer_controls.js";
+import {
+  getSpatialSkeletonMissingSelectionDisplayState,
+  getSpatialSkeletonNodeIdFromLayerSelectionState,
+  getSpatialSkeletonNodeIdFromViewerHover,
+  getSpatialSkeletonSegmentIdFromLayerSelectionState,
+  getSpatialSkeletonSelectionRecoveryKey,
+} from "#src/layer/segmentation/selection.js";
 import { appendSpatialSkeletonSerializationState } from "#src/layer/segmentation/spatial_skeleton_serialization.js";
 import {
   MeshLayer,
@@ -51,6 +59,7 @@ import {
   MultiscaleMeshLayer,
   MultiscaleMeshSource,
 } from "#src/mesh/frontend.js";
+import type { RenderLayerTransform } from "#src/render_coordinate_transform.js";
 import {
   RenderScaleHistogram,
   numRenderScaleHistogramBins,
@@ -59,6 +68,11 @@ import {
   trackableRenderScaleTarget,
 } from "#src/render_scale_statistics.js";
 import { getCssColor, SegmentColorHash } from "#src/segment_color.js";
+import {
+  addSegmentToVisibleSets,
+  getVisibleSegments,
+  removeSegmentFromVisibleSets,
+} from "#src/segmentation_display_state/base.js";
 import type {
   SegmentationColorGroupState,
   SegmentationDisplayState,
@@ -78,11 +92,6 @@ import type {
   PreprocessedSegmentPropertyMap,
   SegmentPropertyMap,
 } from "#src/segmentation_display_state/property_map.js";
-import {
-  addSegmentToVisibleSets,
-  getVisibleSegments,
-  removeSegmentFromVisibleSets,
-} from "#src/segmentation_display_state/base.js";
 import { getPreprocessedSegmentPropertyMap } from "#src/segmentation_display_state/property_map.js";
 import { LocalSegmentationGraphSource } from "#src/segmentation_graph/local.js";
 import { VisibleSegmentEquivalencePolicy } from "#src/segmentation_graph/segment_id.js";
@@ -111,6 +120,7 @@ import {
   hasAnySpatiallyIndexedSkeletonEditingCapability,
   hasSpatiallyIndexedSkeletonSourceCapability,
   getEditableSpatiallyIndexedSkeletonSource,
+  getSpatiallyIndexedSkeletonInspectionSource,
   type SpatiallyIndexedSkeletonSourceCapabilities,
   type SpatiallyIndexedSkeletonSourceCapability,
   SpatialSkeletonState,
@@ -168,8 +178,8 @@ import {
 } from "#src/util/json.js";
 import { Signal } from "#src/util/signal.js";
 import { makeWatchableShaderError } from "#src/webgl/dynamic_shader.js";
-import type { DependentViewContext } from "#src/widget/dependent_view_widget.js";
 import { makeDeleteButton } from "#src/widget/delete_button.js";
+import type { DependentViewContext } from "#src/widget/dependent_view_widget.js";
 import { makeIcon } from "#src/widget/icon.js";
 import { registerLayerShaderControlsTool } from "#src/widget/shader_controls.js";
 
@@ -1290,33 +1300,6 @@ interface SegmentationActionContext extends LayerActionContext {
   segmentationToggleSegmentState?: boolean | undefined;
 }
 
-interface SpatialSkeletonNodeSelectionValue {
-  kind: "spatialSkeletonNode";
-  nodeId: number;
-  segmentId?: number;
-}
-
-function isSpatialSkeletonNodeSelectionValue(
-  value: unknown,
-): value is SpatialSkeletonNodeSelectionValue {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const kind = (value as { kind?: unknown }).kind;
-  const nodeId = (value as { nodeId?: unknown }).nodeId;
-  const segmentId = (value as { segmentId?: unknown }).segmentId;
-  return (
-    kind === "spatialSkeletonNode" &&
-    typeof nodeId === "number" &&
-    Number.isSafeInteger(nodeId) &&
-    nodeId > 0 &&
-    (segmentId === undefined ||
-      (typeof segmentId === "number" &&
-        Number.isSafeInteger(segmentId) &&
-        segmentId > 0))
-  );
-}
-
 const Base = UserLayerWithAnnotationsMixin(UserLayer);
 export class SegmentationUserLayer extends Base {
   sliceViewRenderScaleHistogram = new RenderScaleHistogram();
@@ -1325,6 +1308,12 @@ export class SegmentationUserLayer extends Base {
   readonly spatialSkeletonState = this.registerDisposer(
     new SpatialSkeletonState(),
   );
+  private spatialSkeletonSelectionRecovery:
+    | {
+        key: string;
+        status: "pending" | "failed";
+      }
+    | undefined;
 
   graphConnection = new WatchableValue<
     SegmentationGraphSourceConnection | undefined
@@ -1347,6 +1336,57 @@ export class SegmentationUserLayer extends Base {
     );
   };
 
+  private captureSpatialSkeletonSelectionState(
+    capture: (state: this["selectionState"]) => boolean,
+    pin: boolean | "toggle" | "force-unpin",
+    options: { position?: ArrayLike<number> } = {},
+  ) {
+    const selectionState = this.manager.root.selectionState;
+    if (pin !== false || selectionState.pin.value) {
+      selectionState.captureSingleLayerState(this, capture, pin, options);
+      return;
+    }
+    const state = {} as UserLayerSelectionState;
+    this.initializeSelectionState(state);
+    if (!capture(state)) return;
+    selectionState.value = {
+      layers: [{ layer: this, state }],
+      coordinateSpace: selectionState.coordinateSpace.value,
+      position:
+        options.position === undefined
+          ? undefined
+          : new Float32Array(options.position),
+    };
+  }
+
+  private getGlobalSelectionPositionFromLayerPosition(
+    layerPosition: ArrayLike<number> | undefined,
+  ) {
+    if (layerPosition === undefined) return undefined;
+    const coordinateSpace = this.manager.root.selectionState.coordinateSpace.value;
+    const transform = this.getSpatiallyIndexedSkeletonLayer()?.displayState
+      .transform.value;
+    if (transform !== undefined && transform.error === undefined) {
+      return this.mapLayerPositionToGlobalSelectionPosition(
+        transform,
+        layerPosition,
+      );
+    }
+    if (coordinateSpace.rank !== layerPosition.length) {
+      return undefined;
+    }
+    return new Float32Array(layerPosition);
+  }
+
+  private mapLayerPositionToGlobalSelectionPosition(
+    transform: RenderLayerTransform,
+    layerPosition: ArrayLike<number>,
+  ) {
+    const result = this.manager.root.globalPosition.value.slice();
+    gatherUpdate(result, layerPosition, transform.globalToRenderLayerDimensions);
+    return result;
+  }
+
   selectSpatialSkeletonNode = (
     nodeId: number,
     pin: boolean | "toggle" = false,
@@ -1356,33 +1396,35 @@ export class SegmentationUserLayer extends Base {
     if (!Number.isSafeInteger(normalizedNodeId) || normalizedNodeId <= 0) {
       return;
     }
+    const selectedNodeInfo =
+      this.getSpatiallyIndexedSkeletonLayer()?.getNode(normalizedNodeId) ??
+      this.spatialSkeletonState.getCachedNode(normalizedNodeId);
+    const requestedSegmentId =
+      options.segmentId ?? selectedNodeInfo?.segmentId ?? undefined;
     const normalizedSegmentId =
-      options.segmentId === undefined
+      requestedSegmentId === undefined
         ? undefined
-        : Math.round(Number(options.segmentId));
+        : Math.round(Number(requestedSegmentId));
     const selectedNodePosition =
       options.position ??
-      this.getSpatiallyIndexedSkeletonLayer()?.getNode(normalizedNodeId)
-        ?.position ??
-      this.spatialSkeletonState.getCachedNode(normalizedNodeId)?.position;
-    this.selectedSpatialSkeletonNodeId.value = normalizedNodeId;
-    this.manager.root.selectionState.captureSingleLayerState(
-      this,
+      selectedNodeInfo?.position;
+    const selectedGlobalPosition =
+      this.getGlobalSelectionPositionFromLayerPosition(selectedNodePosition);
+    this.captureSpatialSkeletonSelectionState(
       (state) => {
-        state.value = {
-          kind: "spatialSkeletonNode",
-          nodeId: normalizedNodeId,
-          segmentId:
-            normalizedSegmentId !== undefined &&
-            Number.isSafeInteger(normalizedSegmentId) &&
-            normalizedSegmentId > 0
-              ? normalizedSegmentId
-              : undefined,
-        } satisfies SpatialSkeletonNodeSelectionValue;
+        const segmentId =
+          normalizedSegmentId !== undefined &&
+          Number.isSafeInteger(normalizedSegmentId) &&
+          normalizedSegmentId > 0
+            ? normalizedSegmentId
+            : undefined;
+        state.spatialSkeletonNodeId = normalizedNodeId;
+        state.spatialSkeletonSegmentId = segmentId;
+        state.value = segmentId === undefined ? undefined : BigInt(segmentId);
         return true;
       },
       pin,
-      { position: selectedNodePosition },
+      { position: selectedGlobalPosition },
     );
   };
 
@@ -1477,10 +1519,10 @@ export class SegmentationUserLayer extends Base {
   clearSpatialSkeletonNodeSelection = (
     pin: boolean | "toggle" | "force-unpin" = false,
   ) => {
-    this.selectedSpatialSkeletonNodeId.value = undefined;
-    this.manager.root.selectionState.captureSingleLayerState(
-      this,
+    this.captureSpatialSkeletonSelectionState(
       (state) => {
+        state.spatialSkeletonNodeId = undefined;
+        state.spatialSkeletonSegmentId = undefined;
         state.value = undefined;
         return true;
       },
@@ -1572,6 +1614,31 @@ export class SegmentationUserLayer extends Base {
       this.manager.layerSelectedValues,
       this,
     );
+    const syncSelectedSpatialSkeletonNodeIdFromGlobalSelection = () => {
+      const nextLayerSelectionState =
+        this.manager.root.selectionState.value?.layers.find(
+          (entry) => entry.layer === this,
+        )?.state;
+      const nextSelectedNodeId =
+        getSpatialSkeletonNodeIdFromLayerSelectionState(nextLayerSelectionState);
+      const nextRecoveryKey =
+        getSpatialSkeletonSelectionRecoveryKey(nextLayerSelectionState);
+      if (
+        this.spatialSkeletonSelectionRecovery !== undefined &&
+        this.spatialSkeletonSelectionRecovery.key !== nextRecoveryKey
+      ) {
+        this.spatialSkeletonSelectionRecovery = undefined;
+      }
+      if (this.selectedSpatialSkeletonNodeId.value !== nextSelectedNodeId) {
+        this.selectedSpatialSkeletonNodeId.value = nextSelectedNodeId;
+      }
+    };
+    this.registerDisposer(
+      this.manager.root.selectionState.changed.add(
+        syncSelectedSpatialSkeletonNodeIdFromGlobalSelection,
+      ),
+    );
+    syncSelectedSpatialSkeletonNodeIdFromGlobalSelection();
     this.displayState.selectedAlpha.changed.add(
       this.specificationChanged.dispatch,
     );
@@ -2450,29 +2517,16 @@ export class SegmentationUserLayer extends Base {
     mouseState: MouseSelectionState,
   ) {
     super.captureSelectionState(state, mouseState);
-    const pickedRenderLayer = mouseState.pickedRenderLayer;
-    if (pickedRenderLayer?.userLayer !== this) {
-      return;
-    }
-    const pickedNodeId = mouseState.pickedSpatialSkeletonNodeId;
     if (
-      typeof pickedNodeId !== "number" ||
-      !Number.isSafeInteger(pickedNodeId) ||
-      pickedNodeId <= 0
+      getSpatialSkeletonNodeIdFromViewerHover(mouseState, this) === undefined
     ) {
       return;
     }
-    const pickedSegmentId = mouseState.pickedSpatialSkeletonSegmentId;
-    state.value = {
-      kind: "spatialSkeletonNode",
-      nodeId: pickedNodeId,
-      segmentId:
-        typeof pickedSegmentId === "number" &&
-        Number.isSafeInteger(pickedSegmentId) &&
-        pickedSegmentId > 0
-          ? pickedSegmentId
-          : undefined,
-    } satisfies SpatialSkeletonNodeSelectionValue;
+    // Viewer hover should not mutate global selection for spatial skeleton
+    // nodes; the skeleton tab reads mouse hover directly for row highlighting.
+    state.spatialSkeletonNodeId = undefined;
+    state.spatialSkeletonSegmentId = undefined;
+    state.value = undefined;
   }
 
   handleAction(action: string, context: SegmentationActionContext) {
@@ -2516,12 +2570,7 @@ export class SegmentationUserLayer extends Base {
   }
   selectionStateFromJson(state: this["selectionState"], json: any) {
     super.selectionStateFromJson(state, json);
-    const { value } = state;
-    if (isSpatialSkeletonNodeSelectionValue(value)) {
-      state.value = value;
-      return;
-    }
-    let parsedValue = value;
+    let parsedValue = state.value;
     if (typeof parsedValue === "number") parsedValue = parsedValue.toString();
     try {
       state.value = parseUint64(parsedValue);
@@ -2532,9 +2581,7 @@ export class SegmentationUserLayer extends Base {
   selectionStateToJson(state: this["selectionState"], forPython: boolean): any {
     const json = super.selectionStateToJson(state, forPython);
     const { value } = state;
-    if (isSpatialSkeletonNodeSelectionValue(value)) {
-      json.value = value;
-    } else if (value instanceof Uint64MapEntry) {
+    if (value instanceof Uint64MapEntry) {
       if (forPython) {
         json.value = {
           key: value.key.toString(),
@@ -2649,23 +2696,18 @@ export class SegmentationUserLayer extends Base {
     context: DependentViewContext,
   ) {
     context.registerDisposer(
-      this.selectedSpatialSkeletonNodeId.changed.add(context.redraw),
-    );
-    context.registerDisposer(
       this.spatialSkeletonTreeEndNodeId.changed.add(context.redraw),
     );
     context.registerDisposer(
       this.spatialSkeletonNodeDataVersion.changed.add(context.redraw),
     );
-    const selectionValue = isSpatialSkeletonNodeSelectionValue(state.value)
-      ? state.value
-      : undefined;
-    const nodeId =
-      selectionValue?.nodeId ?? this.selectedSpatialSkeletonNodeId.value;
+    const nodeId = getSpatialSkeletonNodeIdFromLayerSelectionState(state);
     if (nodeId === undefined) {
       return false;
     }
 
+    const selectedSegmentId =
+      getSpatialSkeletonSegmentIdFromLayerSelectionState(state);
     const skeletonLayer = this.getSpatiallyIndexedSkeletonLayer();
     const liveNodeInfo = skeletonLayer?.getNode(nodeId);
     const cachedNodeInfo = this.spatialSkeletonState.getCachedNode(nodeId);
@@ -2690,6 +2732,32 @@ export class SegmentationUserLayer extends Base {
             radius: propertyOverride.radius,
             confidence: propertyOverride.confidence,
           };
+    const cachedSelectedSegmentNodes =
+      selectedSegmentId === undefined
+        ? undefined
+        : this.spatialSkeletonState.getCachedSegmentNodes(selectedSegmentId);
+    const recoveryKey = getSpatialSkeletonSelectionRecoveryKey(state);
+    if (
+      nodeInfoBase !== undefined &&
+      recoveryKey !== undefined &&
+      this.spatialSkeletonSelectionRecovery?.key === recoveryKey
+    ) {
+      this.spatialSkeletonSelectionRecovery = undefined;
+    }
+    const selectionRecovery = this.spatialSkeletonSelectionRecovery;
+    const recoveryStatus =
+      recoveryKey !== undefined && selectionRecovery?.key === recoveryKey
+        ? selectionRecovery.status
+        : undefined;
+    const missingSelectionDisplayState =
+      getSpatialSkeletonMissingSelectionDisplayState(state, {
+        hasInspectableSource:
+          skeletonLayer !== undefined &&
+          getSpatiallyIndexedSkeletonInspectionSource(skeletonLayer) !==
+            undefined,
+        hasCachedSegment: cachedSelectedSegmentNodes !== undefined,
+        recoveryStatus,
+      });
     const container = document.createElement("div");
     container.classList.add("neuroglancer-spatial-skeleton-selection");
     parent.appendChild(container);
@@ -2713,12 +2781,64 @@ export class SegmentationUserLayer extends Base {
     };
 
     if (nodeInfo === undefined) {
+      if (
+        missingSelectionDisplayState.shouldRequestRecovery &&
+        skeletonLayer !== undefined &&
+        selectedSegmentId !== undefined &&
+        missingSelectionDisplayState.recoveryKey !== undefined
+      ) {
+        const { recoveryKey } = missingSelectionDisplayState;
+        this.spatialSkeletonSelectionRecovery = {
+          key: recoveryKey,
+          status: "pending",
+        };
+        void this.spatialSkeletonState
+          .getFullSegmentNodes(skeletonLayer, selectedSegmentId)
+          .then((segmentNodes) => {
+            if (
+              this.spatialSkeletonSelectionRecovery?.key !== recoveryKey ||
+              this.spatialSkeletonSelectionRecovery.status !== "pending"
+            ) {
+              return;
+            }
+            const recovered = segmentNodes.some(
+              (candidate) => candidate.nodeId === nodeId,
+            );
+            if (recovered) {
+              return;
+            }
+            this.spatialSkeletonSelectionRecovery = {
+              key: recoveryKey,
+              status: "failed",
+            };
+            this.spatialSkeletonState.markNodeDataChanged({
+              invalidateFullSkeletonCache: false,
+            });
+          })
+          .catch(() => {
+            if (
+              this.spatialSkeletonSelectionRecovery?.key !== recoveryKey ||
+              this.spatialSkeletonSelectionRecovery.status !== "pending"
+            ) {
+              return;
+            }
+            this.spatialSkeletonSelectionRecovery = {
+              key: recoveryKey,
+              status: "failed",
+            };
+            this.spatialSkeletonState.markNodeDataChanged({
+              invalidateFullSkeletonCache: false,
+            });
+          });
+      }
       const valueElement = document.createElement("div");
       valueElement.classList.add(
         "neuroglancer-selection-details-segment-description",
       );
       valueElement.textContent =
-        "Selected node is not available in the current loaded or cached skeleton data.";
+        missingSelectionDisplayState.loading
+          ? "Loading selected node from full skeleton data."
+          : "Selected node is not available in the current loaded or cached skeleton data.";
       container.appendChild(valueElement);
       return true;
     }

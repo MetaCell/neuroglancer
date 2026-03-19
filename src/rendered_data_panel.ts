@@ -21,16 +21,17 @@ import type { Annotation } from "#src/annotation/index.js";
 import { getAnnotationTypeRenderHandler } from "#src/annotation/type_handler.js";
 import type { DisplayContext } from "#src/display_context.js";
 import { RenderedPanel } from "#src/display_context.js";
+import { hasSpatialSkeletonNodeSelection } from "#src/layer/segmentation/selection.js";
 import type { NavigationState } from "#src/navigation_state.js";
 import { PickIDManager } from "#src/object_picking.js";
-import {
-  clearOutOfBoundsPickData,
-  getPickDiameter,
-} from "#src/rendered_data_panel_picking.js";
 import {
   displayToLayerCoordinates,
   layerToDisplayCoordinates,
 } from "#src/render_coordinate_transform.js";
+import {
+  clearOutOfBoundsPickData,
+  getPickDiameter,
+} from "#src/rendered_data_panel_picking.js";
 import { StatusMessage } from "#src/status.js";
 import type { TrackableValue } from "#src/trackable_value.js";
 import { AutomaticallyFocusedElement } from "#src/util/automatic_focus.js";
@@ -82,13 +83,10 @@ function isSpatialSkeletonSelectableLayer(
 }
 
 function isSpatialSkeletonNodeSelectionValue(
-  value: unknown,
-): value is { kind: "spatialSkeletonNode" } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "kind" in value &&
-    value.kind === "spatialSkeletonNode"
+  state: unknown,
+) {
+  return hasSpatialSkeletonNodeSelection(
+    state as { spatialSkeletonNodeId?: unknown } | undefined,
   );
 }
 
@@ -549,7 +547,7 @@ export abstract class RenderedDataPanel extends RenderedPanel {
       for (const { layer, state } of selectionValue.layers) {
         if (
           !isSpatialSkeletonSelectableLayer(layer) ||
-          !isSpatialSkeletonNodeSelectionValue(state.value)
+          !isSpatialSkeletonNodeSelectionValue(state)
         ) {
           continue;
         }

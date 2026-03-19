@@ -17,8 +17,8 @@
 import svg_arrow_left from "ikonate/icons/arrow-left.svg?raw";
 import svg_arrow_right from "ikonate/icons/arrow-right.svg?raw";
 import svg_bin from "ikonate/icons/bin.svg?raw";
-import svg_chevron_right from "ikonate/icons/chevron-right.svg?raw";
 import svg_chevron_down from "ikonate/icons/chevron-down.svg?raw";
+import svg_chevron_right from "ikonate/icons/chevron-right.svg?raw";
 import svg_chevron_up from "ikonate/icons/chevron-up.svg?raw";
 import svg_chevrons_left from "ikonate/icons/chevrons-left.svg?raw";
 import svg_chevrons_right from "ikonate/icons/chevrons-right.svg?raw";
@@ -30,6 +30,7 @@ import svg_retweet from "ikonate/icons/retweet.svg?raw";
 import svg_share_android from "ikonate/icons/share-android.svg?raw";
 import { CATMAID_TRUE_END_LABEL } from "#src/datasource/catmaid/api.js";
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
+import { getSpatialSkeletonNodeIdFromViewerHover } from "#src/layer/segmentation/selection.js";
 import {
   getVisibleSegments,
   removeSegmentFromVisibleSets,
@@ -464,20 +465,7 @@ export class SpatialSkeletonEditTab extends Tab {
     };
 
     const getHoveredNodeIdFromViewer = () => {
-      if (!mouseState.active) return undefined;
-      const pickedRenderLayer = mouseState.pickedRenderLayer;
-      if (
-        pickedRenderLayer !== null &&
-        !layer.renderLayers.includes(pickedRenderLayer)
-      ) {
-        return undefined;
-      }
-      const pickedNodeId = mouseState.pickedSpatialSkeletonNodeId;
-      return typeof pickedNodeId === "number" &&
-        Number.isSafeInteger(pickedNodeId) &&
-        pickedNodeId > 0
-        ? pickedNodeId
-        : undefined;
+      return getSpatialSkeletonNodeIdFromViewerHover(mouseState, layer);
     };
 
     const applyRowInteractionState = (
