@@ -42,6 +42,40 @@ import { makeDeleteButton } from "#src/widget/delete_button.js";
 import { makeIcon } from "#src/widget/icon.js";
 import { PositionWidget } from "#src/widget/position_widget.js";
 
+function formatLayerHoverValue(value: unknown) {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  if (typeof value !== "object") {
+    return `${value}`;
+  }
+  const entry = value as {
+    key?: unknown;
+    value?: unknown;
+    label?: unknown;
+  };
+  if (typeof entry.key !== "bigint") {
+    return `${value}`;
+  }
+  const keyString = entry.key.toString();
+  const mappedString =
+    typeof entry.value === "bigint" ? entry.value.toString() : undefined;
+  const baseText =
+    mappedString === undefined ? keyString : `${keyString}→${mappedString}`;
+  if (typeof entry.label !== "string") {
+    return baseText;
+  }
+  const label = entry.label.trim();
+  if (
+    label.length === 0 ||
+    label === keyString ||
+    (mappedString !== undefined && label === mappedString)
+  ) {
+    return baseText;
+  }
+  return `${baseText} ${label}`;
+}
+
 class LayerWidget extends RefCounted {
   element = document.createElement("div");
   layerNumberElement = document.createElement("div");
@@ -433,7 +467,7 @@ export class LayerBar extends RefCounted {
         if (state !== undefined) {
           const { value } = state;
           if (value !== undefined) {
-            text = "" + value;
+            text = formatLayerHoverValue(value);
           }
         }
       }

@@ -18,6 +18,7 @@ import { WithParameters } from "#src/chunk_manager/backend.js";
 import { SpatiallyIndexedSkeletonSourceBackend, SpatiallyIndexedSkeletonChunk, SkeletonSource, SkeletonChunk } from "#src/skeleton/backend.js";
 import { CatmaidClient } from "#src/datasource/catmaid/api.js";
 import { CatmaidSkeletonSourceParameters, CatmaidCompleteSkeletonSourceParameters } from "#src/datasource/catmaid/base.js";
+import { packCatmaidSkeletonNodes } from "#src/datasource/catmaid/skeleton_packing.js";
 import { registerSharedObject } from "#src/worker_rpc.js";
 import { vec3 } from "#src/util/geom.js";
 import { WithSharedCredentialsProviderCounterpart } from "#src/credentials_provider/shared_counterpart.js";
@@ -50,7 +51,7 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
         super(args[0], args[1]);
     }
 
-    async download(chunk: SpatiallyIndexedSkeletonChunk, _signal: AbortSignal) {
+    async download(chunk: SpatiallyIndexedSkeletonChunk, signal: AbortSignal) {
         const { chunkGridPosition } = chunk;
         const { chunkDataSize } = this.spec;
 
@@ -66,56 +67,18 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
         const lodValue = chunk.lod ?? this.currentLod;
         // Get cache provider from parameters (passed from frontend)
         const cacheProvider = this.parameters.catmaidParameters.cacheProvider;
-        const nodes = await this.client.fetchNodes(bbox, lodValue, cacheProvider);
+        const nodes = await this.client.fetchNodes(bbox, lodValue, {
+            cacheProvider,
+            signal,
+        });
+        const packed = packCatmaidSkeletonNodes(nodes);
 
-        const numVertices = nodes.length;
-        const vertexPositions = new Float32Array(numVertices * 3);
-        const vertexAttributes = new Float32Array(numVertices);
-        const indices: number[] = [];
-        const nodeMap = new Map<number, number>();
-        const missingConnections: Array<{
-            nodeId: number;
-            parentId: number;
-            vertexIndex: number;
-            skeletonId: number;
-        }> = [];
-
-
-        for (let i = 0; i < numVertices; ++i) {
-            const node = nodes[i];
-            nodeMap.set(node.id, i);
-            vertexPositions[i * 3] = node.x;
-            vertexPositions[i * 3 + 1] = node.y;
-            vertexPositions[i * 3 + 2] = node.z;
-            vertexAttributes[i] = node.skeleton_id;
-        }
-
-
-        for (let i = 0; i < numVertices; ++i) {
-            const node = nodes[i];
-            if (node.parent_id !== null) {
-                const parentIndex = nodeMap.get(node.parent_id);
-                if (parentIndex !== undefined) {
-                    indices.push(i, parentIndex);
-                } else {
-                    missingConnections.push({
-                        nodeId: node.id,
-                        parentId: node.parent_id,
-                        vertexIndex: i,
-                        skeletonId: node.skeleton_id,
-                    });
-                }
-            }
-        }
-
-
-        chunk.vertexPositions = vertexPositions;
-        chunk.indices = new Uint32Array(indices);
+        chunk.vertexPositions = packed.vertexPositions;
+        chunk.indices = packed.indices;
 
         // Pack only segment IDs into vertexAttributes (positions are in vertexPositions)
-        chunk.vertexAttributes = [vertexAttributes];
-        chunk.missingConnections = missingConnections;
-        chunk.nodeMap = nodeMap;
+        chunk.vertexAttributes = [packed.segmentIds];
+        chunk.nodeMap = packed.nodeMap;
     }
 }
 
@@ -148,36 +111,10 @@ export class CatmaidSkeletonSourceBackend extends WithParameters(
     async download(chunk: SkeletonChunk, _signal: AbortSignal) {
         const skeletonId = Number(chunk.objectId);
         const nodes = await this.client.getSkeleton(skeletonId);
+        const packed = packCatmaidSkeletonNodes(nodes);
 
-        const numVertices = nodes.length;
-        const vertexPositions = new Float32Array(numVertices * 3);
-        const vertexAttributes = new Float32Array(numVertices);
-        const indices: number[] = [];
-        const nodeMap = new Map<number, number>();
-
-        // Build vertex positions and create node ID to vertex index mapping
-        for (let i = 0; i < numVertices; ++i) {
-            const node = nodes[i];
-            nodeMap.set(node.id, i);
-            vertexPositions[i * 3] = node.x;
-            vertexPositions[i * 3 + 1] = node.y;
-            vertexPositions[i * 3 + 2] = node.z;
-            vertexAttributes[i] = node.skeleton_id;
-        }
-
-        // Build edge indices from parent-child relationships
-        for (let i = 0; i < numVertices; ++i) {
-            const node = nodes[i];
-            if (node.parent_id !== null) {
-                const parentIndex = nodeMap.get(node.parent_id);
-                if (parentIndex !== undefined) {
-                    indices.push(i, parentIndex);
-                }
-            }
-        }
-
-        chunk.vertexPositions = vertexPositions;
-        chunk.indices = new Uint32Array(indices);
-        chunk.vertexAttributes = [vertexAttributes];
+        chunk.vertexPositions = packed.vertexPositions;
+        chunk.indices = packed.indices;
+        chunk.vertexAttributes = [packed.segmentIds];
     }
 }

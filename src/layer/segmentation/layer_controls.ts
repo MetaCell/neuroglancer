@@ -91,6 +91,7 @@ export const LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
         target: layer.displayState.spatialSkeletonGridResolutionTarget2d,
         relative: layer.displayState.spatialSkeletonGridResolutionRelative2d,
         pixelSize: layer.displayState.spatialSkeletonGridPixelSize2d,
+        chunkStats: layer.displayState.spatialSkeletonGridChunkStats2d,
         relativeTooltip:
           "Interpret the 2D skeleton grid resolution target as relative to zoom",
       }),
@@ -116,6 +117,7 @@ export const LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
         target: layer.displayState.spatialSkeletonGridResolutionTarget3d,
         relative: layer.displayState.spatialSkeletonGridResolutionRelative3d,
         pixelSize: layer.displayState.spatialSkeletonGridPixelSize3d,
+        chunkStats: layer.displayState.spatialSkeletonGridChunkStats3d,
         relativeTooltip:
           "Interpret the 3D skeleton grid resolution target as relative to zoom",
       }),
