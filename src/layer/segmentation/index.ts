@@ -117,6 +117,14 @@ import {
   type SpatiallyIndexedSkeletonNodeInfo,
 } from "#src/skeleton/frontend.js";
 import {
+  classifySpatialSkeletonDisplayNodeType as getSpatialSkeletonDisplayNodeType,
+  getSpatialSkeletonNodeIconFilterType,
+  hasSpatialSkeletonTrueEndLabel,
+  isSpatialSkeletonClosedEndLabel,
+  SpatialSkeletonNodeFilterType,
+  type SpatialSkeletonDisplayNodeType,
+} from "#src/skeleton/node_types.js";
+import {
   hasAnySpatiallyIndexedSkeletonEditingCapability,
   hasSpatiallyIndexedSkeletonSourceCapability,
   getEditableSpatiallyIndexedSkeletonSource,
@@ -188,13 +196,6 @@ import { makeIcon } from "#src/widget/icon.js";
 import { registerLayerShaderControlsTool } from "#src/widget/shader_controls.js";
 
 const MAX_LAYER_BAR_UI_INDICATOR_COLORS = 6;
-const SPATIAL_SKELETON_TRUE_END_LABEL = "ends";
-
-type SpatialSkeletonDisplayNodeType =
-  | "root"
-  | "branchStart"
-  | "regular"
-  | "virtualEnd";
 
 const SPATIAL_SKELETON_NODE_TYPE_ICONS: Record<
   SpatialSkeletonDisplayNodeType,
@@ -205,31 +206,6 @@ const SPATIAL_SKELETON_NODE_TYPE_ICONS: Record<
   regular: svg_minus,
   virtualEnd: svg_circle,
 };
-
-const SPATIAL_SKELETON_CLOSED_END_LABEL_PATTERNS = [
-  /^uncertain continuation$/i,
-  /^not a branch$/i,
-  /^soma$/i,
-  /^(really|uncertain|anterior|posterior)?\s?ends?$/i,
-];
-
-function hasSpatialSkeletonTrueEndLabel(labels: readonly string[] | undefined) {
-  return (
-    labels?.some(
-      (label) => label.trim().toLowerCase() === SPATIAL_SKELETON_TRUE_END_LABEL,
-    ) ?? false
-  );
-}
-
-function isSpatialSkeletonClosedEndLabel(label: string) {
-  const normalized = label.trim();
-  return (
-    normalized.length > 0 &&
-    SPATIAL_SKELETON_CLOSED_END_LABEL_PATTERNS.some((pattern) =>
-      pattern.test(normalized),
-    )
-  );
-}
 
 function normalizeSpatialSkeletonLabel(label: string) {
   return label.trim().toLowerCase();
@@ -309,25 +285,6 @@ function mergeSpatialSkeletonNodeLabels(
     result.push(trimmed);
   }
   return result.length === 0 ? undefined : result;
-}
-
-function getSpatialSkeletonDisplayNodeType(
-  node: SpatiallyIndexedSkeletonNodeInfo,
-  childCount: number | undefined,
-): SpatialSkeletonDisplayNodeType {
-  if (node.parentNodeId === undefined) {
-    return "root";
-  }
-  if (childCount === undefined) {
-    return "regular";
-  }
-  if (childCount > 1) {
-    return "branchStart";
-  }
-  if (childCount === 0) {
-    return "virtualEnd";
-  }
-  return "regular";
 }
 
 function getSpatialSkeletonNodeTypeLabel(
@@ -2885,6 +2842,10 @@ export class SegmentationUserLayer extends Base {
       nodeType,
       nodeHasTrueEnd,
     );
+    const iconFilterType = getSpatialSkeletonNodeIconFilterType({
+      nodeHasTrueEnd,
+      nodeType,
+    });
     const summaryRow = document.createElement("div");
     summaryRow.classList.add("neuroglancer-spatial-skeleton-selection-summary");
     container.appendChild(summaryRow);
@@ -2980,9 +2941,12 @@ export class SegmentationUserLayer extends Base {
     icon.className = "neuroglancer-spatial-skeleton-selection-summary-icon";
     icon.appendChild(
       makeIcon({
-        svg: nodeHasTrueEnd
-          ? svg_flag
-          : SPATIAL_SKELETON_NODE_TYPE_ICONS[nodeType],
+        svg:
+          iconFilterType === SpatialSkeletonNodeFilterType.TRUE_END
+            ? svg_flag
+            : iconFilterType === SpatialSkeletonNodeFilterType.VIRTUAL_END
+              ? svg_circle
+              : SPATIAL_SKELETON_NODE_TYPE_ICONS[nodeType],
         title: nodeTypeLabel,
         clickable: false,
       }),

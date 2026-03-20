@@ -42,6 +42,16 @@ import type {
 } from "#src/skeleton/api.js";
 import type { SpatiallyIndexedSkeletonNodeInfo } from "#src/skeleton/frontend.js";
 import {
+  classifySpatialSkeletonDisplayNodeType as classifyNodeType,
+  getSpatialSkeletonNodeFilterLabel,
+  getSpatialSkeletonNodeIconFilterType,
+  hasSpatialSkeletonTrueEndLabel,
+  isSpatialSkeletonClosedEndLabel,
+  matchesSpatialSkeletonNodeFilter,
+  SpatialSkeletonNodeFilterType,
+  type SpatialSkeletonDisplayNodeType as SkeletonNodeType,
+} from "#src/skeleton/node_types.js";
+import {
   buildSpatiallyIndexedSkeletonNavigationGraph,
   getBranchEnd as getBranchEndFromGraph,
   getBranchStart as getBranchStartFromGraph,
@@ -56,6 +66,7 @@ import {
 import { getEditableSpatiallyIndexedSkeletonSource } from "#src/skeleton/state.js";
 import { StatusMessage } from "#src/status.js";
 import { observeWatchable, registerNested } from "#src/trackable_value.js";
+import { TrackableEnum } from "#src/util/trackable_enum.js";
 import {
   SPATIAL_SKELETON_EDIT_MODE_TOOL_ID,
   SPATIAL_SKELETON_MERGE_MODE_TOOL_ID,
@@ -63,13 +74,12 @@ import {
   SpatialSkeletonConfirmDialog,
 } from "#src/ui/spatial_skeleton_edit_tool.js";
 import { getSpatialSkeletonDeleteConfirmationSummary } from "#src/ui/spatial_skeleton_tool_messages.js";
+import { EnumSelectWidget } from "#src/widget/enum_widget.js";
 import { makeToolButton } from "#src/ui/tool.js";
 import { makeIcon } from "#src/widget/icon.js";
 import { Tab } from "#src/widget/tab_view.js";
 
 const MAX_LISTED_NODES = 300;
-
-type SkeletonNodeType = "root" | "branchStart" | "regular" | "virtualEnd";
 
 interface SpatiallyIndexedSkeletonNavigationApi {
   getSkeletonRootNode(
@@ -110,27 +120,8 @@ const NODE_TYPE_LABELS: Record<SkeletonNodeType, string> = {
   virtualEnd: "virtual end",
 };
 
-const CLOSED_END_LABEL_PATTERNS = [
-  /^uncertain continuation$/i,
-  /^not a branch$/i,
-  /^soma$/i,
-  /^(really|uncertain|anterior|posterior)?\s?ends?$/i,
-];
-
 function hasTrueEndLabel(node: SpatiallyIndexedSkeletonNodeInfo) {
-  return (
-    node.labels?.some(
-      (label) => label.trim().toLowerCase() === CATMAID_TRUE_END_LABEL,
-    ) ?? false
-  );
-}
-
-function isClosedEndLabel(label: string) {
-  const normalized = label.trim();
-  return (
-    normalized.length > 0 &&
-    CLOSED_END_LABEL_PATTERNS.some((pattern) => pattern.test(normalized))
-  );
+  return hasSpatialSkeletonTrueEndLabel(node.labels);
 }
 
 function formatNodePosition(position: ArrayLike<number>) {
@@ -145,23 +136,6 @@ function formatNodeCoordinates(position: ArrayLike<number>) {
   const y = Number(position[1]);
   const z = Number(position[2]);
   return `${Math.round(x)} ${Math.round(y)} ${Math.round(z)}`;
-}
-
-function classifyNodeType(
-  node: SpatiallyIndexedSkeletonNodeInfo,
-  childCount: number,
-  parentInTree: boolean,
-): SkeletonNodeType {
-  if (!parentInTree || node.parentNodeId === undefined) {
-    return "root";
-  }
-  if (childCount > 1) {
-    return "branchStart";
-  }
-  if (childCount === 1) {
-    return "regular";
-  }
-  return "virtualEnd";
 }
 
 function nodeMatchesFilter(
@@ -244,6 +218,37 @@ export class SpatialSkeletonEditTab extends Tab {
     filterInput.type = "text";
     filterInput.placeholder = "Enter ID, coordinates, tags or description";
     filterInput.className = "neuroglancer-spatial-skeleton-filter";
+    const nodeFilterTypeModel = new TrackableEnum(
+      SpatialSkeletonNodeFilterType,
+      SpatialSkeletonNodeFilterType.NONE,
+    );
+    const nodeFilterTypeWidget = this.registerDisposer(
+      new EnumSelectWidget(nodeFilterTypeModel),
+    );
+    nodeFilterTypeWidget.element.classList.add(
+      "neuroglancer-layer-control-control",
+      "neuroglancer-spatial-skeleton-filter-select",
+    );
+    nodeFilterTypeWidget.element.title = "Filter loaded nodes by node type";
+    nodeFilterTypeWidget.element.setAttribute(
+      "aria-label",
+      nodeFilterTypeWidget.element.title,
+    );
+    for (const option of nodeFilterTypeWidget.element.options) {
+      option.textContent = getSpatialSkeletonNodeFilterLabel(
+        nodeFilterTypeModel.enumType[
+          option.value.toUpperCase()
+        ] as SpatialSkeletonNodeFilterType,
+      );
+    }
+    const nodeFilterTypeRow = document.createElement("label");
+    nodeFilterTypeRow.className = "neuroglancer-spatial-skeleton-filter-row";
+    const nodeFilterTypeLabel = document.createElement("span");
+    nodeFilterTypeLabel.className =
+      "neuroglancer-spatial-skeleton-filter-label";
+    nodeFilterTypeLabel.textContent = "Filter";
+    nodeFilterTypeRow.appendChild(nodeFilterTypeLabel);
+    nodeFilterTypeRow.appendChild(nodeFilterTypeWidget.element);
     const nodesSummaryBar = document.createElement("div");
     nodesSummaryBar.className = "neuroglancer-spatial-skeleton-summary-bar";
     const nodesSummary = document.createElement("div");
@@ -251,6 +256,7 @@ export class SpatialSkeletonEditTab extends Tab {
     const nodesList = document.createElement("div");
     nodesList.className = "neuroglancer-spatial-skeleton-tree";
     nodesSection.appendChild(filterInput);
+    nodesSection.appendChild(nodeFilterTypeRow);
     nodesSummaryBar.appendChild(nodesSummary);
     nodesSummaryBar.appendChild(collapseButton);
     nodesSection.appendChild(nodesSummaryBar);
@@ -261,6 +267,7 @@ export class SpatialSkeletonEditTab extends Tab {
     let activeSegmentIds: number[] = [];
     let nodesBySegment = new Map<number, SpatiallyIndexedSkeletonNodeInfo[]>();
     let filterText = "";
+    let nodeFilterType = SpatialSkeletonNodeFilterType.NONE;
     let inspectionAllowed = false;
     let navigationAllowed = false;
     let labelEditingAllowed = false;
@@ -461,7 +468,10 @@ export class SpatialSkeletonEditTab extends Tab {
       }
       const descriptiveLabels = (node.labels ?? [])
         .map((label) => label.trim())
-        .filter((label) => label.length > 0 && !isClosedEndLabel(label));
+        .filter(
+          (label) =>
+            label.length > 0 && !isSpatialSkeletonClosedEndLabel(label),
+        );
       return descriptiveLabels.length > 0
         ? descriptiveLabels.join(", ")
         : undefined;
@@ -975,7 +985,6 @@ export class SpatialSkeletonEditTab extends Tab {
 
       const visibleMemo = new Map<number, boolean>();
       const isNodeVisible = (nodeId: number): boolean => {
-        if (filterText.length === 0) return true;
         const cached = visibleMemo.get(nodeId);
         if (cached !== undefined) {
           return cached;
@@ -985,20 +994,37 @@ export class SpatialSkeletonEditTab extends Tab {
           visibleMemo.set(nodeId, false);
           return false;
         }
-        let visible = nodeMatchesFilter(
-          node,
-          filterText,
-          getNodeDescriptionText(node),
-        );
-        if (!visible) {
-          const children = childrenByParent.get(nodeId) ?? [];
-          for (const childNodeId of children) {
-            if (isNodeVisible(childNodeId)) {
-              visible = true;
-              break;
-            }
-          }
-        }
+        const children = childrenByParent.get(nodeId) ?? [];
+        const parentInTree =
+          node.parentNodeId !== undefined && nodeById.has(node.parentNodeId);
+        const nodeType = classifyNodeType(node, children.length, parentInTree);
+        const visible =
+          nodeFilterType === SpatialSkeletonNodeFilterType.NONE
+            ? (() => {
+                if (filterText.length === 0) {
+                  return true;
+                }
+                let recursiveVisible = nodeMatchesFilter(
+                  node,
+                  filterText,
+                  getNodeDescriptionText(node),
+                );
+                if (!recursiveVisible) {
+                  for (const childNodeId of children) {
+                    if (isNodeVisible(childNodeId)) {
+                      recursiveVisible = true;
+                      break;
+                    }
+                  }
+                }
+                return recursiveVisible;
+              })()
+            : matchesSpatialSkeletonNodeFilter(nodeFilterType, {
+                isLeaf: children.length === 0,
+                nodeHasTrueEnd: hasTrueEndLabel(node),
+                nodeType,
+              }) &&
+              nodeMatchesFilter(node, filterText, getNodeDescriptionText(node));
         visibleMemo.set(nodeId, visible);
         return visible;
       };
@@ -1161,10 +1187,20 @@ export class SpatialSkeletonEditTab extends Tab {
           }
 
           const nodeIsTrueEnd = hasTrueEndLabel(node);
-          const typeIconSvg = nodeIsTrueEnd ? svg_flag : NODE_TYPE_ICONS[type];
-          const typeIconTitle = nodeIsTrueEnd
-            ? "true end"
-            : NODE_TYPE_LABELS[type];
+          const iconFilterType = getSpatialSkeletonNodeIconFilterType({
+            nodeHasTrueEnd: nodeIsTrueEnd,
+            nodeType: type,
+          });
+          const typeIconSvg =
+            iconFilterType === SpatialSkeletonNodeFilterType.TRUE_END
+              ? svg_flag
+              : iconFilterType === SpatialSkeletonNodeFilterType.VIRTUAL_END
+                ? svg_circle
+                : NODE_TYPE_ICONS[type];
+          const typeIconTitle =
+            iconFilterType !== undefined
+              ? getSpatialSkeletonNodeFilterLabel(iconFilterType).toLowerCase()
+              : NODE_TYPE_LABELS[type];
           const typeButtonPending = pendingTrueEndNodes.has(node.nodeId);
           const typeButtonTitle = typeButtonPending
             ? nodeIsTrueEnd
@@ -1467,6 +1503,7 @@ export class SpatialSkeletonEditTab extends Tab {
       nodeDeletionAllowed = nextNodeDeletionAllowed;
 
       filterInput.disabled = !inspectionAllowed;
+      nodeFilterTypeWidget.element.disabled = !inspectionAllowed;
       for (const control of gatedControls) {
         control.disabled = !navigationAllowed;
       }
@@ -1479,6 +1516,12 @@ export class SpatialSkeletonEditTab extends Tab {
       filterText = filterInput.value.trim().toLowerCase();
       updateList();
     });
+    this.registerDisposer(
+      nodeFilterTypeModel.changed.add(() => {
+        nodeFilterType = nodeFilterTypeModel.value;
+        updateList();
+      }),
+    );
     collapseButton.addEventListener("click", () => {
       listCollapsed = !listCollapsed;
       updateCollapseButton();

@@ -281,6 +281,36 @@
   padding: 0.32em 0.45em;
 }
 
+.neuroglancer-spatial-skeleton-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  margin: 0.35em 0.4em 0;
+  color: #c6c6c6;
+  font-size: small;
+}
+
+.neuroglancer-spatial-skeleton-filter-label {
+  flex: 0 0 auto;
+}
+
+.neuroglancer-spatial-skeleton-filter-select {
+  box-sizing: border-box;
+  margin: 0;
+  flex: 1 1 auto;
+  width: auto;
+  background: #050505;
+  border: 1px solid #2f2f2f;
+  color: #dedede;
+  font: inherit;
+  padding: 0.32em 0.45em;
+}
+
+.neuroglancer-spatial-skeleton-filter-select:focus-visible {
+  outline: 1px solid #6ca4ff;
+  outline-offset: -1px;
+}
+
 .neuroglancer-spatial-skeleton-summary-bar {
   display: flex;
   align-items: center;
