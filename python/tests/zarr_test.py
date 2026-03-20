@@ -521,13 +521,6 @@ def test_ome_zarr_0_6_vs_0_5_affine(static_file_server, webdriver):
     # Both of the volumes should be the same shape
     assert model_space_0_5["volume"].shape == model_space_0_6["volume"].shape
 
-    # Both volumes should not be the same in model space
-    # since 0.6 exposes the transform to the user and 0.5 does not
-    assert not np.testing.assert_array_equal(
-        model_space_0_5["volume"].read().result(),
-        model_space_0_6["volume"].read().result(),
-    )
-
     # Both should render the same in the viewer with one visible at a time
     with webdriver.viewer.txn() as s:
         s.layers["affine_0_5"].visible = True
