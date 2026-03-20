@@ -983,7 +983,11 @@ export class SpatialSkeletonEditTab extends Tab {
         type: SkeletonNodeType;
         isLeaf: boolean;
       }> = [];
-      for (const nodeId of getFlatListNodeIds(graph)) {
+      for (
+        const nodeId of getFlatListNodeIds(graph, {
+          collapseRegularNodesForOrdering: true,
+        })
+      ) {
         if (!isNodeVisible(nodeId)) continue;
         const node = nodeById.get(nodeId);
         if (node === undefined) continue;
@@ -991,7 +995,7 @@ export class SpatialSkeletonEditTab extends Tab {
         const parentInTree =
           node.parentNodeId !== undefined && nodeById.has(node.parentNodeId);
         const type = classifyNodeType(node, children.length, parentInTree);
-        if (!(listCollapsed && type === "regular")) {
+        if (!(listCollapsed && type === "regular" && !hasTrueEndLabel(node))) {
           rows.push({ node, type, isLeaf: children.length === 0 });
         }
       }

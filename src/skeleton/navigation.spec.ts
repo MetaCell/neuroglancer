@@ -119,6 +119,24 @@ describe("skeleton/navigation", () => {
     expect(getFlatListNodeIds(listGraph)).toEqual([1, 3, 8, 4, 2, 9, 6, 7, 5]);
   });
 
+  it("orders flat-list rows by collapsed branches when requested", () => {
+    const listGraph = buildSpatiallyIndexedSkeletonNavigationGraph([
+      makeNode(1, undefined),
+      makeNode(2, 1),
+      makeNode(3, 2),
+      makeNode(4, 3),
+      makeNode(5, 3),
+      makeNode(6, 2),
+      makeNode(7, 6),
+    ]);
+
+    expect(
+      getFlatListNodeIds(listGraph, {
+        collapseRegularNodesForOrdering: true,
+      }),
+    ).toEqual([1, 2, 6, 7, 3, 4, 5]);
+  });
+
   it("tracks the active sibling branch from the selected node or anchor", () => {
     expect(getCurrentBranchContext(graph, 6)).toMatchObject({
       branchNode: { nodeId: 3 },
@@ -165,6 +183,22 @@ describe("skeleton/navigation", () => {
     expect(getNextCollapsedLevelNode(collapsedGraph, 5).nodeId).toBe(4);
     expect(getNextCollapsedLevelNode(collapsedGraph, 4).nodeId).toBe(3);
     expect(getNextCollapsedLevelNode(collapsedGraph, 3).nodeId).toBe(5);
+  });
+
+  it("cycles collapsed-level nodes using collapsed leaf-first ordering", () => {
+    const collapsedGraph = buildSpatiallyIndexedSkeletonNavigationGraph([
+      makeNode(1, undefined),
+      makeNode(2, 1),
+      makeNode(3, 2),
+      makeNode(4, 3),
+      makeNode(5, 3),
+      makeNode(6, 2),
+      makeNode(7, 6),
+    ]);
+
+    expect(getNextCollapsedLevelNode(collapsedGraph, 6).nodeId).toBe(6);
+    expect(getNextCollapsedLevelNode(collapsedGraph, 7).nodeId).toBe(3);
+    expect(getNextCollapsedLevelNode(collapsedGraph, 3).nodeId).toBe(7);
   });
 
   it("finds unfinished leaves from any selected node and filters closed ends", () => {

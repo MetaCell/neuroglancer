@@ -128,7 +128,12 @@ function compareFlatListNodeIds(
 
 export function getFlatListNodeIds(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
+  options: { collapseRegularNodesForOrdering?: boolean } = {},
 ) {
+  if (options.collapseRegularNodesForOrdering ?? false) {
+    return getCollapsedOrderedFlatListNodeIds(graph);
+  }
+
   const orderedNodeIds: number[] = [];
   const visited = new Set<number>();
 
@@ -236,13 +241,55 @@ function getFlatListOrderedChildNodeIds(
   return childNodeIds;
 }
 
+function getCollapsedBranchPath(
+  graph: SpatiallyIndexedSkeletonNavigationGraph,
+  nodeId: number,
+) {
+  const path = [nodeId];
+  const visited = new Set<number>(path);
+  let currentNodeId = nodeId;
+  while (isCollapsedRegularNode(graph, currentNodeId)) {
+    const nextNodeId = getChildNodeIds(graph, currentNodeId)[0];
+    if (nextNodeId === undefined || visited.has(nextNodeId)) {
+      break;
+    }
+    path.push(nextNodeId);
+    visited.add(nextNodeId);
+    currentNodeId = nextNodeId;
+  }
+  return path;
+}
+
+function getCollapsedOrderedChildPaths(
+  graph: SpatiallyIndexedSkeletonNavigationGraph,
+  nodeId: number,
+) {
+  const childPaths = getChildNodeIds(graph, nodeId).map((childNodeId) => {
+    const path = getCollapsedBranchPath(graph, childNodeId);
+    return {
+      path,
+      representativeNodeId: path[path.length - 1],
+    };
+  });
+  childPaths.sort((a, b) =>
+    compareFlatListNodeIds(
+      graph,
+      a.representativeNodeId,
+      b.representativeNodeId,
+    ),
+  );
+  return childPaths;
+}
+
 function isCollapsedRegularNode(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
   nodeId: number,
 ) {
+  const node = getNodeOrThrow(graph, nodeId);
   return (
     getParentNodeId(graph, nodeId) !== undefined &&
-    getChildNodeIds(graph, nodeId).length === 1
+    getChildNodeIds(graph, nodeId).length === 1 &&
+    !hasTrueEndLabel(node)
   );
 }
 
@@ -250,25 +297,56 @@ function getCollapsedChildNodeIds(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
   nodeId: number,
 ) {
-  const collapsedChildNodeIds: number[] = [];
-  for (const childNodeId of getFlatListOrderedChildNodeIds(graph, nodeId)) {
-    let currentNodeId = childNodeId;
-    const visited = new Set<number>([nodeId]);
-    while (!visited.has(currentNodeId)) {
-      visited.add(currentNodeId);
-      if (!isCollapsedRegularNode(graph, currentNodeId)) {
-        collapsedChildNodeIds.push(currentNodeId);
-        break;
+  return getCollapsedOrderedChildPaths(graph, nodeId).map(
+    ({ representativeNodeId }) => representativeNodeId,
+  );
+}
+
+function getCollapsedOrderedFlatListNodeIds(
+  graph: SpatiallyIndexedSkeletonNavigationGraph,
+) {
+  const orderedNodeIds: number[] = [];
+  const visited = new Set<number>();
+
+  const appendBreadthFirst = (startPaths: readonly number[][]) => {
+    const queue = [...startPaths];
+    for (let queueIndex = 0; queueIndex < queue.length; ++queueIndex) {
+      const path = queue[queueIndex];
+      const representativeNodeId = path[path.length - 1];
+      let appendedNode = false;
+      for (const nodeId of path) {
+        if (visited.has(nodeId)) continue;
+        visited.add(nodeId);
+        orderedNodeIds.push(nodeId);
+        appendedNode = true;
       }
-      const nextNodeId = getFlatListOrderedChildNodeIds(graph, currentNodeId)[0];
-      if (nextNodeId === undefined) {
-        collapsedChildNodeIds.push(currentNodeId);
-        break;
+      if (!appendedNode || !graph.nodeById.has(representativeNodeId)) {
+        continue;
       }
-      currentNodeId = nextNodeId;
+      for (const childPath of getCollapsedOrderedChildPaths(
+        graph,
+        representativeNodeId,
+      )) {
+        const firstNodeId = childPath.path[0];
+        if (firstNodeId !== undefined && !visited.has(firstNodeId)) {
+          queue.push(childPath.path);
+        }
+      }
+    }
+  };
+
+  appendBreadthFirst(graph.rootNodeIds.map((nodeId) => [nodeId]));
+
+  const remainingNodeIds = [...graph.nodeById.keys()].sort((a, b) =>
+    compareFlatListNodeIds(graph, a, b),
+  );
+  for (const nodeId of remainingNodeIds) {
+    if (!visited.has(nodeId)) {
+      appendBreadthFirst([getCollapsedBranchPath(graph, nodeId)]);
     }
   }
-  return collapsedChildNodeIds;
+
+  return orderedNodeIds;
 }
 
 function getCollapsedLevelContext(
