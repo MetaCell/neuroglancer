@@ -40,6 +40,7 @@ import {
 } from "#src/skeleton/source_selection.js";
 import type { TypedNumberArray } from "#src/util/array.js";
 import type { Endianness } from "#src/util/endian.js";
+import { vec3 } from "#src/util/geom.js";
 import {
   getBasePriority,
   getPriorityTier,
@@ -47,6 +48,7 @@ import {
 } from "#src/visibility_priority/backend.js";
 
 import {
+  BASE_PRIORITY,
   SliceViewChunk,
   SliceViewChunkSourceBackend,
   SliceViewRenderLayerBackend,
@@ -85,6 +87,22 @@ export interface SpatiallyIndexedSkeletonChunkSpecification extends SliceViewChu
 
 const SKELETON_CHUNK_PRIORITY = 60;
 const SPATIALLY_INDEXED_SKELETON_LOD_DEBOUNCE_MS = 300;
+const tempCenter = vec3.create();
+const tempChunkSize = vec3.create();
+const tempCenterDataPosition = vec3.create();
+
+export function getSpatiallyIndexedSkeletonChunkPriority(
+  localCenter: Float32Array,
+  chunkSize: Float32Array,
+  positionInChunks: Float32Array,
+) {
+  let sum = 0;
+  for (let i = 0; i < 3; ++i) {
+    const delta = localCenter[i] - positionInChunks[i] * chunkSize[i];
+    sum += delta * delta;
+  }
+  return -Math.sqrt(sum);
+}
 
 export enum SpatiallyIndexedSkeletonChunkRequestOwner {
   NONE = 0,
@@ -450,10 +468,21 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
         continue;
       }
       const priorityTier = getPriorityTier(visibility);
-      const basePriority = getBasePriority(visibility);
-
-    const projectionParameters = view.projectionParameters.value;
+      const basePriority = getBasePriority(visibility) + BASE_PRIORITY;
+      const projectionParameters = view.projectionParameters.value;
       const { chunkManager } = this;
+      const localCenter = tempCenter;
+      const chunkSize = tempChunkSize;
+      const centerDataPosition = tempCenterDataPosition;
+      const {
+        globalPosition,
+        displayDimensionRenderInfo: { displayDimensionIndices },
+      } = projectionParameters;
+      for (let displayDim = 0; displayDim < 3; ++displayDim) {
+        const globalDim = displayDimensionIndices[displayDim];
+        centerDataPosition[displayDim] =
+          globalDim === -1 ? 0 : globalPosition[globalDim];
+      }
       const sliceProjectionParameters =
         projectionParameters as SliceViewProjectionParameters;
       const pixelSize =
@@ -573,6 +602,16 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
         for (const { tsource, scaleIndex } of selectedScales) {
           const source =
             tsource.source as SpatiallyIndexedSkeletonSourceBackend;
+          const { chunkLayout } = tsource;
+          chunkLayout.globalToLocalSpatial(localCenter, centerDataPosition);
+          const { size, finiteRank } = chunkLayout;
+          vec3.copy(chunkSize, size);
+          for (let i = finiteRank; i < 3; ++i) {
+            chunkSize[i] = 0;
+            localCenter[i] = 0;
+          }
+          const sourceBasePriority =
+            basePriority + SCALE_PRIORITY_MULTIPLIER * scaleIndex;
           source.currentLod = lodValue;
           source.currentRequestGeneration = currentGeneration;
           source.currentRequestOwner =
@@ -587,11 +626,15 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
               if (chunk.state === ChunkState.GPU_MEMORY) {
                 ++this.numVisibleChunksAvailable;
               }
-              const priority = 0;
+              const priority = getSpatiallyIndexedSkeletonChunkPriority(
+                localCenter,
+                chunkSize,
+                tsource.curPositionInChunks,
+              );
               chunkManager.requestChunk(
                 chunk,
                 priorityTier,
-                basePriority + priority + SCALE_PRIORITY_MULTIPLIER * scaleIndex,
+                sourceBasePriority + priority,
               );
             },
           );
