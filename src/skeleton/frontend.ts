@@ -1932,6 +1932,7 @@ export class SpatiallyIndexedSkeletonLayer
   private pendingOverlaySegmentLoads = new Set<number>();
   private browseExcludedSegments = new Uint64Set();
   private browseExcludedSegmentsKey: string | undefined;
+  private suppressedBrowseSegmentIds = new Set<number>();
   private retainedOverlaySegmentIds: number[] = [];
   private maxRetainedOverlaySegments: number;
 
@@ -2023,6 +2024,20 @@ export class SpatiallyIndexedSkeletonLayer
     return true;
   }
 
+  suppressBrowseSegment(segmentId: number) {
+    const normalizedSegmentId = Math.round(Number(segmentId));
+    if (
+      !Number.isSafeInteger(normalizedSegmentId) ||
+      normalizedSegmentId <= 0 ||
+      this.suppressedBrowseSegmentIds.has(normalizedSegmentId)
+    ) {
+      return false;
+    }
+    this.suppressedBrowseSegmentIds.add(normalizedSegmentId);
+    this.redrawNeeded.dispatch();
+    return true;
+  }
+
   private getOverlayRenderSegmentIds() {
     return mergeSpatiallyIndexedSkeletonOverlaySegmentIds(
       this.getActiveEditableSegmentIds(),
@@ -2042,8 +2057,33 @@ export class SpatiallyIndexedSkeletonLayer
     );
   }
 
+  private getNormalizedBrowsePassExcludedSegmentIds() {
+    const segmentIds = new Set<number>();
+    for (const segmentId of this.getLoadedOverlaySegmentIds()) {
+      const normalizedSegmentId = Math.round(Number(segmentId));
+      if (
+        !Number.isSafeInteger(normalizedSegmentId) ||
+        normalizedSegmentId <= 0
+      ) {
+        continue;
+      }
+      segmentIds.add(normalizedSegmentId);
+    }
+    for (const segmentId of this.suppressedBrowseSegmentIds) {
+      const normalizedSegmentId = Math.round(Number(segmentId));
+      if (
+        !Number.isSafeInteger(normalizedSegmentId) ||
+        normalizedSegmentId <= 0
+      ) {
+        continue;
+      }
+      segmentIds.add(normalizedSegmentId);
+    }
+    return [...segmentIds].sort((a, b) => a - b);
+  }
+
   private getBrowsePassExcludedSegments() {
-    const segmentIds = this.getLoadedOverlaySegmentIds();
+    const segmentIds = this.getNormalizedBrowsePassExcludedSegmentIds();
     if (segmentIds.length === 0) {
       if (this.browseExcludedSegments.size !== 0) {
         this.browseExcludedSegments.clear();

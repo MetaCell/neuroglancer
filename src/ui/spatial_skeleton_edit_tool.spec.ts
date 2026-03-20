@@ -183,4 +183,93 @@ describe("spatial_skeleton_edit_tool", () => {
     });
     expect(skeletonLayer.invalidateSourceCaches).not.toHaveBeenCalled();
   });
+
+  it("suppresses the deleted merge segment while keeping the surviving result selected", () => {
+    const applyCommittedMerge = (SpatialSkeletonEditModeTool.prototype as any)
+      .applyCommittedMerge as (
+      this: any,
+      skeletonLayer: any,
+      firstNode: { nodeId: number; segmentId?: number },
+      secondNode: { nodeId: number; segmentId?: number },
+      result: {
+        resultSkeletonId?: number;
+        deletedSkeletonId?: number;
+        stableAnnotationSwap: boolean;
+      },
+    ) => {
+      resultSkeletonId: number | undefined;
+      deletedSkeletonId: number | undefined;
+    };
+    const updateVisibleSkeletonSegments = vi.fn();
+    const mergeCachedSegments = vi.fn();
+    const selectSpatialSkeletonNode = vi.fn();
+    const markSpatialSkeletonNodeDataChanged = vi.fn();
+    const clearSpatialSkeletonMergeAnchor = vi.fn();
+    const deleteSegmentColor = vi.fn();
+    const skeletonLayer = {
+      suppressBrowseSegment: vi.fn(),
+      invalidateSourceCaches: vi.fn(),
+    };
+    const tool = {
+      updateVisibleSkeletonSegments,
+      layer: {
+        displayState: {
+          segmentStatedColors: {
+            value: {
+              delete: deleteSegmentColor,
+            },
+          },
+        },
+        spatialSkeletonState: {
+          mergeCachedSegments,
+        },
+        selectSpatialSkeletonNode,
+        markSpatialSkeletonNodeDataChanged,
+        clearSpatialSkeletonMergeAnchor,
+        manager: {
+          root: {
+            selectionState: {
+              pin: {
+                value: true,
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const result = applyCommittedMerge.call(
+      tool,
+      skeletonLayer,
+      { nodeId: 101, segmentId: 11 },
+      { nodeId: 202, segmentId: 17 },
+      {
+        resultSkeletonId: 17,
+        deletedSkeletonId: 11,
+        stableAnnotationSwap: true,
+      },
+    );
+
+    expect(result).toEqual({
+      resultSkeletonId: 17,
+      deletedSkeletonId: 11,
+    });
+    expect(updateVisibleSkeletonSegments).toHaveBeenCalledWith(17, 11);
+    expect(mergeCachedSegments).toHaveBeenCalledWith({
+      resultSegmentId: 17,
+      mergedSegmentId: 11,
+      childNodeId: 101,
+      parentNodeId: 202,
+    });
+    expect(selectSpatialSkeletonNode).toHaveBeenCalledWith(101, true, {
+      segmentId: 17,
+    });
+    expect(deleteSegmentColor).toHaveBeenCalledWith(11n);
+    expect(skeletonLayer.suppressBrowseSegment).toHaveBeenCalledWith(11);
+    expect(markSpatialSkeletonNodeDataChanged).toHaveBeenCalledWith({
+      invalidateFullSkeletonCache: false,
+    });
+    expect(skeletonLayer.invalidateSourceCaches).toHaveBeenCalledTimes(1);
+    expect(clearSpatialSkeletonMergeAnchor).toHaveBeenCalledTimes(1);
+  });
 });

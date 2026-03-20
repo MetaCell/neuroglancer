@@ -28,7 +28,10 @@ import {
   getVisibleSegments,
   removeSegmentFromVisibleSets,
 } from "#src/segmentation_display_state/base.js";
-import type { SpatiallyIndexedSkeletonAddNodeResult } from "#src/skeleton/api.js";
+import type {
+  SpatiallyIndexedSkeletonAddNodeResult,
+  SpatiallyIndexedSkeletonMergeResult,
+} from "#src/skeleton/api.js";
 import { setSpatialSkeletonMode3dToLinesAndPoints } from "#src/skeleton/edit_mode_rendering.js";
 import type { SpatiallyIndexedSkeletonLayer } from "#src/skeleton/frontend.js";
 import {
@@ -683,6 +686,82 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
       });
     }
     this.selectSegmentByNumber(resultSkeletonId);
+  }
+
+  protected applyCommittedMerge(
+    skeletonLayer: SpatiallyIndexedSkeletonLayer,
+    firstNode: {
+      nodeId: number;
+      segmentId?: number;
+    },
+    secondNode: {
+      nodeId: number;
+      segmentId?: number;
+    },
+    result: SpatiallyIndexedSkeletonMergeResult,
+  ) {
+    const winningNode =
+      result.resultSkeletonId === secondNode.segmentId ? secondNode : firstNode;
+    const losingNode =
+      winningNode.nodeId === firstNode.nodeId ? secondNode : firstNode;
+    const resultSkeletonId = result.resultSkeletonId ?? winningNode.segmentId;
+    if (resultSkeletonId === undefined) {
+      throw new Error(
+        "The active skeleton source did not return a result skeleton id for the merge.",
+      );
+    }
+    const deletedSkeletonId = result.deletedSkeletonId ?? losingNode.segmentId;
+    if (deletedSkeletonId === undefined) {
+      throw new Error(
+        "The active skeleton source did not return a deleted skeleton id for the merge.",
+      );
+    }
+    this.updateVisibleSkeletonSegments(resultSkeletonId, deletedSkeletonId);
+    this.layer.spatialSkeletonState.mergeCachedSegments({
+      resultSegmentId: resultSkeletonId,
+      mergedSegmentId: deletedSkeletonId,
+      childNodeId: losingNode.nodeId,
+      parentNodeId: winningNode.nodeId,
+    });
+    this.layer.selectSpatialSkeletonNode(
+      losingNode.nodeId,
+      this.layer.manager.root.selectionState.pin.value,
+      {
+        segmentId: resultSkeletonId,
+      },
+    );
+    const normalizedDeletedSkeletonId = Math.round(Number(deletedSkeletonId));
+    const normalizedResultSkeletonId = Math.round(Number(resultSkeletonId));
+    if (
+      Number.isSafeInteger(normalizedDeletedSkeletonId) &&
+      normalizedDeletedSkeletonId > 0
+    ) {
+      if (
+        !Number.isSafeInteger(normalizedResultSkeletonId) ||
+        normalizedResultSkeletonId <= 0 ||
+        normalizedDeletedSkeletonId !== normalizedResultSkeletonId
+      ) {
+        this.layer.displayState.segmentStatedColors.value.delete(
+          BigInt(normalizedDeletedSkeletonId),
+        );
+      }
+      if (
+        normalizedDeletedSkeletonId !== normalizedResultSkeletonId &&
+        Number.isSafeInteger(normalizedResultSkeletonId) &&
+        normalizedResultSkeletonId > 0
+      ) {
+        skeletonLayer.suppressBrowseSegment(normalizedDeletedSkeletonId);
+      }
+    }
+    this.layer.markSpatialSkeletonNodeDataChanged({
+      invalidateFullSkeletonCache: false,
+    });
+    skeletonLayer.invalidateSourceCaches();
+    this.layer.clearSpatialSkeletonMergeAnchor();
+    return {
+      resultSkeletonId,
+      deletedSkeletonId,
+    };
   }
 
   protected formatError(error: unknown) {
@@ -1582,38 +1661,13 @@ class SpatialSkeletonMergeModeTool extends SpatialSkeletonToolBase {
               firstNode.nodeId,
               secondNode.nodeId,
             );
-            const winningNode =
-              result.resultSkeletonId === secondNode.segmentId
-                ? secondNode
-                : firstNode;
-            const losingNode =
-              winningNode.nodeId === firstNode.nodeId ? secondNode : firstNode;
-            const resultSkeletonId =
-              result.resultSkeletonId ?? winningNode.segmentId;
-            const deletedSkeletonId =
-              result.deletedSkeletonId ?? losingNode.segmentId;
-            this.updateVisibleSkeletonSegments(
-              resultSkeletonId,
-              deletedSkeletonId,
-            );
-            this.layer.spatialSkeletonState.mergeCachedSegments({
-              resultSegmentId: resultSkeletonId,
-              mergedSegmentId: deletedSkeletonId,
-              childNodeId: losingNode.nodeId,
-              parentNodeId: winningNode.nodeId,
-            });
-            this.layer.selectSpatialSkeletonNode(
-              losingNode.nodeId,
-              this.layer.manager.root.selectionState.pin.value,
-              {
-                segmentId: resultSkeletonId,
-              },
-            );
-            this.layer.markSpatialSkeletonNodeDataChanged({
-              invalidateFullSkeletonCache: false,
-            });
-            skeletonLayer.invalidateSourceCaches();
-            this.layer.clearSpatialSkeletonMergeAnchor();
+            const { resultSkeletonId, deletedSkeletonId } =
+              this.applyCommittedMerge(
+                skeletonLayer,
+                firstNode,
+                secondNode,
+                result,
+              );
             const swapSuffix = result.stableAnnotationSwap
               ? " Merge direction was adjusted by the active source."
               : "";

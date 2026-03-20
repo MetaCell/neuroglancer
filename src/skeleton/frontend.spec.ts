@@ -1,8 +1,27 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { resolveSpatiallyIndexedSkeletonSegmentPick } from "#src/skeleton/picking.js";
 import { spatiallyIndexedSkeletonTextureAttributeSpecs } from "#src/skeleton/spatial_attribute_layout.js";
 import { DataType } from "#src/util/data_type.js";
+import { Uint64Set } from "#src/uint64_set.js";
+
+if (!("WebGL2RenderingContext" in globalThis)) {
+  Object.defineProperty(globalThis, "WebGL2RenderingContext", {
+    value: new Proxy(class WebGL2RenderingContext {} as any, {
+      get(target, property, receiver) {
+        if (Reflect.has(target, property)) {
+          return Reflect.get(target, property, receiver);
+        }
+        return 0;
+      },
+    }),
+    configurable: true,
+  });
+}
+
+const { SpatiallyIndexedSkeletonLayer } = await import(
+  "#src/skeleton/frontend.js"
+);
 
 describe("resolveSpatiallyIndexedSkeletonSegmentPick", () => {
   it("returns the node segment id for direct node picks", () => {
@@ -79,5 +98,27 @@ describe("spatiallyIndexedSkeletonTextureAttributeSpecs", () => {
       { name: "position", dataType: DataType.FLOAT32, numComponents: 3 },
       { name: "segment", dataType: DataType.UINT32, numComponents: 1 },
     ]);
+  });
+});
+
+describe("SpatiallyIndexedSkeletonLayer browse exclusions", () => {
+  it("includes suppressed browse segments even when no overlay segment is loaded", () => {
+    const layer = Object.assign(
+      Object.create(SpatiallyIndexedSkeletonLayer.prototype),
+      {
+        suppressedBrowseSegmentIds: new Set<number>(),
+        browseExcludedSegments: new Uint64Set(),
+        browseExcludedSegmentsKey: undefined,
+        redrawNeeded: { dispatch: vi.fn() },
+        getLoadedOverlaySegmentIds: () => [],
+      },
+    );
+
+    expect(layer.suppressBrowseSegment(29)).toBe(true);
+    expect(layer.redrawNeeded.dispatch).toHaveBeenCalledTimes(1);
+
+    const excludedSegments = (layer as any).getBrowsePassExcludedSegments();
+    expect(excludedSegments).toBeInstanceOf(Uint64Set);
+    expect([...excludedSegments]).toEqual([29n]);
   });
 });
