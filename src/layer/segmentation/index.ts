@@ -1003,6 +1003,14 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
   spatialSkeletonGridResolutionRelative3d = new TrackableBoolean(false, false);
   spatialSkeletonGridPixelSize2d = new WatchableValue<number>(1);
   spatialSkeletonGridPixelSize3d = new WatchableValue<number>(1);
+  spatialSkeletonGridChunkStats2d = new WatchableValue({
+    presentCount: 0,
+    totalCount: 0,
+  });
+  spatialSkeletonGridChunkStats3d = new WatchableValue({
+    presentCount: 0,
+    totalCount: 0,
+  });
   spatialSkeletonGridRenderScaleHistogram2d = new RenderScaleHistogram();
   spatialSkeletonGridRenderScaleHistogram3d = new RenderScaleHistogram();
   spatialSkeletonLod2d = new WatchableValue<number>(0);
@@ -1844,25 +1852,37 @@ export class SegmentationUserLayer extends Base {
     return undefined;
   };
 
-  private updateSpatialSkeletonChunkLoadState() {
+  getSpatialSkeletonChunkStats(kind: "2d" | "3d") {
     let needed = 0;
     let available = 0;
     for (const layer of this.renderLayers) {
       if (
-        !(
-          layer instanceof PerspectiveViewSpatiallyIndexedSkeletonLayer ||
-          layer instanceof SliceViewPanelSpatiallyIndexedSkeletonLayer ||
-          layer instanceof SliceViewSpatiallyIndexedSkeletonLayer ||
-          layer instanceof MultiscaleSliceViewSpatiallyIndexedSkeletonLayer
-        )
+        kind === "3d" &&
+        layer instanceof PerspectiveViewSpatiallyIndexedSkeletonLayer
       ) {
+        needed += layer.layerChunkProgressInfo.numVisibleChunksNeeded;
+        available += layer.layerChunkProgressInfo.numVisibleChunksAvailable;
         continue;
       }
-      const progress = layer.layerChunkProgressInfo;
-      needed += progress.numVisibleChunksNeeded;
-      available += progress.numVisibleChunksAvailable;
+      if (
+        kind === "2d" &&
+        (layer instanceof SliceViewSpatiallyIndexedSkeletonLayer ||
+          layer instanceof MultiscaleSliceViewSpatiallyIndexedSkeletonLayer)
+      ) {
+        needed += layer.layerChunkProgressInfo.numVisibleChunksNeeded;
+        available += layer.layerChunkProgressInfo.numVisibleChunksAvailable;
+      }
     }
-    this.spatialSkeletonState.updateChunkLoadState(needed, available);
+    return { presentCount: available, totalCount: needed };
+  }
+
+  private updateSpatialSkeletonChunkLoadState() {
+    const stats2d = this.getSpatialSkeletonChunkStats("2d");
+    const stats3d = this.getSpatialSkeletonChunkStats("3d");
+    this.spatialSkeletonState.updateChunkLoadState(
+      stats2d.totalCount + stats3d.totalCount,
+      stats2d.presentCount + stats3d.presentCount,
+    );
     this.updateSpatialSkeletonSourceState();
   }
 
