@@ -60,7 +60,9 @@ import {
   SPATIAL_SKELETON_EDIT_MODE_TOOL_ID,
   SPATIAL_SKELETON_MERGE_MODE_TOOL_ID,
   SPATIAL_SKELETON_SPLIT_MODE_TOOL_ID,
+  SpatialSkeletonConfirmDialog,
 } from "#src/ui/spatial_skeleton_edit_tool.js";
+import { getSpatialSkeletonDeleteConfirmationSummary } from "#src/ui/spatial_skeleton_tool_messages.js";
 import { makeToolButton } from "#src/ui/tool.js";
 import { makeIcon } from "#src/widget/icon.js";
 import { Tab } from "#src/widget/tab_view.js";
@@ -268,6 +270,7 @@ export class SpatialSkeletonEditTab extends Tab {
     let refreshRequestId = 0;
     let loadedNodeSummarySuffix = "";
     let hoveredViewerNodeId: number | undefined;
+    let deleteConfirmDialog: SpatialSkeletonConfirmDialog | undefined;
     const pendingDeleteNodes = new Set<number>();
     const pendingTrueEndNodes = new Set<number>();
     const renderedRowsByNodeId = new Map<number, HTMLDivElement>();
@@ -709,7 +712,12 @@ export class SpatialSkeletonEditTab extends Tab {
 
     const deleteNode = (node: SpatiallyIndexedSkeletonNodeInfo) => {
       if (!ensureActionsAllowed("deleteNodes")) return;
-      if (pendingDeleteNodes.has(node.nodeId)) return;
+      if (
+        pendingDeleteNodes.has(node.nodeId) ||
+        deleteConfirmDialog !== undefined
+      ) {
+        return;
+      }
       const skeletonLayer = layer.getSpatiallyIndexedSkeletonLayer();
       if (skeletonLayer === undefined) {
         StatusMessage.showTemporaryMessage(
@@ -725,9 +733,26 @@ export class SpatialSkeletonEditTab extends Tab {
         );
         return;
       }
-      pendingDeleteNodes.add(node.nodeId);
-      updateList();
+      const dialog = new SpatialSkeletonConfirmDialog({
+        title: "Confirm node deletion",
+        message: "",
+        summaryLabel: "Selected node:",
+        summary: getSpatialSkeletonDeleteConfirmationSummary({
+          nodeId: node.nodeId,
+          segmentId: node.segmentId,
+          position: node.position,
+        }),
+        confirmLabel: "Delete",
+      });
+      deleteConfirmDialog = dialog;
       void (async () => {
+        const confirmed = await dialog.response;
+        if (deleteConfirmDialog === dialog) {
+          deleteConfirmDialog = undefined;
+        }
+        if (!confirmed) return;
+        pendingDeleteNodes.add(node.nodeId);
+        updateList();
         try {
           const directChildNodeIds = getDirectChildNodeIds(node);
           const deletingIsolatedRoot =
@@ -983,11 +1008,9 @@ export class SpatialSkeletonEditTab extends Tab {
         type: SkeletonNodeType;
         isLeaf: boolean;
       }> = [];
-      for (
-        const nodeId of getFlatListNodeIds(graph, {
-          collapseRegularNodesForOrdering: true,
-        })
-      ) {
+      for (const nodeId of getFlatListNodeIds(graph, {
+        collapseRegularNodesForOrdering: true,
+      })) {
         if (!isNodeVisible(nodeId)) continue;
         const node = nodeById.get(nodeId);
         if (node === undefined) continue;
@@ -1542,6 +1565,10 @@ export class SpatialSkeletonEditTab extends Tab {
         refreshNodes();
       }),
     );
+    this.registerDisposer(() => {
+      deleteConfirmDialog?.close();
+      deleteConfirmDialog = undefined;
+    });
 
     updateCollapseButton();
     updateGateStatus();

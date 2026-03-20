@@ -191,7 +191,7 @@ function renderSpatialSkeletonToolStatus(
   body.appendChild(point);
 }
 
-class SpatialSkeletonConfirmDialog extends Overlay {
+export class SpatialSkeletonConfirmDialog extends Overlay {
   readonly response: Promise<boolean>;
   private resolveResponse!: (value: boolean) => void;
   private settled = false;
@@ -219,7 +219,9 @@ class SpatialSkeletonConfirmDialog extends Overlay {
       title: "Close dialog",
       onClick: () => this.close(),
     });
-    closeButton.classList.add("neuroglancer-spatial-skeleton-confirm-dialog-close");
+    closeButton.classList.add(
+      "neuroglancer-spatial-skeleton-confirm-dialog-close",
+    );
     header.appendChild(closeButton);
 
     const divider = document.createElement("div");
@@ -234,7 +236,8 @@ class SpatialSkeletonConfirmDialog extends Overlay {
 
     if (options.message.trim().length !== 0) {
       const message = document.createElement("p");
-      message.className = "neuroglancer-spatial-skeleton-confirm-dialog-message";
+      message.className =
+        "neuroglancer-spatial-skeleton-confirm-dialog-message";
       message.textContent = options.message;
       this.content.appendChild(message);
     }
@@ -243,7 +246,8 @@ class SpatialSkeletonConfirmDialog extends Overlay {
     summary.className = "neuroglancer-spatial-skeleton-confirm-dialog-summary";
     for (const row of options.summary) {
       const item = document.createElement("div");
-      item.className = "neuroglancer-spatial-skeleton-confirm-dialog-summary-row";
+      item.className =
+        "neuroglancer-spatial-skeleton-confirm-dialog-summary-row";
       for (const field of row.fields) {
         const fieldElement = document.createElement("span");
         fieldElement.className =
@@ -440,7 +444,11 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
         this.layer.clearSpatialSkeletonMergeAnchor();
       }
       const cachedSegmentIds = new Set<number>(
-        [...getVisibleSegments(this.layer.displayState.segmentationGroupState.value).keys()]
+        [
+          ...getVisibleSegments(
+            this.layer.displayState.segmentationGroupState.value,
+          ).keys(),
+        ]
           .map((segmentId) => Number(segmentId))
           .filter(
             (segmentId) => Number.isSafeInteger(segmentId) && segmentId > 0,
@@ -601,7 +609,8 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
         const hasSpatialSkeletonSelection =
           this.layer.selectedSpatialSkeletonNodeId.value !== undefined ||
           (pinnedSelection?.layers.some(
-            ({ layer, state }) => layer === this.layer && hasSpatialSkeletonNodeSelection(state),
+            ({ layer, state }) =>
+              layer === this.layer && hasSpatialSkeletonNodeSelection(state),
           ) ??
             false);
         if (hasSpatialSkeletonSelection) {
@@ -954,7 +963,10 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
       levels: layer.displayState.spatialSkeletonGridLevels.value.length,
     });
     activation.bindInputEventMap(SPATIAL_SKELETON_EDIT_STATUS_INPUT_EVENT_MAP);
-    rawInputEventMapBinder(SPATIAL_SKELETON_EDIT_AUX_INPUT_EVENT_MAP, activation);
+    rawInputEventMapBinder(
+      SPATIAL_SKELETON_EDIT_AUX_INPUT_EVENT_MAP,
+      activation,
+    );
     this.bindPinnedSelectionAction(activation, {
       showNodeSelectionMessage: false,
     });
@@ -1432,7 +1444,10 @@ class SpatialSkeletonMergeModeTool extends SpatialSkeletonToolBase {
     };
     setReadyStatus();
     activation.bindInputEventMap(SPATIAL_SKELETON_PICK_INPUT_EVENT_MAP);
-    rawInputEventMapBinder(SPATIAL_SKELETON_PICK_AUX_INPUT_EVENT_MAP, activation);
+    rawInputEventMapBinder(
+      SPATIAL_SKELETON_PICK_AUX_INPUT_EVENT_MAP,
+      activation,
+    );
     this.bindClearSelectionAction(activation);
     this.bindVisibilityToggleAction(activation);
     this.registerAutoCancelOnDisabled(
@@ -1672,7 +1687,10 @@ class SpatialSkeletonSplitModeTool extends SpatialSkeletonToolBase {
     };
     setReadyStatus();
     activation.bindInputEventMap(SPATIAL_SKELETON_PICK_INPUT_EVENT_MAP);
-    rawInputEventMapBinder(SPATIAL_SKELETON_PICK_AUX_INPUT_EVENT_MAP, activation);
+    rawInputEventMapBinder(
+      SPATIAL_SKELETON_PICK_AUX_INPUT_EVENT_MAP,
+      activation,
+    );
     this.bindClearSelectionAction(activation);
     this.bindVisibilityToggleAction(activation);
     this.registerAutoCancelOnDisabled(

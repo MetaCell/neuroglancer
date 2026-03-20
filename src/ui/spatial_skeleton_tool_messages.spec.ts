@@ -9,6 +9,7 @@ import {
   formatSpatialSkeletonToolPoint,
   getSpatialSkeletonToolPointSummaryRow,
   getSpatialSkeletonEditBannerMessage,
+  getSpatialSkeletonDeleteConfirmationSummary,
   getSpatialSkeletonMergeBannerMessage,
   getSpatialSkeletonMergeConfirmationSummary,
   getSpatialSkeletonSplitConfirmationSummary,
@@ -55,7 +56,7 @@ describe("spatial_skeleton_tool_messages", () => {
     ).toBe(SPATIAL_SKELETON_MERGE_SELECTED_BANNER_MESSAGE);
   });
 
-  it("builds merge and split confirmation summaries", () => {
+  it("builds merge, split, and delete confirmation summaries", () => {
     expect(
       getSpatialSkeletonMergeConfirmationSummary(
         { nodeId: 1, segmentId: 10 },
@@ -85,6 +86,19 @@ describe("spatial_skeleton_tool_messages", () => {
         fields: [
           { label: "Segment ID:", value: "15" },
           { label: "Node ID:", value: "7" },
+        ],
+      },
+    ]);
+    expect(
+      getSpatialSkeletonDeleteConfirmationSummary({
+        nodeId: 9,
+        segmentId: 21,
+      }),
+    ).toEqual([
+      {
+        fields: [
+          { label: "Segment ID:", value: "21" },
+          { label: "Node ID:", value: "9" },
         ],
       },
     ]);

@@ -34,12 +34,10 @@ export const SPATIAL_SKELETON_EDIT_BANNER_MESSAGE =
   "Move nodes, select a node to append or click to start a new skeleton";
 export const SPATIAL_SKELETON_EDIT_SELECTED_BANNER_MESSAGE =
   "Move node or append to selected node";
-export const SPATIAL_SKELETON_MERGE_BANNER_MESSAGE =
-  "Select 2 nodes to merge";
+export const SPATIAL_SKELETON_MERGE_BANNER_MESSAGE = "Select 2 nodes to merge";
 export const SPATIAL_SKELETON_MERGE_SELECTED_BANNER_MESSAGE =
   "Select 2nd node from a different skeleton to merge with";
-export const SPATIAL_SKELETON_SPLIT_BANNER_MESSAGE =
-  "Select 1 node to split";
+export const SPATIAL_SKELETON_SPLIT_BANNER_MESSAGE = "Select 1 node to split";
 
 export function formatSpatialSkeletonToolPoint(
   point: SpatialSkeletonToolPointInfo,
@@ -51,7 +49,7 @@ export function formatSpatialSkeletonToolPoint(
 
 export function getSpatialSkeletonToolPointSummaryRow(
   point: SpatialSkeletonToolPointInfo,
-) : SpatialSkeletonToolSummaryRow {
+): SpatialSkeletonToolSummaryRow {
   const fields: SpatialSkeletonToolSummaryField[] = [
     {
       label: "Segment ID:",
@@ -107,6 +105,12 @@ export function getSpatialSkeletonMergeConfirmationSummary(
 }
 
 export function getSpatialSkeletonSplitConfirmationSummary(
+  point: SpatialSkeletonToolPointInfo,
+) {
+  return [getSpatialSkeletonToolPointSummaryRow(point)];
+}
+
+export function getSpatialSkeletonDeleteConfirmationSummary(
   point: SpatialSkeletonToolPointInfo,
 ) {
   return [getSpatialSkeletonToolPointSummaryRow(point)];

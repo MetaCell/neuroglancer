@@ -152,7 +152,11 @@ import { registerSegmentSelectTools } from "#src/ui/segment_select_tools.js";
 import { registerSegmentSplitMergeTools } from "#src/ui/segment_split_merge_tools.js";
 import { DisplayOptionsTab } from "#src/ui/segmentation_display_options_tab.js";
 import { SpatialSkeletonEditTab } from "#src/ui/spatial_skeleton_edit_tab.js";
-import { registerSpatialSkeletonEditModeTool } from "#src/ui/spatial_skeleton_edit_tool.js";
+import {
+  registerSpatialSkeletonEditModeTool,
+  SpatialSkeletonConfirmDialog,
+} from "#src/ui/spatial_skeleton_edit_tool.js";
+import { getSpatialSkeletonDeleteConfirmationSummary } from "#src/ui/spatial_skeleton_tool_messages.js";
 import { Uint64Map } from "#src/uint64_map.js";
 import { Uint64OrderedSet } from "#src/uint64_ordered_set.js";
 import { Uint64Set } from "#src/uint64_set.js";
@@ -1363,9 +1367,10 @@ export class SegmentationUserLayer extends Base {
     layerPosition: ArrayLike<number> | undefined,
   ) {
     if (layerPosition === undefined) return undefined;
-    const coordinateSpace = this.manager.root.selectionState.coordinateSpace.value;
-    const transform = this.getSpatiallyIndexedSkeletonLayer()?.displayState
-      .transform.value;
+    const coordinateSpace =
+      this.manager.root.selectionState.coordinateSpace.value;
+    const transform =
+      this.getSpatiallyIndexedSkeletonLayer()?.displayState.transform.value;
     if (transform !== undefined && transform.error === undefined) {
       return this.mapLayerPositionToGlobalSelectionPosition(
         transform,
@@ -1383,7 +1388,11 @@ export class SegmentationUserLayer extends Base {
     layerPosition: ArrayLike<number>,
   ) {
     const result = this.manager.root.globalPosition.value.slice();
-    gatherUpdate(result, layerPosition, transform.globalToRenderLayerDimensions);
+    gatherUpdate(
+      result,
+      layerPosition,
+      transform.globalToRenderLayerDimensions,
+    );
     return result;
   }
 
@@ -1405,9 +1414,7 @@ export class SegmentationUserLayer extends Base {
       requestedSegmentId === undefined
         ? undefined
         : Math.round(Number(requestedSegmentId));
-    const selectedNodePosition =
-      options.position ??
-      selectedNodeInfo?.position;
+    const selectedNodePosition = options.position ?? selectedNodeInfo?.position;
     const selectedGlobalPosition =
       this.getGlobalSelectionPositionFromLayerPosition(selectedNodePosition);
     this.captureSpatialSkeletonSelectionState(
@@ -1519,15 +1526,12 @@ export class SegmentationUserLayer extends Base {
   clearSpatialSkeletonNodeSelection = (
     pin: boolean | "toggle" | "force-unpin" = false,
   ) => {
-    this.captureSpatialSkeletonSelectionState(
-      (state) => {
-        state.spatialSkeletonNodeId = undefined;
-        state.spatialSkeletonSegmentId = undefined;
-        state.value = undefined;
-        return true;
-      },
-      pin,
-    );
+    this.captureSpatialSkeletonSelectionState((state) => {
+      state.spatialSkeletonNodeId = undefined;
+      state.spatialSkeletonSegmentId = undefined;
+      state.value = undefined;
+      return true;
+    }, pin);
   };
 
   filterBySegmentLabel = (id: bigint) => {
@@ -1620,9 +1624,12 @@ export class SegmentationUserLayer extends Base {
           (entry) => entry.layer === this,
         )?.state;
       const nextSelectedNodeId =
-        getSpatialSkeletonNodeIdFromLayerSelectionState(nextLayerSelectionState);
-      const nextRecoveryKey =
-        getSpatialSkeletonSelectionRecoveryKey(nextLayerSelectionState);
+        getSpatialSkeletonNodeIdFromLayerSelectionState(
+          nextLayerSelectionState,
+        );
+      const nextRecoveryKey = getSpatialSkeletonSelectionRecoveryKey(
+        nextLayerSelectionState,
+      );
       if (
         this.spatialSkeletonSelectionRecovery !== undefined &&
         this.spatialSkeletonSelectionRecovery.key !== nextRecoveryKey
@@ -2835,10 +2842,9 @@ export class SegmentationUserLayer extends Base {
       valueElement.classList.add(
         "neuroglancer-selection-details-segment-description",
       );
-      valueElement.textContent =
-        missingSelectionDisplayState.loading
-          ? "Loading selected node from full skeleton data."
-          : "Selected node is not available in the current loaded or cached skeleton data.";
+      valueElement.textContent = missingSelectionDisplayState.loading
+        ? "Loading selected node from full skeleton data."
+        : "Selected node is not available in the current loaded or cached skeleton data.";
       container.appendChild(valueElement);
       return true;
     }
@@ -2881,9 +2887,33 @@ export class SegmentationUserLayer extends Base {
     deleteButton.appendChild(
       makeDeleteButton({ title: deleteButton.title, clickable: false }),
     );
+    let deleteConfirmDialog: SpatialSkeletonConfirmDialog | undefined;
     deleteButton.addEventListener("click", () => {
-      if (deleteButton.disabled || skeletonSource === undefined) return;
+      if (
+        deleteButton.disabled ||
+        skeletonSource === undefined ||
+        deleteConfirmDialog !== undefined
+      ) {
+        return;
+      }
+      const dialog = new SpatialSkeletonConfirmDialog({
+        title: "Confirm node deletion",
+        message: "",
+        summaryLabel: "Selected node:",
+        summary: getSpatialSkeletonDeleteConfirmationSummary({
+          nodeId: nodeInfo.nodeId,
+          segmentId: nodeInfo.segmentId,
+          position: nodeInfo.position,
+        }),
+        confirmLabel: "Delete",
+      });
+      deleteConfirmDialog = dialog;
       void (async () => {
+        const confirmed = await dialog.response;
+        if (deleteConfirmDialog === dialog) {
+          deleteConfirmDialog = undefined;
+        }
+        if (!confirmed) return;
         try {
           await skeletonSource.deleteNode(nodeInfo.nodeId, {
             parentNodeId: nodeInfo.parentNodeId,
