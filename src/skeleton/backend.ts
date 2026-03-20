@@ -86,18 +86,46 @@ export interface SpatiallyIndexedSkeletonChunkSpecification extends SliceViewChu
 const SKELETON_CHUNK_PRIORITY = 60;
 const SPATIALLY_INDEXED_SKELETON_LOD_DEBOUNCE_MS = 300;
 
-function cancelStaleSpatiallyIndexedSkeletonDownloads(
+export enum SpatiallyIndexedSkeletonChunkRequestOwner {
+  NONE = 0,
+  VIEW_2D = 1 << 0,
+  VIEW_3D = 1 << 1,
+}
+
+export function markSpatiallyIndexedSkeletonChunkRequested(
+  chunk: SpatiallyIndexedSkeletonChunk,
+  currentGeneration: number,
+  owner: SpatiallyIndexedSkeletonChunkRequestOwner,
+) {
+  if (
+    owner === SpatiallyIndexedSkeletonChunkRequestOwner.NONE ||
+    currentGeneration < 0
+  ) {
+    return;
+  }
+  if (chunk.requestGeneration !== currentGeneration) {
+    chunk.requestGeneration = currentGeneration;
+    chunk.requestOwners = owner;
+    return;
+  }
+  chunk.requestOwners |= owner;
+}
+
+export function cancelStaleSpatiallyIndexedSkeletonDownloads(
   chunkManager: ChunkManager,
   sources: Iterable<SpatiallyIndexedSkeletonSourceBackend>,
-  currentLod: number,
+  currentGeneration: number,
 ) {
   const queueManager = chunkManager.queueManager;
   for (const source of sources) {
     for (const chunk of source.chunks.values()) {
       const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
       if (typedChunk.state !== ChunkState.DOWNLOADING) continue;
-      if (typedChunk.newPriorityTier !== ChunkPriorityTier.RECENT) continue;
-      if (Math.abs((typedChunk.lod ?? currentLod) - currentLod) < 1e-6) {
+      if (
+        typedChunk.requestGeneration === currentGeneration &&
+        typedChunk.requestOwners !==
+          SpatiallyIndexedSkeletonChunkRequestOwner.NONE
+      ) {
         continue;
       }
       const controller = typedChunk.downloadAbortController;
@@ -250,6 +278,8 @@ export class SpatiallyIndexedSkeletonChunk extends SliceViewChunk implements Ske
   vertexAttributes: TypedNumberArray[] | null = null;
   indices: Uint32Array | null = null;
   lod: number = 0;
+  requestGeneration = -1;
+  requestOwners = SpatiallyIndexedSkeletonChunkRequestOwner.NONE;
   nodeMap: Map<number, number> = new Map(); // Maps node ID to vertex index
 
   freeSystemMemory() {
@@ -272,6 +302,8 @@ export class SpatiallyIndexedSkeletonChunk extends SliceViewChunk implements Ske
 export class SpatiallyIndexedSkeletonSourceBackend extends SliceViewChunkSourceBackend<SpatiallyIndexedSkeletonChunkSpecification, SpatiallyIndexedSkeletonChunk> {
   chunkConstructor = SpatiallyIndexedSkeletonChunk;
   currentLod: number = 0;
+  currentRequestGeneration = -1;
+  currentRequestOwner = SpatiallyIndexedSkeletonChunkRequestOwner.NONE;
 
   getChunk(chunkGridPosition: Float32Array) {
     const lodValue = this.currentLod;
@@ -283,6 +315,11 @@ export class SpatiallyIndexedSkeletonSourceBackend extends SliceViewChunkSourceB
       chunk.lod = lodValue;
       this.addChunk(chunk);
     }
+    markSpatiallyIndexedSkeletonChunkRequested(
+      chunk,
+      this.currentRequestGeneration,
+      this.currentRequestOwner,
+    );
     return chunk;
   }
 }
@@ -361,7 +398,7 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
         cancelStaleSpatiallyIndexedSkeletonDownloads(
           this.chunkManager,
           sources,
-          this.skeletonLod.value,
+          this.chunkManager.recomputeChunkPriorities.count,
         );
         this.pendingLodCleanup = false;
       }),
@@ -393,6 +430,7 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
 
   private recomputeChunkPriorities() {
     this.chunkManager.registerLayer(this);
+    const currentGeneration = this.chunkManager.recomputeChunkPriorities.count;
     for (const attachment of this.attachments.values()) {
       const { view } = attachment;
       const visibility = view.visibility.value;
@@ -536,6 +574,9 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
           const source =
             tsource.source as SpatiallyIndexedSkeletonSourceBackend;
           source.currentLod = lodValue;
+          source.currentRequestGeneration = currentGeneration;
+          source.currentRequestOwner =
+            SpatiallyIndexedSkeletonChunkRequestOwner.VIEW_3D;
           forEachVisibleVolumetricChunk(
             projectionParameters,
             this.localPosition.value,
@@ -564,6 +605,7 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
 export class SpatiallyIndexedSkeletonSliceViewRenderLayerBackend extends SliceViewRenderLayerBackend {
   skeletonGridLevel: SharedWatchableValue<number>;
   skeletonLod: SharedWatchableValue<number>;
+  private chunkManager_: ChunkManager;
   private pendingLodCleanup = false;
   private trackedSources = new Set<SpatiallyIndexedSkeletonSourceBackend>();
 
@@ -572,6 +614,7 @@ export class SpatiallyIndexedSkeletonSliceViewRenderLayerBackend extends SliceVi
     this.skeletonGridLevel = rpc.get(options.skeletonGridLevel);
     this.skeletonLod = rpc.get(options.skeletonLod);
     const chunkManager = rpc.get(options.chunkManager);
+    this.chunkManager_ = chunkManager;
     const scheduleUpdateChunkPriorities = () =>
       chunkManager.scheduleUpdateChunkPriorities();
     this.registerDisposer(
@@ -598,7 +641,7 @@ export class SpatiallyIndexedSkeletonSliceViewRenderLayerBackend extends SliceVi
         cancelStaleSpatiallyIndexedSkeletonDownloads(
           chunkManager,
           this.trackedSources,
-          this.skeletonLod.value,
+          chunkManager.recomputeChunkPriorities.count,
         );
         this.pendingLodCleanup = false;
       }),
@@ -608,6 +651,10 @@ export class SpatiallyIndexedSkeletonSliceViewRenderLayerBackend extends SliceVi
   prepareChunkSourceForRequest(source: SpatiallyIndexedSkeletonSourceBackend) {
     this.trackedSources.add(source);
     source.currentLod = this.skeletonLod.value;
+    source.currentRequestGeneration =
+      this.chunkManager_.recomputeChunkPriorities.count;
+    source.currentRequestOwner =
+      SpatiallyIndexedSkeletonChunkRequestOwner.VIEW_2D;
   }
 
   filterVisibleSources(
@@ -619,6 +666,10 @@ export class SpatiallyIndexedSkeletonSliceViewRenderLayerBackend extends SliceVi
       const source = tsource.source as SpatiallyIndexedSkeletonSourceBackend;
       this.trackedSources.add(source);
       source.currentLod = lodValue;
+      source.currentRequestGeneration =
+        this.chunkManager_.recomputeChunkPriorities.count;
+      source.currentRequestOwner =
+        SpatiallyIndexedSkeletonChunkRequestOwner.VIEW_2D;
     }
 
     if (
