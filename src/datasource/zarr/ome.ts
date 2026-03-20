@@ -71,6 +71,14 @@ const SUPPORTED_OME_MULTISCALE_VERSIONS = new Set([
   "0.6",
 ]);
 
+// OME-Zarr versions (< 0.6) should not expose base transform
+// to maintain backward compatibility with existing saved states
+const OME_MULTISCALE_NO_EXPOSE_TRANSFORM_VERSIONS = new Set([
+  "0.4",
+  "0.5-dev",
+  "0.5",
+]);
+
 const OME_UNITS = new Map<string, { unit: string; scale: number }>([
   ["angstrom", { unit: "m", scale: 1e-10 }],
   ["foot", { unit: "m", scale: 0.3048 }],
@@ -560,6 +568,7 @@ function parseMultiscaleScale(
 function parseOmeMultiscale(
   url: string,
   multiscale: unknown,
+  version: string,
 ): OmeMultiscaleMetadata {
   verifyObject(multiscale);
 
@@ -578,7 +587,7 @@ function parseOmeMultiscale(
     Array.isArray(coordinateSystemsRaw) &&
     coordinateSystemsRaw.length > 0
   ) {
-    // OME-ZARR 0.6+: Use the last (intrinsic) coordinate system
+    // If coordinate systems specified, use the last (intrinsic) coordinate system
     const coordinateSystems = parseArray(
       coordinateSystemsRaw,
       parseOmeCoordinateSystem,
@@ -595,7 +604,7 @@ function parseOmeMultiscale(
       verifyString,
     );
   } else {
-    // OME-ZARR 0.4/0.5: Use axes directly
+    // Use axes directly if no coordinate systems (usually OME-zarr < 0.6)
     coordinateSpace = verifyObjectProperty(multiscale, "axes", parseOmeAxes);
   }
 
@@ -638,32 +647,48 @@ function parseOmeMultiscale(
     coordinateSpace.scales[i] *= baseScales[i];
   }
 
-  // The unscaled inverse of the base transform is used in the per-scale
-  // calculation of the affine transform to apply on top of the base transform.
-  const inverseBaseTransformUnscaled = new Float64Array(baseTransform.length);
-  matrix.inverse(
-    inverseBaseTransformUnscaled,
-    rank + 1,
-    baseTransform,
-    rank + 1,
-    rank + 1,
-  );
+  const shouldExposeBaseTransform =
+    !OME_MULTISCALE_NO_EXPOSE_TRANSFORM_VERSIONS.has(version);
 
-  // The base transform with scaling removed is used
-  // to provide a default transform in the layer source tab
-  // and for the bounding box transformation
-  const baseTransformScaled = new Float64Array(baseTransform.length);
-  matrix.copy(
-    baseTransformScaled,
-    rank + 1,
-    baseTransform,
-    rank + 1,
-    rank + 1,
-    rank + 1,
-  );
-  for (let i = 0; i < rank; ++i) {
-    for (let j = 0; j <= rank; ++j) {
-      baseTransformScaled[j * (rank + 1) + i] /= baseScales[i];
+  // Create the inverse base transform to make scale transforms relative.
+  // For OME-Zarr 0.6+: Use full inverse of base transform since transform is fully exposed
+  // For older versions: Use diagonal scale matrix inverse as only the scale is exposed
+  const inverseBaseTransform = new Float64Array(baseTransform.length);
+  if (shouldExposeBaseTransform) {
+    matrix.inverse(
+      inverseBaseTransform,
+      rank + 1,
+      baseTransform,
+      rank + 1,
+      rank + 1,
+    );
+  } else {
+    // Create inverse scale matrix using 1/baseScales
+    inverseBaseTransform.set(
+      matrix.createHomogeneousScaleMatrix(
+        Float64Array,
+        Float64Array.from(baseScales, (scale) => 1 / scale),
+      ),
+    );
+  }
+
+  // For OME-Zarr 0.6+: Remove scaling from base transform since it will be
+  // exposed as the model transform and scales are in the coordinate space.
+  // For older versions: Set base transform to identity since it won't be exposed.
+  const baseTransformScaled = matrix.createIdentity(Float64Array, rank + 1);
+  if (shouldExposeBaseTransform) {
+    matrix.copy(
+      baseTransformScaled,
+      rank + 1,
+      baseTransform,
+      rank + 1,
+      rank + 1,
+      rank + 1,
+    );
+    for (let i = 0; i < rank; ++i) {
+      for (let j = 0; j <= rank; ++j) {
+        baseTransformScaled[j * (rank + 1) + i] /= baseScales[i];
+      }
     }
   }
 
@@ -679,24 +704,19 @@ function parseOmeMultiscale(
       }
       t[rank * (rank + 1) + i] -= offset;
     }
-
-    // At each scale, we provide an affine transform matrix
-    // to get applied on top of the base transformation matrix
-    // This matrix should apply the per path scaling for moving between
-    // LODs as well as the per-lod offset in translations (for voxel center)
-    // In theory, if the transform at that path describes a different rotation
-    // shear etc, to the base transform that would be captured here as well
-    // though the common case is just scaling + translation differences
     scale.transform = makeAffineRelativeToBaseTransform(
       scale.transform,
-      inverseBaseTransformUnscaled,
+      inverseBaseTransform,
       rank,
     );
   }
   return {
     coordinateSpace,
     scales,
-    baseInfo: { baseScales, baseTransform: baseTransformScaled },
+    baseInfo: {
+      baseScales,
+      baseTransform: baseTransformScaled,
+    },
   };
 }
 
@@ -740,7 +760,7 @@ export function parseOmeMetadata(
       );
       continue;
     }
-    const multiScaleInfo = parseOmeMultiscale(url, multiscale);
+    const multiScaleInfo = parseOmeMultiscale(url, multiscale, version);
     const channelMetadata = omero ? parseOmeroMetadata(omero) : undefined;
     return { multiscale: multiScaleInfo, channels: channelMetadata };
   }
