@@ -785,6 +785,41 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
     return nodeInfo;
   }
 
+  private applyCommittedAddNode(
+    skeletonLayer: SpatiallyIndexedSkeletonLayer,
+    committedNode: SpatiallyIndexedSkeletonAddNodeResult,
+    parentNodeId: number | undefined,
+    position: Float32Array,
+  ) {
+    const newNode = {
+      nodeId: committedNode.treenodeId,
+      segmentId: committedNode.skeletonId,
+      position: new Float32Array(position),
+      parentNodeId,
+    };
+    this.layer.spatialSkeletonState.upsertCachedNode(newNode, {
+      allowUncachedSegment: parentNodeId === undefined,
+    });
+    this.ensureSegmentVisibleByNumber(newNode.segmentId);
+    this.pinSegmentByNumber(newNode.segmentId);
+    this.layer.selectSpatialSkeletonNode(
+      newNode.nodeId,
+      this.layer.manager.root.selectionState.pin.value,
+      {
+        segmentId: newNode.segmentId,
+        position: newNode.position,
+      },
+    );
+    // Match move-node semantics: update the overlay/cache immediately and let
+    // browse chunks reconcile later through explicit invalidation paths.
+    if (parentNodeId !== undefined) {
+      skeletonLayer.retainOverlaySegment(newNode.segmentId);
+    }
+    this.layer.markSpatialSkeletonNodeDataChanged({
+      invalidateFullSkeletonCache: false,
+    });
+  }
+
   private getRenderedDataPanelForEvent(
     event: MouseEvent,
   ): RenderedDataPanel | undefined {
@@ -1116,34 +1151,17 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
                 });
                 return;
               }
-              const newNode = {
+              this.applyCommittedAddNode(
+                skeletonLayer,
+                committedNode,
+                selectedParentNodeId,
+                clickPosition,
+              );
+              debugLog("add-node-committed", {
                 nodeId: committedNode.treenodeId,
                 segmentId: committedNode.skeletonId,
-                position: new Float32Array(clickPosition),
                 parentNodeId: selectedParentNodeId,
-              };
-              layer.spatialSkeletonState.upsertCachedNode(newNode, {
-                allowUncachedSegment: selectedParentNodeId === undefined,
-              });
-              this.ensureSegmentVisibleByNumber(newNode.segmentId);
-              this.pinSegmentByNumber(newNode.segmentId);
-              layer.selectSpatialSkeletonNode(
-                newNode.nodeId,
-                layer.manager.root.selectionState.pin.value,
-                {
-                  segmentId: newNode.segmentId,
-                  position: newNode.position,
-                },
-              );
-              layer.markSpatialSkeletonNodeDataChanged({
-                invalidateFullSkeletonCache: false,
-              });
-              skeletonLayer.invalidateSourceCaches();
-              debugLog("add-node-committed", {
-                nodeId: newNode.nodeId,
-                segmentId: newNode.segmentId,
-                parentNodeId: selectedParentNodeId,
-                position: formatVec3(newNode.position),
+                position: formatVec3(clickPosition),
               });
               setReadyStatus();
             })();
