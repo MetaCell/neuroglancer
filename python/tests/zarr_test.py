@@ -487,6 +487,73 @@ def test_ome_zarr_0_6_affine(static_file_server, webdriver):
     _check_sequence_result(model_space)
 
 
+def test_ome_zarr_0_6_vs_0_5_affine(static_file_server, webdriver):
+    """affine: Affine matrix (JSON form) applied to single scale. Same data as 0.6 example, and equivalent metadata for 0.5 as 0.6. But 0.6 should expose transform while 0.5 does not.
+    Example dataset: simple/affine_copy_0.5.zarr
+
+    Affine transform: Diagonal scale matrix with translation (equivalent to sequence of scale + translation).
+    Matrix:
+      [4, 0, 0, 32]   - z axis: scale 4, translation 32
+      [0, 3, 0, 21]   - y axis: scale 3, translation 21
+      [0, 0, 2, 10]   - x axis: scale 2, translation 10
+    """
+    test_dir_0_5 = OME_ZARR_0_6_ROOT / "simple" / "affine_copy_0.5.zarr"
+    server_url_0_5 = static_file_server(test_dir_0_5)
+    test_dir_0_6 = OME_ZARR_0_6_ROOT / "simple" / "affine.zarr"
+    server_url_0_6 = static_file_server(test_dir_0_6)
+    with webdriver.viewer.txn() as s:
+        s.layers.append(
+            name="affine_0_5",
+            layer=neuroglancer.ImageLayer(source=f"zarr3://{server_url_0_5}"),
+        )
+        s.layers.append(
+            name="affine_0_6",
+            layer=neuroglancer.ImageLayer(source=f"zarr3://{server_url_0_6}"),
+        )
+    webdriver.sync()
+
+    model_space_0_5 = _assert_renders(webdriver, "affine_0_5")
+    model_space_0_6 = _assert_renders(webdriver, "affine_0_6")
+
+    # Both scales should be the same
+    assert model_space_0_5["scales"] == model_space_0_6["scales"]
+
+    # Both of the volumes should be the same shape
+    assert model_space_0_5["volume"].shape == model_space_0_6["volume"].shape
+
+    # Both volumes should not be the same in model space
+    # since 0.6 exposes the transform to the user and 0.5 does not
+    assert not np.testing.assert_array_equal(
+        model_space_0_5["volume"].read().result(),
+        model_space_0_6["volume"].read().result(),
+    )
+
+    # Both should render the same in the viewer with one visible at a time
+    with webdriver.viewer.txn() as s:
+        s.layers["affine_0_5"].visible = True
+        s.layers["affine_0_6"].visible = False
+    webdriver.sync()
+    screenshot_0_5 = webdriver.viewer.screenshot(size=[200, 200]).screenshot
+    with webdriver.viewer.txn() as s:
+        s.layers["affine_0_5"].visible = False
+        s.layers["affine_0_6"].visible = True
+    webdriver.sync()
+    screenshot_0_6 = webdriver.viewer.screenshot(size=[200, 200]).screenshot
+    np.testing.assert_array_equal(
+        screenshot_0_5.image_pixels, screenshot_0_6.image_pixels
+    )
+
+    # Both should obey the single voxel test
+    origin_0_5 = model_space_0_5["volume"].domain.origin
+    origin_0_6 = model_space_0_6["volume"].domain.origin
+    _verify_data_at_point(
+        model_space_0_5["volume"], TEST_VOXEL + np.array(origin_0_5), EXPECTED_VALUE
+    )
+    _verify_data_at_point(
+        model_space_0_6["volume"], TEST_VOXEL + np.array(origin_0_6), EXPECTED_VALUE
+    )
+
+
 def test_ome_zarr_0_6_rotation(static_file_server, webdriver):
     """rotation: Rotation matrix (or axis permutation) example.
     Example dataset: simple/rotation.zarr
