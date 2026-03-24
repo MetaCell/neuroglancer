@@ -32,6 +32,7 @@ import { CATMAID_TRUE_END_LABEL } from "#src/datasource/catmaid/api.js";
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import { getSpatialSkeletonNodeIdFromViewerHover } from "#src/layer/segmentation/selection.js";
 import {
+  getSegmentEquivalences,
   getVisibleSegments,
   removeSegmentFromVisibleSets,
 } from "#src/segmentation_display_state/base.js";
@@ -42,31 +43,31 @@ import type {
 } from "#src/skeleton/api.js";
 import type { SpatiallyIndexedSkeletonNodeInfo } from "#src/skeleton/frontend.js";
 import {
-  classifySpatialSkeletonDisplayNodeType as classifyNodeType,
-  getSpatialSkeletonNodeFilterLabel,
-  getSpatialSkeletonNodeIconFilterType,
-  hasSpatialSkeletonTrueEndLabel,
-  isSpatialSkeletonClosedEndLabel,
-  matchesSpatialSkeletonNodeFilter,
-  SpatialSkeletonNodeFilterType,
-  type SpatialSkeletonDisplayNodeType as SkeletonNodeType,
-} from "#src/skeleton/node_types.js";
-import {
   buildSpatiallyIndexedSkeletonNavigationGraph,
   getBranchEnd as getBranchEndFromGraph,
   getBranchStart as getBranchStartFromGraph,
   getChildNode as getChildNodeFromGraph,
-  getFlatListNodeIds,
   getNextCollapsedLevelNode as getNextCollapsedLevelNodeFromGraph,
   getOpenLeaves as getOpenLeavesFromGraph,
   getParentNode as getParentNodeFromGraph,
   getSkeletonRootNode as getSkeletonRootNodeFromGraph,
   type SpatiallyIndexedSkeletonNavigationGraph,
 } from "#src/skeleton/navigation.js";
+import {
+  getSpatialSkeletonNodeFilterLabel,
+  getSpatialSkeletonNodeIconFilterType,
+  hasSpatialSkeletonTrueEndLabel,
+  isSpatialSkeletonClosedEndLabel,
+  SpatialSkeletonNodeFilterType,
+  type SpatialSkeletonDisplayNodeType as SkeletonNodeType,
+} from "#src/skeleton/node_types.js";
 import { getEditableSpatiallyIndexedSkeletonSource } from "#src/skeleton/state.js";
 import { StatusMessage } from "#src/status.js";
 import { observeWatchable, registerNested } from "#src/trackable_value.js";
-import { TrackableEnum } from "#src/util/trackable_enum.js";
+import {
+  buildSpatialSkeletonSegmentRenderState,
+  type SpatialSkeletonSegmentRenderState,
+} from "#src/ui/spatial_skeleton_edit_tab_render_state.js";
 import {
   SPATIAL_SKELETON_EDIT_MODE_TOOL_ID,
   SPATIAL_SKELETON_MERGE_MODE_TOOL_ID,
@@ -74,8 +75,9 @@ import {
   SpatialSkeletonConfirmDialog,
 } from "#src/ui/spatial_skeleton_edit_tool.js";
 import { getSpatialSkeletonDeleteConfirmationSummary } from "#src/ui/spatial_skeleton_tool_messages.js";
-import { EnumSelectWidget } from "#src/widget/enum_widget.js";
 import { makeToolButton } from "#src/ui/tool.js";
+import { TrackableEnum } from "#src/util/trackable_enum.js";
+import { EnumSelectWidget } from "#src/widget/enum_widget.js";
 import { makeIcon } from "#src/widget/icon.js";
 import { Tab } from "#src/widget/tab_view.js";
 
@@ -124,41 +126,11 @@ function hasTrueEndLabel(node: SpatiallyIndexedSkeletonNodeInfo) {
   return hasSpatialSkeletonTrueEndLabel(node.labels);
 }
 
-function formatNodePosition(position: ArrayLike<number>) {
-  const x = Number(position[0]);
-  const y = Number(position[1]);
-  const z = Number(position[2]);
-  return `x ${Math.round(x)} y ${Math.round(y)} z ${Math.round(z)}`;
-}
-
 function formatNodeCoordinates(position: ArrayLike<number>) {
   const x = Number(position[0]);
   const y = Number(position[1]);
   const z = Number(position[2]);
   return `${Math.round(x)} ${Math.round(y)} ${Math.round(z)}`;
-}
-
-function nodeMatchesFilter(
-  node: SpatiallyIndexedSkeletonNodeInfo,
-  filterText: string,
-  description: string | undefined,
-) {
-  if (filterText.length === 0) return true;
-  if (String(node.nodeId).includes(filterText)) return true;
-  if (String(node.segmentId).includes(filterText)) return true;
-  if (
-    node.labels?.some((label) => label.toLowerCase().includes(filterText)) ??
-    false
-  ) {
-    return true;
-  }
-  if (formatNodeCoordinates(node.position).toLowerCase().includes(filterText)) {
-    return true;
-  }
-  if (formatNodePosition(node.position).toLowerCase().includes(filterText)) {
-    return true;
-  }
-  return description?.toLowerCase().includes(filterText) ?? false;
 }
 
 export class SpatialSkeletonEditTab extends Tab {
@@ -249,6 +221,15 @@ export class SpatialSkeletonEditTab extends Tab {
     nodeFilterTypeLabel.textContent = "Filter";
     nodeFilterTypeRow.appendChild(nodeFilterTypeLabel);
     nodeFilterTypeRow.appendChild(nodeFilterTypeWidget.element);
+    const showFilterSection = document.createElement("div");
+    showFilterSection.className = "neuroglancer-spatial-skeleton-show-section";
+    const showFilterLabel = document.createElement("div");
+    showFilterLabel.className = "neuroglancer-spatial-skeleton-filter-label";
+    showFilterLabel.textContent = "Show";
+    const showFilterList = document.createElement("div");
+    showFilterList.className = "neuroglancer-spatial-skeleton-show-list";
+    showFilterSection.appendChild(showFilterLabel);
+    showFilterSection.appendChild(showFilterList);
     const nodesSummaryBar = document.createElement("div");
     nodesSummaryBar.className = "neuroglancer-spatial-skeleton-summary-bar";
     const nodesSummary = document.createElement("div");
@@ -257,6 +238,7 @@ export class SpatialSkeletonEditTab extends Tab {
     nodesList.className = "neuroglancer-spatial-skeleton-tree";
     nodesSection.appendChild(filterInput);
     nodesSection.appendChild(nodeFilterTypeRow);
+    nodesSection.appendChild(showFilterSection);
     nodesSummaryBar.appendChild(nodesSummary);
     nodesSummaryBar.appendChild(collapseButton);
     nodesSection.appendChild(nodesSummaryBar);
@@ -266,6 +248,7 @@ export class SpatialSkeletonEditTab extends Tab {
     let allNodes: SpatiallyIndexedSkeletonNodeInfo[] = [];
     let activeSegmentIds: number[] = [];
     let nodesBySegment = new Map<number, SpatiallyIndexedSkeletonNodeInfo[]>();
+    const shownSegmentIds = new Set<number>();
     let filterText = "";
     let nodeFilterType = SpatialSkeletonNodeFilterType.NONE;
     let inspectionAllowed = false;
@@ -598,7 +581,7 @@ export class SpatialSkeletonEditTab extends Tab {
       const position = [target.x, target.y, target.z];
       layer.selectSpatialSkeletonNode(target.nodeId, true, { position });
       moveViewToNodePosition(position);
-      updateList();
+      updateDisplay();
     };
 
     const getSelectedNavigationContext = () => {
@@ -648,7 +631,7 @@ export class SpatialSkeletonEditTab extends Tab {
         return;
       }
       pendingTrueEndNodes.add(node.nodeId);
-      updateList();
+      updateDisplay();
       void (async () => {
         try {
           if (present) {
@@ -670,7 +653,7 @@ export class SpatialSkeletonEditTab extends Tab {
           );
         } finally {
           pendingTrueEndNodes.delete(node.nodeId);
-          updateList();
+          updateDisplay();
         }
       })();
     };
@@ -760,7 +743,7 @@ export class SpatialSkeletonEditTab extends Tab {
         }
         if (!confirmed) return;
         pendingDeleteNodes.add(node.nodeId);
-        updateList();
+        updateDisplay();
         try {
           const directChildNodeIds = getDirectChildNodeIds(node);
           const deletingIsolatedRoot =
@@ -800,10 +783,10 @@ export class SpatialSkeletonEditTab extends Tab {
           StatusMessage.showTemporaryMessage(
             `Failed to delete node: ${message}`,
           );
-          updateList();
+          updateDisplay();
         } finally {
           pendingDeleteNodes.delete(node.nodeId);
-          updateList();
+          updateDisplay();
         }
       })();
     };
@@ -971,84 +954,6 @@ export class SpatialSkeletonEditTab extends Tab {
       goUnfinishedBranchButton,
     ];
 
-    const buildSegmentListRows = (
-      segmentId: number,
-      segmentNodes: SpatiallyIndexedSkeletonNodeInfo[],
-    ) => {
-      if (segmentNodes.length === 0) {
-        return [];
-      }
-      const graph = getSegmentNavigationGraph(segmentId);
-      const { nodeById, childrenByParent } = graph;
-
-      const visibleMemo = new Map<number, boolean>();
-      const isNodeVisible = (nodeId: number): boolean => {
-        const cached = visibleMemo.get(nodeId);
-        if (cached !== undefined) {
-          return cached;
-        }
-        const node = nodeById.get(nodeId);
-        if (node === undefined) {
-          visibleMemo.set(nodeId, false);
-          return false;
-        }
-        const children = childrenByParent.get(nodeId) ?? [];
-        const parentInTree =
-          node.parentNodeId !== undefined && nodeById.has(node.parentNodeId);
-        const nodeType = classifyNodeType(node, children.length, parentInTree);
-        const visible =
-          nodeFilterType === SpatialSkeletonNodeFilterType.NONE
-            ? (() => {
-                if (filterText.length === 0) {
-                  return true;
-                }
-                let recursiveVisible = nodeMatchesFilter(
-                  node,
-                  filterText,
-                  getNodeDescriptionText(node),
-                );
-                if (!recursiveVisible) {
-                  for (const childNodeId of children) {
-                    if (isNodeVisible(childNodeId)) {
-                      recursiveVisible = true;
-                      break;
-                    }
-                  }
-                }
-                return recursiveVisible;
-              })()
-            : matchesSpatialSkeletonNodeFilter(nodeFilterType, {
-                isLeaf: children.length === 0,
-                nodeHasTrueEnd: hasTrueEndLabel(node),
-                nodeType,
-              }) &&
-              nodeMatchesFilter(node, filterText, getNodeDescriptionText(node));
-        visibleMemo.set(nodeId, visible);
-        return visible;
-      };
-
-      const rows: Array<{
-        node: SpatiallyIndexedSkeletonNodeInfo;
-        type: SkeletonNodeType;
-        isLeaf: boolean;
-      }> = [];
-      for (const nodeId of getFlatListNodeIds(graph, {
-        collapseRegularNodesForOrdering: true,
-      })) {
-        if (!isNodeVisible(nodeId)) continue;
-        const node = nodeById.get(nodeId);
-        if (node === undefined) continue;
-        const children = childrenByParent.get(nodeId) ?? [];
-        const parentInTree =
-          node.parentNodeId !== undefined && nodeById.has(node.parentNodeId);
-        const type = classifyNodeType(node, children.length, parentInTree);
-        if (!(listCollapsed && type === "regular" && !hasTrueEndLabel(node))) {
-          rows.push({ node, type, isLeaf: children.length === 0 });
-        }
-      }
-      return rows;
-    };
-
     const makeRowActionButton = (
       svg: string,
       title: string,
@@ -1068,42 +973,208 @@ export class SpatialSkeletonEditTab extends Tab {
       return button;
     };
 
-    const updateList = () => {
+    type SegmentDisplayState = SpatialSkeletonSegmentRenderState & {
+      segmentLabel: string | undefined;
+      shown: boolean;
+    };
+
+    const syncShownSegmentIds = (nextSegmentIds: readonly number[]) => {
+      const nextVisibleIds = new Set(nextSegmentIds);
+      for (const segmentId of [...shownSegmentIds]) {
+        if (!nextVisibleIds.has(segmentId)) {
+          shownSegmentIds.delete(segmentId);
+        }
+      }
+      for (const segmentId of nextSegmentIds) {
+        shownSegmentIds.add(segmentId);
+      }
+    };
+
+    const getSegmentDisplayLabel = (segmentId: number) => {
+      const segmentationGroupState =
+        layer.displayState.segmentationGroupState.value;
+      const segmentPropertyMap =
+        segmentationGroupState.segmentPropertyMap.value;
+      if (segmentPropertyMap === undefined) {
+        return undefined;
+      }
+      const mappedSegmentId = getSegmentEquivalences(
+        segmentationGroupState,
+      ).get(BigInt(segmentId));
+      return segmentPropertyMap.getSegmentLabel(mappedSegmentId);
+    };
+
+    const buildSegmentDisplayStates = (): SegmentDisplayState[] => {
+      const states: SegmentDisplayState[] = [];
+      for (const segmentId of activeSegmentIds) {
+        const segmentNodes = nodesBySegment.get(segmentId) ?? [];
+        const renderState =
+          segmentNodes.length === 0
+            ? {
+                segmentId,
+                totalNodeCount: 0,
+                matchedNodeCount: 0,
+                displayedNodeCount: 0,
+                branchCount: 0,
+                rows: [],
+              }
+            : buildSpatialSkeletonSegmentRenderState(
+                segmentId,
+                getSegmentNavigationGraph(segmentId),
+                {
+                  filterText,
+                  nodeFilterType,
+                  collapseRegularNodes: listCollapsed,
+                  getNodeDescription: getNodeDescriptionText,
+                },
+              );
+        states.push({
+          ...renderState,
+          segmentLabel: getSegmentDisplayLabel(segmentId),
+          shown: shownSegmentIds.has(segmentId),
+        });
+      }
+      return states;
+    };
+
+    const getVisibleSegmentStates = (
+      segmentStates: readonly SegmentDisplayState[],
+    ) =>
+      segmentStates.filter(
+        (segmentState) =>
+          segmentState.shown && segmentState.displayedNodeCount > 0,
+      );
+
+    const updateShowFilter = (
+      segmentStates: readonly SegmentDisplayState[],
+    ) => {
+      showFilterList.textContent = "";
+      showFilterSection.hidden = segmentStates.length === 0;
+      for (const segmentState of segmentStates) {
+        const item = document.createElement("label");
+        item.className = "neuroglancer-spatial-skeleton-show-item";
+
+        const checkbox = document.createElement("input");
+        checkbox.className = "neuroglancer-spatial-skeleton-show-checkbox";
+        checkbox.type = "checkbox";
+        checkbox.checked = segmentState.shown;
+        checkbox.disabled = segmentState.totalNodeCount === 0;
+        checkbox.addEventListener("change", () => {
+          if (checkbox.checked) {
+            shownSegmentIds.add(segmentState.segmentId);
+          } else {
+            shownSegmentIds.delete(segmentState.segmentId);
+          }
+          updateDisplay();
+        });
+
+        const content = document.createElement("div");
+        content.className = "neuroglancer-spatial-skeleton-show-item-content";
+        const segmentChip = document.createElement("span");
+        segmentChip.className =
+          "neuroglancer-spatial-skeleton-node-segment-chip";
+        const segmentChipColors = getSegmentChipColors(segmentState.segmentId);
+        segmentChip.textContent = String(segmentState.segmentId);
+        segmentChip.style.backgroundColor = segmentChipColors.background;
+        segmentChip.style.color = segmentChipColors.foreground;
+        segmentChip.title = `segment ${segmentState.segmentId}`;
+        const segmentName = document.createElement("span");
+        segmentName.className = "neuroglancer-spatial-skeleton-show-item-name";
+        segmentName.textContent = segmentState.segmentLabel ?? "";
+        const segmentRatio = document.createElement("span");
+        segmentRatio.className =
+          "neuroglancer-spatial-skeleton-show-item-ratio";
+        segmentRatio.textContent = `${segmentState.displayedNodeCount}/${segmentState.totalNodeCount}`;
+
+        content.appendChild(segmentChip);
+        content.appendChild(segmentName);
+        content.appendChild(segmentRatio);
+        item.appendChild(checkbox);
+        item.appendChild(content);
+        showFilterList.appendChild(item);
+      }
+    };
+
+    const updateList = (segmentStates: readonly SegmentDisplayState[]) => {
       nodesList.textContent = "";
       renderedRowsByNodeId.clear();
       renderedEntriesByNodeId.clear();
       if (activeSegmentIds.length === 0) {
         return;
       }
-      const listHeader = document.createElement("div");
-      listHeader.className = "neuroglancer-spatial-skeleton-list-header";
-      const headerActionsSpacer = document.createElement("span");
-      headerActionsSpacer.className =
-        "neuroglancer-spatial-skeleton-list-header-spacer neuroglancer-spatial-skeleton-list-header-actions";
-      const headerTypeSpacer = document.createElement("span");
-      headerTypeSpacer.className =
-        "neuroglancer-spatial-skeleton-list-header-spacer neuroglancer-spatial-skeleton-list-header-type";
-      const headerId = document.createElement("span");
-      headerId.className = "neuroglancer-spatial-skeleton-list-header-cell";
-      headerId.textContent = "id";
-      const headerCoordinates = document.createElement("span");
-      headerCoordinates.className =
-        "neuroglancer-spatial-skeleton-list-header-cell";
-      headerCoordinates.textContent = "coordinates";
-      listHeader.appendChild(headerActionsSpacer);
-      listHeader.appendChild(headerTypeSpacer);
-      listHeader.appendChild(headerId);
-      listHeader.appendChild(headerCoordinates);
-      nodesList.appendChild(listHeader);
+      const visibleSegmentStates = getVisibleSegmentStates(segmentStates);
+      if (visibleSegmentStates.length > 0) {
+        const listHeader = document.createElement("div");
+        listHeader.className = "neuroglancer-spatial-skeleton-list-header";
+        const headerActionsSpacer = document.createElement("span");
+        headerActionsSpacer.className =
+          "neuroglancer-spatial-skeleton-list-header-spacer neuroglancer-spatial-skeleton-list-header-actions";
+        const headerTypeSpacer = document.createElement("span");
+        headerTypeSpacer.className =
+          "neuroglancer-spatial-skeleton-list-header-spacer neuroglancer-spatial-skeleton-list-header-type";
+        const headerId = document.createElement("span");
+        headerId.className = "neuroglancer-spatial-skeleton-list-header-cell";
+        headerId.textContent = "id";
+        const headerCoordinates = document.createElement("span");
+        headerCoordinates.className =
+          "neuroglancer-spatial-skeleton-list-header-cell";
+        headerCoordinates.textContent = "coordinates";
+        listHeader.appendChild(headerActionsSpacer);
+        listHeader.appendChild(headerTypeSpacer);
+        listHeader.appendChild(headerId);
+        listHeader.appendChild(headerCoordinates);
+        nodesList.appendChild(listHeader);
+      }
 
       let renderedNodeCount = 0;
       let overflowNodeCount = 0;
-      let matchedRows = 0;
-      for (const segmentId of activeSegmentIds) {
-        const segmentNodes = nodesBySegment.get(segmentId) ?? [];
-        const rows = buildSegmentListRows(segmentId, segmentNodes);
-        matchedRows += rows.length;
-        for (const { node, type, isLeaf } of rows) {
+      for (const segmentState of visibleSegmentStates) {
+        const segmentEntry = document.createElement("div");
+        segmentEntry.className =
+          "neuroglancer-spatial-skeleton-tree-entry neuroglancer-spatial-skeleton-segment-entry";
+        const segmentRow = document.createElement("div");
+        segmentRow.className =
+          "neuroglancer-spatial-skeleton-tree-row neuroglancer-spatial-skeleton-segment-row";
+        const segmentActionsSpacer = document.createElement("span");
+        segmentActionsSpacer.className =
+          "neuroglancer-spatial-skeleton-list-header-spacer neuroglancer-spatial-skeleton-list-header-actions";
+        const segmentTypeSpacer = document.createElement("span");
+        segmentTypeSpacer.className =
+          "neuroglancer-spatial-skeleton-list-header-spacer neuroglancer-spatial-skeleton-list-header-type";
+        const segmentIdCell = document.createElement("span");
+        segmentIdCell.className = "neuroglancer-spatial-skeleton-node-id";
+        const segmentChip = document.createElement("span");
+        segmentChip.className =
+          "neuroglancer-spatial-skeleton-node-segment-chip";
+        const segmentChipColors = getSegmentChipColors(segmentState.segmentId);
+        segmentChip.textContent = String(segmentState.segmentId);
+        segmentChip.style.backgroundColor = segmentChipColors.background;
+        segmentChip.style.color = segmentChipColors.foreground;
+        segmentChip.title = `segment ${segmentState.segmentId}`;
+        segmentIdCell.appendChild(segmentChip);
+        const segmentMeta = document.createElement("div");
+        segmentMeta.className =
+          "neuroglancer-spatial-skeleton-node-coordinate-cell neuroglancer-spatial-skeleton-segment-meta";
+        const segmentMetaLine = document.createElement("div");
+        segmentMetaLine.className =
+          "neuroglancer-spatial-skeleton-segment-meta-line";
+        const segmentName = document.createElement("span");
+        segmentName.className = "neuroglancer-spatial-skeleton-segment-name";
+        segmentName.textContent = segmentState.segmentLabel ?? "";
+        const segmentRatio = document.createElement("span");
+        segmentRatio.className = "neuroglancer-spatial-skeleton-segment-ratio";
+        segmentRatio.textContent = `${segmentState.displayedNodeCount}/${segmentState.totalNodeCount}`;
+        segmentMetaLine.appendChild(segmentName);
+        segmentMetaLine.appendChild(segmentRatio);
+        segmentMeta.appendChild(segmentMetaLine);
+        segmentRow.appendChild(segmentActionsSpacer);
+        segmentRow.appendChild(segmentTypeSpacer);
+        segmentRow.appendChild(segmentIdCell);
+        segmentRow.appendChild(segmentMeta);
+        segmentEntry.appendChild(segmentRow);
+        nodesList.appendChild(segmentEntry);
+
+        for (const { node, type, isLeaf } of segmentState.rows) {
           if (renderedNodeCount >= MAX_LISTED_NODES) {
             overflowNodeCount++;
             continue;
@@ -1230,17 +1301,7 @@ export class SpatialSkeletonEditTab extends Tab {
 
           const idCell = document.createElement("span");
           idCell.className = "neuroglancer-spatial-skeleton-node-id";
-          if (type === "root") {
-            const rootChip = document.createElement("span");
-            rootChip.className =
-              "neuroglancer-spatial-skeleton-node-segment-chip";
-            const segmentChipColors = getSegmentChipColors(node.segmentId);
-            rootChip.textContent = String(node.segmentId);
-            rootChip.style.backgroundColor = segmentChipColors.background;
-            rootChip.style.color = segmentChipColors.foreground;
-            rootChip.title = `segment ${node.segmentId}`;
-            idCell.appendChild(rootChip);
-          }
+          idCell.textContent = String(node.nodeId);
 
           const coordinatesCell = document.createElement("div");
           coordinatesCell.className =
@@ -1284,11 +1345,16 @@ export class SpatialSkeletonEditTab extends Tab {
         }
       }
 
-      if (matchedRows === 0) {
+      if (visibleSegmentStates.length === 0) {
         const empty = document.createElement("div");
         empty.className = "neuroglancer-spatial-skeleton-summary";
         empty.textContent =
-          filterText.length === 0 ? "No loaded nodes." : "No matching nodes.";
+          shownSegmentIds.size === 0
+            ? "Select one or more skeletons to show."
+            : filterText.length === 0 &&
+                nodeFilterType === SpatialSkeletonNodeFilterType.NONE
+              ? "No loaded nodes."
+              : "No matching nodes.";
         nodesList.appendChild(empty);
       }
       if (overflowNodeCount > 0) {
@@ -1304,30 +1370,43 @@ export class SpatialSkeletonEditTab extends Tab {
       }
     };
 
-    const summarizeNodeState = (summarySuffix = "") => {
+    const summarizeNodeState = (
+      segmentStates: readonly SegmentDisplayState[],
+      summarySuffix = "",
+    ) => {
+      const visibleSegmentStates = getVisibleSegmentStates(segmentStates);
+      const skeletonCount = visibleSegmentStates.length;
       let branchCount = 0;
-      for (const segmentId of activeSegmentIds) {
-        const segmentNodes = nodesBySegment.get(segmentId) ?? [];
-        if (segmentNodes.length === 0) continue;
-        const { childrenByParent, rootNodeIds } =
-          getSegmentNavigationGraph(segmentId);
-        branchCount += rootNodeIds.length;
-        for (const childNodeIds of childrenByParent.values()) {
-          if (childNodeIds.length > 1) {
-            branchCount += childNodeIds.length - 1;
-          }
-        }
+      let nodeCount = 0;
+      for (const segmentState of visibleSegmentStates) {
+        branchCount += segmentState.branchCount;
+        nodeCount += segmentState.displayedNodeCount;
       }
-      nodesSummary.textContent = `${activeSegmentIds.length} skeleton${
-        activeSegmentIds.length === 1 ? "" : "s"
-      }, ${branchCount} branch${branchCount === 1 ? "" : "es"}, ${
-        allNodes.length
-      } node${allNodes.length === 1 ? "" : "s"}`;
+      nodesSummary.textContent = `${skeletonCount} skeleton${
+        skeletonCount === 1 ? "" : "s"
+      }, ${branchCount} branch${branchCount === 1 ? "" : "es"}, ${nodeCount} node${
+        nodeCount === 1 ? "" : "s"
+      }`;
       if (summarySuffix.trim().length > 0) {
         nodesSummary.title = summarySuffix.trim();
       } else {
         nodesSummary.removeAttribute("title");
       }
+    };
+
+    const updateDisplay = (summarySuffix = loadedNodeSummarySuffix) => {
+      if (activeSegmentIds.length === 0) {
+        showFilterList.textContent = "";
+        showFilterSection.hidden = true;
+        nodesList.textContent = "";
+        renderedRowsByNodeId.clear();
+        renderedEntriesByNodeId.clear();
+        return;
+      }
+      const segmentStates = buildSegmentDisplayStates();
+      updateShowFilter(segmentStates);
+      summarizeNodeState(segmentStates, summarySuffix);
+      updateList(segmentStates);
     };
 
     const applyNodesBySegment = (
@@ -1363,8 +1442,7 @@ export class SpatialSkeletonEditTab extends Tab {
           layer.clearSpatialSkeletonNodeSelection(false);
         }
       }
-      summarizeNodeState(summarySuffix);
-      updateList();
+      updateDisplay(summarySuffix);
     };
 
     const applyTrueEndLabelLocally = (nodeId: number, present: boolean) => {
@@ -1411,14 +1489,16 @@ export class SpatialSkeletonEditTab extends Tab {
         .map((segmentId) => Number(segmentId))
         .filter((segmentId) => Number.isFinite(segmentId))
         .sort((a, b) => a - b);
+      syncShownSegmentIds(activeSegmentIds);
       if (skeletonLayer === undefined || activeSegmentIds.length === 0) {
         allNodes = [];
         nodesBySegment = new Map();
+        shownSegmentIds.clear();
         layer.clearSpatialSkeletonNodeSelection(false);
         nodesSummary.removeAttribute("title");
         nodesSummary.textContent =
           "Make one or more segments visible in Seg tab to load editable skeleton nodes.";
-        updateList();
+        updateDisplay();
         return;
       }
 
@@ -1468,7 +1548,7 @@ export class SpatialSkeletonEditTab extends Tab {
           nodesSummary.removeAttribute("title");
           nodesSummary.textContent =
             "Failed to load full skeleton data from the active source.";
-          updateList();
+          updateDisplay();
         }
       })();
     };
@@ -1502,24 +1582,24 @@ export class SpatialSkeletonEditTab extends Tab {
         control.disabled = !navigationAllowed;
       }
       if (gateStateChanged) {
-        updateList();
+        updateDisplay();
       }
     };
 
     filterInput.addEventListener("input", () => {
       filterText = filterInput.value.trim().toLowerCase();
-      updateList();
+      updateDisplay();
     });
     this.registerDisposer(
       nodeFilterTypeModel.changed.add(() => {
         nodeFilterType = nodeFilterTypeModel.value;
-        updateList();
+        updateDisplay();
       }),
     );
     collapseButton.addEventListener("click", () => {
       listCollapsed = !listCollapsed;
       updateCollapseButton();
-      updateList();
+      updateDisplay();
     });
 
     this.registerDisposer(

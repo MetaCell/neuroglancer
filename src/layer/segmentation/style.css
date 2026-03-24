@@ -294,6 +294,68 @@
   flex: 0 0 auto;
 }
 
+.neuroglancer-spatial-skeleton-show-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+  margin: 0.35em 0.4em 0;
+  color: #c6c6c6;
+  font-size: small;
+}
+
+.neuroglancer-spatial-skeleton-show-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+  max-height: 10.5em;
+  overflow-y: auto;
+}
+
+.neuroglancer-spatial-skeleton-show-item {
+  display: grid;
+  grid-template-columns: 1.35em minmax(0, 1fr);
+  align-items: center;
+  gap: 0.45em;
+  padding: 0.18em 0.32em 0.18em 0.15em;
+  border: 1px solid #2f2f2f;
+  background: #232323;
+  color: #e4e4e4;
+  font-family: monospace;
+}
+
+.neuroglancer-spatial-skeleton-show-item:hover {
+  background: #2a2a2a;
+}
+
+.neuroglancer-spatial-skeleton-show-checkbox {
+  width: 1.15em;
+  height: 1.15em;
+  margin: 0;
+  accent-color: #1473e6;
+}
+
+.neuroglancer-spatial-skeleton-show-item-content {
+  display: grid;
+  grid-template-columns: min-content minmax(0, 1fr) min-content;
+  align-items: center;
+  gap: 0.45em;
+  min-width: 0;
+}
+
+.neuroglancer-spatial-skeleton-show-item-name,
+.neuroglancer-spatial-skeleton-segment-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.neuroglancer-spatial-skeleton-show-item-ratio,
+.neuroglancer-spatial-skeleton-segment-ratio {
+  color: #adadad;
+  white-space: nowrap;
+}
+
 .neuroglancer-spatial-skeleton-filter-select {
   box-sizing: border-box;
   margin: 0;
@@ -434,9 +496,28 @@
   background: #3f5471;
 }
 
+.neuroglancer-spatial-skeleton-segment-row {
+  min-height: 1.75em;
+  background: #2e2e2e;
+  color: #f0f0f0;
+}
+
+.neuroglancer-spatial-skeleton-segment-meta-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75em;
+  min-width: 0;
+}
+
 .neuroglancer-spatial-skeleton-tree-entry:not([data-selected="true"]):hover
   .neuroglancer-spatial-skeleton-tree-row:not([data-node-type="root"]) {
   background: #121212;
+}
+
+.neuroglancer-spatial-skeleton-tree-entry:hover
+  .neuroglancer-spatial-skeleton-segment-row {
+  background: #2e2e2e;
 }
 
 .neuroglancer-spatial-skeleton-node-id {
