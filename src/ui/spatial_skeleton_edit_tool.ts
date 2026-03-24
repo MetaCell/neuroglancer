@@ -982,7 +982,6 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
 
     const getEditCapabilityDisabledReason = () =>
       layer.getSpatialSkeletonActionsDisabledReason(["addNodes", "moveNodes"], {
-        requireMaxLod: false,
         requireVisibleChunks: false,
       });
     const getEditMutationDisabledReason = () =>
@@ -1018,10 +1017,6 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
         layer.spatialSkeletonSourceCapabilities.value.addNodes &&
           layer.spatialSkeletonSourceCapabilities.value.moveNodes,
       ),
-    );
-    setDebug(
-      "maxLodAllowed",
-      String(layer.spatialSkeletonEditModeAllowed.value),
     );
     setDebug(
       "gridLevel2d",

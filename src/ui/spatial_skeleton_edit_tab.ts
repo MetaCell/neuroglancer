@@ -349,7 +349,6 @@ export class SpatialSkeletonEditTab extends Tab {
         | "deleteNodes"
         | readonly ("inspectSkeletons" | "editNodeLabels" | "deleteNodes")[],
       options: {
-        requireMaxLod?: boolean;
         requireVisibleChunks?: boolean;
       } = {},
     ) => {
@@ -605,7 +604,6 @@ export class SpatialSkeletonEditTab extends Tab {
     const getSelectedNavigationContext = () => {
       if (
         !ensureActionsAllowed("inspectSkeletons", {
-          requireMaxLod: false,
           requireVisibleChunks: false,
         })
       ) {
@@ -1136,7 +1134,6 @@ export class SpatialSkeletonEditTab extends Tab {
               }
               if (
                 !ensureActionsAllowed("inspectSkeletons", {
-                  requireMaxLod: false,
                   requireVisibleChunks: false,
                 })
               ) {
@@ -1157,7 +1154,6 @@ export class SpatialSkeletonEditTab extends Tab {
               event.preventDefault();
               if (
                 !ensureActionsAllowed("inspectSkeletons", {
-                  requireMaxLod: false,
                   requireVisibleChunks: false,
                 })
               ) {
@@ -1174,7 +1170,6 @@ export class SpatialSkeletonEditTab extends Tab {
               event.preventDefault();
               if (
                 !ensureActionsAllowed("inspectSkeletons", {
-                  requireMaxLod: false,
                   requireVisibleChunks: false,
                 })
               ) {
@@ -1481,7 +1476,6 @@ export class SpatialSkeletonEditTab extends Tab {
     const updateGateStatus = () => {
       const nextInspectionAllowed =
         layer.getSpatialSkeletonActionsDisabledReason("inspectSkeletons", {
-          requireMaxLod: false,
           requireVisibleChunks: false,
         }) === undefined;
       const nextNavigationAllowed = nextInspectionAllowed;

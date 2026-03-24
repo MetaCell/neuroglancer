@@ -99,3 +99,55 @@ describe("layer/segmentation spatial skeleton chunk stats", () => {
     );
   });
 });
+
+describe("layer/segmentation spatial skeleton action gating", () => {
+  it("does not require max lod for skeleton actions", () => {
+    const layer = Object.assign(Object.create(SegmentationUserLayer.prototype), {
+      spatialSkeletonSourceCapabilities: new WatchableValue({
+        inspectSkeletons: true,
+        addNodes: true,
+        moveNodes: true,
+        deleteNodes: true,
+        editNodeLabels: true,
+        editNodeProperties: true,
+        mergeSkeletons: true,
+        splitSkeletons: true,
+      }),
+      spatialSkeletonEditModeAllowed: new WatchableValue(false),
+      spatialSkeletonVisibleChunksLoaded: new WatchableValue(true),
+      spatialSkeletonVisibleChunksNeeded: new WatchableValue(0),
+      spatialSkeletonVisibleChunksAvailable: new WatchableValue(0),
+    });
+
+    expect(
+      layer.getSpatialSkeletonActionsDisabledReason("mergeSkeletons"),
+    ).toBeUndefined();
+    expect(
+      layer.getSpatialSkeletonActionsDisabledReason(["addNodes", "moveNodes"]),
+    ).toBeUndefined();
+  });
+
+  it("still reports visible chunk loading when requested", () => {
+    const layer = Object.assign(Object.create(SegmentationUserLayer.prototype), {
+      spatialSkeletonSourceCapabilities: new WatchableValue({
+        inspectSkeletons: true,
+        addNodes: false,
+        moveNodes: false,
+        deleteNodes: false,
+        editNodeLabels: false,
+        editNodeProperties: false,
+        mergeSkeletons: false,
+        splitSkeletons: true,
+      }),
+      spatialSkeletonVisibleChunksLoaded: new WatchableValue(false),
+      spatialSkeletonVisibleChunksNeeded: new WatchableValue(3),
+      spatialSkeletonVisibleChunksAvailable: new WatchableValue(1),
+    });
+
+    expect(
+      layer.getSpatialSkeletonActionsDisabledReason("splitSkeletons", {
+        requireVisibleChunks: true,
+      }),
+    ).toBe("Wait for visible skeleton chunks to load (1/3).");
+  });
+});

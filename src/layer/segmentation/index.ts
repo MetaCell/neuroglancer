@@ -1531,28 +1531,11 @@ export class SegmentationUserLayer extends Base {
     this.spatialSkeletonState.visibleChunksLoaded;
   readonly spatialSkeletonNodeDataVersion =
     this.spatialSkeletonState.nodeDataVersion;
-  readonly spatialSkeletonEditModeAllowed = this.registerDisposer(
-    makeCachedDerivedWatchableValue(
-      (levels, gridLevel2d, gridLevel3d) =>
-        levels.length > 0 &&
-        gridLevel2d >= levels.length - 1 &&
-        gridLevel3d >= levels.length - 1,
-      [
-        this.displayState.spatialSkeletonGridLevels,
-        this.displayState.spatialSkeletonGridLevel2d,
-        this.displayState.spatialSkeletonGridLevel3d,
-      ],
-    ),
-  );
   readonly spatialSkeletonActionsAllowed = this.registerDisposer(
     makeCachedDerivedWatchableValue(
-      (sourceCapabilities, maxLodSelected) =>
-        hasAnySpatiallyIndexedSkeletonEditingCapability(sourceCapabilities) &&
-        maxLodSelected,
-      [
-        this.spatialSkeletonSourceCapabilities,
-        this.spatialSkeletonEditModeAllowed,
-      ],
+      (sourceCapabilities) =>
+        hasAnySpatiallyIndexedSkeletonEditingCapability(sourceCapabilities),
+      [this.spatialSkeletonSourceCapabilities],
     ),
   );
 
@@ -1952,18 +1935,14 @@ export class SegmentationUserLayer extends Base {
       "deleteNodes",
     ],
     options: {
-      requireMaxLod?: boolean;
       requireVisibleChunks?: boolean;
     } = {},
   ) {
-    const { requireMaxLod = true, requireVisibleChunks = false } = options;
+    const { requireVisibleChunks = false } = options;
     const missingCapabilityReason =
       this.getMissingSpatialSkeletonCapabilityReason(requiredCapabilities);
     if (missingCapabilityReason !== undefined) {
       return missingCapabilityReason;
-    }
-    if (requireMaxLod && !this.spatialSkeletonEditModeAllowed.value) {
-      return "Set skeleton grid resolution to max LOD in both 2D and 3D before using Skeleton actions.";
     }
     if (
       requireVisibleChunks &&
