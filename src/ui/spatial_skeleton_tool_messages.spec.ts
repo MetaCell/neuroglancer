@@ -8,6 +8,7 @@ import {
   SPATIAL_SKELETON_SPLIT_BANNER_MESSAGE,
   formatSpatialSkeletonToolPoint,
   getSpatialSkeletonToolPointSummaryRow,
+  getSpatialSkeletonToolPointStatusFields,
   getSpatialSkeletonEditBannerMessage,
   getSpatialSkeletonDeleteConfirmationSummary,
   getSpatialSkeletonMergeBannerMessage,
@@ -21,6 +22,18 @@ describe("spatial_skeleton_tool_messages", () => {
       "Node 17, segment 9",
     );
     expect(formatSpatialSkeletonToolPoint({ nodeId: 17 })).toBe("Node 17");
+    expect(
+      getSpatialSkeletonToolPointStatusFields({
+        nodeId: 17,
+        segmentId: 9,
+      }),
+    ).toEqual([
+      { label: "Node ID:", value: "17" },
+      { label: "Segment ID:", value: "9" },
+    ]);
+    expect(getSpatialSkeletonToolPointStatusFields({ nodeId: 17 })).toEqual([
+      { label: "Node ID:", value: "17" },
+    ]);
     expect(
       getSpatialSkeletonToolPointSummaryRow({
         nodeId: 17,

@@ -57,6 +57,7 @@ import {
   getSpatialSkeletonEditBannerMessage,
   getSpatialSkeletonMergeBannerMessage,
   getSpatialSkeletonMergeConfirmationSummary,
+  getSpatialSkeletonToolPointStatusFields,
   getSpatialSkeletonSplitConfirmationSummary,
 } from "#src/ui/spatial_skeleton_tool_messages.js";
 import type { ActionEvent } from "#src/util/event_action_map.js";
@@ -150,18 +151,6 @@ function formatMouseEvent(event: MouseEvent) {
   return `button=${event.button} buttons=${event.buttons} mods=${mods} prevented=${event.defaultPrevented}`;
 }
 
-function makeSpatialSkeletonToolStatusChip(
-  text: string,
-  kind: "node" | "segment",
-) {
-  const chip = document.createElement("span");
-  chip.className =
-    "neuroglancer-spatial-skeleton-tool-status-chip " +
-    `neuroglancer-spatial-skeleton-tool-status-chip-${kind}`;
-  chip.textContent = text;
-  return chip;
-}
-
 function renderSpatialSkeletonToolStatus(
   body: HTMLElement,
   options: {
@@ -180,16 +169,21 @@ function renderSpatialSkeletonToolStatus(
   }
   const point = document.createElement("span");
   point.className = "neuroglancer-spatial-skeleton-tool-status-point";
-  point.appendChild(
-    makeSpatialSkeletonToolStatusChip(`Node ${options.point.nodeId}`, "node"),
-  );
-  if (options.point.segmentId !== undefined) {
-    point.appendChild(
-      makeSpatialSkeletonToolStatusChip(
-        `Segment ${options.point.segmentId}`,
-        "segment",
-      ),
-    );
+  for (const field of getSpatialSkeletonToolPointStatusFields(options.point)) {
+    const fieldElement = document.createElement("span");
+    fieldElement.className =
+      "neuroglancer-spatial-skeleton-tool-status-point-field";
+    const label = document.createElement("span");
+    label.className =
+      "neuroglancer-spatial-skeleton-tool-status-point-field-label";
+    label.textContent = field.label;
+    fieldElement.appendChild(label);
+    const value = document.createElement("span");
+    value.className =
+      "neuroglancer-spatial-skeleton-tool-status-point-field-value";
+    value.textContent = field.value;
+    fieldElement.appendChild(value);
+    point.appendChild(fieldElement);
   }
   body.appendChild(point);
 }

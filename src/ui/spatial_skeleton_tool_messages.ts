@@ -30,6 +30,11 @@ export interface SpatialSkeletonToolSummaryRow {
   fields: SpatialSkeletonToolSummaryField[];
 }
 
+export interface SpatialSkeletonToolStatusField {
+  label: string;
+  value: string;
+}
+
 export const SPATIAL_SKELETON_EDIT_BANNER_MESSAGE =
   "Move nodes, select a node to append or click to start a new skeleton";
 export const SPATIAL_SKELETON_EDIT_SELECTED_BANNER_MESSAGE =
@@ -76,6 +81,18 @@ export function getSpatialSkeletonToolPointSummaryRow(
     });
   }
   return { fields };
+}
+
+export function getSpatialSkeletonToolPointStatusFields(
+  point: SpatialSkeletonToolPointInfo,
+): SpatialSkeletonToolStatusField[] {
+  const fields: SpatialSkeletonToolStatusField[] = [
+    { label: "Node ID:", value: `${point.nodeId}` },
+  ];
+  if (point.segmentId !== undefined) {
+    fields.push({ label: "Segment ID:", value: `${point.segmentId}` });
+  }
+  return fields;
 }
 
 export function getSpatialSkeletonEditBannerMessage(
