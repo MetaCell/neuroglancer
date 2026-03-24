@@ -188,7 +188,7 @@ export class SpatialSkeletonEditTab extends Tab {
     collapseButton.type = "button";
     const filterInput = document.createElement("input");
     filterInput.type = "text";
-    filterInput.placeholder = "Enter ID, coordinates, tags or description";
+    filterInput.placeholder = "Enter node ID, coordinates or description";
     filterInput.className = "neuroglancer-spatial-skeleton-filter";
     const nodeFilterTypeModel = new TrackableEnum(
       SpatialSkeletonNodeFilterType,

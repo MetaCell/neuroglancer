@@ -43,6 +43,35 @@ describe("spatial skeleton edit tab render state", () => {
     expect(state.rows.map((row) => row.node.nodeId)).toEqual([1, 2, 4]);
   });
 
+  it("does not match segment ids or labels in the search filter", () => {
+    const graph = buildSpatiallyIndexedSkeletonNavigationGraph([
+      makeNode(101, undefined, ["target-label"]),
+      makeNode(102, 101),
+    ]);
+
+    const bySegmentId = buildSpatialSkeletonSegmentRenderState(20380, graph, {
+      filterText: "20380",
+      nodeFilterType: SpatialSkeletonNodeFilterType.NONE,
+      collapseRegularNodes: false,
+      getNodeDescription() {
+        return undefined;
+      },
+    });
+    const byLabel = buildSpatialSkeletonSegmentRenderState(20380, graph, {
+      filterText: "target-label",
+      nodeFilterType: SpatialSkeletonNodeFilterType.NONE,
+      collapseRegularNodes: false,
+      getNodeDescription() {
+        return undefined;
+      },
+    });
+
+    expect(bySegmentId.matchedNodeCount).toBe(0);
+    expect(bySegmentId.displayedNodeCount).toBe(0);
+    expect(byLabel.matchedNodeCount).toBe(0);
+    expect(byLabel.displayedNodeCount).toBe(0);
+  });
+
   it("counts hidden regular nodes in the ratio while omitting them from collapsed rows", () => {
     const graph = buildSpatiallyIndexedSkeletonNavigationGraph([
       makeNode(10, undefined),

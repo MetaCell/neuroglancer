@@ -34,13 +34,6 @@ function nodeMatchesFilter(
 ) {
   if (filterText.length === 0) return true;
   if (String(node.nodeId).includes(filterText)) return true;
-  if (String(node.segmentId).includes(filterText)) return true;
-  if (
-    node.labels?.some((label) => label.toLowerCase().includes(filterText)) ??
-    false
-  ) {
-    return true;
-  }
   const x = Math.round(Number(node.position[0]));
   const y = Math.round(Number(node.position[1]));
   const z = Math.round(Number(node.position[2]));
