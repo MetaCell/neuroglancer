@@ -42,17 +42,17 @@ describe("skeleton node types", () => {
   it("matches the dropdown filter semantics", () => {
     const rootLeaf = {
       isLeaf: true,
-      nodeHasTrueEnd: false,
+      nodeIsTrueEnd: false,
       nodeType: "root" as const,
     };
     const virtualEnd = {
       isLeaf: true,
-      nodeHasTrueEnd: false,
+      nodeIsTrueEnd: false,
       nodeType: "virtualEnd" as const,
     };
     const trueEnd = {
       isLeaf: true,
-      nodeHasTrueEnd: true,
+      nodeIsTrueEnd: true,
       nodeType: "virtualEnd" as const,
     };
 
@@ -67,13 +67,19 @@ describe("skeleton node types", () => {
         SpatialSkeletonNodeFilterType.VIRTUAL_END,
         rootLeaf,
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       matchesSpatialSkeletonNodeFilter(
         SpatialSkeletonNodeFilterType.VIRTUAL_END,
         virtualEnd,
       ),
     ).toBe(true);
+    expect(
+      matchesSpatialSkeletonNodeFilter(
+        SpatialSkeletonNodeFilterType.VIRTUAL_END,
+        trueEnd,
+      ),
+    ).toBe(false);
     expect(
       matchesSpatialSkeletonNodeFilter(
         SpatialSkeletonNodeFilterType.TRUE_END,
@@ -85,19 +91,19 @@ describe("skeleton node types", () => {
   it("reuses the terminal filter enum for row icon decisions", () => {
     expect(
       getSpatialSkeletonNodeIconFilterType({
-        nodeHasTrueEnd: false,
+        nodeIsTrueEnd: false,
         nodeType: "virtualEnd",
       }),
     ).toBe(SpatialSkeletonNodeFilterType.VIRTUAL_END);
     expect(
       getSpatialSkeletonNodeIconFilterType({
-        nodeHasTrueEnd: true,
+        nodeIsTrueEnd: true,
         nodeType: "regular",
       }),
     ).toBe(SpatialSkeletonNodeFilterType.TRUE_END);
     expect(
       getSpatialSkeletonNodeIconFilterType({
-        nodeHasTrueEnd: false,
+        nodeIsTrueEnd: false,
         nodeType: "root",
       }),
     ).toBeUndefined();

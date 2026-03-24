@@ -1254,7 +1254,7 @@ export class SpatialSkeletonEditTab extends Tab {
 
           const nodeIsTrueEnd = hasTrueEndLabel(node);
           const iconFilterType = getSpatialSkeletonNodeIconFilterType({
-            nodeHasTrueEnd: nodeIsTrueEnd,
+            nodeIsTrueEnd,
             nodeType: type,
           });
           const typeIconSvg =

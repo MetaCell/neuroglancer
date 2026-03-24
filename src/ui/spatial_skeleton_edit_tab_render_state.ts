@@ -123,7 +123,7 @@ export function buildSpatialSkeletonSegmentRenderState(
           })()
         : matchesSpatialSkeletonNodeFilter(options.nodeFilterType, {
             isLeaf: children.length === 0,
-            nodeHasTrueEnd: hasTrueEndLabel(node),
+            nodeIsTrueEnd: hasTrueEndLabel(node),
             nodeType,
           }) &&
           nodeMatchesFilter(

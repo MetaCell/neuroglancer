@@ -94,7 +94,7 @@ export function matchesSpatialSkeletonNodeFilter(
   filterType: SpatialSkeletonNodeFilterType,
   options: {
     isLeaf: boolean;
-    nodeHasTrueEnd: boolean;
+    nodeIsTrueEnd: boolean;
     nodeType: SpatialSkeletonDisplayNodeType;
   },
 ) {
@@ -104,17 +104,17 @@ export function matchesSpatialSkeletonNodeFilter(
     case SpatialSkeletonNodeFilterType.LEAF:
       return options.isLeaf;
     case SpatialSkeletonNodeFilterType.VIRTUAL_END:
-      return options.nodeType === "virtualEnd";
+      return options.isLeaf && !options.nodeIsTrueEnd;
     case SpatialSkeletonNodeFilterType.TRUE_END:
-      return options.nodeHasTrueEnd;
+      return options.nodeIsTrueEnd;
   }
 }
 
 export function getSpatialSkeletonNodeIconFilterType(options: {
-  nodeHasTrueEnd: boolean;
+  nodeIsTrueEnd: boolean;
   nodeType: SpatialSkeletonDisplayNodeType;
 }) {
-  if (options.nodeHasTrueEnd) {
+  if (options.nodeIsTrueEnd) {
     return SpatialSkeletonNodeFilterType.TRUE_END;
   }
   if (options.nodeType === "virtualEnd") {
