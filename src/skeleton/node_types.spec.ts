@@ -8,6 +8,7 @@ import {
   isSpatialSkeletonClosedEndLabel,
   matchesSpatialSkeletonNodeFilter,
   SpatialSkeletonNodeFilterType,
+  updateSpatialSkeletonTrueEndLabels,
 } from "#src/skeleton/node_types.js";
 
 describe("skeleton node types", () => {
@@ -37,6 +38,18 @@ describe("skeleton node types", () => {
     );
     expect(isSpatialSkeletonClosedEndLabel("posterior end")).toBe(true);
     expect(isSpatialSkeletonClosedEndLabel("axon branch")).toBe(false);
+  });
+
+  it("adds or removes the true-end label without disturbing other labels", () => {
+    expect(
+      updateSpatialSkeletonTrueEndLabels(["posterior end", "ends"], false),
+    ).toEqual(["posterior end"]);
+    expect(updateSpatialSkeletonTrueEndLabels(["posterior end"], true)).toEqual(
+      ["posterior end", "ends"],
+    );
+    expect(
+      updateSpatialSkeletonTrueEndLabels(undefined, false),
+    ).toBeUndefined();
   });
 
   it("matches the dropdown filter semantics", () => {

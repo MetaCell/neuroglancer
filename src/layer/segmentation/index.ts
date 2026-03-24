@@ -118,11 +118,13 @@ import {
 } from "#src/skeleton/frontend.js";
 import {
   classifySpatialSkeletonDisplayNodeType as getSpatialSkeletonDisplayNodeType,
+  getSpatialSkeletonNodeFilterLabel,
   getSpatialSkeletonNodeIconFilterType,
   hasSpatialSkeletonTrueEndLabel,
   isSpatialSkeletonClosedEndLabel,
   SpatialSkeletonNodeFilterType,
   type SpatialSkeletonDisplayNodeType,
+  updateSpatialSkeletonTrueEndLabels,
 } from "#src/skeleton/node_types.js";
 import {
   hasAnySpatiallyIndexedSkeletonEditingCapability,
@@ -2822,7 +2824,7 @@ export class SegmentationUserLayer extends Base {
       nodeHasTrueEnd,
     );
     const iconFilterType = getSpatialSkeletonNodeIconFilterType({
-      nodeHasTrueEnd,
+      nodeIsTrueEnd: nodeHasTrueEnd,
       nodeType,
     });
     const summaryRow = document.createElement("div");
@@ -2918,6 +2920,10 @@ export class SegmentationUserLayer extends Base {
 
     const icon = document.createElement("span");
     icon.className = "neuroglancer-spatial-skeleton-selection-summary-icon";
+    const nodeTypeIconTitle =
+      iconFilterType !== undefined
+        ? getSpatialSkeletonNodeFilterLabel(iconFilterType)
+        : nodeTypeLabel;
     icon.appendChild(
       makeIcon({
         svg:
@@ -2926,7 +2932,7 @@ export class SegmentationUserLayer extends Base {
             : iconFilterType === SpatialSkeletonNodeFilterType.VIRTUAL_END
               ? svg_circle
               : SPATIAL_SKELETON_NODE_TYPE_ICONS[nodeType],
-        title: nodeTypeLabel,
+        title: nodeTypeIconTitle,
         clickable: false,
       }),
     );
@@ -2951,7 +2957,161 @@ export class SegmentationUserLayer extends Base {
     segmentIdChip.style.color = segmentChipColors.foreground;
     appendValue("Segment ID", segmentIdChip);
     appendValue("Node ID", `${nodeInfo.nodeId}`);
-    appendValue("Node type", nodeTypeLabel);
+    const isLeaf =
+      segmentNodes !== undefined && directChildNodeIds.length === 0;
+    const leafTypeEditingDisabledReason = () =>
+      skeletonSource === undefined
+        ? "Unable to resolve editable skeleton source for the active layer."
+        : cachedNodeInfo === undefined || segmentNodes === undefined
+          ? "Load the active skeleton in the Skeleton tab before changing leaf type."
+          : this.getSpatialSkeletonActionsDisabledReason("editNodeLabels");
+    if (isLeaf || nodeHasTrueEnd) {
+      let committedTrueEnd = nodeHasTrueEnd;
+      let leafTypeSavePending = false;
+      const leafTypeEditor = document.createElement("div");
+      leafTypeEditor.className = "neuroglancer-spatial-skeleton-leaf-type";
+      const leafTypeRadioName = `neuroglancer-spatial-skeleton-leaf-type-${nodeInfo.segmentId}-${nodeInfo.nodeId}`;
+      const leafTypeOptionElements: HTMLLabelElement[] = [];
+      const makeLeafTypeOption = (options: {
+        label: string;
+        svg: string;
+        trueEnd: boolean;
+      }) => {
+        const option = document.createElement("label");
+        option.className = "neuroglancer-spatial-skeleton-leaf-type-option";
+        const input = document.createElement("input");
+        input.type = "radio";
+        input.name = leafTypeRadioName;
+        input.value = options.trueEnd ? "trueEnd" : "virtualEnd";
+        input.className =
+          "neuroglancer-spatial-skeleton-leaf-type-option-input";
+        const icon = document.createElement("span");
+        icon.className = "neuroglancer-spatial-skeleton-leaf-type-option-icon";
+        icon.appendChild(
+          makeIcon({
+            svg: options.svg,
+            title: options.label,
+            clickable: false,
+          }),
+        );
+        const text = document.createElement("span");
+        text.className = "neuroglancer-spatial-skeleton-leaf-type-option-text";
+        text.textContent = options.label;
+        option.appendChild(input);
+        option.appendChild(icon);
+        option.appendChild(text);
+        leafTypeOptionElements.push(option);
+        leafTypeEditor.appendChild(option);
+        return input;
+      };
+      const virtualEndInput = makeLeafTypeOption({
+        label: "Virtual end",
+        svg: svg_circle,
+        trueEnd: false,
+      });
+      const trueEndInput = makeLeafTypeOption({
+        label: "True end",
+        svg: svg_flag,
+        trueEnd: true,
+      });
+      const updateLeafTypeEditorState = () => {
+        const disabledReason = leafTypeEditingDisabledReason();
+        const editable = disabledReason === undefined && !leafTypeSavePending;
+        virtualEndInput.checked = !committedTrueEnd;
+        trueEndInput.checked = committedTrueEnd;
+        for (const input of [virtualEndInput, trueEndInput]) {
+          input.disabled = !editable;
+          if (disabledReason !== undefined) {
+            input.title = disabledReason;
+          } else {
+            input.removeAttribute("title");
+          }
+        }
+        for (const option of leafTypeOptionElements) {
+          option.classList.toggle(
+            "neuroglancer-spatial-skeleton-leaf-type-option-disabled",
+            !editable,
+          );
+          if (disabledReason !== undefined) {
+            option.title = disabledReason;
+          } else {
+            option.removeAttribute("title");
+          }
+        }
+      };
+      const commitLeafType = (nextTrueEnd: boolean) => {
+        if (leafTypeSavePending) return;
+        const disabledReason = leafTypeEditingDisabledReason();
+        if (disabledReason !== undefined) {
+          StatusMessage.showTemporaryMessage(disabledReason);
+          updateLeafTypeEditorState();
+          return;
+        }
+        if (committedTrueEnd === nextTrueEnd) {
+          updateLeafTypeEditorState();
+          return;
+        }
+        const previousTrueEnd = committedTrueEnd;
+        committedTrueEnd = nextTrueEnd;
+        leafTypeSavePending = true;
+        updateLeafTypeEditorState();
+        void (async () => {
+          try {
+            if (nextTrueEnd) {
+              await skeletonSource!.setTrueEnd(nodeInfo.nodeId);
+            } else {
+              await skeletonSource!.removeTrueEnd(nodeInfo.nodeId);
+            }
+            this.spatialSkeletonState.updateCachedNode(
+              nodeInfo.nodeId,
+              (node) => {
+                const nextLabels = updateSpatialSkeletonTrueEndLabels(
+                  node.labels,
+                  nextTrueEnd,
+                );
+                if (spatialSkeletonLabelListsEqual(node.labels, nextLabels)) {
+                  return node;
+                }
+                return {
+                  ...node,
+                  labels: nextLabels,
+                };
+              },
+            );
+            this.markSpatialSkeletonNodeDataChanged({
+              invalidateFullSkeletonCache: false,
+            });
+            StatusMessage.showTemporaryMessage(
+              nextTrueEnd
+                ? `Set node ${nodeInfo.nodeId} as true end.`
+                : `Removed true end from node ${nodeInfo.nodeId}.`,
+            );
+          } catch (error) {
+            committedTrueEnd = previousTrueEnd;
+            const message =
+              error instanceof Error ? error.message : String(error);
+            StatusMessage.showTemporaryMessage(
+              `Failed to update leaf type: ${message}`,
+            );
+          } finally {
+            leafTypeSavePending = false;
+            updateLeafTypeEditorState();
+          }
+        })();
+      };
+      virtualEndInput.addEventListener("change", () => {
+        if (!virtualEndInput.checked) return;
+        commitLeafType(false);
+      });
+      trueEndInput.addEventListener("change", () => {
+        if (!trueEndInput.checked) return;
+        commitLeafType(true);
+      });
+      updateLeafTypeEditorState();
+      appendValue("Node type", leafTypeEditor);
+    } else {
+      appendValue("Node type", nodeTypeLabel);
+    }
     let committedRadius = nodeInfo.radius ?? 0;
     let committedConfidence = nodeInfo.confidence ?? 0;
     const radiusInput = document.createElement("input");

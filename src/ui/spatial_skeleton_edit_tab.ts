@@ -28,7 +28,6 @@ import svg_minus from "ikonate/icons/minus.svg?raw";
 import svg_origin from "ikonate/icons/origin.svg?raw";
 import svg_retweet from "ikonate/icons/retweet.svg?raw";
 import svg_share_android from "ikonate/icons/share-android.svg?raw";
-import { CATMAID_TRUE_END_LABEL } from "#src/datasource/catmaid/api.js";
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import { getSpatialSkeletonNodeIdFromViewerHover } from "#src/layer/segmentation/selection.js";
 import {
@@ -60,6 +59,7 @@ import {
   isSpatialSkeletonClosedEndLabel,
   SpatialSkeletonNodeFilterType,
   type SpatialSkeletonDisplayNodeType as SkeletonNodeType,
+  updateSpatialSkeletonTrueEndLabels,
 } from "#src/skeleton/node_types.js";
 import { getEditableSpatiallyIndexedSkeletonSource } from "#src/skeleton/state.js";
 import { StatusMessage } from "#src/status.js";
@@ -295,19 +295,6 @@ export class SpatialSkeletonEditTab extends Tab {
           clickable: false,
         }),
       );
-    };
-
-    const updateTrueEndLabels = (
-      labels: readonly string[] | undefined,
-      present: boolean,
-    ) => {
-      const nextLabels = (labels ?? []).filter(
-        (label) => label.trim().toLowerCase() !== CATMAID_TRUE_END_LABEL,
-      );
-      if (present) {
-        nextLabels.push(CATMAID_TRUE_END_LABEL);
-      }
-      return nextLabels.length > 0 ? nextLabels : undefined;
     };
 
     const labelsEqual = (
@@ -1447,7 +1434,10 @@ export class SpatialSkeletonEditTab extends Tab {
 
     const applyTrueEndLabelLocally = (nodeId: number, present: boolean) => {
       const updateNode = (node: SpatiallyIndexedSkeletonNodeInfo) => {
-        const nextLabels = updateTrueEndLabels(node.labels, present);
+        const nextLabels = updateSpatialSkeletonTrueEndLabels(
+          node.labels,
+          present,
+        );
         if (labelsEqual(node.labels, nextLabels)) {
           return node;
         }

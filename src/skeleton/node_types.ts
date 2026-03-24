@@ -47,6 +47,19 @@ export function hasSpatialSkeletonTrueEndLabel(
   );
 }
 
+export function updateSpatialSkeletonTrueEndLabels(
+  labels: readonly string[] | undefined,
+  present: boolean,
+) {
+  const nextLabels = (labels ?? []).filter(
+    (label) => label.trim().toLowerCase() !== CATMAID_TRUE_END_LABEL,
+  );
+  if (present) {
+    nextLabels.push(CATMAID_TRUE_END_LABEL);
+  }
+  return nextLabels.length > 0 ? nextLabels : undefined;
+}
+
 export function isSpatialSkeletonClosedEndLabel(label: string) {
   const normalized = label.trim();
   return (

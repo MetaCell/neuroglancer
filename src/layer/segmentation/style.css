@@ -740,6 +740,46 @@
   justify-content: flex-end;
 }
 
+.neuroglancer-spatial-skeleton-leaf-type {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.28rem;
+}
+
+.neuroglancer-spatial-skeleton-leaf-type-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  color: inherit;
+  cursor: pointer;
+}
+
+.neuroglancer-spatial-skeleton-leaf-type-option-disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.neuroglancer-spatial-skeleton-leaf-type-option-input {
+  margin: 0;
+  accent-color: #4f8dff;
+}
+
+.neuroglancer-spatial-skeleton-leaf-type-option-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.neuroglancer-spatial-skeleton-leaf-type-option-icon .neuroglancer-icon {
+  min-width: 14px;
+  min-height: 14px;
+}
+
+.neuroglancer-spatial-skeleton-leaf-type-option-text {
+  white-space: nowrap;
+}
+
 .neuroglancer-spatial-skeleton-selection-description {
   width: 100%;
   box-sizing: border-box;
