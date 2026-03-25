@@ -27,6 +27,10 @@ const {
   MultiscaleSliceViewSpatiallyIndexedSkeletonLayer,
 } = await import("#src/skeleton/frontend.js");
 
+const {
+  SegmentSelectionState,
+} = await import("#src/segmentation_display_state/frontend.js");
+
 describe("layer/segmentation spatial skeleton chunk stats", () => {
   it("tracks combined chunk load state from the loading render layers only", () => {
     const perspectiveLayer = Object.assign(
@@ -149,5 +153,41 @@ describe("layer/segmentation spatial skeleton action gating", () => {
         requireVisibleChunks: true,
       }),
     ).toBe("Wait for visible skeleton chunks to load (1/3).");
+  });
+});
+
+describe("layer/segmentation spatial skeleton selection serialization", () => {
+  it("accepts bigint segment selections for runtime spatial skeleton state", () => {
+    const selectionState = new SegmentSelectionState();
+
+    selectionState.set(7n);
+
+    expect(selectionState.value).toBe(7n);
+    expect(selectionState.baseValue).toBe(7n);
+  });
+
+  it("round-trips spatial skeleton selection ids as canonical strings", () => {
+    const layer = Object.create(SegmentationUserLayer.prototype);
+    Object.defineProperty(layer, "localCoordinateSpace", {
+      value: { value: { rank: 0 } },
+      configurable: true,
+    });
+    const state: any = {};
+    layer.initializeSelectionState(state);
+
+    layer.selectionStateFromJson(state, {
+      spatialSkeletonNodeId: "23",
+      spatialSkeletonSegmentId: "7",
+      value: "7",
+    });
+
+    expect(state.spatialSkeletonNodeId).toBe("23");
+    expect(state.spatialSkeletonSegmentId).toBe("7");
+    expect(state.value).toBe(7n);
+    expect(layer.selectionStateToJson(state, false)).toEqual({
+      spatialSkeletonNodeId: "23",
+      spatialSkeletonSegmentId: "7",
+      value: "7",
+    });
   });
 });

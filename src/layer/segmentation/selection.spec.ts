@@ -30,10 +30,20 @@ describe("layer/segmentation/selection", () => {
   it("recognizes field-based spatial skeleton node selections", () => {
     expect(
       hasSpatialSkeletonNodeSelection({
-        spatialSkeletonNodeId: 17,
-        spatialSkeletonSegmentId: 9,
+        spatialSkeletonNodeId: "17",
+        spatialSkeletonSegmentId: "9",
       }),
     ).toBe(true);
+    expect(
+      hasSpatialSkeletonNodeSelection({
+        spatialSkeletonNodeId: "18446744073709551615",
+      }),
+    ).toBe(true);
+    expect(
+      hasSpatialSkeletonNodeSelection({
+        spatialSkeletonNodeId: 17,
+      }),
+    ).toBe(false);
     expect(
       hasSpatialSkeletonNodeSelection({
         spatialSkeletonNodeId: 0,
@@ -45,14 +55,14 @@ describe("layer/segmentation/selection", () => {
   it("extracts node and segment ids from a layer selection state", () => {
     expect(
       getSpatialSkeletonNodeIdFromLayerSelectionState({
-        spatialSkeletonNodeId: 23,
-        spatialSkeletonSegmentId: 7,
+        spatialSkeletonNodeId: "23",
+        spatialSkeletonSegmentId: "7",
       }),
     ).toBe(23);
     expect(
       getSpatialSkeletonSegmentIdFromLayerSelectionState({
-        spatialSkeletonNodeId: 23,
-        spatialSkeletonSegmentId: 7,
+        spatialSkeletonNodeId: "23",
+        spatialSkeletonSegmentId: "7",
       }),
     ).toBe(7);
     expect(
@@ -64,13 +74,18 @@ describe("layer/segmentation/selection", () => {
       getSpatialSkeletonSegmentIdFromLayerSelectionState({
         spatialSkeletonSegmentId: "9",
       }),
-    ).toBeUndefined();
+    ).toBe(9);
     expect(
       getSpatialSkeletonSelectionRecoveryKey({
-        spatialSkeletonNodeId: 23,
-        spatialSkeletonSegmentId: 7,
+        spatialSkeletonNodeId: "23",
+        spatialSkeletonSegmentId: "7",
       }),
     ).toBe("23:7");
+    expect(
+      getSpatialSkeletonNodeIdFromLayerSelectionState({
+        spatialSkeletonNodeId: "18446744073709551615",
+      }),
+    ).toBeUndefined();
     expect(
       getSpatialSkeletonSelectionRecoveryKey({
         spatialSkeletonNodeId: 23,
@@ -92,8 +107,8 @@ describe("layer/segmentation/selection", () => {
             {
               layer: layerB,
               state: {
-                spatialSkeletonNodeId: 31,
-                spatialSkeletonSegmentId: 8,
+                spatialSkeletonNodeId: "31",
+                spatialSkeletonSegmentId: "8",
               },
             },
           ],
@@ -170,8 +185,8 @@ describe("layer/segmentation/selection", () => {
     expect(
       getSpatialSkeletonMissingSelectionDisplayState(
         {
-          spatialSkeletonNodeId: 31,
-          spatialSkeletonSegmentId: 8,
+          spatialSkeletonNodeId: "31",
+          spatialSkeletonSegmentId: "8",
         },
         {
           hasInspectableSource: true,
@@ -188,8 +203,8 @@ describe("layer/segmentation/selection", () => {
     expect(
       getSpatialSkeletonMissingSelectionDisplayState(
         {
-          spatialSkeletonNodeId: 31,
-          spatialSkeletonSegmentId: 8,
+          spatialSkeletonNodeId: "31",
+          spatialSkeletonSegmentId: "8",
         },
         {
           hasInspectableSource: true,
@@ -206,8 +221,8 @@ describe("layer/segmentation/selection", () => {
     expect(
       getSpatialSkeletonMissingSelectionDisplayState(
         {
-          spatialSkeletonNodeId: 31,
-          spatialSkeletonSegmentId: 8,
+          spatialSkeletonNodeId: "31",
+          spatialSkeletonSegmentId: "8",
         },
         {
           hasInspectableSource: true,
@@ -224,8 +239,8 @@ describe("layer/segmentation/selection", () => {
     expect(
       getSpatialSkeletonMissingSelectionDisplayState(
         {
-          spatialSkeletonNodeId: 31,
-          spatialSkeletonSegmentId: 8,
+          spatialSkeletonNodeId: "31",
+          spatialSkeletonSegmentId: "8",
         },
         {
           hasInspectableSource: true,

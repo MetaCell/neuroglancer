@@ -1392,8 +1392,9 @@ export class SegmentationUserLayer extends Base {
           normalizedSegmentId > 0
             ? normalizedSegmentId
             : undefined;
-        state.spatialSkeletonNodeId = normalizedNodeId;
-        state.spatialSkeletonSegmentId = segmentId;
+        state.spatialSkeletonNodeId = normalizedNodeId.toString();
+        state.spatialSkeletonSegmentId =
+          segmentId === undefined ? undefined : segmentId.toString();
         state.value = segmentId === undefined ? undefined : BigInt(segmentId);
         return true;
       },

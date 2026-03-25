@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+import { parseUint64 } from "#src/util/json.js";
+
 interface SpatialSkeletonSelectionStateLike {
   spatialSkeletonNodeId?: unknown;
   spatialSkeletonSegmentId?: unknown;
@@ -31,7 +33,36 @@ interface SpatialSkeletonViewerHoverLayerLike<TRenderLayer> {
 
 export type SpatialSkeletonSelectionRecoveryStatus = "pending" | "failed";
 
-function normalizeSpatialSkeletonSelectionId(value: unknown) {
+const MAX_SAFE_INTEGER_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
+
+function parseSpatialSkeletonSelectionStateId(value: unknown) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  try {
+    const parsedValue = parseUint64(value);
+    return parsedValue > 0n ? parsedValue : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeSpatialSkeletonSelectionStateId(value: unknown) {
+  const parsedValue = parseSpatialSkeletonSelectionStateId(value);
+  if (
+    parsedValue === undefined ||
+    parsedValue > MAX_SAFE_INTEGER_BIGINT
+  ) {
+    return undefined;
+  }
+  return Number(parsedValue);
+}
+
+function getSpatialSkeletonSelectionIdString(value: unknown) {
+  return parseSpatialSkeletonSelectionStateId(value)?.toString();
+}
+
+function normalizeSpatialSkeletonViewerHoverNodeId(value: unknown) {
   return typeof value === "number" &&
     Number.isSafeInteger(value) &&
     value > 0
@@ -42,20 +73,28 @@ function normalizeSpatialSkeletonSelectionId(value: unknown) {
 export function getSpatialSkeletonNodeIdFromLayerSelectionState(
   state: SpatialSkeletonSelectionStateLike | undefined,
 ) {
-  return normalizeSpatialSkeletonSelectionId(state?.spatialSkeletonNodeId);
+  return normalizeSpatialSkeletonSelectionStateId(
+    state?.spatialSkeletonNodeId,
+  );
 }
 
 export function getSpatialSkeletonSegmentIdFromLayerSelectionState(
   state: SpatialSkeletonSelectionStateLike | undefined,
 ) {
-  return normalizeSpatialSkeletonSelectionId(state?.spatialSkeletonSegmentId);
+  return normalizeSpatialSkeletonSelectionStateId(
+    state?.spatialSkeletonSegmentId,
+  );
 }
 
 export function getSpatialSkeletonSelectionRecoveryKey(
   state: SpatialSkeletonSelectionStateLike | undefined,
 ) {
-  const nodeId = getSpatialSkeletonNodeIdFromLayerSelectionState(state);
-  const segmentId = getSpatialSkeletonSegmentIdFromLayerSelectionState(state);
+  const nodeId = getSpatialSkeletonSelectionIdString(
+    state?.spatialSkeletonNodeId,
+  );
+  const segmentId = getSpatialSkeletonSelectionIdString(
+    state?.spatialSkeletonSegmentId,
+  );
   if (nodeId === undefined || segmentId === undefined) {
     return undefined;
   }
@@ -103,7 +142,8 @@ export function getSpatialSkeletonMissingSelectionDisplayState(
 export function hasSpatialSkeletonNodeSelection(
   state: SpatialSkeletonSelectionStateLike | undefined,
 ) {
-  return getSpatialSkeletonNodeIdFromLayerSelectionState(state) !== undefined;
+  return getSpatialSkeletonSelectionIdString(state?.spatialSkeletonNodeId) !==
+    undefined;
 }
 
 export function getSpatialSkeletonNodeIdFromViewerSelection<TLayer>(
@@ -136,7 +176,7 @@ export function getSpatialSkeletonNodeIdFromViewerHover<TRenderLayer>(
       return undefined;
     }
   }
-  return normalizeSpatialSkeletonSelectionId(
+  return normalizeSpatialSkeletonViewerHoverNodeId(
     mouseState.pickedSpatialSkeletonNodeId,
   );
 }

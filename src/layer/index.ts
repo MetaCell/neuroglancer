@@ -89,13 +89,13 @@ import {
   emptyToUndefined,
   parseArray,
   parseFixedLengthArray,
+  parseUint64,
   verifyBoolean,
   verifyFiniteFloat,
   verifyInt,
   verifyObject,
   verifyObjectProperty,
   verifyOptionalObjectProperty,
-  verifyPositiveInt,
   verifyOptionalString,
   verifyString,
 } from "#src/util/json.js";
@@ -143,8 +143,8 @@ export interface UserLayerSelectionState {
   annotationSubsource: string | undefined;
   annotationSubsubsourceId: string | undefined;
   annotationPartIndex: number | undefined;
-  spatialSkeletonNodeId: number | undefined;
-  spatialSkeletonSegmentId: number | undefined;
+  spatialSkeletonNodeId: string | undefined;
+  spatialSkeletonSegmentId: string | undefined;
 
   value: any;
 }
@@ -154,6 +154,21 @@ export class LayerActionContext {
   defer(callback: () => void) {
     this.callbacks.push(callback);
   }
+}
+
+function parsePositiveUint64String(value: unknown) {
+  if (typeof value !== "string") {
+    throw new Error(
+      `Expected string-encoded positive uint64 value, but received: ${JSON.stringify(value)}.`,
+    );
+  }
+  const parsedValue = parseUint64(value);
+  if (parsedValue <= 0n) {
+    throw new Error(
+      `Expected positive uint64 value, but received: ${JSON.stringify(value)}.`,
+    );
+  }
+  return parsedValue.toString();
 }
 
 export interface UserLayerTab {
@@ -286,14 +301,14 @@ export class UserLayer extends RefCounted {
     const spatialSkeletonNodeId = verifyOptionalObjectProperty(
       json,
       "spatialSkeletonNodeId",
-      verifyPositiveInt,
+      parsePositiveUint64String,
     );
     if (spatialSkeletonNodeId !== undefined) {
       state.spatialSkeletonNodeId = spatialSkeletonNodeId;
       state.spatialSkeletonSegmentId = verifyOptionalObjectProperty(
         json,
         "spatialSkeletonSegmentId",
-        verifyPositiveInt,
+        parsePositiveUint64String,
       );
     }
 
