@@ -32,7 +32,7 @@ import type {
   SpatiallyIndexedSkeletonAddNodeResult,
   SpatiallyIndexedSkeletonMergeResult,
 } from "#src/skeleton/api.js";
-import { setSpatialSkeletonMode3dToLinesAndPoints } from "#src/skeleton/edit_mode_rendering.js";
+import { setSpatialSkeletonModesToLinesAndPoints } from "#src/skeleton/edit_mode_rendering.js";
 import type { SpatiallyIndexedSkeletonLayer } from "#src/skeleton/frontend.js";
 import {
   PerspectiveViewSpatiallyIndexedSkeletonLayer,
@@ -626,7 +626,7 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
     activation: ToolActivation<this>,
     modeWatchable: { value: boolean },
   ) {
-    setSpatialSkeletonMode3dToLinesAndPoints(this.layer);
+    setSpatialSkeletonModesToLinesAndPoints(this.layer);
     modeWatchable.value = true;
     activation.registerDisposer(() => {
       modeWatchable.value = false;

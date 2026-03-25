@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { setSpatialSkeletonMode3dToLinesAndPoints } from "#src/skeleton/edit_mode_rendering.js";
+import { setSpatialSkeletonModesToLinesAndPoints } from "#src/skeleton/edit_mode_rendering.js";
 import { SkeletonRenderMode } from "#src/skeleton/render_mode.js";
 
 if (!("WebGL2RenderingContext" in globalThis)) {
@@ -22,7 +22,7 @@ const { SpatialSkeletonEditModeTool } = await import(
 );
 
 describe("spatial_skeleton_edit_tool", () => {
-  it("switches 3d skeleton rendering to lines and points", () => {
+  it("switches 2d and 3d skeleton rendering to lines and points", () => {
     const layer = {
       displayState: {
         skeletonRenderingOptions: {
@@ -32,14 +32,14 @@ describe("spatial_skeleton_edit_tool", () => {
       },
     } as any;
 
-    setSpatialSkeletonMode3dToLinesAndPoints(layer);
+    setSpatialSkeletonModesToLinesAndPoints(layer);
 
     expect(
       layer.displayState.skeletonRenderingOptions.params3d.mode.value,
     ).toBe(SkeletonRenderMode.LINES_AND_POINTS);
     expect(
       layer.displayState.skeletonRenderingOptions.params2d.mode.value,
-    ).toBe(SkeletonRenderMode.LINES);
+    ).toBe(SkeletonRenderMode.LINES_AND_POINTS);
   });
 
   it("keeps parented add-node commits overlay-first without refetching chunks", () => {
