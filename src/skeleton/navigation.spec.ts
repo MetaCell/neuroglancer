@@ -103,7 +103,7 @@ describe("skeleton/navigation", () => {
     expect(getBranchEnd(preferenceGraph, 2).nodeId).toBe(2);
   });
 
-  it("orders flat-list rows breadth-first with leaf and true-end siblings first", () => {
+  it("orders flat-list rows in leaf-first pre-order", () => {
     const listGraph = buildSpatiallyIndexedSkeletonNavigationGraph([
       makeNode(1, undefined),
       makeNode(2, 1),
@@ -116,10 +116,10 @@ describe("skeleton/navigation", () => {
       makeNode(9, 8),
     ]);
 
-    expect(getFlatListNodeIds(listGraph)).toEqual([1, 3, 8, 4, 2, 9, 6, 7, 5]);
+    expect(getFlatListNodeIds(listGraph)).toEqual([1, 3, 8, 9, 4, 6, 7, 2, 5]);
   });
 
-  it("orders flat-list rows by collapsed branches when requested", () => {
+  it("orders flat-list rows by collapsed branches in leaf-first pre-order", () => {
     const listGraph = buildSpatiallyIndexedSkeletonNavigationGraph([
       makeNode(1, undefined),
       makeNode(2, 1),
@@ -135,6 +135,24 @@ describe("skeleton/navigation", () => {
         collapseRegularNodesForOrdering: true,
       }),
     ).toEqual([1, 2, 6, 7, 3, 4, 5]);
+  });
+
+  it("keeps a branch adjacent to its own leaf-first descendants", () => {
+    const listGraph = buildSpatiallyIndexedSkeletonNavigationGraph([
+      makeNode(1, undefined),
+      makeNode(2, 1),
+      makeNode(3, 1),
+      makeNode(4, 2),
+      makeNode(5, 2),
+      makeNode(6, 3),
+      makeNode(7, 3),
+    ]);
+
+    expect(
+      getFlatListNodeIds(listGraph, {
+        collapseRegularNodesForOrdering: true,
+      }),
+    ).toEqual([1, 2, 4, 5, 3, 6, 7]);
   });
 
   it("tracks the active sibling branch from the selected node or anchor", () => {

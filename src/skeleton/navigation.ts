@@ -137,34 +137,35 @@ export function getFlatListNodeIds(
   const orderedNodeIds: number[] = [];
   const visited = new Set<number>();
 
-  const appendBreadthFirst = (startNodeIds: readonly number[]) => {
-    const queue = [...startNodeIds].sort((a, b) =>
-      compareFlatListNodeIds(graph, a, b),
-    );
-    for (let queueIndex = 0; queueIndex < queue.length; ++queueIndex) {
-      const nodeId = queue[queueIndex];
+  const appendLeafFirstPreOrder = (startNodeIds: readonly number[]) => {
+    const stack = [...startNodeIds]
+      .sort((a, b) => compareFlatListNodeIds(graph, a, b))
+      .reverse();
+    while (stack.length > 0) {
+      const nodeId = stack.pop()!;
       if (visited.has(nodeId)) continue;
       visited.add(nodeId);
       orderedNodeIds.push(nodeId);
       const childNodeIds = [...getChildNodeIds(graph, nodeId)].sort((a, b) =>
         compareFlatListNodeIds(graph, a, b),
       );
-      for (const childNodeId of childNodeIds) {
+      for (let childIndex = childNodeIds.length - 1; childIndex >= 0; --childIndex) {
+        const childNodeId = childNodeIds[childIndex];
         if (!visited.has(childNodeId)) {
-          queue.push(childNodeId);
+          stack.push(childNodeId);
         }
       }
     }
   };
 
-  appendBreadthFirst(graph.rootNodeIds);
+  appendLeafFirstPreOrder(graph.rootNodeIds);
 
   const remainingNodeIds = [...graph.nodeById.keys()].sort((a, b) =>
     compareFlatListNodeIds(graph, a, b),
   );
   for (const nodeId of remainingNodeIds) {
     if (!visited.has(nodeId)) {
-      appendBreadthFirst([nodeId]);
+      appendLeafFirstPreOrder([nodeId]);
     }
   }
 
@@ -308,10 +309,10 @@ function getCollapsedOrderedFlatListNodeIds(
   const orderedNodeIds: number[] = [];
   const visited = new Set<number>();
 
-  const appendBreadthFirst = (startPaths: readonly number[][]) => {
-    const queue = [...startPaths];
-    for (let queueIndex = 0; queueIndex < queue.length; ++queueIndex) {
-      const path = queue[queueIndex];
+  const appendLeafFirstPreOrder = (startPaths: readonly number[][]) => {
+    const stack = [...startPaths].reverse();
+    while (stack.length > 0) {
+      const path = stack.pop()!;
       const representativeNodeId = path[path.length - 1];
       let appendedNode = false;
       for (const nodeId of path) {
@@ -326,23 +327,23 @@ function getCollapsedOrderedFlatListNodeIds(
       for (const childPath of getCollapsedOrderedChildPaths(
         graph,
         representativeNodeId,
-      )) {
+      ).reverse()) {
         const firstNodeId = childPath.path[0];
         if (firstNodeId !== undefined && !visited.has(firstNodeId)) {
-          queue.push(childPath.path);
+          stack.push(childPath.path);
         }
       }
     }
   };
 
-  appendBreadthFirst(graph.rootNodeIds.map((nodeId) => [nodeId]));
+  appendLeafFirstPreOrder(graph.rootNodeIds.map((nodeId) => [nodeId]));
 
   const remainingNodeIds = [...graph.nodeById.keys()].sort((a, b) =>
     compareFlatListNodeIds(graph, a, b),
   );
   for (const nodeId of remainingNodeIds) {
     if (!visited.has(nodeId)) {
-      appendBreadthFirst([getCollapsedBranchPath(graph, nodeId)]);
+      appendLeafFirstPreOrder([getCollapsedBranchPath(graph, nodeId)]);
     }
   }
 
