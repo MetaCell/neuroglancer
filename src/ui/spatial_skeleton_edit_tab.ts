@@ -45,7 +45,7 @@ import {
   buildSpatiallyIndexedSkeletonNavigationGraph,
   getBranchEnd as getBranchEndFromGraph,
   getBranchStart as getBranchStartFromGraph,
-  getChildNode as getChildNodeFromGraph,
+  getRandomChildNode as getRandomChildNodeFromGraph,
   getNextCollapsedLevelNode as getNextCollapsedLevelNodeFromGraph,
   getOpenLeaves as getOpenLeavesFromGraph,
   getParentNode as getParentNodeFromGraph,
@@ -544,7 +544,7 @@ export class SpatialSkeletonEditTab extends Tab {
             `Node ${nodeId} is not available in the loaded skeleton cache.`,
           );
         }
-        return getChildNodeFromGraph(
+        return getRandomChildNodeFromGraph(
           getSegmentNavigationGraph(node.segmentId),
           nodeId,
         );

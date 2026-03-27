@@ -548,6 +548,26 @@ export function getChildNode(
     : getNodeTarget(graph, childNodeId);
 }
 
+export function getRandomChildNode(
+  graph: SpatiallyIndexedSkeletonNavigationGraph,
+  nodeId: number,
+  options: { random?: () => number } = {},
+) {
+  const childNodeIds = getFlatListOrderedChildNodeIds(graph, nodeId);
+  if (childNodeIds.length === 0) {
+    return undefined;
+  }
+  const { random = Math.random } = options;
+  const randomValue = random();
+  const childIndex = Number.isFinite(randomValue)
+    ? Math.min(
+        childNodeIds.length - 1,
+        Math.max(0, Math.floor(randomValue * childNodeIds.length)),
+      )
+    : 0;
+  return getNodeTarget(graph, childNodeIds[childIndex]);
+}
+
 export function getNextCollapsedLevelNode(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
   nodeId: number,
