@@ -483,6 +483,30 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
     );
   }
 
+  protected moveViewToNodePosition(position: ArrayLike<number>) {
+    const globalPosition = this.layer.manager.root.globalPosition;
+    const nextGlobal = globalPosition.value.slice();
+    const globalRank = Math.min(nextGlobal.length, 3);
+    for (let i = 0; i < globalRank; ++i) {
+      const value = Number(position[i]);
+      if (Number.isFinite(value)) {
+        nextGlobal[i] = value;
+      }
+    }
+    globalPosition.value = nextGlobal;
+
+    const localPosition = this.layer.localPosition;
+    const nextLocal = localPosition.value.slice();
+    const localRank = Math.min(nextLocal.length, 3);
+    for (let i = 0; i < localRank; ++i) {
+      const value = Number(position[i]);
+      if (Number.isFinite(value)) {
+        nextLocal[i] = value;
+      }
+    }
+    localPosition.value = nextLocal;
+  }
+
   protected resolvePickedNodeForAction(
     skeletonLayer: SpatiallyIndexedSkeletonLayer,
   ) {
@@ -892,6 +916,7 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
         position: newNode.position,
       },
     );
+    this.moveViewToNodePosition(newNode.position);
     // Match move-node semantics: update the overlay/cache immediately and let
     // browse chunks reconcile later through explicit invalidation paths.
     if (parentNodeId !== undefined) {

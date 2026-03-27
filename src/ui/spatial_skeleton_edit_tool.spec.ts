@@ -61,10 +61,16 @@ describe("spatial_skeleton_edit_tool", () => {
       retainOverlaySegment: vi.fn(),
       invalidateSourceCaches: vi.fn(),
     };
+    const globalPosition = { value: new Float32Array([10, 20, 30]) };
+    const localPosition = { value: new Float32Array([40, 50, 60]) };
     const tool = {
       ensureSegmentVisibleByNumber,
       pinSegmentByNumber,
+      moveViewToNodePosition: (
+        SpatialSkeletonEditModeTool.prototype as any
+      ).moveViewToNodePosition,
       layer: {
+        localPosition,
         spatialSkeletonState: {
           upsertCachedNode,
         },
@@ -72,6 +78,7 @@ describe("spatial_skeleton_edit_tool", () => {
         markSpatialSkeletonNodeDataChanged,
         manager: {
           root: {
+            globalPosition,
             selectionState: {
               pin: {
                 value: true,
@@ -106,6 +113,8 @@ describe("spatial_skeleton_edit_tool", () => {
       segmentId: 11,
       position: new Float32Array([1, 2, 3]),
     });
+    expect(globalPosition.value).toEqual(new Float32Array([1, 2, 3]));
+    expect(localPosition.value).toEqual(new Float32Array([1, 2, 3]));
     expect(skeletonLayer.retainOverlaySegment).toHaveBeenCalledWith(11);
     expect(markSpatialSkeletonNodeDataChanged).toHaveBeenCalledWith({
       invalidateFullSkeletonCache: false,
@@ -132,10 +141,16 @@ describe("spatial_skeleton_edit_tool", () => {
       retainOverlaySegment: vi.fn(),
       invalidateSourceCaches: vi.fn(),
     };
+    const globalPosition = { value: new Float32Array([10, 20, 30]) };
+    const localPosition = { value: new Float32Array([40, 50, 60]) };
     const tool = {
       ensureSegmentVisibleByNumber,
       pinSegmentByNumber,
+      moveViewToNodePosition: (
+        SpatialSkeletonEditModeTool.prototype as any
+      ).moveViewToNodePosition,
       layer: {
+        localPosition,
         spatialSkeletonState: {
           upsertCachedNode,
         },
@@ -143,6 +158,7 @@ describe("spatial_skeleton_edit_tool", () => {
         markSpatialSkeletonNodeDataChanged,
         manager: {
           root: {
+            globalPosition,
             selectionState: {
               pin: {
                 value: false,
@@ -177,6 +193,8 @@ describe("spatial_skeleton_edit_tool", () => {
       segmentId: 13,
       position: new Float32Array([4, 5, 6]),
     });
+    expect(globalPosition.value).toEqual(new Float32Array([4, 5, 6]));
+    expect(localPosition.value).toEqual(new Float32Array([4, 5, 6]));
     expect(skeletonLayer.retainOverlaySegment).not.toHaveBeenCalled();
     expect(markSpatialSkeletonNodeDataChanged).toHaveBeenCalledWith({
       invalidateFullSkeletonCache: false,
