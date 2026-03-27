@@ -34,12 +34,76 @@ export interface SpatiallyIndexedSkeletonBranchContext {
   currentBranchIndex: number | undefined;
 }
 
+interface CollapsedChildPath {
+  path: readonly number[];
+  representativeNodeId: number;
+}
+
+interface CollapsedLevelContext {
+  levelByNodeId: Map<number, number>;
+  nodeIdsByLevel: Map<number, number[]>;
+}
+
+interface NavigationGraphDerivedState {
+  sortPriorityByNodeId: Map<number, number>;
+  orderedChildNodeIdsByNodeId: Map<number, readonly number[]>;
+  collapsedPathByNodeId: Map<number, readonly number[]>;
+  collapsedOrderedChildPathsByNodeId: Map<number, readonly CollapsedChildPath[]>;
+  flatListNodeIds?: readonly number[];
+  collapsedFlatListNodeIds?: readonly number[];
+  collapsedLevelContext?: CollapsedLevelContext;
+}
+
+const navigationGraphDerivedState = new WeakMap<
+  SpatiallyIndexedSkeletonNavigationGraph,
+  NavigationGraphDerivedState
+>();
+
 const CLOSED_END_LABEL_PATTERNS = [
   /^uncertain continuation$/i,
   /^not a branch$/i,
   /^soma$/i,
   /^(really|uncertain|anterior|posterior)?\s?ends?$/i,
 ];
+
+function buildNavigationGraphDerivedState(
+  graph: SpatiallyIndexedSkeletonNavigationGraph,
+): NavigationGraphDerivedState {
+  const sortPriorityByNodeId = new Map<number, number>();
+  for (const [nodeId, node] of graph.nodeById) {
+    const childCount = graph.childrenByParent.get(nodeId)?.length ?? 0;
+    const parentNodeId = node.parentNodeId;
+    const parentInTree =
+      parentNodeId !== undefined && graph.nodeById.has(parentNodeId);
+    const sortPriority = hasTrueEndLabel(node)
+      ? 0
+      : childCount === 0
+        ? 0
+        : !parentInTree
+          ? 3
+          : childCount > 1
+            ? 1
+            : 2;
+    sortPriorityByNodeId.set(nodeId, sortPriority);
+  }
+  return {
+    sortPriorityByNodeId,
+    orderedChildNodeIdsByNodeId: new Map(),
+    collapsedPathByNodeId: new Map(),
+    collapsedOrderedChildPathsByNodeId: new Map(),
+  };
+}
+
+function getNavigationGraphDerivedState(
+  graph: SpatiallyIndexedSkeletonNavigationGraph,
+) {
+  let state = navigationGraphDerivedState.get(graph);
+  if (state === undefined) {
+    state = buildNavigationGraphDerivedState(graph);
+    navigationGraphDerivedState.set(graph, state);
+  }
+  return state;
+}
 
 export function buildSpatiallyIndexedSkeletonNavigationGraph(
   nodes: readonly SpatiallyIndexedSkeletonNodeInfo[],
@@ -78,11 +142,13 @@ export function buildSpatiallyIndexedSkeletonNavigationGraph(
     rootNodeIds.push([...nodeById.keys()].sort((a, b) => a - b)[0]);
   }
 
-  return {
+  const graph = {
     nodeById,
     childrenByParent,
     rootNodeIds,
   };
+  navigationGraphDerivedState.set(graph, buildNavigationGraphDerivedState(graph));
+  return graph;
 }
 
 function hasTrueEndLabel(node: SpatiallyIndexedSkeletonNodeInfo) {
@@ -97,22 +163,13 @@ function getFlatListNodeSortPriority(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
   nodeId: number,
 ) {
-  const node = getNodeOrThrow(graph, nodeId);
-  if (hasTrueEndLabel(node)) {
-    return 0;
+  const priority = getNavigationGraphDerivedState(graph).sortPriorityByNodeId.get(
+    nodeId,
+  );
+  if (priority === undefined) {
+    throw new Error(`Node ${nodeId} is not available in the loaded skeleton.`);
   }
-  const childCount = getChildNodeIds(graph, nodeId).length;
-  if (childCount === 0) {
-    return 0;
-  }
-  const parentNodeId = getParentNodeId(graph, nodeId);
-  if (parentNodeId === undefined) {
-    return 3;
-  }
-  if (childCount > 1) {
-    return 1;
-  }
-  return 2;
+  return priority;
 }
 
 function compareFlatListNodeIds(
@@ -132,6 +189,10 @@ export function getFlatListNodeIds(
 ) {
   if (options.collapseRegularNodesForOrdering ?? false) {
     return getCollapsedOrderedFlatListNodeIds(graph);
+  }
+  const derivedState = getNavigationGraphDerivedState(graph);
+  if (derivedState.flatListNodeIds !== undefined) {
+    return derivedState.flatListNodeIds;
   }
 
   const orderedNodeIds: number[] = [];
@@ -159,6 +220,10 @@ export function getFlatListNodeIds(
   };
 
   appendLeafFirstPreOrder(graph.rootNodeIds);
+  if (visited.size === graph.nodeById.size) {
+    derivedState.flatListNodeIds = orderedNodeIds;
+    return orderedNodeIds;
+  }
 
   const remainingNodeIds = [...graph.nodeById.keys()].sort((a, b) =>
     compareFlatListNodeIds(graph, a, b),
@@ -169,6 +234,7 @@ export function getFlatListNodeIds(
     }
   }
 
+  derivedState.flatListNodeIds = orderedNodeIds;
   return orderedNodeIds;
 }
 
@@ -234,18 +300,31 @@ function getFlatListOrderedChildNodeIds(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
   nodeId: number,
 ) {
-  const childNodeIds = [...getChildNodeIds(graph, nodeId)];
+  const childNodeIds = getChildNodeIds(graph, nodeId);
   if (childNodeIds.length <= 1) {
     return childNodeIds;
   }
-  childNodeIds.sort((a, b) => compareFlatListNodeIds(graph, a, b));
-  return childNodeIds;
+  const derivedState = getNavigationGraphDerivedState(graph);
+  const cached = derivedState.orderedChildNodeIdsByNodeId.get(nodeId);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const orderedChildNodeIds = [...childNodeIds].sort((a, b) =>
+    compareFlatListNodeIds(graph, a, b),
+  );
+  derivedState.orderedChildNodeIdsByNodeId.set(nodeId, orderedChildNodeIds);
+  return orderedChildNodeIds;
 }
 
 function getCollapsedBranchPath(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
   nodeId: number,
 ) {
+  const derivedState = getNavigationGraphDerivedState(graph);
+  const cached = derivedState.collapsedPathByNodeId.get(nodeId);
+  if (cached !== undefined) {
+    return cached;
+  }
   const path = [nodeId];
   const visited = new Set<number>(path);
   let currentNodeId = nodeId;
@@ -258,6 +337,7 @@ function getCollapsedBranchPath(
     visited.add(nextNodeId);
     currentNodeId = nextNodeId;
   }
+  derivedState.collapsedPathByNodeId.set(nodeId, path);
   return path;
 }
 
@@ -265,6 +345,11 @@ function getCollapsedOrderedChildPaths(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
   nodeId: number,
 ) {
+  const derivedState = getNavigationGraphDerivedState(graph);
+  const cached = derivedState.collapsedOrderedChildPathsByNodeId.get(nodeId);
+  if (cached !== undefined) {
+    return cached;
+  }
   const childPaths = getChildNodeIds(graph, nodeId).map((childNodeId) => {
     const path = getCollapsedBranchPath(graph, childNodeId);
     return {
@@ -279,6 +364,7 @@ function getCollapsedOrderedChildPaths(
       b.representativeNodeId,
     ),
   );
+  derivedState.collapsedOrderedChildPathsByNodeId.set(nodeId, childPaths);
   return childPaths;
 }
 
@@ -306,6 +392,10 @@ function getCollapsedChildNodeIds(
 function getCollapsedOrderedFlatListNodeIds(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
 ) {
+  const derivedState = getNavigationGraphDerivedState(graph);
+  if (derivedState.collapsedFlatListNodeIds !== undefined) {
+    return derivedState.collapsedFlatListNodeIds;
+  }
   const orderedNodeIds: number[] = [];
   const visited = new Set<number>();
 
@@ -324,10 +414,16 @@ function getCollapsedOrderedFlatListNodeIds(
       if (!appendedNode || !graph.nodeById.has(representativeNodeId)) {
         continue;
       }
-      for (const childPath of getCollapsedOrderedChildPaths(
+      const childPaths = getCollapsedOrderedChildPaths(
         graph,
         representativeNodeId,
-      ).reverse()) {
+      );
+      for (
+        let childPathIndex = childPaths.length - 1;
+        childPathIndex >= 0;
+        --childPathIndex
+      ) {
+        const childPath = childPaths[childPathIndex];
         const firstNodeId = childPath.path[0];
         if (firstNodeId !== undefined && !visited.has(firstNodeId)) {
           stack.push(childPath.path);
@@ -337,6 +433,10 @@ function getCollapsedOrderedFlatListNodeIds(
   };
 
   appendLeafFirstPreOrder(graph.rootNodeIds.map((nodeId) => [nodeId]));
+  if (visited.size === graph.nodeById.size) {
+    derivedState.collapsedFlatListNodeIds = orderedNodeIds;
+    return orderedNodeIds;
+  }
 
   const remainingNodeIds = [...graph.nodeById.keys()].sort((a, b) =>
     compareFlatListNodeIds(graph, a, b),
@@ -347,12 +447,17 @@ function getCollapsedOrderedFlatListNodeIds(
     }
   }
 
+  derivedState.collapsedFlatListNodeIds = orderedNodeIds;
   return orderedNodeIds;
 }
 
 function getCollapsedLevelContext(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
 ) {
+  const derivedState = getNavigationGraphDerivedState(graph);
+  if (derivedState.collapsedLevelContext !== undefined) {
+    return derivedState.collapsedLevelContext;
+  }
   const levelByNodeId = new Map<number, number>();
   const nodeIdsByLevel = new Map<number, number[]>();
   const queue = graph.rootNodeIds.map((nodeId) => ({ nodeId, level: 0 }));
@@ -376,7 +481,9 @@ function getCollapsedLevelContext(
     }
   }
 
-  return { levelByNodeId, nodeIdsByLevel };
+  const context = { levelByNodeId, nodeIdsByLevel };
+  derivedState.collapsedLevelContext = context;
+  return context;
 }
 
 function getPreviousBranchOrRootNodeId(
@@ -607,12 +714,30 @@ export function getOpenLeaves(
   for (let queueIndex = 0; queueIndex < queue.length; ++queueIndex) {
     const currentNodeId = queue[queueIndex];
     const nextDistance = (distances.get(currentNodeId) ?? 0) + 1;
-    const neighborNodeIds = [
-      ...getChildNodeIds(graph, currentNodeId),
-      getParentNodeId(graph, currentNodeId),
-    ].filter((value): value is number => value !== undefined);
-    neighborNodeIds.sort((a, b) => a - b);
-    for (const neighborNodeId of neighborNodeIds) {
+    const childNodeIds = getChildNodeIds(graph, currentNodeId);
+    const parentNodeId = getParentNodeId(graph, currentNodeId);
+    let parentAdded = false;
+    for (const childNodeId of childNodeIds) {
+      if (
+        !parentAdded &&
+        parentNodeId !== undefined &&
+        parentNodeId < childNodeId
+      ) {
+        if (!distances.has(parentNodeId)) {
+          distances.set(parentNodeId, nextDistance);
+          rootedChildCount.set(
+            currentNodeId,
+            (rootedChildCount.get(currentNodeId) ?? 0) + 1,
+          );
+          rootedChildCount.set(
+            parentNodeId,
+            rootedChildCount.get(parentNodeId) ?? 0,
+          );
+          queue.push(parentNodeId);
+        }
+        parentAdded = true;
+      }
+      const neighborNodeId = childNodeId;
       if (distances.has(neighborNodeId)) continue;
       distances.set(neighborNodeId, nextDistance);
       rootedChildCount.set(
@@ -624,6 +749,18 @@ export function getOpenLeaves(
         rootedChildCount.get(neighborNodeId) ?? 0,
       );
       queue.push(neighborNodeId);
+    }
+    if (!parentAdded && parentNodeId !== undefined && !distances.has(parentNodeId)) {
+      distances.set(parentNodeId, nextDistance);
+      rootedChildCount.set(
+        currentNodeId,
+        (rootedChildCount.get(currentNodeId) ?? 0) + 1,
+      );
+      rootedChildCount.set(
+        parentNodeId,
+        rootedChildCount.get(parentNodeId) ?? 0,
+      );
+      queue.push(parentNodeId);
     }
   }
 

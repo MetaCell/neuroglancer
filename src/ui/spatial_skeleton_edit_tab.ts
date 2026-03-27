@@ -81,7 +81,7 @@ import { EnumSelectWidget } from "#src/widget/enum_widget.js";
 import { makeIcon } from "#src/widget/icon.js";
 import { Tab } from "#src/widget/tab_view.js";
 
-const MAX_LISTED_NODES = 300;
+const MAX_LISTED_NODES = 10000;
 
 interface SpatiallyIndexedSkeletonNavigationApi {
   getSkeletonRootNode(
