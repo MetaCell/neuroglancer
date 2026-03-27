@@ -202,6 +202,49 @@ describe("spatial_skeleton_edit_tool", () => {
     expect(skeletonLayer.invalidateSourceCaches).not.toHaveBeenCalled();
   });
 
+  it("blocks appending a child to a selected true-end node", () => {
+    const getAddNodeBlockedReason = (
+      SpatialSkeletonEditModeTool.prototype as any
+    ).getAddNodeBlockedReason as (
+      this: any,
+      skeletonLayer: any,
+      parentNodeId: number | undefined,
+    ) => string | undefined;
+    const getCachedNode = vi.fn((nodeId: number) =>
+      nodeId === 17
+        ? {
+            nodeId: 17,
+            segmentId: 11,
+            position: new Float32Array([1, 2, 3]),
+            labels: ["ends"],
+          }
+        : undefined,
+    );
+    const getNode = vi.fn();
+    const tool = {
+      layer: {
+        spatialSkeletonState: {
+          getCachedNode,
+        },
+      },
+      getSelectedParentNodeForAdd: (
+        SpatialSkeletonEditModeTool.prototype as any
+      ).getSelectedParentNodeForAdd,
+    };
+
+    expect(getAddNodeBlockedReason.call(tool, { getNode }, 17)).toBe(
+      "Node 17 is marked as a true end. Remove the true end label before appending a child node.",
+    );
+    expect(getAddNodeBlockedReason.call(tool, { getNode }, 18)).toBe(
+      undefined,
+    );
+    expect(getAddNodeBlockedReason.call(tool, { getNode }, undefined)).toBe(
+      undefined,
+    );
+    expect(getNode).toHaveBeenCalledTimes(1);
+    expect(getNode).toHaveBeenCalledWith(18);
+  });
+
   it("suppresses the deleted merge segment while keeping the surviving result selected", () => {
     const applyCommittedMerge = (SpatialSkeletonEditModeTool.prototype as any)
       .applyCommittedMerge as (

@@ -39,6 +39,7 @@ import {
   SliceViewPanelSpatiallyIndexedSkeletonLayer,
   SliceViewSpatiallyIndexedSkeletonLayer,
 } from "#src/skeleton/frontend.js";
+import { hasSpatialSkeletonTrueEndLabel } from "#src/skeleton/node_types.js";
 import type { SpatiallyIndexedSkeletonSourceCapability } from "#src/skeleton/state.js";
 import { getEditableSpatiallyIndexedSkeletonSource } from "#src/skeleton/state.js";
 import { StatusMessage } from "#src/status.js";
@@ -811,6 +812,39 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
     return new Float32Array([x, y, z]);
   }
 
+  private getSelectedParentNodeForAdd(
+    skeletonLayer: SpatiallyIndexedSkeletonLayer,
+    parentNodeId: number | undefined,
+  ) {
+    if (parentNodeId === undefined) {
+      return undefined;
+    }
+    return (
+      this.layer.spatialSkeletonState.getCachedNode(parentNodeId) ??
+      skeletonLayer.getNode(parentNodeId)
+    );
+  }
+
+  private getAddNodeBlockedReason(
+    skeletonLayer: SpatiallyIndexedSkeletonLayer,
+    parentNodeId: number | undefined,
+  ) {
+    if (parentNodeId === undefined) {
+      return undefined;
+    }
+    const selectedParentNode = this.getSelectedParentNodeForAdd(
+      skeletonLayer,
+      parentNodeId,
+    );
+    if (
+      selectedParentNode !== undefined &&
+      hasSpatialSkeletonTrueEndLabel(selectedParentNode.labels)
+    ) {
+      return `Node ${parentNodeId} is marked as a true end. Remove the true end label before appending a child node.`;
+    }
+    return undefined;
+  }
+
   private async commitMoveNode(
     skeletonLayer: SpatiallyIndexedSkeletonLayer,
     nodeId: number,
@@ -1176,6 +1210,14 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
           return;
         }
         const selectedParentNodeId = layer.selectedSpatialSkeletonNodeId.value;
+        const addNodeBlockedReason = this.getAddNodeBlockedReason(
+          skeletonLayer,
+          selectedParentNodeId,
+        );
+        if (addNodeBlockedReason !== undefined) {
+          StatusMessage.showTemporaryMessage(addNodeBlockedReason);
+          return;
+        }
         if (selectedParentNodeId === undefined) {
           const pickedSegmentId = this.getPickedSpatialSkeletonSegment();
           if (pickedSegmentId !== undefined) {
@@ -1216,10 +1258,23 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
             }
             const selectedParentNodeId =
               layer.selectedSpatialSkeletonNodeId.value;
-            const selectedParentNode =
-              selectedParentNodeId === undefined
-                ? undefined
-                : skeletonLayer.getNode(selectedParentNodeId);
+            const addNodeBlockedReason = this.getAddNodeBlockedReason(
+              skeletonLayer,
+              selectedParentNodeId,
+            );
+            if (addNodeBlockedReason !== undefined) {
+              setReadyStatus();
+              setDebug("dragState", "blocked-true-end");
+              debugLog("add-node-blocked-true-end", {
+                selectedParentNodeId,
+              });
+              StatusMessage.showTemporaryMessage(addNodeBlockedReason);
+              return;
+            }
+            const selectedParentNode = this.getSelectedParentNodeForAdd(
+              skeletonLayer,
+              selectedParentNodeId,
+            );
             const targetSkeletonId =
               selectedParentNode === undefined
                 ? 0
