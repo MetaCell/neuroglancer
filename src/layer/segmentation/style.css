@@ -668,7 +668,7 @@
 
 .neuroglancer-spatial-skeleton-selection-summary {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-columns: auto auto auto minmax(0, 1fr);
   align-items: center;
   gap: 0.45rem;
   padding: 0.25rem 0.4rem;

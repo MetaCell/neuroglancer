@@ -34,6 +34,7 @@ export interface SpatiallyIndexedSkeletonSourceCapabilities {
   addNodes: boolean;
   moveNodes: boolean;
   deleteNodes: boolean;
+  rerootSkeletons: boolean;
   editNodeLabels: boolean;
   editNodeProperties: boolean;
   mergeSkeletons: boolean;
@@ -49,12 +50,17 @@ export interface SpatiallyIndexedSkeletonInspectionSource {
   ): Promise<readonly SpatiallyIndexedSkeletonNode[]>;
 }
 
+export interface SpatiallyIndexedSkeletonRerootSource {
+  rerootSkeleton(nodeId: number): Promise<void>;
+}
+
 export const NO_SPATIALLY_INDEXED_SKELETON_SOURCE_CAPABILITIES: SpatiallyIndexedSkeletonSourceCapabilities =
   {
     inspectSkeletons: false,
     addNodes: false,
     moveNodes: false,
     deleteNodes: false,
+    rerootSkeletons: false,
     editNodeLabels: false,
     editNodeProperties: false,
     mergeSkeletons: false,
@@ -106,6 +112,15 @@ export function getSpatiallyIndexedSkeletonInspectionSource(
     : undefined;
 }
 
+export function getSpatiallyIndexedSkeletonRerootSource(
+  value: SpatialSkeletonSourceAccess | undefined,
+): SpatiallyIndexedSkeletonRerootSource | undefined {
+  if (value === undefined) return undefined;
+  return hasFunction(value.source, "rerootSkeleton")
+    ? (value.source as SpatiallyIndexedSkeletonRerootSource)
+    : undefined;
+}
+
 export function getSpatiallyIndexedSkeletonSourceCapabilities(
   value: unknown,
 ): SpatiallyIndexedSkeletonSourceCapabilities {
@@ -114,6 +129,7 @@ export function getSpatiallyIndexedSkeletonSourceCapabilities(
     addNodes: hasFunction(value, "addNode"),
     moveNodes: hasFunction(value, "moveNode"),
     deleteNodes: hasFunction(value, "deleteNode"),
+    rerootSkeletons: hasFunction(value, "rerootSkeleton"),
     editNodeLabels:
       hasFunction(value, "updateDescription") &&
       hasFunction(value, "setTrueEnd") &&
@@ -140,6 +156,7 @@ export function hasAnySpatiallyIndexedSkeletonEditingCapability(
     capabilities.addNodes ||
     capabilities.moveNodes ||
     capabilities.deleteNodes ||
+    capabilities.rerootSkeletons ||
     capabilities.editNodeLabels ||
     capabilities.editNodeProperties ||
     capabilities.mergeSkeletons ||
@@ -156,6 +173,7 @@ function spatiallyIndexedSkeletonSourceCapabilitiesEqual(
     a.addNodes === b.addNodes &&
     a.moveNodes === b.moveNodes &&
     a.deleteNodes === b.deleteNodes &&
+    a.rerootSkeletons === b.rerootSkeletons &&
     a.editNodeLabels === b.editNodeLabels &&
     a.editNodeProperties === b.editNodeProperties &&
     a.mergeSkeletons === b.mergeSkeletons &&
@@ -693,6 +711,107 @@ export class SpatialSkeletonState extends RefCounted {
         parentNodeId,
       };
     });
+  }
+
+  rerootCachedSegment(nodeId: number) {
+    const normalizedNodeId = this.normalizeNodeId(nodeId);
+    if (normalizedNodeId === undefined) {
+      return false;
+    }
+    const targetNode = this.cachedNodesById.get(normalizedNodeId);
+    if (targetNode === undefined) {
+      return false;
+    }
+    const segmentNodes = this.fullSegmentNodeCache.get(targetNode.segmentId);
+    if (segmentNodes === undefined) {
+      return false;
+    }
+
+    const nodeById = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
+    for (const node of segmentNodes) {
+      nodeById.set(node.nodeId, node);
+    }
+    const startNode = nodeById.get(normalizedNodeId);
+    if (startNode === undefined) {
+      return false;
+    }
+    if (startNode.parentNodeId === undefined) {
+      return true;
+    }
+
+    const pathNodeIds: number[] = [];
+    const seen = new Set<number>();
+    let currentNode: SpatiallyIndexedSkeletonNodeInfo | undefined = startNode;
+    while (currentNode !== undefined) {
+      if (seen.has(currentNode.nodeId)) {
+        return false;
+      }
+      seen.add(currentNode.nodeId);
+      pathNodeIds.push(currentNode.nodeId);
+      const parentNodeId = currentNode.parentNodeId;
+      if (parentNodeId === undefined) {
+        break;
+      }
+      currentNode = nodeById.get(parentNodeId);
+      if (currentNode === undefined) {
+        return false;
+      }
+    }
+
+    const nextParentByNodeId = new Map<number, number | undefined>();
+    const nextConfidenceByNodeId = new Map<number, number | undefined>();
+    nextParentByNodeId.set(startNode.nodeId, undefined);
+    nextConfidenceByNodeId.set(startNode.nodeId, 100);
+
+    let downstreamConfidence = startNode.confidence;
+    for (let i = 1; i < pathNodeIds.length; ++i) {
+      const upstreamNodeId = pathNodeIds[i];
+      const upstreamNode = nodeById.get(upstreamNodeId)!;
+      nextParentByNodeId.set(upstreamNodeId, pathNodeIds[i - 1]);
+      nextConfidenceByNodeId.set(
+        upstreamNodeId,
+        downstreamConfidence ?? upstreamNode.confidence,
+      );
+      downstreamConfidence = upstreamNode.confidence;
+    }
+
+    let changed = false;
+    const nextSegmentNodes = segmentNodes.map((candidate) => {
+      if (!nextParentByNodeId.has(candidate.nodeId)) {
+        return candidate;
+      }
+      const nextParentNodeId = nextParentByNodeId.get(candidate.nodeId);
+      const nextConfidence = nextConfidenceByNodeId.get(candidate.nodeId);
+      const override = this.nodePropertyOverrides.get(candidate.nodeId);
+      if (
+        override !== undefined &&
+        override.confidence !== nextConfidence &&
+        nextConfidence !== undefined
+      ) {
+        this.nodePropertyOverrides.set(candidate.nodeId, {
+          ...override,
+          confidence: nextConfidence,
+        });
+      }
+      if (
+        candidate.parentNodeId === nextParentNodeId &&
+        candidate.confidence === nextConfidence
+      ) {
+        return candidate;
+      }
+      changed = true;
+      return {
+        ...candidate,
+        parentNodeId: nextParentNodeId,
+        confidence: nextConfidence,
+      };
+    });
+    if (!changed) {
+      return false;
+    }
+    this.fullSegmentNodeCache.set(targetNode.segmentId, nextSegmentNodes);
+    this.rebuildCachedNodesById();
+    return true;
   }
 
   invalidateCachedSegments(segmentIds: Iterable<number>) {

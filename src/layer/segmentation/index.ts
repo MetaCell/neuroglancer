@@ -131,6 +131,7 @@ import {
   hasSpatiallyIndexedSkeletonSourceCapability,
   getEditableSpatiallyIndexedSkeletonSource,
   getSpatiallyIndexedSkeletonInspectionSource,
+  getSpatiallyIndexedSkeletonRerootSource,
   type SpatiallyIndexedSkeletonSourceCapabilities,
   type SpatiallyIndexedSkeletonSourceCapability,
   SpatialSkeletonState,
@@ -1893,6 +1894,9 @@ export class SegmentationUserLayer extends Base {
               moveNodes: capabilities.moveNodes || sourceCapabilities.moveNodes,
               deleteNodes:
                 capabilities.deleteNodes || sourceCapabilities.deleteNodes,
+              rerootSkeletons:
+                capabilities.rerootSkeletons ||
+                sourceCapabilities.rerootSkeletons,
               editNodeLabels:
                 capabilities.editNodeLabels ||
                 sourceCapabilities.editNodeLabels,
@@ -1919,6 +1923,7 @@ export class SegmentationUserLayer extends Base {
         addNodes: false,
         moveNodes: false,
         deleteNodes: false,
+        rerootSkeletons: false,
         editNodeLabels: false,
         editNodeProperties: false,
         mergeSkeletons: false,
@@ -1955,6 +1960,8 @@ export class SegmentationUserLayer extends Base {
           return "node movement";
         case "deleteNodes":
           return "node deletion";
+        case "rerootSkeletons":
+          return "skeleton rerooting";
         case "editNodeLabels":
           return "node label editing";
         case "editNodeProperties":
@@ -2022,6 +2029,46 @@ export class SegmentationUserLayer extends Base {
     return descriptiveLabels.length === 0
       ? undefined
       : descriptiveLabels.join(", ");
+  }
+
+  async rerootSpatialSkeletonNode(
+    node: Pick<
+      SpatiallyIndexedSkeletonNodeInfo,
+      "nodeId" | "segmentId" | "parentNodeId" | "position"
+    >,
+  ) {
+    if (node.parentNodeId === undefined) {
+      throw new Error(`Node ${node.nodeId} is already root.`);
+    }
+    const skeletonLayer = this.getSpatiallyIndexedSkeletonLayer();
+    if (skeletonLayer === undefined) {
+      throw new Error(
+        "No active spatial skeleton layer found for reroot action.",
+      );
+    }
+    const skeletonSource = getSpatiallyIndexedSkeletonRerootSource(skeletonLayer);
+    if (skeletonSource === undefined) {
+      throw new Error(
+        "Unable to resolve a reroot-capable skeleton source for the active layer.",
+      );
+    }
+
+    await skeletonSource.rerootSkeleton(node.nodeId);
+    this.selectSpatialSkeletonNode(
+      node.nodeId,
+      this.manager.root.selectionState.pin.value,
+      {
+        segmentId: node.segmentId,
+        position: node.position,
+      },
+    );
+    const updatedFromCache = this.spatialSkeletonState.rerootCachedSegment(
+      node.nodeId,
+    );
+    this.markSpatialSkeletonNodeDataChanged({
+      invalidateFullSkeletonCache: !updatedFromCache,
+    });
+    StatusMessage.showTemporaryMessage(`Set node ${node.nodeId} as root.`);
   }
 
   markSpatialSkeletonNodeDataChanged(options?: {
@@ -2876,6 +2923,54 @@ export class SegmentationUserLayer extends Base {
       skeletonLayer === undefined
         ? undefined
         : getEditableSpatiallyIndexedSkeletonSource(skeletonLayer);
+    const skeletonRerootSource =
+      skeletonLayer === undefined
+        ? undefined
+        : getSpatiallyIndexedSkeletonRerootSource(skeletonLayer);
+    const rerootDisabledReason =
+      skeletonRerootSource === undefined
+        ? "Unable to resolve a reroot-capable skeleton source for the active layer."
+        : segmentNodes === undefined
+          ? "Load the active skeleton in the Skeleton tab before rerooting from Selection."
+          : nodeInfo.parentNodeId === undefined
+            ? "Selected node is already root."
+            : this.getSpatialSkeletonActionsDisabledReason("rerootSkeletons", {
+                requireVisibleChunks: false,
+              });
+    const rerootButton = document.createElement("button");
+    rerootButton.type = "button";
+    rerootButton.className = "neuroglancer-spatial-skeleton-selection-action";
+    rerootButton.disabled = rerootDisabledReason !== undefined;
+    rerootButton.title = rerootDisabledReason ?? "Set as root";
+    rerootButton.appendChild(
+      makeIcon({ svg: svg_origin, title: rerootButton.title, clickable: false }),
+    );
+    let rerootPending = false;
+    rerootButton.addEventListener("click", () => {
+      if (
+        rerootButton.disabled ||
+        rerootPending ||
+        nodeInfo.parentNodeId === undefined
+      ) {
+        return;
+      }
+      rerootPending = true;
+      rerootButton.disabled = true;
+      void (async () => {
+        try {
+          await this.rerootSpatialSkeletonNode(nodeInfo);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          StatusMessage.showTemporaryMessage(
+            `Failed to set node as root: ${message}`,
+          );
+        } finally {
+          rerootPending = false;
+          context.redraw();
+        }
+      })();
+    });
     const deleteDisabledReason =
       skeletonSource === undefined
         ? "Unable to resolve editable skeleton source for the active layer."
@@ -2952,6 +3047,7 @@ export class SegmentationUserLayer extends Base {
         }
       })();
     });
+    summaryRow.appendChild(rerootButton);
     summaryRow.appendChild(deleteButton);
 
     const icon = document.createElement("span");

@@ -253,12 +253,14 @@ export class SpatialSkeletonEditTab extends Tab {
     let navigationAllowed = false;
     let labelEditingAllowed = false;
     let nodeDeletionAllowed = false;
+    let nodeRerootAllowed = false;
     let listCollapsed = true;
     let pendingScrollToSelectedNode = false;
     let refreshRequestId = 0;
     let loadedNodeSummarySuffix = "";
     let hoveredViewerNodeId: number | undefined;
     const pendingDeleteNodes = new Set<number>();
+    const pendingRerootNodes = new Set<number>();
     const pendingTrueEndNodes = new Set<number>();
     const renderedRowsByNodeId = new Map<number, HTMLDivElement>();
     const renderedEntriesByNodeId = new Map<number, HTMLDivElement>();
@@ -314,7 +316,13 @@ export class SpatialSkeletonEditTab extends Tab {
         | "inspectSkeletons"
         | "editNodeLabels"
         | "deleteNodes"
-        | readonly ("inspectSkeletons" | "editNodeLabels" | "deleteNodes")[],
+        | "rerootSkeletons"
+        | readonly (
+            | "inspectSkeletons"
+            | "editNodeLabels"
+            | "deleteNodes"
+            | "rerootSkeletons"
+          )[],
       options: {
         requireVisibleChunks?: boolean;
       } = {},
@@ -766,6 +774,39 @@ export class SpatialSkeletonEditTab extends Tab {
           updateDisplay();
         } finally {
           pendingDeleteNodes.delete(node.nodeId);
+          updateDisplay();
+        }
+      })();
+    };
+
+    const rerootNode = (node: SpatiallyIndexedSkeletonNodeInfo) => {
+      if (
+        !ensureActionsAllowed("rerootSkeletons", {
+          requireVisibleChunks: false,
+        })
+      ) {
+        return;
+      }
+      if (node.parentNodeId === undefined) {
+        StatusMessage.showTemporaryMessage("Selected node is already root.");
+        return;
+      }
+      if (pendingRerootNodes.has(node.nodeId)) {
+        return;
+      }
+      pendingRerootNodes.add(node.nodeId);
+      updateDisplay();
+      void (async () => {
+        try {
+          await layer.rerootSpatialSkeletonNode(node);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          StatusMessage.showTemporaryMessage(
+            `Failed to set node as root: ${message}`,
+          );
+        } finally {
+          pendingRerootNodes.delete(node.nodeId);
           updateDisplay();
         }
       })();
@@ -1302,6 +1343,21 @@ export class SpatialSkeletonEditTab extends Tab {
 
           const actions = document.createElement("div");
           actions.className = "neuroglancer-spatial-skeleton-node-actions";
+          let rerootActionTitle =
+            node.parentNodeId === undefined ? "already root" : "set as root";
+          if (pendingRerootNodes.has(node.nodeId)) {
+            rerootActionTitle = "setting root";
+          }
+          actions.appendChild(
+            makeRowActionButton(
+              svg_origin,
+              rerootActionTitle,
+              () => rerootNode(node),
+              !nodeRerootAllowed ||
+                pendingRerootNodes.has(node.nodeId) ||
+                node.parentNodeId === undefined,
+            ),
+          );
           let deleteActionTitle = "delete node";
           if (pendingDeleteNodes.has(node.nodeId)) {
             deleteActionTitle = "deleting node";
@@ -1548,16 +1604,22 @@ export class SpatialSkeletonEditTab extends Tab {
       const nextNodeDeletionAllowed =
         layer.getSpatialSkeletonActionsDisabledReason("deleteNodes") ===
         undefined;
+      const nextNodeRerootAllowed =
+        layer.getSpatialSkeletonActionsDisabledReason("rerootSkeletons", {
+          requireVisibleChunks: false,
+        }) === undefined;
       const gateStateChanged =
         inspectionAllowed !== nextInspectionAllowed ||
         navigationAllowed !== nextNavigationAllowed ||
         labelEditingAllowed !== nextLabelEditingAllowed ||
-        nodeDeletionAllowed !== nextNodeDeletionAllowed;
+        nodeDeletionAllowed !== nextNodeDeletionAllowed ||
+        nodeRerootAllowed !== nextNodeRerootAllowed;
 
       inspectionAllowed = nextInspectionAllowed;
       navigationAllowed = nextNavigationAllowed;
       labelEditingAllowed = nextLabelEditingAllowed;
       nodeDeletionAllowed = nextNodeDeletionAllowed;
+      nodeRerootAllowed = nextNodeRerootAllowed;
 
       filterInput.disabled = !inspectionAllowed;
       nodeFilterTypeWidget.element.disabled = !inspectionAllowed;

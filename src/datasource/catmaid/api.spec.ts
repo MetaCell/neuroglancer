@@ -116,4 +116,27 @@ describe("CatmaidClient skeleton editing methods", () => {
       skeletonId: 13,
     });
   });
+
+  it("reroots skeletons using treenode ids", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ newroot: 202, skeleton_id: 17 });
+    (client as any).fetch = fetchMock;
+
+    await expect(client.rerootSkeleton(202)).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("skeleton/reroot");
+    expect(
+      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
+        "treenode_id",
+      ),
+    ).toBe("202");
+    expect(
+      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
+        "state",
+      ),
+    ).toBe(JSON.stringify({ nocheck: true }));
+  });
 });

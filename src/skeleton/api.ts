@@ -92,6 +92,7 @@ export interface EditableSpatiallyIndexedSkeletonSource
       childNodeIds?: readonly number[];
     },
   ): Promise<void>;
+  rerootSkeleton?(nodeId: number): Promise<void>;
   updateDescription(
     nodeId: number,
     description: string,

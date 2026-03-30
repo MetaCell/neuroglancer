@@ -112,6 +112,7 @@ describe("layer/segmentation spatial skeleton action gating", () => {
         addNodes: true,
         moveNodes: true,
         deleteNodes: true,
+        rerootSkeletons: true,
         editNodeLabels: true,
         editNodeProperties: true,
         mergeSkeletons: true,
@@ -127,6 +128,11 @@ describe("layer/segmentation spatial skeleton action gating", () => {
       layer.getSpatialSkeletonActionsDisabledReason("mergeSkeletons"),
     ).toBeUndefined();
     expect(
+      layer.getSpatialSkeletonActionsDisabledReason("rerootSkeletons", {
+        requireVisibleChunks: false,
+      }),
+    ).toBeUndefined();
+    expect(
       layer.getSpatialSkeletonActionsDisabledReason(["addNodes", "moveNodes"]),
     ).toBeUndefined();
   });
@@ -138,6 +144,7 @@ describe("layer/segmentation spatial skeleton action gating", () => {
         addNodes: false,
         moveNodes: false,
         deleteNodes: false,
+        rerootSkeletons: false,
         editNodeLabels: false,
         editNodeProperties: false,
         mergeSkeletons: false,
@@ -153,6 +160,33 @@ describe("layer/segmentation spatial skeleton action gating", () => {
         requireVisibleChunks: true,
       }),
     ).toBe("Wait for visible skeleton chunks to load (1/3).");
+  });
+
+  it("reports missing reroot support explicitly", () => {
+    const layer = Object.assign(Object.create(SegmentationUserLayer.prototype), {
+      spatialSkeletonSourceCapabilities: new WatchableValue({
+        inspectSkeletons: true,
+        addNodes: true,
+        moveNodes: true,
+        deleteNodes: true,
+        rerootSkeletons: false,
+        editNodeLabels: true,
+        editNodeProperties: true,
+        mergeSkeletons: true,
+        splitSkeletons: true,
+      }),
+      spatialSkeletonVisibleChunksLoaded: new WatchableValue(true),
+      spatialSkeletonVisibleChunksNeeded: new WatchableValue(0),
+      spatialSkeletonVisibleChunksAvailable: new WatchableValue(0),
+    });
+
+    expect(
+      layer.getSpatialSkeletonActionsDisabledReason("rerootSkeletons", {
+        requireVisibleChunks: false,
+      }),
+    ).toBe(
+      "The active spatial skeleton source does not support skeleton rerooting.",
+    );
   });
 });
 

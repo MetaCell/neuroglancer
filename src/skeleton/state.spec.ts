@@ -16,9 +16,53 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { SpatialSkeletonState } from "#src/skeleton/state.js";
+import {
+  buildSpatiallyIndexedSkeletonNavigationGraph,
+  getFlatListNodeIds,
+  getSkeletonRootNode,
+} from "#src/skeleton/navigation.js";
+import {
+  getSpatiallyIndexedSkeletonSourceCapabilities,
+  isEditableSpatiallyIndexedSkeletonSource,
+  SpatialSkeletonState,
+} from "#src/skeleton/state.js";
 
 describe("skeleton/state", () => {
+  it("detects reroot capability without making it required for editable sources", () => {
+    const editableSource = {
+      getSkeleton: async () => [],
+      addNode: async () => ({ treenodeId: 1, skeletonId: 1 }),
+      moveNode: async () => {},
+      deleteNode: async () => {},
+      updateDescription: async () => {},
+      setTrueEnd: async () => {},
+      removeTrueEnd: async () => {},
+      updateRadius: async () => {},
+      updateConfidence: async () => {},
+      mergeSkeletons: async () => ({
+        resultSkeletonId: 1,
+        deletedSkeletonId: 2,
+        stableAnnotationSwap: false,
+      }),
+      splitSkeleton: async () => ({
+        existingSkeletonId: 1,
+        newSkeletonId: 2,
+      }),
+    };
+
+    expect(isEditableSpatiallyIndexedSkeletonSource(editableSource)).toBe(true);
+    expect(
+      getSpatiallyIndexedSkeletonSourceCapabilities(editableSource)
+        .rerootSkeletons,
+    ).toBe(false);
+    expect(
+      getSpatiallyIndexedSkeletonSourceCapabilities({
+        ...editableSource,
+        rerootSkeleton: async () => {},
+      }).rerootSkeletons,
+    ).toBe(true);
+  });
+
   it("clears the full skeleton cache before notifying node data listeners", () => {
     const state = new SpatialSkeletonState();
     const cachedSegmentId = 11;
@@ -221,5 +265,83 @@ describe("skeleton/state", () => {
 
     expect(state.inspectSegment(11, { secondary: true })).toBe(true);
     expect(state.getInspectedSegmentIds()).toEqual([11]);
+  });
+
+  it("reroots cached segment topology, confidence, and derived ordering", () => {
+    const state = new SpatialSkeletonState();
+    (state as any).fullSegmentNodeCache.set(11, [
+      {
+        nodeId: 1,
+        segmentId: 11,
+        position: new Float32Array([1, 1, 1]),
+        parentNodeId: undefined,
+        confidence: 10,
+      },
+      {
+        nodeId: 2,
+        segmentId: 11,
+        position: new Float32Array([2, 2, 2]),
+        parentNodeId: 1,
+        confidence: 20,
+      },
+      {
+        nodeId: 3,
+        segmentId: 11,
+        position: new Float32Array([3, 3, 3]),
+        parentNodeId: 2,
+        confidence: 30,
+      },
+      {
+        nodeId: 4,
+        segmentId: 11,
+        position: new Float32Array([4, 4, 4]),
+        parentNodeId: 2,
+        confidence: 40,
+      },
+      {
+        nodeId: 5,
+        segmentId: 11,
+        position: new Float32Array([5, 5, 5]),
+        parentNodeId: 1,
+        confidence: 50,
+      },
+    ]);
+    (state as any).nodePropertyOverrides.set(2, {
+      radius: 7,
+      confidence: 20,
+    });
+    (state as any).rebuildCachedNodesById();
+
+    expect(state.rerootCachedSegment(3)).toBe(true);
+
+    const cachedNodes = state.getCachedSegmentNodes(11)!;
+    expect(cachedNodes.find((node) => node.nodeId === 3)).toMatchObject({
+      parentNodeId: undefined,
+      confidence: 100,
+    });
+    expect(cachedNodes.find((node) => node.nodeId === 2)).toMatchObject({
+      parentNodeId: 3,
+      confidence: 30,
+    });
+    expect(cachedNodes.find((node) => node.nodeId === 1)).toMatchObject({
+      parentNodeId: 2,
+      confidence: 20,
+    });
+    expect(cachedNodes.find((node) => node.nodeId === 4)).toMatchObject({
+      parentNodeId: 2,
+      confidence: 40,
+    });
+    expect(cachedNodes.find((node) => node.nodeId === 5)).toMatchObject({
+      parentNodeId: 1,
+      confidence: 50,
+    });
+    expect(state.getNodePropertyOverride(2)).toEqual({
+      radius: 7,
+      confidence: 30,
+    });
+
+    const graph = buildSpatiallyIndexedSkeletonNavigationGraph(cachedNodes);
+    expect(getSkeletonRootNode(graph).nodeId).toBe(3);
+    expect(getFlatListNodeIds(graph)).toEqual([3, 2, 4, 1, 5]);
   });
 });

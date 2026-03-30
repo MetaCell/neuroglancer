@@ -184,6 +184,10 @@ export class CatmaidSpatiallyIndexedSkeletonSource
     return this.client.deleteNode(nodeId, options);
   }
 
+  rerootSkeleton(nodeId: number): Promise<void> {
+    return this.client.rerootSkeleton(nodeId);
+  }
+
   updateDescription(
     nodeId: number,
     description: string,
