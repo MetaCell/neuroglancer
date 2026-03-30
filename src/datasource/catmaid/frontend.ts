@@ -33,6 +33,7 @@ import type {
   SpatiallyIndexedSkeletonNavigationTarget,
   SpatiallyIndexedSkeletonNode,
   SpatiallyIndexedSkeletonOpenLeaf,
+  SpatiallyIndexedSkeletonPropertyEditingOptions,
   SpatiallyIndexedSkeletonSplitResult,
 } from "#src/skeleton/api.js";
 import { WithParameters } from "#src/chunk_manager/frontend.js";
@@ -47,7 +48,12 @@ import {
   CatmaidDataSourceParameters,
 } from "#src/datasource/catmaid/base.js";
 import { mat4, vec3 } from "#src/util/geom.js";
-import { CatmaidClient } from "#src/datasource/catmaid/api.js";
+import {
+  CatmaidClient,
+  CATMAID_CONFIDENCE_VALUES,
+  CatmaidToken,
+  credentialsKey,
+} from "#src/datasource/catmaid/api.js";
 import { DataType } from "#src/util/data_type.js";
 import { ChunkLayout } from "#src/sliceview/chunk_layout.js";
 import type { SliceViewSourceOptions } from "#src/sliceview/base.js";
@@ -57,7 +63,6 @@ import {
   SegmentPropertyMap,
   normalizeInlineSegmentPropertyMap,
 } from "#src/segmentation_display_state/property_map.js";
-import { CatmaidToken, credentialsKey } from "#src/datasource/catmaid/api.js";
 import { CredentialsProvider } from "#src/credentials_provider/index.js";
 import { WithCredentialsProvider } from "#src/credentials_provider/chunk_source_frontend.js";
 import { SliceViewSingleResolutionSource } from "#src/sliceview/frontend.js";
@@ -66,6 +71,13 @@ import { Borrowed } from "#src/util/disposable.js";
 import "#src/datasource/catmaid/register_credentials_provider.js";
 
 const METERS_PER_NANOMETER = 1e-9;
+
+const CATMAID_SPATIALLY_INDEXED_SKELETON_PROPERTY_EDITING_OPTIONS: SpatiallyIndexedSkeletonPropertyEditingOptions =
+  {
+    confidence: {
+      values: CATMAID_CONFIDENCE_VALUES,
+    },
+  };
 
 export class CatmaidSpatiallyIndexedSkeletonSource
   extends WithParameters(
@@ -97,6 +109,10 @@ export class CatmaidSpatiallyIndexedSkeletonSource
   }
   static encodeOptions(options: any) {
     return super.encodeOptions(options);
+  }
+
+  getPropertyEditingOptions(): SpatiallyIndexedSkeletonPropertyEditingOptions {
+    return CATMAID_SPATIALLY_INDEXED_SKELETON_PROPERTY_EDITING_OPTIONS;
   }
 
   listSkeletons(): Promise<number[]> {

@@ -16,6 +16,7 @@
 
 import type {
   EditableSpatiallyIndexedSkeletonSource,
+  SpatiallyIndexedSkeletonPropertyEditingOptions,
   SpatiallyIndexedSkeletonNode,
 } from "#src/skeleton/api.js";
 import type {
@@ -52,6 +53,10 @@ export interface SpatiallyIndexedSkeletonInspectionSource {
 
 export interface SpatiallyIndexedSkeletonRerootSource {
   rerootSkeleton(nodeId: number): Promise<void>;
+}
+
+export interface SpatiallyIndexedSkeletonPropertyEditingOptionsSource {
+  getPropertyEditingOptions(): SpatiallyIndexedSkeletonPropertyEditingOptions;
 }
 
 export const NO_SPATIALLY_INDEXED_SKELETON_SOURCE_CAPABILITIES: SpatiallyIndexedSkeletonSourceCapabilities =
@@ -119,6 +124,17 @@ export function getSpatiallyIndexedSkeletonRerootSource(
   return hasFunction(value.source, "rerootSkeleton")
     ? (value.source as SpatiallyIndexedSkeletonRerootSource)
     : undefined;
+}
+
+export function getSpatiallyIndexedSkeletonPropertyEditingOptions(
+  value: SpatialSkeletonSourceAccess | undefined,
+): SpatiallyIndexedSkeletonPropertyEditingOptions | undefined {
+  if (value === undefined || !hasFunction(value.source, "getPropertyEditingOptions")) {
+    return undefined;
+  }
+  return (
+    value.source as SpatiallyIndexedSkeletonPropertyEditingOptionsSource
+  ).getPropertyEditingOptions();
 }
 
 export function getSpatiallyIndexedSkeletonSourceCapabilities(
@@ -713,7 +729,9 @@ export class SpatialSkeletonState extends RefCounted {
     });
   }
 
-  rerootCachedSegment(nodeId: number) {
+  rerootCachedSegment(
+    nodeId: number,
+  ) {
     const normalizedNodeId = this.normalizeNodeId(nodeId);
     if (normalizedNodeId === undefined) {
       return false;

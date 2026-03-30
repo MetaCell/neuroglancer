@@ -131,6 +131,7 @@ import {
   hasSpatiallyIndexedSkeletonSourceCapability,
   getEditableSpatiallyIndexedSkeletonSource,
   getSpatiallyIndexedSkeletonInspectionSource,
+  getSpatiallyIndexedSkeletonPropertyEditingOptions,
   getSpatiallyIndexedSkeletonRerootSource,
   type SpatiallyIndexedSkeletonSourceCapabilities,
   type SpatiallyIndexedSkeletonSourceCapability,
@@ -2923,6 +2924,11 @@ export class SegmentationUserLayer extends Base {
       skeletonLayer === undefined
         ? undefined
         : getEditableSpatiallyIndexedSkeletonSource(skeletonLayer);
+    const propertyEditingOptions =
+      skeletonLayer === undefined
+        ? undefined
+        : getSpatiallyIndexedSkeletonPropertyEditingOptions(skeletonLayer);
+    const confidenceEditingOptions = propertyEditingOptions?.confidence;
     const skeletonRerootSource =
       skeletonLayer === undefined
         ? undefined
@@ -3245,39 +3251,61 @@ export class SegmentationUserLayer extends Base {
       appendValue("Node type", nodeTypeLabel);
     }
     let committedRadius = nodeInfo.radius ?? 0;
-    let committedConfidence = nodeInfo.confidence ?? 0;
+    let committedConfidence =
+      nodeInfo.confidence !== undefined && Number.isFinite(nodeInfo.confidence)
+        ? Number(nodeInfo.confidence)
+        : 0;
     const radiusInput = document.createElement("input");
     radiusInput.className = "neuroglancer-spatial-skeleton-properties-input";
     radiusInput.type = "number";
     radiusInput.step = "any";
     radiusInput.value = formatSpatialSkeletonEditableNumber(nodeInfo.radius);
     appendValue("Radius", radiusInput);
-    const confidenceInput = document.createElement("input");
-    confidenceInput.className =
-      "neuroglancer-spatial-skeleton-properties-input";
-    confidenceInput.type = "number";
-    confidenceInput.min = "0";
-    confidenceInput.max = "100";
-    confidenceInput.step = "any";
-    confidenceInput.value = formatSpatialSkeletonEditableNumber(
-      nodeInfo.confidence,
+    const supportedConfidenceValues = (confidenceEditingOptions?.values ?? []).filter(
+      (value): value is number => Number.isFinite(value),
     );
-    appendValue("Confidence level", confidenceInput);
+    const confidenceSelectValues = Array.from(
+      new Set([...supportedConfidenceValues, committedConfidence]),
+    );
+    const confidenceOptionsAvailable =
+      confidenceEditingOptions !== undefined &&
+      supportedConfidenceValues.length !== 0;
+    const confidenceControl = document.createElement("select");
+    confidenceControl.className =
+      "neuroglancer-spatial-skeleton-properties-input";
+    for (const value of confidenceSelectValues) {
+      const option = document.createElement("option");
+      option.value = value.toString();
+      option.textContent = formatSpatialSkeletonEditableNumber(value);
+      confidenceControl.appendChild(option);
+    }
+    confidenceControl.value = committedConfidence.toString();
+    appendValue("Confidence level", confidenceControl);
     let savePending = false;
     const getPropertyEditingDisabledReason = () =>
       skeletonSource === undefined
         ? "Unable to resolve editable skeleton source for the active layer."
         : this.getSpatialSkeletonActionsDisabledReason("editNodeProperties");
+    const getConfidenceEditingDisabledReason = () => {
+      const disabledReason = getPropertyEditingDisabledReason();
+      if (disabledReason !== undefined) {
+        return disabledReason;
+      }
+      if (!confidenceOptionsAvailable) {
+        return "Unable to resolve supported confidence values for the active layer.";
+      }
+      return undefined;
+    };
     const setPropertyInputValidity = (
-      input: HTMLInputElement,
+      input: HTMLInputElement | HTMLSelectElement,
       valid: boolean,
       invalidTitle: string,
+      disabledReason: string | undefined,
     ) => {
       input.classList.toggle(
         "neuroglancer-spatial-skeleton-properties-input-invalid",
         !valid,
       );
-      const disabledReason = getPropertyEditingDisabledReason();
       if (disabledReason !== undefined) {
         input.title = disabledReason;
       } else if (!valid) {
@@ -3286,46 +3314,57 @@ export class SegmentationUserLayer extends Base {
         input.removeAttribute("title");
       }
     };
+    const getConfidenceValidationError = (confidence: number) => {
+      if (!Number.isFinite(confidence)) {
+        return "Confidence must be a finite number.";
+      }
+      return confidenceSelectValues.includes(confidence)
+        ? undefined
+        : "Confidence must use one of the values supported by the active source.";
+    };
     const getParsedProperties = () => {
       const radius = Number(radiusInput.value);
-      const confidence = Number(confidenceInput.value);
+      const confidence = Number(confidenceControl.value);
       const radiusValid = Number.isFinite(radius);
-      const confidenceValid =
-        Number.isFinite(confidence) && confidence >= 0 && confidence <= 100;
+      const confidenceInvalidTitle = getConfidenceValidationError(confidence);
       return {
         radius,
         confidence,
         radiusValid,
-        confidenceValid,
+        confidenceValid: confidenceInvalidTitle === undefined,
+        confidenceInvalidTitle,
       };
     };
     const updatePropertyEditorState = () => {
-      const disabledReason = getPropertyEditingDisabledReason();
-      const { radiusValid, confidenceValid } = getParsedProperties();
-      const editable = disabledReason === undefined && !savePending;
-      radiusInput.disabled = !editable;
-      confidenceInput.disabled = !editable;
+      const radiusDisabledReason = getPropertyEditingDisabledReason();
+      const confidenceDisabledReason = getConfidenceEditingDisabledReason();
+      const { radiusValid, confidenceValid, confidenceInvalidTitle } =
+        getParsedProperties();
+      radiusInput.disabled = radiusDisabledReason !== undefined || savePending;
+      confidenceControl.disabled =
+        confidenceDisabledReason !== undefined || savePending;
       setPropertyInputValidity(
         radiusInput,
         radiusValid,
         "Radius must be a finite number.",
+        radiusDisabledReason,
       );
       setPropertyInputValidity(
-        confidenceInput,
+        confidenceControl,
         confidenceValid,
-        "Confidence must be between 0 and 100.",
+        confidenceInvalidTitle ?? "Confidence is invalid.",
+        confidenceDisabledReason,
       );
     };
     const resetPropertyInputs = () => {
       radiusInput.value = formatSpatialSkeletonEditableNumber(committedRadius);
-      confidenceInput.value =
-        formatSpatialSkeletonEditableNumber(committedConfidence);
+      confidenceControl.value = committedConfidence.toString();
       updatePropertyEditorState();
     };
     const handlePropertyInputKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Enter") return;
       event.preventDefault();
-      (event.currentTarget as HTMLInputElement).blur();
+      (event.currentTarget as HTMLElement | null)?.blur();
     };
     const commitProperties = () => {
       if (savePending) return;
@@ -3335,11 +3374,16 @@ export class SegmentationUserLayer extends Base {
         resetPropertyInputs();
         return;
       }
-      const { radius, confidence, radiusValid, confidenceValid } =
-        getParsedProperties();
+      const {
+        radius,
+        confidence,
+        radiusValid,
+        confidenceValid,
+        confidenceInvalidTitle,
+      } = getParsedProperties();
       if (!radiusValid || !confidenceValid) {
         StatusMessage.showTemporaryMessage(
-          "Enter a valid radius and a confidence between 0 and 100.",
+          confidenceInvalidTitle ?? "Enter a valid radius and confidence.",
         );
         resetPropertyInputs();
         return;
@@ -3347,7 +3391,7 @@ export class SegmentationUserLayer extends Base {
       const radiusChanged = radius !== committedRadius;
       const confidenceChanged = confidence !== committedConfidence;
       if (!radiusChanged && !confidenceChanged) {
-        updatePropertyEditorState();
+        resetPropertyInputs();
         return;
       }
       savePending = true;
@@ -3358,7 +3402,10 @@ export class SegmentationUserLayer extends Base {
             await skeletonSource!.updateRadius(nodeInfo.nodeId, radius);
           }
           if (confidenceChanged) {
-            await skeletonSource!.updateConfidence(nodeInfo.nodeId, confidence);
+            await skeletonSource!.updateConfidence(
+              nodeInfo.nodeId,
+              confidence,
+            );
           }
           committedRadius = radius;
           committedConfidence = confidence;
@@ -3366,6 +3413,7 @@ export class SegmentationUserLayer extends Base {
             radius,
             confidence,
           });
+          resetPropertyInputs();
           this.markSpatialSkeletonNodeDataChanged({
             invalidateFullSkeletonCache: false,
           });
@@ -3386,11 +3434,9 @@ export class SegmentationUserLayer extends Base {
       })();
     };
     radiusInput.addEventListener("input", updatePropertyEditorState);
-    confidenceInput.addEventListener("input", updatePropertyEditorState);
     radiusInput.addEventListener("keydown", handlePropertyInputKeyDown);
-    confidenceInput.addEventListener("keydown", handlePropertyInputKeyDown);
     radiusInput.addEventListener("change", commitProperties);
-    confidenceInput.addEventListener("change", commitProperties);
+    confidenceControl.addEventListener("change", commitProperties);
     updatePropertyEditorState();
     if (this.spatialSkeletonTreeEndNodeId.value === nodeId) {
       appendValue("Branch", "Current tree-end anchor");

@@ -52,6 +52,14 @@ export interface SpatiallyIndexedSkeletonDescriptionUpdateOptions {
   trueEnd: boolean;
 }
 
+export interface SpatiallyIndexedSkeletonConfidencePropertyEditingOptions {
+  values: readonly number[];
+}
+
+export interface SpatiallyIndexedSkeletonPropertyEditingOptions {
+  confidence?: SpatiallyIndexedSkeletonConfidencePropertyEditingOptions;
+}
+
 export interface SpatiallyIndexedSkeletonSource {
   listSkeletons(): Promise<number[]>;
   getSkeleton(skeletonId: number): Promise<SpatiallyIndexedSkeletonNode[]>;
@@ -77,6 +85,7 @@ export interface SpatiallyIndexedSkeletonSource {
 
 export interface EditableSpatiallyIndexedSkeletonSource
   extends SpatiallyIndexedSkeletonSource {
+  getPropertyEditingOptions?(): SpatiallyIndexedSkeletonPropertyEditingOptions;
   addNode(
     skeletonId: number,
     x: number,

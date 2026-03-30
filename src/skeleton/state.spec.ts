@@ -267,6 +267,33 @@ describe("skeleton/state", () => {
     expect(state.getInspectedSegmentIds()).toEqual([11]);
   });
 
+  it("stores provided confidence when setting properties", () => {
+    const state = new SpatialSkeletonState();
+    (state as any).fullSegmentNodeCache.set(11, [
+      {
+        nodeId: 1,
+        segmentId: 11,
+        position: new Float32Array([1, 2, 3]),
+        parentNodeId: undefined,
+        radius: 4,
+        confidence: 50,
+      },
+    ]);
+    (state as any).rebuildCachedNodesById();
+
+    expect(state.setNodeProperties(1, { radius: 6, confidence: 63 })).toBe(
+      true,
+    );
+    expect(state.getCachedNode(1)).toMatchObject({
+      radius: 6,
+      confidence: 63,
+    });
+    expect(state.getNodePropertyOverride(1)).toEqual({
+      radius: 6,
+      confidence: 63,
+    });
+  });
+
   it("reroots cached segment topology, confidence, and derived ordering", () => {
     const state = new SpatialSkeletonState();
     (state as any).fullSegmentNodeCache.set(11, [
@@ -275,7 +302,7 @@ describe("skeleton/state", () => {
         segmentId: 11,
         position: new Float32Array([1, 1, 1]),
         parentNodeId: undefined,
-        confidence: 10,
+        confidence: 80,
       },
       {
         nodeId: 2,
@@ -289,7 +316,7 @@ describe("skeleton/state", () => {
         segmentId: 11,
         position: new Float32Array([3, 3, 3]),
         parentNodeId: 2,
-        confidence: 30,
+        confidence: 10,
       },
       {
         nodeId: 4,
@@ -321,7 +348,7 @@ describe("skeleton/state", () => {
     });
     expect(cachedNodes.find((node) => node.nodeId === 2)).toMatchObject({
       parentNodeId: 3,
-      confidence: 30,
+      confidence: 10,
     });
     expect(cachedNodes.find((node) => node.nodeId === 1)).toMatchObject({
       parentNodeId: 2,
@@ -337,7 +364,7 @@ describe("skeleton/state", () => {
     });
     expect(state.getNodePropertyOverride(2)).toEqual({
       radius: 7,
-      confidence: 30,
+      confidence: 10,
     });
 
     const graph = buildSpatiallyIndexedSkeletonNavigationGraph(cachedNodes);

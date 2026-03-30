@@ -185,15 +185,39 @@ async function tryReadErrorPayload(
   }
 }
 
+export const CATMAID_CONFIDENCE_VALUES = [0, 25, 50, 75, 100] as const;
+
 function mapCatmaidConfidenceToPercent(confidence: number | undefined) {
   if (confidence === undefined) return undefined;
-  const normalized = Math.max(1, Math.min(5, confidence));
-  return ((normalized - 1) / 4) * 100;
+  const normalized = Math.max(
+    1,
+    Math.min(CATMAID_CONFIDENCE_VALUES.length, Math.round(confidence)),
+  );
+  return CATMAID_CONFIDENCE_VALUES[normalized - 1];
 }
 
 function mapPercentConfidenceToCatmaid(confidence: number) {
-  const normalized = Math.max(0, Math.min(100, confidence));
-  return Math.round(1 + (normalized / 100) * 4);
+  const normalized = Math.max(
+    CATMAID_CONFIDENCE_VALUES[0],
+    Math.min(
+      CATMAID_CONFIDENCE_VALUES[CATMAID_CONFIDENCE_VALUES.length - 1],
+      confidence,
+    ),
+  );
+  let bestIndex = 0;
+  let bestDistance = Math.abs(CATMAID_CONFIDENCE_VALUES[0] - normalized);
+  for (let i = 1; i < CATMAID_CONFIDENCE_VALUES.length; ++i) {
+    const candidate = CATMAID_CONFIDENCE_VALUES[i];
+    const distance = Math.abs(candidate - normalized);
+    if (
+      distance < bestDistance ||
+      (distance === bestDistance && candidate > CATMAID_CONFIDENCE_VALUES[bestIndex])
+    ) {
+      bestDistance = distance;
+      bestIndex = i;
+    }
+  }
+  return bestIndex + 1;
 }
 
 export function getCatmaidProjectSpaceBounds(info: CatmaidStackInfo): {
