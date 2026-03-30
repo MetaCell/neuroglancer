@@ -688,6 +688,16 @@ export class SpatialSkeletonEditTab extends Tab {
       return childNodeIds;
     };
 
+    const getParentNode = (node: SpatiallyIndexedSkeletonNodeInfo) => {
+      const parentNodeId = node.parentNodeId;
+      if (parentNodeId === undefined) {
+        return undefined;
+      }
+      return nodesBySegment
+        .get(node.segmentId)
+        ?.find((candidate) => candidate.nodeId === parentNodeId);
+    };
+
     const deleteNode = (node: SpatiallyIndexedSkeletonNodeInfo) => {
       if (!ensureActionsAllowed("deleteNodes")) return;
       if (
@@ -733,6 +743,7 @@ export class SpatialSkeletonEditTab extends Tab {
         updateDisplay();
         try {
           const directChildNodeIds = getDirectChildNodeIds(node);
+          const parentNode = getParentNode(node);
           const deletingIsolatedRoot =
             node.parentNodeId === undefined && directChildNodeIds.length === 0;
           await skeletonSource.deleteNode(node.nodeId, {
@@ -748,7 +759,12 @@ export class SpatialSkeletonEditTab extends Tab {
               { deselect: true },
             );
           }
-          if (layer.selectedSpatialSkeletonNodeId.value === node.nodeId) {
+          if (parentNode !== undefined) {
+            selectNode(parentNode, {
+              moveView: true,
+              pin: layer.manager.root.selectionState.pin.value,
+            });
+          } else if (layer.selectedSpatialSkeletonNodeId.value === node.nodeId) {
             layer.clearSpatialSkeletonNodeSelection(false);
           }
           if (layer.spatialSkeletonTreeEndNodeId.value === node.nodeId) {

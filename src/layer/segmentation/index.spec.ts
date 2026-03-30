@@ -191,3 +191,48 @@ describe("layer/segmentation spatial skeleton selection serialization", () => {
     });
   });
 });
+
+describe("layer/segmentation spatial skeleton node navigation helpers", () => {
+  it("selects and moves to the provided node, or clears selection when absent", () => {
+    const selectSpatialSkeletonNode = vi.fn();
+    const moveViewToSpatialSkeletonNodePosition = vi.fn();
+    const clearSpatialSkeletonNodeSelection = vi.fn();
+    const layer = Object.assign(Object.create(SegmentationUserLayer.prototype), {
+      selectSpatialSkeletonNode,
+      moveViewToSpatialSkeletonNodePosition,
+      clearSpatialSkeletonNodeSelection,
+    });
+    Object.defineProperty(layer, "manager", {
+      value: {
+        root: {
+          selectionState: {
+            pin: {
+              value: true,
+            },
+          },
+        },
+      },
+      configurable: true,
+    });
+    const node = {
+      nodeId: 31,
+      segmentId: 9,
+      position: new Float32Array([4, 5, 6]),
+    };
+
+    expect(layer.selectAndMoveToSpatialSkeletonNode(node)).toBe(true);
+    expect(selectSpatialSkeletonNode).toHaveBeenCalledWith(31, true, {
+      segmentId: 9,
+      position: new Float32Array([4, 5, 6]),
+    });
+    expect(moveViewToSpatialSkeletonNodePosition).toHaveBeenCalledWith(
+      node.position,
+    );
+    expect(clearSpatialSkeletonNodeSelection).not.toHaveBeenCalled();
+
+    expect(layer.selectAndMoveToSpatialSkeletonNode(undefined, false)).toBe(
+      false,
+    );
+    expect(clearSpatialSkeletonNodeSelection).toHaveBeenCalledWith(false);
+  });
+});

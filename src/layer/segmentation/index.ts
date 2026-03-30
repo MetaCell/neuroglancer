@@ -1363,6 +1363,30 @@ export class SegmentationUserLayer extends Base {
     return result;
   }
 
+  moveViewToSpatialSkeletonNodePosition(position: ArrayLike<number>) {
+    const globalPosition = this.manager.root.globalPosition;
+    const nextGlobal = globalPosition.value.slice();
+    const globalRank = Math.min(nextGlobal.length, 3);
+    for (let i = 0; i < globalRank; ++i) {
+      const value = Number(position[i]);
+      if (Number.isFinite(value)) {
+        nextGlobal[i] = value;
+      }
+    }
+    globalPosition.value = nextGlobal;
+
+    const localPosition = this.localPosition;
+    const nextLocal = localPosition.value.slice();
+    const localRank = Math.min(nextLocal.length, 3);
+    for (let i = 0; i < localRank; ++i) {
+      const value = Number(position[i]);
+      if (Number.isFinite(value)) {
+        nextLocal[i] = value;
+      }
+    }
+    localPosition.value = nextLocal;
+  }
+
   selectSpatialSkeletonNode = (
     nodeId: number,
     pin: boolean | "toggle" = false,
@@ -1402,6 +1426,24 @@ export class SegmentationUserLayer extends Base {
       { position: selectedGlobalPosition },
     );
   };
+
+  selectAndMoveToSpatialSkeletonNode(
+    node:
+      | Pick<SpatiallyIndexedSkeletonNodeInfo, "nodeId" | "segmentId" | "position">
+      | undefined,
+    pin: boolean | "toggle" = this.manager.root.selectionState.pin.value,
+  ) {
+    if (node === undefined) {
+      this.clearSpatialSkeletonNodeSelection(pin);
+      return false;
+    }
+    this.selectSpatialSkeletonNode(node.nodeId, pin, {
+      segmentId: node.segmentId,
+      position: node.position,
+    });
+    this.moveViewToSpatialSkeletonNodePosition(node.position);
+    return true;
+  }
 
   inspectSpatialSkeletonSegment = (
     segmentId: number,
@@ -2859,6 +2901,12 @@ export class SegmentationUserLayer extends Base {
       ) {
         return;
       }
+      const parentNodeInfo =
+        nodeInfo.parentNodeId === undefined
+          ? undefined
+          : segmentNodes?.find(
+              (candidate) => candidate.nodeId === nodeInfo.parentNodeId,
+            );
       const dialog = new SpatialSkeletonConfirmDialog({
         title: "Confirm node deletion",
         message: "",
@@ -2882,7 +2930,6 @@ export class SegmentationUserLayer extends Base {
             parentNodeId: nodeInfo.parentNodeId,
             childNodeIds: directChildNodeIds,
           });
-          this.clearSpatialSkeletonNodeSelection(true);
           if (this.spatialSkeletonTreeEndNodeId.value === nodeInfo.nodeId) {
             this.spatialSkeletonTreeEndNodeId.value = undefined;
           }
@@ -2890,6 +2937,10 @@ export class SegmentationUserLayer extends Base {
             parentNodeId: nodeInfo.parentNodeId,
             childNodeIds: directChildNodeIds,
           });
+          this.selectAndMoveToSpatialSkeletonNode(
+            parentNodeInfo,
+            this.manager.root.selectionState.pin.value,
+          );
           const remainingSegmentNodes =
             this.spatialSkeletonState.getCachedSegmentNodes(
               nodeInfo.segmentId,
