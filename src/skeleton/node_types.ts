@@ -28,6 +28,7 @@ export enum SpatialSkeletonNodeFilterType {
   LEAF,
   VIRTUAL_END,
   TRUE_END,
+  HAS_DESCRIPTION,
 }
 
 const CLOSED_END_LABEL_PATTERNS = [
@@ -100,6 +101,8 @@ export function getSpatialSkeletonNodeFilterLabel(
       return "Virtual end";
     case SpatialSkeletonNodeFilterType.TRUE_END:
       return "True end";
+    case SpatialSkeletonNodeFilterType.HAS_DESCRIPTION:
+      return "Has description";
   }
 }
 
@@ -107,6 +110,7 @@ export function matchesSpatialSkeletonNodeFilter(
   filterType: SpatialSkeletonNodeFilterType,
   options: {
     isLeaf: boolean;
+    nodeHasDescription: boolean;
     nodeIsTrueEnd: boolean;
     nodeType: SpatialSkeletonDisplayNodeType;
   },
@@ -120,6 +124,8 @@ export function matchesSpatialSkeletonNodeFilter(
       return options.isLeaf && !options.nodeIsTrueEnd;
     case SpatialSkeletonNodeFilterType.TRUE_END:
       return options.nodeIsTrueEnd;
+    case SpatialSkeletonNodeFilterType.HAS_DESCRIPTION:
+      return options.nodeHasDescription;
   }
 }
 

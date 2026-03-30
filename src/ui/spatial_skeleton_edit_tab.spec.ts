@@ -115,4 +115,36 @@ describe("spatial skeleton edit tab render state", () => {
     expect(state.branchCount).toBe(2);
     expect(state.rows.map((row) => row.node.nodeId)).toEqual([21, 22]);
   });
+
+  it("filters to nodes with non-empty descriptions", () => {
+    const graph = buildSpatiallyIndexedSkeletonNavigationGraph([
+      makeNode(30, undefined),
+      makeNode(31, 30),
+      makeNode(32, 30),
+      makeNode(33, 30),
+    ]);
+
+    const state = buildSpatialSkeletonSegmentRenderState(20380, graph, {
+      filterText: "",
+      nodeFilterType: SpatialSkeletonNodeFilterType.HAS_DESCRIPTION,
+      collapseRegularNodes: false,
+      getNodeDescription(node) {
+        switch (node.nodeId) {
+          case 31:
+            return "has description";
+          case 32:
+            return "";
+          case 33:
+            return "   ";
+          default:
+            return undefined;
+        }
+      },
+    });
+
+    expect(state.matchedNodeCount).toBe(1);
+    expect(state.displayedNodeCount).toBe(1);
+    expect(state.branchCount).toBe(1);
+    expect(state.rows.map((row) => row.node.nodeId)).toEqual([31]);
+  });
 });
