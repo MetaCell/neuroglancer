@@ -89,6 +89,7 @@ import {
   emptyToUndefined,
   parseArray,
   parseFixedLengthArray,
+  parseUint64,
   verifyBoolean,
   verifyFiniteFloat,
   verifyInt,
@@ -142,6 +143,8 @@ export interface UserLayerSelectionState {
   annotationSubsource: string | undefined;
   annotationSubsubsourceId: string | undefined;
   annotationPartIndex: number | undefined;
+  spatialSkeletonNodeId: string | undefined;
+  spatialSkeletonSegmentId: string | undefined;
 
   value: any;
 }
@@ -151,6 +154,21 @@ export class LayerActionContext {
   defer(callback: () => void) {
     this.callbacks.push(callback);
   }
+}
+
+function parsePositiveUint64String(value: unknown) {
+  if (typeof value !== "string") {
+    throw new Error(
+      `Expected string-encoded positive uint64 value, but received: ${JSON.stringify(value)}.`,
+    );
+  }
+  const parsedValue = parseUint64(value);
+  if (parsedValue <= 0n) {
+    throw new Error(
+      `Expected positive uint64 value, but received: ${JSON.stringify(value)}.`,
+    );
+  }
+  return parsedValue.toString();
 }
 
 export interface UserLayerTab {
@@ -222,12 +240,16 @@ export class UserLayer extends RefCounted {
     state.annotationPartIndex = undefined;
     state.annotationInstanceIndex = undefined;
     state.annotationInstanceCount = undefined;
+    state.spatialSkeletonNodeId = undefined;
+    state.spatialSkeletonSegmentId = undefined;
     state.value = undefined;
   }
 
   resetSelectionState(state: this["selectionState"]) {
     state.localPositionValid = false;
     state.annotationId = undefined;
+    state.spatialSkeletonNodeId = undefined;
+    state.spatialSkeletonSegmentId = undefined;
     state.value = undefined;
   }
 
@@ -276,6 +298,19 @@ export class UserLayer extends RefCounted {
         verifyString,
       );
     }
+    const spatialSkeletonNodeId = verifyOptionalObjectProperty(
+      json,
+      "spatialSkeletonNodeId",
+      parsePositiveUint64String,
+    );
+    if (spatialSkeletonNodeId !== undefined) {
+      state.spatialSkeletonNodeId = spatialSkeletonNodeId;
+      state.spatialSkeletonSegmentId = verifyOptionalObjectProperty(
+        json,
+        "spatialSkeletonSegmentId",
+        parsePositiveUint64String,
+      );
+    }
 
     state.value = json.value;
   }
@@ -306,6 +341,12 @@ export class UserLayer extends RefCounted {
       json.annotationPart = state.annotationPartIndex;
       json.annotationSource = state.annotationSourceIndex;
       json.annotationSubsource = state.annotationSubsource;
+    }
+    if (state.spatialSkeletonNodeId !== undefined) {
+      json.spatialSkeletonNodeId = state.spatialSkeletonNodeId;
+      if (state.spatialSkeletonSegmentId !== undefined) {
+        json.spatialSkeletonSegmentId = state.spatialSkeletonSegmentId;
+      }
     }
     if (state.value != null) {
       json.value = state.value;
@@ -353,6 +394,8 @@ export class UserLayer extends RefCounted {
     dest.annotationSourceIndex = source.annotationSourceIndex;
     dest.annotationSubsource = source.annotationSubsource;
     dest.annotationPartIndex = source.annotationPartIndex;
+    dest.spatialSkeletonNodeId = source.spatialSkeletonNodeId;
+    dest.spatialSkeletonSegmentId = source.spatialSkeletonSegmentId;
     dest.value = source.value;
   }
 
@@ -1119,6 +1162,8 @@ export interface PickState {
   pickedRenderLayer: RenderLayer | null;
   pickedValue: bigint;
   pickedOffset: number;
+  pickedSpatialSkeletonNodeId: number | undefined;
+  pickedSpatialSkeletonSegmentId: number | undefined;
   pickedAnnotationLayer: AnnotationLayerState | undefined;
   pickedAnnotationId: string | undefined;
   pickedAnnotationBuffer: ArrayBuffer | undefined;
@@ -1140,6 +1185,8 @@ export class MouseSelectionState implements PickState {
   pickedRenderLayer: RenderLayer | null = null;
   pickedValue = 0n;
   pickedOffset = 0;
+  pickedSpatialSkeletonNodeId: number | undefined = undefined;
+  pickedSpatialSkeletonSegmentId: number | undefined = undefined;
   pickedAnnotationLayer: AnnotationLayerState | undefined = undefined;
   pickedAnnotationId: string | undefined = undefined;
   pickedAnnotationBuffer: ArrayBuffer | undefined = undefined;
@@ -1383,7 +1430,8 @@ export class TrackableDataSelectionState
   captureSingleLayerState<T extends UserLayer>(
     userLayer: Borrowed<T>,
     capture: (state: T["selectionState"]) => boolean,
-    pin: boolean | "toggle" = true,
+    pin: boolean | "toggle" | "force-unpin" = true,
+    options: { position?: ArrayLike<number> } = {},
   ) {
     if (pin === false && (!this.location.visible || this.pin.value)) return;
     const state = {} as UserLayerSelectionState;
@@ -1394,11 +1442,16 @@ export class TrackableDataSelectionState
         this.pin.value = true;
       } else if (pin === "toggle") {
         this.pin.value = !this.pin.value;
+      } else if (pin === "force-unpin") {
+        this.pin.value = false;
       }
       this.value = {
         layers: [{ layer: userLayer, state }],
         coordinateSpace: this.coordinateSpace.value,
-        position: undefined,
+        position:
+          options.position === undefined
+            ? undefined
+            : new Float32Array(options.position),
       };
     }
   }
@@ -1443,10 +1496,11 @@ export class TrackableDataSelectionState
   select() {
     const { pin } = this;
     this.location.visible = true;
-    pin.value = !pin.value;
-    if (pin.value) {
-      this.capture();
-    }
+    pin.value = true;
+    this.capture();
+  }
+  unpin() {
+    this.pin.value = false;
   }
   capture(canRetain = false) {
     const newValue = capturePersistentViewerSelectionState(

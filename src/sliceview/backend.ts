@@ -27,6 +27,7 @@ import {
   withChunkManager,
 } from "#src/chunk_manager/backend.js";
 import { ChunkPriorityTier, ChunkState } from "#src/chunk_manager/base.js";
+import type { DisplayDimensionRenderInfo } from "#src/navigation_state.js";
 import type { SharedWatchableValue } from "#src/shared_watchable_value.js";
 import type {
   MultiscaleVolumetricDataRenderLayer,
@@ -64,7 +65,6 @@ import {
   registerSharedObject,
   SharedObjectCounterpart,
 } from "#src/worker_rpc.js";
-import type { DisplayDimensionRenderInfo } from "src/navigation_state";
 
 export const BASE_PRIORITY = -1e12;
 export const SCALE_PRIORITY_MULTIPLIER = 1e9;
@@ -78,6 +78,8 @@ class SliceViewCounterpartBase extends SliceViewBase<
   SliceViewChunkSourceBackend,
   SliceViewRenderLayerBackend
 > {
+  protected invalidateVisibleSourcesBound = () => this.invalidateVisibleSources();
+
   constructor(rpc: RPC, options: any) {
     super(rpc.get(options.projectionParameters));
     this.initializeSharedObject(rpc, options.id);
@@ -245,7 +247,10 @@ export class SliceViewBackend extends SliceViewIntermediateBase {
     const layerInfo = visibleLayers.get(layer)!;
     visibleLayers.delete(layer);
     disposeTransformedSources(layerInfo.allSources);
-    layer.renderScaleTarget.changed.remove(this.invalidateVisibleSources);
+    layer.renderScaleTarget.changed.remove(this.invalidateVisibleSourcesBound);
+    for (const watchable of layer.visibleSourcesInvalidation) {
+      watchable.changed.remove(this.invalidateVisibleSourcesBound);
+    }
     layer.localPosition.changed.remove(this.handleLayerChanged);
     this.invalidateVisibleSources();
   }
@@ -269,6 +274,9 @@ export class SliceViewBackend extends SliceViewIntermediateBase {
       layer.renderScaleTarget.changed.add(() =>
         this.invalidateVisibleSources(),
       );
+      for (const watchable of layer.visibleSourcesInvalidation) {
+        watchable.changed.add(this.invalidateVisibleSourcesBound);
+      }
       layer.localPosition.changed.add(this.handleLayerChanged);
     } else {
       disposeTransformedSources(layerInfo.allSources);
@@ -414,6 +422,7 @@ export class SliceViewRenderLayerBackend
 {
   declare rpcId: number;
   renderScaleTarget: SharedWatchableValue<number>;
+  visibleSourcesInvalidation: SharedWatchableValue<unknown>[];
   localPosition: WatchableValueInterface<Float32Array>;
 
   numVisibleChunksNeeded: number;
@@ -425,6 +434,9 @@ export class SliceViewRenderLayerBackend
   constructor(rpc: RPC, options: any) {
     super(rpc, options);
     this.renderScaleTarget = rpc.get(options.renderScaleTarget);
+    this.visibleSourcesInvalidation = (
+      options.visibleSourcesInvalidation ?? []
+    ).map((id: number) => rpc.get(id));
     this.localPosition = rpc.get(options.localPosition);
     this.numVisibleChunksNeeded = 0;
     this.numVisibleChunksAvailable = 0;
