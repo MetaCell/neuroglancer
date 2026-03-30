@@ -346,6 +346,30 @@ function getSpatialSkeletonSegmentChipColors(
   };
 }
 
+function bindSpatialSkeletonSegmentSelection(
+  element: HTMLElement,
+  selectSegment: (id: bigint, pin: true | "force-unpin") => void,
+  segmentId: number,
+) {
+  const id = BigInt(segmentId);
+  const hasSegmentSelectionModifiers = (event: MouseEvent) =>
+    event.ctrlKey && !event.altKey && !event.metaKey;
+  element.addEventListener("mousedown", (event: MouseEvent) => {
+    if (event.button !== 2 || !hasSegmentSelectionModifiers(event)) return;
+    selectSegment(id, event.shiftKey ? "force-unpin" : true);
+    event.preventDefault();
+    event.stopPropagation();
+  });
+  element.addEventListener("contextmenu", (event: MouseEvent) => {
+    if (!hasSegmentSelectionModifiers(event)) return;
+    if (event.button !== 2) {
+      selectSegment(id, event.shiftKey ? "force-unpin" : true);
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  });
+}
+
 export class SegmentationUserLayerGroupState
   extends RefCounted
   implements SegmentationGroupState
@@ -3093,6 +3117,15 @@ export class SegmentationUserLayer extends Base {
     segmentIdChip.textContent = `${nodeInfo.segmentId}`;
     segmentIdChip.style.backgroundColor = segmentChipColors.background;
     segmentIdChip.style.color = segmentChipColors.foreground;
+    segmentIdChip.title =
+      `Segment ${nodeInfo.segmentId}\n` +
+      "Ctrl+right-click to pin selection\n" +
+      "Ctrl+shift+right-click to unpin";
+    bindSpatialSkeletonSegmentSelection(
+      segmentIdChip,
+      this.selectSegment,
+      nodeInfo.segmentId,
+    );
     appendValue("Segment ID", segmentIdChip);
     appendValue("Node ID", `${nodeInfo.nodeId}`);
     const isLeaf =

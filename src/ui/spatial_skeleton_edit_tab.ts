@@ -433,6 +433,36 @@ export class SpatialSkeletonEditTab extends Tab {
       };
     };
 
+    const bindSegmentSelectionControls = (
+      element: HTMLElement,
+      segmentId: number,
+    ) => {
+      const id = BigInt(segmentId);
+      const hasSegmentSelectionModifiers = (event: MouseEvent) =>
+        event.ctrlKey && !event.altKey && !event.metaKey;
+      element.addEventListener("mousedown", (event: MouseEvent) => {
+        if (event.button !== 2 || !hasSegmentSelectionModifiers(event)) {
+          return;
+        }
+        layer.selectSegment(id, event.shiftKey ? "force-unpin" : true);
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      element.addEventListener("contextmenu", (event: MouseEvent) => {
+        if (!hasSegmentSelectionModifiers(event)) return;
+        if (event.button !== 2) {
+          layer.selectSegment(id, event.shiftKey ? "force-unpin" : true);
+        }
+        event.preventDefault();
+        event.stopPropagation();
+      });
+    };
+
+    const getSegmentSelectionTitle = (segmentId: number) =>
+      `segment ${segmentId}\n` +
+      "Ctrl+right-click to pin selection\n" +
+      "Ctrl+shift+right-click to unpin";
+
     const getNodeDescriptionText = (node: SpatiallyIndexedSkeletonNodeInfo) => {
       const localDescription = layer
         .getSpatialSkeletonNodeDescription(node.nodeId)
@@ -1098,7 +1128,8 @@ export class SpatialSkeletonEditTab extends Tab {
         segmentChip.textContent = String(segmentState.segmentId);
         segmentChip.style.backgroundColor = segmentChipColors.background;
         segmentChip.style.color = segmentChipColors.foreground;
-        segmentChip.title = `segment ${segmentState.segmentId}`;
+        segmentChip.title = getSegmentSelectionTitle(segmentState.segmentId);
+        bindSegmentSelectionControls(segmentChip, segmentState.segmentId);
         const segmentName = document.createElement("span");
         segmentName.className = "neuroglancer-spatial-skeleton-show-item-name";
         segmentName.textContent = segmentState.segmentLabel ?? "";
@@ -1171,7 +1202,8 @@ export class SpatialSkeletonEditTab extends Tab {
         segmentChip.textContent = String(segmentState.segmentId);
         segmentChip.style.backgroundColor = segmentChipColors.background;
         segmentChip.style.color = segmentChipColors.foreground;
-        segmentChip.title = `segment ${segmentState.segmentId}`;
+        segmentChip.title = getSegmentSelectionTitle(segmentState.segmentId);
+        bindSegmentSelectionControls(segmentChip, segmentState.segmentId);
         segmentIdCell.appendChild(segmentChip);
         const segmentMeta = document.createElement("div");
         segmentMeta.className =
