@@ -55,18 +55,27 @@ describe("skeleton node types", () => {
   it("matches the dropdown filter semantics", () => {
     const rootLeaf = {
       isLeaf: true,
+      nodeHasDescription: false,
       nodeIsTrueEnd: false,
       nodeType: "root" as const,
     };
     const virtualEnd = {
       isLeaf: true,
+      nodeHasDescription: false,
       nodeIsTrueEnd: false,
       nodeType: "virtualEnd" as const,
     };
     const trueEnd = {
       isLeaf: true,
+      nodeHasDescription: false,
       nodeIsTrueEnd: true,
       nodeType: "virtualEnd" as const,
+    };
+    const describedNode = {
+      isLeaf: false,
+      nodeHasDescription: true,
+      nodeIsTrueEnd: false,
+      nodeType: "regular" as const,
     };
 
     expect(
@@ -99,6 +108,18 @@ describe("skeleton node types", () => {
         trueEnd,
       ),
     ).toBe(true);
+    expect(
+      matchesSpatialSkeletonNodeFilter(
+        SpatialSkeletonNodeFilterType.HAS_DESCRIPTION,
+        describedNode,
+      ),
+    ).toBe(true);
+    expect(
+      matchesSpatialSkeletonNodeFilter(
+        SpatialSkeletonNodeFilterType.HAS_DESCRIPTION,
+        rootLeaf,
+      ),
+    ).toBe(false);
   });
 
   it("reuses the terminal filter enum for row icon decisions", () => {
@@ -123,5 +144,10 @@ describe("skeleton node types", () => {
     expect(
       getSpatialSkeletonNodeFilterLabel(SpatialSkeletonNodeFilterType.TRUE_END),
     ).toBe("True end");
+    expect(
+      getSpatialSkeletonNodeFilterLabel(
+        SpatialSkeletonNodeFilterType.HAS_DESCRIPTION,
+      ),
+    ).toBe("Has description");
   });
 });

@@ -46,6 +46,10 @@ function hasTrueEndLabel(node: SpatiallyIndexedSkeletonNodeInfo) {
   return hasSpatialSkeletonTrueEndLabel(node.labels);
 }
 
+function hasNonEmptyNodeDescription(description: string | undefined) {
+  return (description?.trim().length ?? 0) > 0;
+}
+
 export interface SpatialSkeletonSegmentRenderRow {
   node: SpatiallyIndexedSkeletonNodeInfo;
   type: SkeletonNodeType;
@@ -100,18 +104,16 @@ export function buildSpatialSkeletonSegmentRenderState(
     const parentInTree =
       node.parentNodeId !== undefined && nodeById.has(node.parentNodeId);
     const nodeType = classifyNodeType(node, children.length, parentInTree);
+    const description = options.getNodeDescription(node);
     const visible =
       (options.nodeFilterType === SpatialSkeletonNodeFilterType.NONE ||
         matchesSpatialSkeletonNodeFilter(options.nodeFilterType, {
           isLeaf: children.length === 0,
+          nodeHasDescription: hasNonEmptyNodeDescription(description),
           nodeIsTrueEnd: hasTrueEndLabel(node),
           nodeType,
         })) &&
-      nodeMatchesFilter(
-        node,
-        options.filterText,
-        options.getNodeDescription(node),
-      );
+      nodeMatchesFilter(node, options.filterText, description);
     visibleMemo.set(nodeId, visible);
     return visible;
   };
