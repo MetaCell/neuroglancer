@@ -21,7 +21,6 @@ import {
   getSpatialSkeletonSegmentIdFromLayerSelectionState,
   hasSpatialSkeletonNodeSelection,
 } from "#src/layer/segmentation/selection.js";
-import { Overlay } from "#src/overlay.js";
 import { RenderedDataPanel } from "#src/rendered_data_panel.js";
 import {
   addSegmentToVisibleSets,
@@ -49,24 +48,18 @@ import {
   makeToolActivationStatusMessageWithHeader,
   registerTool,
 } from "#src/ui/tool.js";
-import type {
-  SpatialSkeletonToolPointInfo,
-  SpatialSkeletonToolSummaryRow,
-} from "#src/ui/spatial_skeleton_tool_messages.js";
+import type { SpatialSkeletonToolPointInfo } from "#src/ui/spatial_skeleton_tool_messages.js";
 import {
   SPATIAL_SKELETON_SPLIT_BANNER_MESSAGE,
   getSpatialSkeletonEditBannerMessage,
   getSpatialSkeletonMergeBannerMessage,
-  getSpatialSkeletonMergeConfirmationSummary,
   getSpatialSkeletonToolPointStatusFields,
-  getSpatialSkeletonSplitConfirmationSummary,
 } from "#src/ui/spatial_skeleton_tool_messages.js";
 import type { ActionEvent } from "#src/util/event_action_map.js";
 import { EventActionMap } from "#src/util/event_action_map.js";
 import { removeChildren } from "#src/util/dom.js";
 import type { vec3 } from "#src/util/geom.js";
 import { startRelativeMouseDrag } from "#src/util/mouse_drag.js";
-import { makeCloseButton } from "#src/widget/close_button.js";
 
 export const SPATIAL_SKELETON_EDIT_MODE_TOOL_ID = "spatialSkeletonEditMode";
 export const SPATIAL_SKELETON_MERGE_MODE_TOOL_ID = "spatialSkeletonMergeMode";
@@ -187,127 +180,6 @@ function renderSpatialSkeletonToolStatus(
     point.appendChild(fieldElement);
   }
   body.appendChild(point);
-}
-
-export class SpatialSkeletonConfirmDialog extends Overlay {
-  readonly response: Promise<boolean>;
-  private resolveResponse!: (value: boolean) => void;
-  private settled = false;
-
-  constructor(options: {
-    title: string;
-    message: string;
-    summaryLabel: string;
-    summary: readonly SpatialSkeletonToolSummaryRow[];
-    confirmLabel: string;
-  }) {
-    super();
-    this.content.classList.add("neuroglancer-spatial-skeleton-confirm-dialog");
-
-    const header = document.createElement("div");
-    header.className = "neuroglancer-spatial-skeleton-confirm-dialog-header";
-    this.content.appendChild(header);
-
-    const title = document.createElement("div");
-    title.className = "neuroglancer-spatial-skeleton-confirm-dialog-title";
-    title.textContent = options.title;
-    header.appendChild(title);
-
-    const closeButton = makeCloseButton({
-      title: "Close dialog",
-      onClick: () => this.close(),
-    });
-    closeButton.classList.add(
-      "neuroglancer-spatial-skeleton-confirm-dialog-close",
-    );
-    header.appendChild(closeButton);
-
-    const divider = document.createElement("div");
-    divider.className = "neuroglancer-spatial-skeleton-confirm-dialog-divider";
-    this.content.appendChild(divider);
-
-    const summaryLabel = document.createElement("div");
-    summaryLabel.className =
-      "neuroglancer-spatial-skeleton-confirm-dialog-summary-label";
-    summaryLabel.textContent = options.summaryLabel;
-    this.content.appendChild(summaryLabel);
-
-    if (options.message.trim().length !== 0) {
-      const message = document.createElement("p");
-      message.className =
-        "neuroglancer-spatial-skeleton-confirm-dialog-message";
-      message.textContent = options.message;
-      this.content.appendChild(message);
-    }
-
-    const summary = document.createElement("div");
-    summary.className = "neuroglancer-spatial-skeleton-confirm-dialog-summary";
-    for (const row of options.summary) {
-      const item = document.createElement("div");
-      item.className =
-        "neuroglancer-spatial-skeleton-confirm-dialog-summary-row";
-      for (const field of row.fields) {
-        const fieldElement = document.createElement("span");
-        fieldElement.className =
-          "neuroglancer-spatial-skeleton-confirm-dialog-summary-field";
-        const label = document.createElement("span");
-        label.className =
-          "neuroglancer-spatial-skeleton-confirm-dialog-summary-field-label";
-        if (field.highlight) {
-          label.classList.add(
-            "neuroglancer-spatial-skeleton-confirm-dialog-summary-field-highlight",
-          );
-        }
-        label.textContent = field.label;
-        fieldElement.appendChild(label);
-        const value = document.createElement("span");
-        value.className =
-          "neuroglancer-spatial-skeleton-confirm-dialog-summary-field-value";
-        value.textContent = field.value;
-        fieldElement.appendChild(value);
-        item.appendChild(fieldElement);
-      }
-      summary.appendChild(item);
-    }
-    this.content.appendChild(summary);
-
-    const actions = document.createElement("div");
-    actions.className = "neuroglancer-spatial-skeleton-confirm-dialog-actions";
-    this.content.appendChild(actions);
-
-    const confirmButton = document.createElement("button");
-    confirmButton.type = "button";
-    confirmButton.className =
-      "neuroglancer-spatial-skeleton-confirm-dialog-confirm";
-    confirmButton.textContent = options.confirmLabel;
-    confirmButton.addEventListener("click", () => this.confirm());
-    actions.appendChild(confirmButton);
-
-    this.response = new Promise<boolean>((resolve) => {
-      this.resolveResponse = resolve;
-    });
-    this.keyMap.set("enter", { action: "confirm" });
-    this.registerEventListener(this.container, "action:confirm", (event) => {
-      event.stopPropagation();
-      this.confirm();
-    });
-    queueMicrotask(() => confirmButton.focus());
-  }
-
-  private confirm() {
-    if (this.settled) return;
-    this.settled = true;
-    this.resolveResponse(true);
-    super.close();
-  }
-
-  close() {
-    if (!this.settled) {
-      this.settled = true;
-      this.resolveResponse(false);
-    }
-    super.close();
-  }
 }
 
 abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> {
@@ -1557,7 +1429,6 @@ class SpatialSkeletonMergeModeTool extends SpatialSkeletonToolBase {
     header.textContent = "Spatial skeleton merge mode";
     let pending = false;
     let statusOverride: string | undefined;
-    let confirmDialog: SpatialSkeletonConfirmDialog | undefined;
     const getAnchorNode = () => {
       const nodeId = this.layer.spatialSkeletonState.mergeAnchorNodeId.value;
       const segmentId =
@@ -1603,10 +1474,6 @@ class SpatialSkeletonMergeModeTool extends SpatialSkeletonToolBase {
       "mergeSkeletons",
       setReadyStatus,
     );
-    activation.registerDisposer(() => {
-      confirmDialog?.close();
-      confirmDialog = undefined;
-    });
     activation.registerDisposer(
       this.layer.spatialSkeletonState.mergeAnchorNodeId.changed.add(
         renderStatus,
@@ -1629,7 +1496,7 @@ class SpatialSkeletonMergeModeTool extends SpatialSkeletonToolBase {
         ) {
           return;
         }
-        if (pending || confirmDialog !== undefined) return;
+        if (pending) return;
         const disabledReason =
           this.layer.getSpatialSkeletonActionsDisabledReason("mergeSkeletons");
         if (disabledReason !== undefined) {
@@ -1703,28 +1570,9 @@ class SpatialSkeletonMergeModeTool extends SpatialSkeletonToolBase {
           segmentId: pickedNode.segmentId,
           position: pickedNode.position,
         };
-        const dialog = new SpatialSkeletonConfirmDialog({
-          title: "Confirm skeleton merge",
-          message: "",
-          summaryLabel: "Selected nodes:",
-          summary: getSpatialSkeletonMergeConfirmationSummary(
-            firstNode,
-            secondNode,
-          ),
-          confirmLabel: "Confirm",
-        });
-        confirmDialog = dialog;
+        pending = true;
+        setStatus("Merging selected nodes.");
         void (async () => {
-          const confirmed = await dialog.response;
-          if (confirmDialog === dialog) {
-            confirmDialog = undefined;
-          }
-          if (!confirmed) {
-            setReadyStatus();
-            return;
-          }
-          pending = true;
-          setStatus("Merging selected nodes.");
           try {
             const result = await skeletonSource.mergeSkeletons(
               firstNode.nodeId,
@@ -1788,9 +1636,9 @@ class SpatialSkeletonSplitModeTool extends SpatialSkeletonToolBase {
     const { body, header } =
       makeToolActivationStatusMessageWithHeader(activation);
     header.textContent = "Spatial skeleton split mode";
+    let pending = false;
     let statusOverride: string | undefined;
     let pendingPoint: SpatialSkeletonToolPointInfo | undefined;
-    let confirmDialog: SpatialSkeletonConfirmDialog | undefined;
     const renderStatus = () => {
       renderSpatialSkeletonToolStatus(body, {
         message: statusOverride ?? SPATIAL_SKELETON_SPLIT_BANNER_MESSAGE,
@@ -1821,10 +1669,6 @@ class SpatialSkeletonSplitModeTool extends SpatialSkeletonToolBase {
       "splitSkeletons",
       setReadyStatus,
     );
-    activation.registerDisposer(() => {
-      confirmDialog?.close();
-      confirmDialog = undefined;
-    });
     activation.bindAction(
       "spatial-skeleton-pick-node",
       (event: ActionEvent<MouseEvent>) => {
@@ -1837,7 +1681,7 @@ class SpatialSkeletonSplitModeTool extends SpatialSkeletonToolBase {
         ) {
           return;
         }
-        if (pendingPoint !== undefined || confirmDialog !== undefined) return;
+        if (pending) return;
         const disabledReason =
           this.layer.getSpatialSkeletonActionsDisabledReason("splitSkeletons");
         if (disabledReason !== undefined) {
@@ -1881,24 +1725,9 @@ class SpatialSkeletonSplitModeTool extends SpatialSkeletonToolBase {
           segmentId: pickedNode.segmentId,
           position: pickedNode.position,
         };
-        const dialog = new SpatialSkeletonConfirmDialog({
-          title: "Confirm skeleton split",
-          message: "",
-          summaryLabel: "Selected node:",
-          summary: getSpatialSkeletonSplitConfirmationSummary(point),
-          confirmLabel: "Confirm",
-        });
-        confirmDialog = dialog;
+        pending = true;
+        setStatus("Splitting selected node.", point);
         void (async () => {
-          const confirmed = await dialog.response;
-          if (confirmDialog === dialog) {
-            confirmDialog = undefined;
-          }
-          if (!confirmed) {
-            setReadyStatus();
-            return;
-          }
-          setStatus("Splitting selected node.", point);
           try {
             const result = await skeletonSource.splitSkeleton(
               pickedNode.nodeId,
@@ -1943,6 +1772,7 @@ class SpatialSkeletonSplitModeTool extends SpatialSkeletonToolBase {
               `Failed to split skeleton: ${this.formatError(error)}`,
             );
           } finally {
+            pending = false;
             setReadyStatus();
           }
         })();

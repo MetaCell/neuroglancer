@@ -110,25 +110,3 @@ export function getSpatialSkeletonMergeBannerMessage(
     ? SPATIAL_SKELETON_MERGE_BANNER_MESSAGE
     : SPATIAL_SKELETON_MERGE_SELECTED_BANNER_MESSAGE;
 }
-
-export function getSpatialSkeletonMergeConfirmationSummary(
-  firstPoint: SpatialSkeletonToolPointInfo,
-  secondPoint: SpatialSkeletonToolPointInfo,
-) {
-  return [
-    getSpatialSkeletonToolPointSummaryRow(firstPoint),
-    getSpatialSkeletonToolPointSummaryRow(secondPoint),
-  ];
-}
-
-export function getSpatialSkeletonSplitConfirmationSummary(
-  point: SpatialSkeletonToolPointInfo,
-) {
-  return [getSpatialSkeletonToolPointSummaryRow(point)];
-}
-
-export function getSpatialSkeletonDeleteConfirmationSummary(
-  point: SpatialSkeletonToolPointInfo,
-) {
-  return [getSpatialSkeletonToolPointSummaryRow(point)];
-}

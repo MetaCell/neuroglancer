@@ -164,9 +164,7 @@ import { DisplayOptionsTab } from "#src/ui/segmentation_display_options_tab.js";
 import { SpatialSkeletonEditTab } from "#src/ui/spatial_skeleton_edit_tab.js";
 import {
   registerSpatialSkeletonEditModeTool,
-  SpatialSkeletonConfirmDialog,
 } from "#src/ui/spatial_skeleton_edit_tool.js";
-import { getSpatialSkeletonDeleteConfirmationSummary } from "#src/ui/spatial_skeleton_tool_messages.js";
 import { Uint64Map } from "#src/uint64_map.js";
 import { Uint64OrderedSet } from "#src/uint64_ordered_set.js";
 import { Uint64Set } from "#src/uint64_set.js";
@@ -2892,12 +2890,12 @@ export class SegmentationUserLayer extends Base {
     deleteButton.appendChild(
       makeDeleteButton({ title: deleteButton.title, clickable: false }),
     );
-    let deleteConfirmDialog: SpatialSkeletonConfirmDialog | undefined;
+    let deletePending = false;
     deleteButton.addEventListener("click", () => {
       if (
         deleteButton.disabled ||
         skeletonSource === undefined ||
-        deleteConfirmDialog !== undefined
+        deletePending
       ) {
         return;
       }
@@ -2907,24 +2905,8 @@ export class SegmentationUserLayer extends Base {
           : segmentNodes?.find(
               (candidate) => candidate.nodeId === nodeInfo.parentNodeId,
             );
-      const dialog = new SpatialSkeletonConfirmDialog({
-        title: "Confirm node deletion",
-        message: "",
-        summaryLabel: "Selected node:",
-        summary: getSpatialSkeletonDeleteConfirmationSummary({
-          nodeId: nodeInfo.nodeId,
-          segmentId: nodeInfo.segmentId,
-          position: nodeInfo.position,
-        }),
-        confirmLabel: "Delete",
-      });
-      deleteConfirmDialog = dialog;
+      deletePending = true;
       void (async () => {
-        const confirmed = await dialog.response;
-        if (deleteConfirmDialog === dialog) {
-          deleteConfirmDialog = undefined;
-        }
-        if (!confirmed) return;
         try {
           await skeletonSource.deleteNode(nodeInfo.nodeId, {
             parentNodeId: nodeInfo.parentNodeId,
@@ -2965,6 +2947,8 @@ export class SegmentationUserLayer extends Base {
           StatusMessage.showTemporaryMessage(
             `Failed to delete node: ${message}`,
           );
+        } finally {
+          deletePending = false;
         }
       })();
     });
