@@ -101,36 +101,17 @@ export function buildSpatialSkeletonSegmentRenderState(
       node.parentNodeId !== undefined && nodeById.has(node.parentNodeId);
     const nodeType = classifyNodeType(node, children.length, parentInTree);
     const visible =
-      options.nodeFilterType === SpatialSkeletonNodeFilterType.NONE
-        ? (() => {
-            if (options.filterText.length === 0) {
-              return true;
-            }
-            let recursiveVisible = nodeMatchesFilter(
-              node,
-              options.filterText,
-              options.getNodeDescription(node),
-            );
-            if (!recursiveVisible) {
-              for (const childNodeId of children) {
-                if (isNodeVisible(childNodeId)) {
-                  recursiveVisible = true;
-                  break;
-                }
-              }
-            }
-            return recursiveVisible;
-          })()
-        : matchesSpatialSkeletonNodeFilter(options.nodeFilterType, {
-            isLeaf: children.length === 0,
-            nodeIsTrueEnd: hasTrueEndLabel(node),
-            nodeType,
-          }) &&
-          nodeMatchesFilter(
-            node,
-            options.filterText,
-            options.getNodeDescription(node),
-          );
+      (options.nodeFilterType === SpatialSkeletonNodeFilterType.NONE ||
+        matchesSpatialSkeletonNodeFilter(options.nodeFilterType, {
+          isLeaf: children.length === 0,
+          nodeIsTrueEnd: hasTrueEndLabel(node),
+          nodeType,
+        })) &&
+      nodeMatchesFilter(
+        node,
+        options.filterText,
+        options.getNodeDescription(node),
+      );
     visibleMemo.set(nodeId, visible);
     return visible;
   };

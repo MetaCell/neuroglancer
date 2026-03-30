@@ -20,7 +20,7 @@ function makeNode(
 }
 
 describe("spatial skeleton edit tab render state", () => {
-  it("keeps matching descendants and their ancestors for text filtering", () => {
+  it("shows only directly matching nodes for text filtering", () => {
     const graph = buildSpatiallyIndexedSkeletonNavigationGraph([
       makeNode(1, undefined),
       makeNode(2, 1),
@@ -37,10 +37,10 @@ describe("spatial skeleton edit tab render state", () => {
       },
     });
 
-    expect(state.matchedNodeCount).toBe(3);
-    expect(state.displayedNodeCount).toBe(3);
+    expect(state.matchedNodeCount).toBe(1);
+    expect(state.displayedNodeCount).toBe(1);
     expect(state.branchCount).toBe(1);
-    expect(state.rows.map((row) => row.node.nodeId)).toEqual([1, 2, 4]);
+    expect(state.rows.map((row) => row.node.nodeId)).toEqual([4]);
   });
 
   it("does not match segment ids or labels in the search filter", () => {
