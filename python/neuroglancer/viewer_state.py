@@ -417,20 +417,6 @@ class DimensionPlaybackVelocity(JsonObjectWrapper):
 
 
 @export
-class SourceAccordion(JsonObjectWrapper):
-    """Accordion state for layer data source controls."""
-
-    __slots__ = ()
-
-    source_expanded = sourceExpanded = wrapped_property(
-        "sourceExpanded", optional(bool)
-    )
-    create_expanded = createExpanded = wrapped_property(
-        "createExpanded", optional(bool)
-    )
-
-
-@export
 class AnnotationsAccordion(JsonObjectWrapper):
     """Accordion state for layer annotation controls."""
 
@@ -509,9 +495,6 @@ class Layer(JsonObjectWrapper):
 
     annotations_accordion = annotationsAccordion = wrapped_property(
         "annotationsAccordion", AnnotationsAccordion
-    )
-    source_accordion = sourceAccordion = wrapped_property(
-        "sourceAccordion", SourceAccordion
     )
 
     @staticmethod

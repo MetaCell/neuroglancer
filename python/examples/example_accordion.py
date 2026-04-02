@@ -31,4 +31,7 @@ if __name__ == "__main__":
         s.layers[0].annotations_accordion.related_segments_expanded = True
         s.layers[0].rendering_accordion.slice_expanded = True
         s.layers[0].rendering_accordion.shader_expanded = False
-        s.layers[0].source_accordion.source_expanded = False
+        s.selected_layer.layer = "example_layer"
+        s.selected_layer.visible = True
+
+    print(viewer)
