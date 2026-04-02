@@ -1,6 +1,6 @@
+import svg_chevron_down from "ikonate/icons/chevron-down.svg?raw";
 import { TrackableBoolean } from "#src/trackable_boolean.js";
 import type { WatchableValueInterface } from "#src/trackable_value.js";
-import svg_chevron_down from "ikonate/icons/chevron-down.svg?raw";
 import { RefCounted } from "#src/util/disposable.js";
 import { NullarySignal } from "#src/util/signal.js";
 import "#src/widget/accordion.css";
@@ -97,7 +97,10 @@ export class AccordionState extends RefCounted {
   }
 
   toJSON() {
-    const useAccordions = typeof NEUROGLANCER_USE_ACCORDIONS !== 'undefined' ? NEUROGLANCER_USE_ACCORDIONS : true;
+    const useAccordions =
+      typeof NEUROGLANCER_USE_ACCORDIONS !== "undefined"
+        ? NEUROGLANCER_USE_ACCORDIONS
+        : true;
     if (!useAccordions) return undefined;
     const sectionsData = this.sectionStates
       .map((section) => section.toJSON())
@@ -129,7 +132,10 @@ export class AccordionTab extends Tab {
       this.defaultKey = options.sections[0].jsonKey;
     }
     this.updateSectionsExpanded();
-    const useAccordions = typeof NEUROGLANCER_USE_ACCORDIONS !== 'undefined' ? NEUROGLANCER_USE_ACCORDIONS : true;
+    const useAccordions =
+      typeof NEUROGLANCER_USE_ACCORDIONS !== "undefined"
+        ? NEUROGLANCER_USE_ACCORDIONS
+        : true;
     if (!useAccordions) {
       this.setAccordionHeadersHidden(true);
     }
@@ -149,13 +155,20 @@ export class AccordionTab extends Tab {
         String(state.isExpanded.value),
       );
       // Update chevron tooltip
-      const chevron = section.header.querySelector('.neuroglancer-accordion-chevron');
+      const chevron = section.header.querySelector(
+        ".neuroglancer-accordion-chevron",
+      );
       if (chevron) {
-        const title = chevron.querySelector('title');
+        const title = chevron.querySelector("title");
         if (title) {
-          title.textContent = state.isExpanded.value ? 'Chevron Up' : 'Chevron Down';
+          title.textContent = state.isExpanded.value
+            ? "Chevron Up"
+            : "Chevron Down";
         }
-        chevron.setAttribute('title', state.isExpanded.value ? 'Chevron Up' : 'Chevron Down');
+        chevron.setAttribute(
+          "title",
+          state.isExpanded.value ? "Chevron Up" : "Chevron Down",
+        );
       }
     });
   }
@@ -183,9 +196,11 @@ export class AccordionTab extends Tab {
     chevron.classList.add("neuroglancer-accordion-chevron");
     chevron.innerHTML = svg_chevron_down;
     // Set initial tooltip
-    const initialTooltip = option.defaultExpanded ? 'Chevron Up' : 'Chevron Down';
-    chevron.setAttribute('title', initialTooltip);
-    const title = chevron.querySelector('title');
+    const initialTooltip = option.defaultExpanded
+      ? "Chevron Up"
+      : "Chevron Down";
+    chevron.setAttribute("title", initialTooltip);
+    const title = chevron.querySelector("title");
     if (title) {
       title.textContent = initialTooltip;
     }
@@ -206,7 +221,10 @@ export class AccordionTab extends Tab {
       this.setSectionExpanded(option.jsonKey),
     );
 
-    const useAccordions = typeof NEUROGLANCER_USE_ACCORDIONS !== 'undefined' ? NEUROGLANCER_USE_ACCORDIONS : true;
+    const useAccordions =
+      typeof NEUROGLANCER_USE_ACCORDIONS !== "undefined"
+        ? NEUROGLANCER_USE_ACCORDIONS
+        : true;
     if (!useAccordions) {
       container.classList.add("neuroglancer-accordion-no-border");
     }

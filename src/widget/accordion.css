@@ -22,7 +22,7 @@
 .neuroglancer-accordion-chevron svg {
   width: 20px;
   height: 20px;
-  fill: rgba(255, 255, 255, 0.80); /* Chevron color */
+  fill: rgba(255, 255, 255, 0.8); /* Chevron color */
 }
 
 .neuroglancer-accordion-item[data-expanded="false"]
@@ -39,7 +39,7 @@
 }
 
 .neuroglancer-accordion-header-text {
-  color: rgba(255, 255, 255, 0.80);
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .neuroglancer-accordion-body {
@@ -53,6 +53,7 @@
   border-bottom: none;
 }
 
-.neuroglancer-accordion-item.neuroglancer-accordion-no-border .neuroglancer-accordion-body {
+.neuroglancer-accordion-item.neuroglancer-accordion-no-border
+  .neuroglancer-accordion-body {
   padding: 0;
 }
