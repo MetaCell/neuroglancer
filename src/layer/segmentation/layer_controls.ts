@@ -1,4 +1,4 @@
-import { type SegmentationUserLayer } from "#src/layer/segmentation/index.js";
+import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import * as json_keys from "#src/layer/segmentation/json_keys.js";
 import type { LayerControlDefinition } from "#src/widget/layer_control.js";
 import { registerLayerControl } from "#src/widget/layer_control.js";
