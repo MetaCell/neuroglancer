@@ -26,6 +26,7 @@ interface AccordionSection {
   container: HTMLElement;
   header: HTMLElement;
   body: HTMLElement;
+  chevron: HTMLElement;
 }
 
 export class AccordionSectionState extends RefCounted {
@@ -149,27 +150,13 @@ export class AccordionTab extends Tab {
     this.accordionState.sectionStates.forEach((state) => {
       const section = this.getSectionByKey(state.jsonKey);
       if (section === undefined) return;
-      section.container.dataset.expanded = String(state.isExpanded.value);
-      section.header.setAttribute(
-        "aria-expanded",
-        String(state.isExpanded.value),
-      );
-      // Update chevron tooltip
-      const chevron = section.header.querySelector(
-        ".neuroglancer-accordion-chevron",
-      );
-      if (chevron) {
-        const title = chevron.querySelector("title");
-        if (title) {
-          title.textContent = state.isExpanded.value
-            ? "Chevron Up"
-            : "Chevron Down";
-        }
-        chevron.setAttribute(
-          "title",
-          state.isExpanded.value ? "Chevron Up" : "Chevron Down",
-        );
-      }
+      const { container, header, chevron } = section;
+      container.dataset.expanded = String(state.isExpanded.value);
+      header.setAttribute("aria-expanded", String(state.isExpanded.value));
+      const title = state.isExpanded.value
+        ? "Collapse accordion section"
+        : "Expand accordion section";
+      chevron.title = title;
     });
   }
 
@@ -182,9 +169,10 @@ export class AccordionTab extends Tab {
       container: document.createElement("div"),
       header: document.createElement("div"),
       body: document.createElement("div"),
+      chevron: document.createElement("span"),
     };
     this.sections.push(newSection);
-    const { container, header, body } = newSection;
+    const { container, header, body, chevron } = newSection;
     container.classList.add("neuroglancer-accordion-item");
     body.classList.add("neuroglancer-accordion-body");
     header.classList.add("neuroglancer-accordion-header");
@@ -192,18 +180,9 @@ export class AccordionTab extends Tab {
     container.appendChild(newSection.body);
     this.element.appendChild(container);
 
-    const chevron = document.createElement("span");
     chevron.classList.add("neuroglancer-accordion-chevron");
+    chevron.classList.add("neuroglancer-icon");
     chevron.innerHTML = svg_chevron_down;
-    // Set initial tooltip
-    const initialTooltip = option.defaultExpanded
-      ? "Chevron Up"
-      : "Chevron Down";
-    chevron.setAttribute("title", initialTooltip);
-    const title = chevron.querySelector("title");
-    if (title) {
-      title.textContent = initialTooltip;
-    }
     const headerText = document.createElement("span");
     headerText.classList.add("neuroglancer-accordion-header-text");
     headerText.textContent = option.displayName;
