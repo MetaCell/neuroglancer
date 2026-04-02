@@ -12,7 +12,7 @@ def add_example_layers(state):
     state.layers.append(
         name="example_layer",
         layer=neuroglancer.LocalVolume(
-            data=np.random.rand(10, 10, 10).astype(np.float32),
+            data=np.ones((10, 10, 10)).astype(np.float32),
             dimensions=state.dimensions,
         ),
     )
@@ -32,5 +32,3 @@ if __name__ == "__main__":
         s.layers[0].rendering_accordion.slice_expanded = True
         s.layers[0].rendering_accordion.shader_expanded = False
         s.layers[0].source_accordion.source_expanded = False
-
-    print(viewer)
