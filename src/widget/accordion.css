@@ -4,7 +4,7 @@
 
 .neuroglancer-accordion-item[data-expanded="true"]
   .neuroglancer-accordion-body {
-  display: block; /* Show when expanded */
+  display: flex; /* Show when expanded */
 }
 
 .neuroglancer-accordion-item[data-expanded="true"]
@@ -47,6 +47,7 @@
   overflow-x: auto;
   overflow-y: auto;
   padding-top: 0;
+  flex-direction: column;
 }
 
 .neuroglancer-accordion-item.neuroglancer-accordion-no-border {
