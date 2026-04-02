@@ -7,6 +7,7 @@ import "#src/widget/accordion.css";
 import { Tab } from "#src/widget/tab_view.js";
 
 declare let NEUROGLANCER_USE_ACCORDIONS: boolean | undefined;
+declare let NEUROGLANCER_ACCORDION_DEFAULT_EXPANDED: boolean | undefined;
 
 export interface AccordionOptions {
   accordionJsonKey: string;
@@ -34,7 +35,10 @@ export class AccordionSectionState extends RefCounted {
 
   constructor(
     public jsonKey: string,
-    private defaultExpanded = false,
+    private defaultExpanded = typeof NEUROGLANCER_ACCORDION_DEFAULT_EXPANDED !==
+    "undefined"
+      ? NEUROGLANCER_ACCORDION_DEFAULT_EXPANDED
+      : false,
     onChangeCallback: () => void,
   ) {
     super();
