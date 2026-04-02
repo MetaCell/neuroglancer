@@ -646,6 +646,8 @@ export class SegmentationUserLayer extends Base {
       {
         jsonKey: APPEARANCE_SECTION_JSON_KEY,
         displayName: "Appearance",
+        defaultExpanded: true,
+        isDefaultKey: true,
       },
       {
         jsonKey: SLICE_SECTION_JSON_KEY,
