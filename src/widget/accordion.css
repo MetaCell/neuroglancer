@@ -7,6 +7,15 @@
   display: flex; /* Show when expanded */
 }
 
+.neuroglancer-accordion-item[data-expanded="false"]
+  .neuroglancer-accordion-body {
+  display: none; /* Hide when collapsed */
+}
+
+.neuroglancer-accordion-item[data-hidden="true"] {
+  display: none;
+}
+
 .neuroglancer-accordion-item[data-expanded="true"]
   .neuroglancer-accordion-header
   .neuroglancer-accordion-chevron
@@ -23,11 +32,6 @@
   width: 20px;
   height: 20px;
   fill: rgba(255, 255, 255, 0.8); /* Chevron color */
-}
-
-.neuroglancer-accordion-item[data-expanded="false"]
-  .neuroglancer-accordion-body {
-  display: none; /* Hide when collapsed */
 }
 
 .neuroglancer-accordion-header {

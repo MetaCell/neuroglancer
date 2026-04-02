@@ -254,7 +254,7 @@ export class AccordionTab extends Tab {
   setSectionHidden(jsonKey: string, hidden: boolean): void {
     const section = this.getSectionByKey(jsonKey);
     if (section !== undefined) {
-      section.container.style.display = hidden ? "none" : "";
+      section.container.dataset.hidden = hidden ? "true" : "false";
     }
   }
 

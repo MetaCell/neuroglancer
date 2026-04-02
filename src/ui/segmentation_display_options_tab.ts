@@ -132,6 +132,10 @@ export class DisplayOptionsTab extends AccordionTab {
       SKELETON_SECTION_JSON_KEY,
       !this.layer.hasSkeletonsLayer.value,
     );
+    this.setSectionHidden(
+      SKELETON_SECTION_JSON_KEY,
+      !this.layer.hasSkeletonsLayer.value,
+    );
     this.registerDisposer(
       this.layer.hasSkeletonsLayer.changed.add(() => {
         this.setSectionHidden(
