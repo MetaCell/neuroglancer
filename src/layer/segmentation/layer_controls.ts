@@ -5,7 +5,11 @@ import { registerLayerControl } from "#src/widget/layer_control.js";
 import { checkboxLayerControl } from "#src/widget/layer_control_checkbox.js";
 import { enumLayerControl } from "#src/widget/layer_control_enum.js";
 import { rangeLayerControl } from "#src/widget/layer_control_range.js";
-import { renderScaleLayerControl } from "#src/widget/render_scale_widget.js";
+import { makeCachedDerivedWatchableValue } from "#src/trackable_value.js";
+import {
+  renderScaleLayerControl,
+  spatialSkeletonGridRenderScaleLayerControl,
+} from "#src/widget/render_scale_widget.js";
 import {
   colorSeedLayerControl,
   fixedColorLayerControl,
@@ -68,12 +72,71 @@ export const LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
     })),
   },
   {
+    label: "Resolution (skeleton grid 2D)",
+    toolJson: json_keys.SPATIAL_SKELETON_GRID_RESOLUTION_TARGET_2D_JSON_KEY,
+    isValid: (layer) =>
+      makeCachedDerivedWatchableValue(
+        (levels, hasSpatialSkeletons) =>
+          hasSpatialSkeletons && levels.length > 0,
+        [
+          layer.displayState.spatialSkeletonGridLevels,
+          layer.hasSpatiallyIndexedSkeletonsLayer,
+        ],
+      ),
+    title:
+      "Select the grid size level for spatially indexed skeletons in 2D views",
+    ...spatialSkeletonGridRenderScaleLayerControl(
+      (layer) => ({
+        histogram: layer.displayState.spatialSkeletonGridRenderScaleHistogram2d,
+        target: layer.displayState.spatialSkeletonGridResolutionTarget2d,
+        relative: layer.displayState.spatialSkeletonGridResolutionRelative2d,
+        pixelSize: layer.displayState.spatialSkeletonGridPixelSize2d,
+        relativeTooltip:
+          "Interpret the 2D skeleton grid resolution target as relative to zoom",
+      }),
+    ),
+  },
+  {
+    label: "Resolution (skeleton grid 3D)",
+    toolJson: json_keys.SPATIAL_SKELETON_GRID_RESOLUTION_TARGET_3D_JSON_KEY,
+    isValid: (layer) =>
+      makeCachedDerivedWatchableValue(
+        (levels, hasSpatialSkeletons) =>
+          hasSpatialSkeletons && levels.length > 0,
+        [
+          layer.displayState.spatialSkeletonGridLevels,
+          layer.hasSpatiallyIndexedSkeletonsLayer,
+        ],
+      ),
+    title:
+      "Select the grid size level for spatially indexed skeletons in 3D views",
+    ...spatialSkeletonGridRenderScaleLayerControl(
+      (layer) => ({
+        histogram: layer.displayState.spatialSkeletonGridRenderScaleHistogram3d,
+        target: layer.displayState.spatialSkeletonGridResolutionTarget3d,
+        relative: layer.displayState.spatialSkeletonGridResolutionRelative3d,
+        pixelSize: layer.displayState.spatialSkeletonGridPixelSize3d,
+        relativeTooltip:
+          "Interpret the 3D skeleton grid resolution target as relative to zoom",
+      }),
+    ),
+  },
+  {
     label: "Opacity (3d)",
     toolJson: json_keys.OBJECT_ALPHA_JSON_KEY,
     isValid: (layer) => layer.has3dLayer,
     title: "Opacity of meshes and skeletons",
     ...rangeLayerControl((layer) => ({
       value: layer.displayState.objectAlpha,
+    })),
+  },
+  {
+    label: "Hidden Opacity (3d)",
+    toolJson: json_keys.HIDDEN_OPACITY_3D_JSON_KEY,
+    isValid: (layer) => layer.hasSpatiallyIndexedSkeletonsLayer,
+    title: "Opacity of hidden (non-visible) skeleton nodes in 3D views",
+    ...rangeLayerControl((layer) => ({
+      value: layer.displayState.hiddenObjectAlpha,
     })),
   },
   {
