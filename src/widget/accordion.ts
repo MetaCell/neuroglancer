@@ -51,10 +51,7 @@ export class AccordionSectionState extends RefCounted {
 
   constructor(
     public jsonKey: string,
-    private defaultExpanded = typeof NEUROGLANCER_ACCORDION_DEFAULT_EXPANDED !==
-    "undefined"
-      ? NEUROGLANCER_ACCORDION_DEFAULT_EXPANDED
-      : false,
+    private defaultExpanded: boolean,
     onChangeCallback: () => void,
   ) {
     super();
@@ -81,12 +78,16 @@ export class AccordionState extends RefCounted {
 
   getOrCreateSectionState(sectionOptions: AccordionSectionOptions) {
     const { jsonKey, defaultExpanded } = sectionOptions;
+    const globalDefaultExpanded =
+      typeof NEUROGLANCER_ACCORDION_DEFAULT_EXPANDED !== "undefined"
+        ? NEUROGLANCER_ACCORDION_DEFAULT_EXPANDED
+        : false;
     let sectionState = this.getSectionState(jsonKey);
     if (sectionState === undefined) {
       sectionState = this.registerDisposer(
         new AccordionSectionState(
           jsonKey,
-          defaultExpanded,
+          defaultExpanded ?? globalDefaultExpanded,
           this.specificationChanged.dispatch,
         ),
       );
