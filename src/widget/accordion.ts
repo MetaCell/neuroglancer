@@ -46,6 +46,18 @@ interface AccordionSection {
   chevron: HTMLElement;
 }
 
+function getGlobalAccordionDefaultExpanded(): boolean {
+  return typeof NEUROGLANCER_ACCORDION_DEFAULT_EXPANDED !== "undefined"
+    ? NEUROGLANCER_ACCORDION_DEFAULT_EXPANDED
+    : false;
+}
+
+function getGlobalUseAccordions(): boolean {
+  return typeof NEUROGLANCER_USE_ACCORDIONS !== "undefined"
+    ? NEUROGLANCER_USE_ACCORDIONS
+    : true;
+}
+
 export class AccordionSectionState extends RefCounted {
   isExpanded: WatchableValueInterface<boolean>;
 
@@ -78,16 +90,12 @@ export class AccordionState extends RefCounted {
 
   getOrCreateSectionState(sectionOptions: AccordionSectionOptions) {
     const { jsonKey, defaultExpanded } = sectionOptions;
-    const globalDefaultExpanded =
-      typeof NEUROGLANCER_ACCORDION_DEFAULT_EXPANDED !== "undefined"
-        ? NEUROGLANCER_ACCORDION_DEFAULT_EXPANDED
-        : false;
     let sectionState = this.getSectionState(jsonKey);
     if (sectionState === undefined) {
       sectionState = this.registerDisposer(
         new AccordionSectionState(
           jsonKey,
-          defaultExpanded ?? globalDefaultExpanded,
+          defaultExpanded ?? getGlobalAccordionDefaultExpanded(),
           this.specificationChanged.dispatch,
         ),
       );
@@ -112,18 +120,12 @@ export class AccordionState extends RefCounted {
       return;
     }
     for (const [jsonKey, isExpanded] of Object.entries(obj)) {
-      if (typeof isExpanded === "boolean") {
-        this.setSectionExpanded(jsonKey, isExpanded);
-      }
+      this.setSectionExpanded(jsonKey, isExpanded);
     }
   }
 
   toJSON() {
-    const useAccordions =
-      typeof NEUROGLANCER_USE_ACCORDIONS !== "undefined"
-        ? NEUROGLANCER_USE_ACCORDIONS
-        : true;
-    if (!useAccordions) return undefined;
+    if (!getGlobalUseAccordions()) return undefined;
     const sectionsData = this.sectionStates
       .map((section) => section.toJSON())
       .filter((data) => data !== undefined);
