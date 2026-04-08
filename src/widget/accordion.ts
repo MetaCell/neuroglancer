@@ -120,12 +120,12 @@ export class AccordionState extends RefCounted {
       return;
     }
     for (const [jsonKey, isExpanded] of Object.entries(obj)) {
+      if (typeof isExpanded !== "boolean") continue;
       this.setSectionExpanded(jsonKey, isExpanded);
     }
   }
 
   toJSON() {
-    if (!getGlobalUseAccordions()) return undefined;
     const sectionsData = this.sectionStates
       .map((section) => section.toJSON())
       .filter((data) => data !== undefined);
@@ -156,11 +156,7 @@ export class AccordionTab extends Tab {
       this.defaultKey = options.sections[0].jsonKey;
     }
     this.updateSectionsExpanded();
-    const useAccordions =
-      typeof NEUROGLANCER_USE_ACCORDIONS !== "undefined"
-        ? NEUROGLANCER_USE_ACCORDIONS
-        : true;
-    if (!useAccordions) {
+    if (!getGlobalUseAccordions()) {
       this.setAccordionHeadersHidden(true);
     }
   }
@@ -170,16 +166,17 @@ export class AccordionTab extends Tab {
   }
 
   private updateSectionsExpanded() {
+    const accordionsDisabled = !getGlobalUseAccordions();
     this.accordionState.sectionStates.forEach((state) => {
       const section = this.getSectionByKey(state.jsonKey);
       if (section === undefined) return;
       const { container, header, chevron } = section;
-      container.dataset.expanded = String(state.isExpanded.value);
-      header.setAttribute("aria-expanded", String(state.isExpanded.value));
-      const title = state.isExpanded.value
+      const expand = accordionsDisabled || state.isExpanded.value;
+      container.dataset.expanded = String(expand);
+      header.setAttribute("aria-expanded", String(expand));
+      chevron.title = expand
         ? "Collapse accordion section"
         : "Expand accordion section";
-      chevron.title = title;
     });
   }
 
@@ -212,7 +209,6 @@ export class AccordionTab extends Tab {
     header.appendChild(headerText);
     header.appendChild(chevron);
 
-    container.style.display = "none";
     container.dataset.expanded = String(option.defaultExpanded ?? false);
 
     if (option.isDefaultKey) {
@@ -296,9 +292,6 @@ export class AccordionTab extends Tab {
   setAccordionHeadersHidden(hidden: boolean): void {
     this.sections.forEach((section) => {
       section.header.style.display = hidden ? "none" : "";
-      if (hidden) {
-        this.setSectionExpanded(section.jsonKey, true);
-      }
     });
   }
 }
