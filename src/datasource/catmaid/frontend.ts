@@ -27,12 +27,12 @@ import {
 import type {
   EditableSpatiallyIndexedSkeletonSource,
   SpatiallyIndexedSkeletonAddNodeResult,
-  SpatiallyIndexedSkeletonBranchNavigationTarget,
+  SpatiallyIndexedSkeletonDeleteNodeResult,
+  SpatiallyIndexedSkeletonEditContext,
   SpatiallyIndexedSkeletonDescriptionUpdateOptions,
   SpatiallyIndexedSkeletonMergeResult,
-  SpatiallyIndexedSkeletonNavigationTarget,
   SpatiallyIndexedSkeletonNode,
-  SpatiallyIndexedSkeletonOpenLeaf,
+  SpatiallyIndexedSkeletonNodeRevisionResult,
   SpatiallyIndexedSkeletonPropertyEditingOptions,
   SpatiallyIndexedSkeletonSplitResult,
 } from "#src/skeleton/api.js";
@@ -119,34 +119,11 @@ export class CatmaidSpatiallyIndexedSkeletonSource
     return this.client.listSkeletons();
   }
 
-  getSkeleton(skeletonId: number): Promise<SpatiallyIndexedSkeletonNode[]> {
-    return this.client.getSkeleton(skeletonId);
-  }
-
-  getSkeletonRootNode(
+  getSkeleton(
     skeletonId: number,
-  ): Promise<SpatiallyIndexedSkeletonNavigationTarget> {
-    return this.client.getSkeletonRootNode(skeletonId);
-  }
-
-  getPreviousBranchOrRoot(
-    nodeId: number,
-    options?: { alt?: boolean },
-  ): Promise<SpatiallyIndexedSkeletonNavigationTarget> {
-    return this.client.getPreviousBranchOrRoot(nodeId, options);
-  }
-
-  getNextBranchOrEnd(
-    nodeId: number,
-  ): Promise<SpatiallyIndexedSkeletonBranchNavigationTarget[]> {
-    return this.client.getNextBranchOrEnd(nodeId);
-  }
-
-  getOpenLeaves(
-    skeletonId: number,
-    nodeId: number,
-  ): Promise<SpatiallyIndexedSkeletonOpenLeaf[]> {
-    return this.client.getOpenLeaves(skeletonId, nodeId);
+    options?: { signal?: AbortSignal },
+  ): Promise<SpatiallyIndexedSkeletonNode[]> {
+    return this.client.getSkeleton(skeletonId, options);
   }
 
   getDimensions() {
@@ -182,61 +159,89 @@ export class CatmaidSpatiallyIndexedSkeletonSource
     y: number,
     z: number,
     parentId?: number,
+    editContext?: SpatiallyIndexedSkeletonEditContext,
   ): Promise<SpatiallyIndexedSkeletonAddNodeResult> {
-    return this.client.addNode(skeletonId, x, y, z, parentId);
+    return this.client.addNode(skeletonId, x, y, z, parentId, editContext);
   }
 
-  moveNode(nodeId: number, x: number, y: number, z: number): Promise<void> {
-    return this.client.moveNode(nodeId, x, y, z);
+  moveNode(
+    nodeId: number,
+    x: number,
+    y: number,
+    z: number,
+    editContext?: SpatiallyIndexedSkeletonEditContext,
+  ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult> {
+    return this.client.moveNode(nodeId, x, y, z, editContext);
   }
 
   deleteNode(
     nodeId: number,
     options: {
-      parentNodeId?: number;
       childNodeIds?: readonly number[];
+      editContext?: SpatiallyIndexedSkeletonEditContext;
     },
-  ): Promise<void> {
+  ): Promise<SpatiallyIndexedSkeletonDeleteNodeResult> {
     return this.client.deleteNode(nodeId, options);
   }
 
-  rerootSkeleton(nodeId: number): Promise<void> {
-    return this.client.rerootSkeleton(nodeId);
+  rerootSkeleton(
+    nodeId: number,
+    editContext?: SpatiallyIndexedSkeletonEditContext,
+  ): Promise<void> {
+    return this.client.rerootSkeleton(nodeId, editContext);
+  }
+
+  getNodeRevisionUpdates(nodeIds: readonly number[]) {
+    return this.client.getNodeRevisionUpdates(nodeIds);
   }
 
   updateDescription(
     nodeId: number,
     description: string,
     options: SpatiallyIndexedSkeletonDescriptionUpdateOptions,
-  ): Promise<void> {
+  ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult> {
     return this.client.updateDescription(nodeId, description, options);
   }
 
-  setTrueEnd(nodeId: number): Promise<void> {
+  setTrueEnd(nodeId: number): Promise<SpatiallyIndexedSkeletonNodeRevisionResult> {
     return this.client.setTrueEnd(nodeId);
   }
 
-  removeTrueEnd(nodeId: number): Promise<void> {
+  removeTrueEnd(
+    nodeId: number,
+  ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult> {
     return this.client.removeTrueEnd(nodeId);
   }
 
-  updateRadius(nodeId: number, radius: number): Promise<void> {
-    return this.client.updateRadius(nodeId, radius);
+  updateRadius(
+    nodeId: number,
+    radius: number,
+    editContext?: SpatiallyIndexedSkeletonEditContext,
+  ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult> {
+    return this.client.updateRadius(nodeId, radius, editContext);
   }
 
-  updateConfidence(nodeId: number, confidence: number): Promise<void> {
-    return this.client.updateConfidence(nodeId, confidence);
+  updateConfidence(
+    nodeId: number,
+    confidence: number,
+    editContext?: SpatiallyIndexedSkeletonEditContext,
+  ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult> {
+    return this.client.updateConfidence(nodeId, confidence, editContext);
   }
 
   mergeSkeletons(
     fromNodeId: number,
     toNodeId: number,
+    editContext?: SpatiallyIndexedSkeletonEditContext,
   ): Promise<SpatiallyIndexedSkeletonMergeResult> {
-    return this.client.mergeSkeletons(fromNodeId, toNodeId);
+    return this.client.mergeSkeletons(fromNodeId, toNodeId, editContext);
   }
 
-  splitSkeleton(nodeId: number): Promise<SpatiallyIndexedSkeletonSplitResult> {
-    return this.client.splitSkeleton(nodeId);
+  splitSkeleton(
+    nodeId: number,
+    editContext?: SpatiallyIndexedSkeletonEditContext,
+  ): Promise<SpatiallyIndexedSkeletonSplitResult> {
+    return this.client.splitSkeleton(nodeId, editContext);
   }
 }
 

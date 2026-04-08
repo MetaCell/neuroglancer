@@ -16,8 +16,11 @@
 
 import type {
   EditableSpatiallyIndexedSkeletonSource,
+  SpatiallyIndexedSkeletonEditContext,
   SpatiallyIndexedSkeletonPropertyEditingOptions,
   SpatiallyIndexedSkeletonNode,
+  SpatiallyIndexedSkeletonNodeRevisionUpdate,
+  SpatiallyIndexedSkeletonRevisionToken,
 } from "#src/skeleton/api.js";
 import type {
   SpatiallyIndexedSkeletonLayer,
@@ -48,11 +51,21 @@ export type SpatiallyIndexedSkeletonSourceCapability =
 export interface SpatiallyIndexedSkeletonInspectionSource {
   getSkeleton(
     skeletonId: number,
+    options?: { signal?: AbortSignal },
   ): Promise<readonly SpatiallyIndexedSkeletonNode[]>;
 }
 
 export interface SpatiallyIndexedSkeletonRerootSource {
-  rerootSkeleton(nodeId: number): Promise<void>;
+  rerootSkeleton(
+    nodeId: number,
+    editContext?: SpatiallyIndexedSkeletonEditContext,
+  ): Promise<void>;
+}
+
+export interface SpatiallyIndexedSkeletonNodeRevisionLookupSource {
+  getNodeRevisionUpdates(
+    nodeIds: readonly number[],
+  ): Promise<readonly SpatiallyIndexedSkeletonNodeRevisionUpdate[]>;
 }
 
 export interface SpatiallyIndexedSkeletonPropertyEditingOptionsSource {
@@ -123,6 +136,15 @@ export function getSpatiallyIndexedSkeletonRerootSource(
   if (value === undefined) return undefined;
   return hasFunction(value.source, "rerootSkeleton")
     ? (value.source as SpatiallyIndexedSkeletonRerootSource)
+    : undefined;
+}
+
+export function getSpatiallyIndexedSkeletonNodeRevisionLookupSource(
+  value: SpatialSkeletonSourceAccess | undefined,
+): SpatiallyIndexedSkeletonNodeRevisionLookupSource | undefined {
+  if (value === undefined) return undefined;
+  return hasFunction(value.source, "getNodeRevisionUpdates")
+    ? (value.source as SpatiallyIndexedSkeletonNodeRevisionLookupSource)
     : undefined;
 }
 
@@ -237,6 +259,9 @@ export function mapSpatiallyIndexedSkeletonNodeToNodeInfo(
         ? undefined
         : Number(node.confidence),
     labels: node.labels,
+    ...(node.revisionToken === undefined
+      ? {}
+      : { revisionToken: node.revisionToken }),
   };
 }
 
@@ -257,31 +282,12 @@ export class SpatialSkeletonState extends RefCounted {
   readonly editMode = new WatchableValue(false);
   readonly mergeMode = new WatchableValue(false);
   readonly splitMode = new WatchableValue(false);
-  readonly primaryInspectedSegmentId = new WatchableValue<number | undefined>(
-    undefined,
-  );
-  readonly secondaryInspectedSegmentId = new WatchableValue<number | undefined>(
-    undefined,
-  );
   readonly mergeAnchorNodeId = new WatchableValue<number | undefined>(
     undefined,
   );
-  readonly mergeAnchorSegmentId = new WatchableValue<number | undefined>(
-    undefined,
-  );
-  readonly selectedNodeId = new WatchableValue<number | undefined>(undefined);
-  readonly treeEndNodeId = new WatchableValue<number | undefined>(undefined);
-  readonly visibleChunksNeeded = new WatchableValue(0);
-  readonly visibleChunksAvailable = new WatchableValue(0);
-  readonly visibleChunksLoaded = new WatchableValue(false);
   readonly nodeDataVersion = new WatchableValue(0);
   readonly pendingNodePositionVersion = new WatchableValue(0);
 
-  private nodeDescriptions = new Map<number, string>();
-  private nodePropertyOverrides = new Map<
-    number,
-    { radius: number; confidence: number }
-  >();
   private pendingNodePositions = new Map<number, Float32Array>();
   private fullSkeletonCacheGeneration = 0;
   private fullSegmentNodeCache = new Map<
@@ -290,30 +296,12 @@ export class SpatialSkeletonState extends RefCounted {
   >();
   private pendingFullSegmentNodeFetches = new Map<
     number,
-    Promise<SpatiallyIndexedSkeletonNodeInfo[]>
+    {
+      promise: Promise<SpatiallyIndexedSkeletonNodeInfo[]>;
+      abortController: AbortController;
+    }
   >();
   private cachedNodesById = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
-
-  setNodeDescription(nodeId: number, description: string) {
-    const value = description.trim();
-    if (value.length === 0) {
-      this.nodeDescriptions.delete(nodeId);
-      return;
-    }
-    this.nodeDescriptions.set(nodeId, value);
-  }
-
-  getNodeDescription(nodeId: number) {
-    return this.nodeDescriptions.get(nodeId);
-  }
-
-  getNodePropertyOverride(nodeId: number) {
-    const normalizedNodeId = this.normalizeNodeId(nodeId);
-    if (normalizedNodeId === undefined) {
-      return undefined;
-    }
-    return this.nodePropertyOverrides.get(normalizedNodeId);
-  }
 
   setNodeProperties(
     nodeId: number,
@@ -329,24 +317,16 @@ export class SpatialSkeletonState extends RefCounted {
     ) {
       return false;
     }
-    let changed = false;
-    const existing = this.nodePropertyOverrides.get(normalizedNodeId);
-    if (existing?.radius !== radius || existing?.confidence !== confidence) {
-      this.nodePropertyOverrides.set(normalizedNodeId, { radius, confidence });
-      changed = true;
-    }
-    return (
-      this.updateCachedNode(normalizedNodeId, (node) => {
-        if (node.radius === radius && node.confidence === confidence) {
-          return node;
-        }
-        return {
-          ...node,
-          radius,
-          confidence,
-        };
-      }) || changed
-    );
+    return this.updateCachedNode(normalizedNodeId, (node) => {
+      if (node.radius === radius && node.confidence === confidence) {
+        return node;
+      }
+      return {
+        ...node,
+        radius,
+        confidence,
+      };
+    });
   }
 
   getPendingNodeIds() {
@@ -366,118 +346,17 @@ export class SpatialSkeletonState extends RefCounted {
     return normalizedNodeId;
   }
 
-  private normalizeSegmentId(segmentId: number | undefined) {
-    if (segmentId === undefined) return undefined;
-    const normalizedSegmentId = Math.round(Number(segmentId));
-    if (
-      !Number.isSafeInteger(normalizedSegmentId) ||
-      normalizedSegmentId <= 0
-    ) {
-      return undefined;
-    }
-    return normalizedSegmentId;
-  }
-
-  getInspectedSegmentIds() {
-    const segments: number[] = [];
-    const primarySegmentId = this.primaryInspectedSegmentId.value;
-    if (primarySegmentId !== undefined) {
-      segments.push(primarySegmentId);
-    }
-    const secondarySegmentId = this.secondaryInspectedSegmentId.value;
-    if (
-      secondarySegmentId !== undefined &&
-      secondarySegmentId !== primarySegmentId
-    ) {
-      segments.push(secondarySegmentId);
-    }
-    return segments;
-  }
-
-  setInspectedSegments(
-    primarySegmentId: number | undefined,
-    secondarySegmentId: number | undefined = undefined,
-  ) {
-    const normalizedPrimarySegmentId =
-      this.normalizeSegmentId(primarySegmentId);
-    let normalizedSecondarySegmentId =
-      this.normalizeSegmentId(secondarySegmentId);
-    if (normalizedSecondarySegmentId === normalizedPrimarySegmentId) {
-      normalizedSecondarySegmentId = undefined;
-    }
-    let changed = false;
-    if (this.primaryInspectedSegmentId.value !== normalizedPrimarySegmentId) {
-      this.primaryInspectedSegmentId.value = normalizedPrimarySegmentId;
-      changed = true;
-    }
-    if (
-      this.secondaryInspectedSegmentId.value !== normalizedSecondarySegmentId
-    ) {
-      this.secondaryInspectedSegmentId.value = normalizedSecondarySegmentId;
-      changed = true;
-    }
-    if (changed) {
-      this.evictInactiveSegmentNodes(this.getInspectedSegmentIds());
-    }
-    return changed;
-  }
-
-  inspectSegment(
-    segmentId: number,
-    options: {
-      secondary?: boolean;
-    } = {},
-  ) {
-    const normalizedSegmentId = this.normalizeSegmentId(segmentId);
-    if (normalizedSegmentId === undefined) {
+  setMergeAnchor(nodeId: number | undefined) {
+    const normalizedNodeId = this.normalizeNodeId(nodeId);
+    if (this.mergeAnchorNodeId.value === normalizedNodeId) {
       return false;
     }
-    if (options.secondary) {
-      const primarySegmentId = this.primaryInspectedSegmentId.value;
-      if (primarySegmentId === undefined) {
-        return this.setInspectedSegments(normalizedSegmentId);
-      }
-      if (primarySegmentId === normalizedSegmentId) {
-        return this.setInspectedSegments(normalizedSegmentId, undefined);
-      }
-      return this.setInspectedSegments(primarySegmentId, normalizedSegmentId);
-    }
-    return this.setInspectedSegments(normalizedSegmentId);
-  }
-
-  clearInspectedSegments() {
-    return this.setInspectedSegments(undefined, undefined);
-  }
-
-  clearSecondaryInspectedSegment() {
-    return this.setInspectedSegments(this.primaryInspectedSegmentId.value);
-  }
-
-  setMergeAnchor(nodeId: number | undefined, segmentId: number | undefined) {
-    const normalizedNodeId = this.normalizeNodeId(nodeId);
-    const normalizedSegmentId = this.normalizeSegmentId(segmentId);
-    const nextNodeId =
-      normalizedNodeId !== undefined && normalizedSegmentId !== undefined
-        ? normalizedNodeId
-        : undefined;
-    const nextSegmentId =
-      normalizedNodeId !== undefined && normalizedSegmentId !== undefined
-        ? normalizedSegmentId
-        : undefined;
-    let changed = false;
-    if (this.mergeAnchorNodeId.value !== nextNodeId) {
-      this.mergeAnchorNodeId.value = nextNodeId;
-      changed = true;
-    }
-    if (this.mergeAnchorSegmentId.value !== nextSegmentId) {
-      this.mergeAnchorSegmentId.value = nextSegmentId;
-      changed = true;
-    }
-    return changed;
+    this.mergeAnchorNodeId.value = normalizedNodeId;
+    return true;
   }
 
   clearMergeAnchor() {
-    return this.setMergeAnchor(undefined, undefined);
+    return this.setMergeAnchor(undefined);
   }
 
   setPendingNodePosition(nodeId: number, position: ArrayLike<number>) {
@@ -548,17 +427,25 @@ export class SpatialSkeletonState extends RefCounted {
     this.sourceCapabilities.value = capabilities;
   }
 
+  clearInspectedSkeletonCache() {
+    const cacheChanged =
+      this.fullSegmentNodeCache.size !== 0 ||
+      this.pendingFullSegmentNodeFetches.size !== 0 ||
+      this.cachedNodesById.size !== 0;
+    const pendingChanged = this.clearPendingNodePositions();
+    if (!cacheChanged) {
+      return pendingChanged;
+    }
+    this.clearFullSkeletonCache();
+    this.nodeDataVersion.value = this.nodeDataVersion.value + 1;
+    return true;
+  }
+
   markNodeDataChanged(options: { invalidateFullSkeletonCache?: boolean } = {}) {
     if (options.invalidateFullSkeletonCache ?? true) {
       this.clearFullSkeletonCache();
     }
     this.nodeDataVersion.value = this.nodeDataVersion.value + 1;
-  }
-
-  updateChunkLoadState(needed: number, available: number) {
-    this.visibleChunksNeeded.value = needed;
-    this.visibleChunksAvailable.value = available;
-    this.visibleChunksLoaded.value = needed > 0 && available >= needed;
   }
 
   getCachedSegmentNodes(segmentId: number) {
@@ -567,6 +454,82 @@ export class SpatialSkeletonState extends RefCounted {
 
   getCachedNode(nodeId: number) {
     return this.cachedNodesById.get(nodeId);
+  }
+
+  private replaceCachedSegmentNodes(
+    segmentId: number,
+    nextSegmentNodes: readonly SpatiallyIndexedSkeletonNodeInfo[],
+  ) {
+    const previousSegmentNodes = this.fullSegmentNodeCache.get(segmentId);
+    if (previousSegmentNodes !== undefined) {
+      for (const node of previousSegmentNodes) {
+        if (this.cachedNodesById.get(node.nodeId) === node) {
+          this.cachedNodesById.delete(node.nodeId);
+        }
+      }
+    }
+    if (nextSegmentNodes.length === 0) {
+      if (previousSegmentNodes === undefined) {
+        return false;
+      }
+      this.fullSegmentNodeCache.delete(segmentId);
+      return true;
+    }
+    const normalizedSegmentNodes = [...nextSegmentNodes];
+    this.fullSegmentNodeCache.set(segmentId, normalizedSegmentNodes);
+    for (const node of normalizedSegmentNodes) {
+      this.cachedNodesById.set(node.nodeId, node);
+    }
+    return true;
+  }
+
+  private deleteCachedSegment(segmentId: number) {
+    return this.replaceCachedSegmentNodes(segmentId, []);
+  }
+
+  private abortPendingFullSegmentNodeFetch(
+    segmentId: number,
+    message: string,
+  ) {
+    const pendingEntry = this.pendingFullSegmentNodeFetches.get(segmentId);
+    if (pendingEntry === undefined) {
+      return false;
+    }
+    pendingEntry.abortController.abort(
+      new DOMException(message, "AbortError"),
+    );
+    this.pendingFullSegmentNodeFetches.delete(segmentId);
+    return true;
+  }
+
+  setCachedNodeRevision(
+    nodeId: number,
+    revisionToken: SpatiallyIndexedSkeletonRevisionToken | undefined,
+  ) {
+    if (revisionToken === undefined) {
+      return false;
+    }
+    return this.updateCachedNode(nodeId, (node) => {
+      if (node.revisionToken === revisionToken) {
+        return node;
+      }
+      return {
+        ...node,
+        revisionToken,
+      };
+    });
+  }
+
+  setCachedNodeRevisions(
+    revisionUpdates: readonly SpatiallyIndexedSkeletonNodeRevisionUpdate[],
+  ) {
+    let changed = false;
+    for (const update of revisionUpdates) {
+      changed =
+        this.setCachedNodeRevision(update.nodeId, update.revisionToken) ||
+        changed;
+    }
+    return changed;
   }
 
   updateCachedNode(
@@ -585,11 +548,8 @@ export class SpatialSkeletonState extends RefCounted {
         return updatedNode;
       });
       if (!segmentChanged) continue;
-      this.fullSegmentNodeCache.set(segmentId, nextSegmentNodes);
+      this.replaceCachedSegmentNodes(segmentId, nextSegmentNodes);
       changed = true;
-    }
-    if (changed) {
-      this.rebuildCachedNodesById();
     }
     return changed;
   }
@@ -621,7 +581,7 @@ export class SpatialSkeletonState extends RefCounted {
       if (segmentId === normalizedNode.segmentId) {
         const nextSegmentNodes = segmentNodes.slice();
         nextSegmentNodes[existingIndex] = normalizedNode;
-        this.fullSegmentNodeCache.set(segmentId, nextSegmentNodes);
+        this.replaceCachedSegmentNodes(segmentId, nextSegmentNodes);
         changed = true;
         foundInTargetSegment = true;
         continue;
@@ -629,25 +589,27 @@ export class SpatialSkeletonState extends RefCounted {
       const nextSegmentNodes = segmentNodes.filter(
         (candidate) => candidate.nodeId !== normalizedNode.nodeId,
       );
-      this.fullSegmentNodeCache.set(segmentId, nextSegmentNodes);
+      this.replaceCachedSegmentNodes(segmentId, nextSegmentNodes);
       changed = true;
     }
     if (!targetSegmentCached && (options.allowUncachedSegment ?? false)) {
-      this.pendingFullSegmentNodeFetches.delete(normalizedNode.segmentId);
-      this.fullSegmentNodeCache.set(normalizedNode.segmentId, [normalizedNode]);
+      this.abortPendingFullSegmentNodeFetch(
+        normalizedNode.segmentId,
+        "spatial skeleton full-segment inspection request replaced by local segment cache update",
+      );
+      this.replaceCachedSegmentNodes(normalizedNode.segmentId, [
+        normalizedNode,
+      ]);
       changed = true;
     } else if (targetSegmentCached && !foundInTargetSegment) {
       const targetNodes = this.fullSegmentNodeCache.get(
         normalizedNode.segmentId,
       )!;
-      this.fullSegmentNodeCache.set(
+      this.replaceCachedSegmentNodes(
         normalizedNode.segmentId,
         [...targetNodes, normalizedNode].sort((a, b) => a.nodeId - b.nodeId),
       );
       changed = true;
-    }
-    if (changed) {
-      this.rebuildCachedNodesById();
     }
     return changed;
   }
@@ -681,10 +643,6 @@ export class SpatialSkeletonState extends RefCounted {
       childNodeIds?: Iterable<number>;
     } = {},
   ) {
-    const normalizedNodeId = this.normalizeNodeId(nodeId);
-    if (normalizedNodeId !== undefined) {
-      this.nodePropertyOverrides.delete(normalizedNodeId);
-    }
     const childNodeIds = options.childNodeIds
       ? new Set(options.childNodeIds)
       : undefined;
@@ -708,11 +666,8 @@ export class SpatialSkeletonState extends RefCounted {
         nextSegmentNodes.push(candidate);
       }
       if (!segmentChanged) continue;
-      this.fullSegmentNodeCache.set(segmentId, nextSegmentNodes);
+      this.replaceCachedSegmentNodes(segmentId, nextSegmentNodes);
       changed = true;
-    }
-    if (changed) {
-      this.rebuildCachedNodesById();
     }
     return changed;
   }
@@ -734,15 +689,15 @@ export class SpatialSkeletonState extends RefCounted {
   ) {
     const normalizedNodeId = this.normalizeNodeId(nodeId);
     if (normalizedNodeId === undefined) {
-      return false;
+      return undefined;
     }
     const targetNode = this.cachedNodesById.get(normalizedNodeId);
     if (targetNode === undefined) {
-      return false;
+      return undefined;
     }
     const segmentNodes = this.fullSegmentNodeCache.get(targetNode.segmentId);
     if (segmentNodes === undefined) {
-      return false;
+      return undefined;
     }
 
     const nodeById = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
@@ -751,10 +706,10 @@ export class SpatialSkeletonState extends RefCounted {
     }
     const startNode = nodeById.get(normalizedNodeId);
     if (startNode === undefined) {
-      return false;
+      return undefined;
     }
     if (startNode.parentNodeId === undefined) {
-      return true;
+      return [startNode.nodeId];
     }
 
     const pathNodeIds: number[] = [];
@@ -762,7 +717,7 @@ export class SpatialSkeletonState extends RefCounted {
     let currentNode: SpatiallyIndexedSkeletonNodeInfo | undefined = startNode;
     while (currentNode !== undefined) {
       if (seen.has(currentNode.nodeId)) {
-        return false;
+        return undefined;
       }
       seen.add(currentNode.nodeId);
       pathNodeIds.push(currentNode.nodeId);
@@ -772,7 +727,7 @@ export class SpatialSkeletonState extends RefCounted {
       }
       currentNode = nodeById.get(parentNodeId);
       if (currentNode === undefined) {
-        return false;
+        return undefined;
       }
     }
 
@@ -800,17 +755,6 @@ export class SpatialSkeletonState extends RefCounted {
       }
       const nextParentNodeId = nextParentByNodeId.get(candidate.nodeId);
       const nextConfidence = nextConfidenceByNodeId.get(candidate.nodeId);
-      const override = this.nodePropertyOverrides.get(candidate.nodeId);
-      if (
-        override !== undefined &&
-        override.confidence !== nextConfidence &&
-        nextConfidence !== undefined
-      ) {
-        this.nodePropertyOverrides.set(candidate.nodeId, {
-          ...override,
-          confidence: nextConfidence,
-        });
-      }
       if (
         candidate.parentNodeId === nextParentNodeId &&
         candidate.confidence === nextConfidence
@@ -825,11 +769,10 @@ export class SpatialSkeletonState extends RefCounted {
       };
     });
     if (!changed) {
-      return false;
+      return pathNodeIds;
     }
-    this.fullSegmentNodeCache.set(targetNode.segmentId, nextSegmentNodes);
-    this.rebuildCachedNodesById();
-    return true;
+    this.replaceCachedSegmentNodes(targetNode.segmentId, nextSegmentNodes);
+    return pathNodeIds;
   }
 
   invalidateCachedSegments(segmentIds: Iterable<number>) {
@@ -842,133 +785,13 @@ export class SpatialSkeletonState extends RefCounted {
       ) {
         continue;
       }
-      changed =
-        this.fullSegmentNodeCache.delete(normalizedSegmentId) || changed;
-      this.pendingFullSegmentNodeFetches.delete(normalizedSegmentId);
-    }
-    if (changed) {
-      this.rebuildCachedNodesById();
+      changed = this.deleteCachedSegment(normalizedSegmentId) || changed;
+      this.abortPendingFullSegmentNodeFetch(
+        normalizedSegmentId,
+        "spatial skeleton full-segment inspection request invalidated for segment",
+      );
     }
     return changed;
-  }
-
-  mergeCachedSegments(options: {
-    resultSegmentId: number;
-    mergedSegmentId: number;
-    childNodeId: number;
-    parentNodeId: number;
-  }) {
-    const resultSegmentId = Math.round(Number(options.resultSegmentId));
-    const mergedSegmentId = Math.round(Number(options.mergedSegmentId));
-    const childNodeId = Math.round(Number(options.childNodeId));
-    const parentNodeId = Math.round(Number(options.parentNodeId));
-    if (
-      !Number.isSafeInteger(resultSegmentId) ||
-      resultSegmentId <= 0 ||
-      !Number.isSafeInteger(mergedSegmentId) ||
-      mergedSegmentId <= 0 ||
-      !Number.isSafeInteger(childNodeId) ||
-      childNodeId <= 0 ||
-      !Number.isSafeInteger(parentNodeId) ||
-      parentNodeId <= 0
-    ) {
-      return false;
-    }
-    const resultNodes = this.fullSegmentNodeCache.get(resultSegmentId);
-    const mergedNodes = this.fullSegmentNodeCache.get(mergedSegmentId);
-    if (resultNodes === undefined || mergedNodes === undefined) {
-      return this.invalidateCachedSegments([resultSegmentId, mergedSegmentId]);
-    }
-    const nextResultNodes = [
-      ...resultNodes.map(cloneSpatiallyIndexedSkeletonNodeInfo),
-      ...mergedNodes.map((node) => {
-        const nextNode = cloneSpatiallyIndexedSkeletonNodeInfo(node);
-        nextNode.segmentId = resultSegmentId;
-        if (nextNode.nodeId === childNodeId) {
-          nextNode.parentNodeId = parentNodeId;
-        }
-        return nextNode;
-      }),
-    ].sort((a, b) => a.nodeId - b.nodeId);
-    this.pendingFullSegmentNodeFetches.delete(resultSegmentId);
-    this.pendingFullSegmentNodeFetches.delete(mergedSegmentId);
-    this.fullSegmentNodeCache.set(resultSegmentId, nextResultNodes);
-    this.fullSegmentNodeCache.delete(mergedSegmentId);
-    this.rebuildCachedNodesById();
-    return true;
-  }
-
-  splitCachedSegmentAtNode(options: {
-    existingSegmentId: number;
-    nodeId: number;
-    newSegmentId: number;
-  }) {
-    const existingSegmentId = Math.round(Number(options.existingSegmentId));
-    const nodeId = Math.round(Number(options.nodeId));
-    const newSegmentId = Math.round(Number(options.newSegmentId));
-    if (
-      !Number.isSafeInteger(existingSegmentId) ||
-      existingSegmentId <= 0 ||
-      !Number.isSafeInteger(nodeId) ||
-      nodeId <= 0 ||
-      !Number.isSafeInteger(newSegmentId) ||
-      newSegmentId <= 0
-    ) {
-      return false;
-    }
-    const existingNodes = this.fullSegmentNodeCache.get(existingSegmentId);
-    if (existingNodes === undefined) {
-      return this.invalidateCachedSegments([existingSegmentId, newSegmentId]);
-    }
-    const childrenByParent = new Map<number, number[]>();
-    for (const node of existingNodes) {
-      if (node.parentNodeId === undefined) continue;
-      let children = childrenByParent.get(node.parentNodeId);
-      if (children === undefined) {
-        children = [];
-        childrenByParent.set(node.parentNodeId, children);
-      }
-      children.push(node.nodeId);
-    }
-    const movedNodeIds = new Set<number>();
-    const queue = [nodeId];
-    for (let queueIndex = 0; queueIndex < queue.length; ++queueIndex) {
-      const currentNodeId = queue[queueIndex];
-      if (movedNodeIds.has(currentNodeId)) continue;
-      movedNodeIds.add(currentNodeId);
-      for (const childNodeId of childrenByParent.get(currentNodeId) ?? []) {
-        queue.push(childNodeId);
-      }
-    }
-    if (!movedNodeIds.has(nodeId)) {
-      return this.invalidateCachedSegments([existingSegmentId, newSegmentId]);
-    }
-    const remainingNodes: SpatiallyIndexedSkeletonNodeInfo[] = [];
-    const movedNodes: SpatiallyIndexedSkeletonNodeInfo[] = [];
-    for (const node of existingNodes) {
-      const nextNode = cloneSpatiallyIndexedSkeletonNodeInfo(node);
-      if (movedNodeIds.has(node.nodeId)) {
-        nextNode.segmentId = newSegmentId;
-        if (nextNode.nodeId === nodeId) {
-          nextNode.parentNodeId = undefined;
-        }
-        movedNodes.push(nextNode);
-      } else {
-        remainingNodes.push(nextNode);
-      }
-    }
-    if (movedNodes.length === 0) {
-      return false;
-    }
-    this.pendingFullSegmentNodeFetches.delete(existingSegmentId);
-    this.pendingFullSegmentNodeFetches.delete(newSegmentId);
-    this.fullSegmentNodeCache.set(existingSegmentId, remainingNodes);
-    this.fullSegmentNodeCache.set(
-      newSegmentId,
-      movedNodes.sort((a, b) => a.nodeId - b.nodeId),
-    );
-    this.rebuildCachedNodesById();
-    return true;
   }
 
   evictInactiveSegmentNodes(activeSegmentIds: Iterable<number>) {
@@ -976,16 +799,16 @@ export class SpatialSkeletonState extends RefCounted {
     let changed = false;
     for (const segmentId of this.fullSegmentNodeCache.keys()) {
       if (activeSegmentIdSet.has(segmentId)) continue;
-      this.fullSegmentNodeCache.delete(segmentId);
-      changed = true;
+      changed = this.deleteCachedSegment(segmentId) || changed;
     }
-    for (const segmentId of this.pendingFullSegmentNodeFetches.keys()) {
+    for (const segmentId of [...this.pendingFullSegmentNodeFetches.keys()]) {
       if (activeSegmentIdSet.has(segmentId)) continue;
-      this.pendingFullSegmentNodeFetches.delete(segmentId);
+      this.abortPendingFullSegmentNodeFetch(
+        segmentId,
+        "spatial skeleton full-segment inspection request evicted for inactive segment",
+      );
     }
-    if (changed) {
-      this.rebuildCachedNodesById();
-    }
+    return changed;
   }
 
   async getFullSegmentNodes(
@@ -996,9 +819,9 @@ export class SpatialSkeletonState extends RefCounted {
     if (cached !== undefined) {
       return cached;
     }
-    const pending = this.pendingFullSegmentNodeFetches.get(segmentId);
-    if (pending !== undefined) {
-      return pending;
+    const pendingEntry = this.pendingFullSegmentNodeFetches.get(segmentId);
+    if (pendingEntry !== undefined) {
+      return pendingEntry.promise;
     }
     const skeletonSource =
       getSpatiallyIndexedSkeletonInspectionSource(skeletonLayer);
@@ -1008,11 +831,14 @@ export class SpatialSkeletonState extends RefCounted {
       );
     }
     const fetchVersion = this.fullSkeletonCacheGeneration;
+    const abortController = new AbortController();
     const pendingFetch: {
       promise?: Promise<SpatiallyIndexedSkeletonNodeInfo[]>;
     } = {};
     const fetchPromise = (async () => {
-      const fetchedNodes = await skeletonSource.getSkeleton(segmentId);
+      const fetchedNodes = await skeletonSource.getSkeleton(segmentId, {
+        signal: abortController.signal,
+      });
       const dedupedNodes = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
       for (const fetchedNode of fetchedNodes) {
         const mappedNode = mapSpatiallyIndexedSkeletonNodeToNodeInfo(
@@ -1030,38 +856,39 @@ export class SpatialSkeletonState extends RefCounted {
       if (
         this.fullSkeletonCacheGeneration === fetchVersion &&
         pendingFetch.promise !== undefined &&
-        this.pendingFullSegmentNodeFetches.get(segmentId) === pendingFetch.promise
+        this.pendingFullSegmentNodeFetches.get(segmentId)?.promise ===
+          pendingFetch.promise
       ) {
-        this.fullSegmentNodeCache.set(segmentId, normalizedNodes);
-        this.rebuildCachedNodesById();
+        this.replaceCachedSegmentNodes(segmentId, normalizedNodes);
         this.markNodeDataChanged({ invalidateFullSkeletonCache: false });
       }
       return normalizedNodes;
     })().finally(() => {
-      if (this.pendingFullSegmentNodeFetches.get(segmentId) === pendingFetch.promise) {
+      if (
+        this.pendingFullSegmentNodeFetches.get(segmentId)?.promise ===
+        pendingFetch.promise
+      ) {
         this.pendingFullSegmentNodeFetches.delete(segmentId);
       }
     });
     pendingFetch.promise = fetchPromise;
-    this.pendingFullSegmentNodeFetches.set(segmentId, fetchPromise);
+    this.pendingFullSegmentNodeFetches.set(segmentId, {
+      promise: fetchPromise,
+      abortController,
+    });
     return fetchPromise;
   }
 
   private clearFullSkeletonCache() {
     this.fullSkeletonCacheGeneration++;
+    for (const segmentId of [...this.pendingFullSegmentNodeFetches.keys()]) {
+      this.abortPendingFullSegmentNodeFetch(
+        segmentId,
+        "stale spatial skeleton full-segment inspection request",
+      );
+    }
     this.fullSegmentNodeCache.clear();
     this.pendingFullSegmentNodeFetches.clear();
     this.cachedNodesById.clear();
-  }
-
-  private rebuildCachedNodesById() {
-    this.cachedNodesById.clear();
-    for (const segmentNodes of this.fullSegmentNodeCache.values()) {
-      for (const node of segmentNodes) {
-        if (!this.cachedNodesById.has(node.nodeId)) {
-          this.cachedNodesById.set(node.nodeId, node);
-        }
-      }
-    }
   }
 }

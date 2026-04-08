@@ -31,7 +31,10 @@ interface SpatialSkeletonViewerHoverLayerLike<TRenderLayer> {
   renderLayers: readonly TRenderLayer[];
 }
 
-export type SpatialSkeletonSelectionRecoveryStatus = "pending" | "failed";
+export enum SpatialSkeletonSelectionRecoveryStatus {
+  PENDING = "pending",
+  FAILED = "failed",
+}
 
 const MAX_SAFE_INTEGER_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
 
@@ -119,7 +122,7 @@ export function getSpatialSkeletonMissingSelectionDisplayState(
     };
   }
   const { hasInspectableSource, hasCachedSegment, recoveryStatus } = options;
-  if (recoveryStatus === "pending") {
+  if (recoveryStatus === SpatialSkeletonSelectionRecoveryStatus.PENDING) {
     return {
       recoveryKey,
       recoveryStatus,

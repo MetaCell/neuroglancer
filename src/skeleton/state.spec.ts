@@ -89,6 +89,29 @@ describe("skeleton/state", () => {
     );
   });
 
+  it("clears inspected cache state and pending node positions together", () => {
+    const state = new SpatialSkeletonState();
+    (state as any).replaceCachedSegmentNodes(11, [
+      {
+        nodeId: 5,
+        segmentId: 11,
+        position: new Float32Array([1, 2, 3]),
+      },
+    ]);
+    state.setPendingNodePosition(5, [4, 5, 6]);
+    const nodeDataVersion = state.nodeDataVersion.value;
+    const pendingNodePositionVersion = state.pendingNodePositionVersion.value;
+
+    expect(state.clearInspectedSkeletonCache()).toBe(true);
+    expect(state.getCachedSegmentNodes(11)).toBeUndefined();
+    expect(state.getCachedNode(5)).toBeUndefined();
+    expect(state.getPendingNodePosition(5)).toBeUndefined();
+    expect(state.nodeDataVersion.value).toBe(nodeDataVersion + 1);
+    expect(state.pendingNodePositionVersion.value).toBe(
+      pendingNodePositionVersion + 1,
+    );
+  });
+
   it("can seed a brand-new cached segment from a local node mutation", () => {
     const state = new SpatialSkeletonState();
 
@@ -116,6 +139,47 @@ describe("skeleton/state", () => {
       nodeId: 5,
       segmentId: 11,
       position: new Float32Array([1, 2, 3]),
+      parentNodeId: undefined,
+      labels: undefined,
+    });
+  });
+
+  it("updates cached node lookup when a node moves between cached segments", () => {
+    const state = new SpatialSkeletonState();
+    (state as any).replaceCachedSegmentNodes(11, [
+      {
+        nodeId: 5,
+        segmentId: 11,
+        position: new Float32Array([1, 2, 3]),
+        parentNodeId: undefined,
+      },
+    ]);
+    (state as any).replaceCachedSegmentNodes(13, [
+      {
+        nodeId: 7,
+        segmentId: 13,
+        position: new Float32Array([4, 5, 6]),
+        parentNodeId: undefined,
+      },
+    ]);
+
+    expect(
+      state.upsertCachedNode({
+        nodeId: 5,
+        segmentId: 13,
+        position: new Float32Array([7, 8, 9]),
+        parentNodeId: undefined,
+      }),
+    ).toBe(true);
+
+    expect(state.getCachedSegmentNodes(11)).toBeUndefined();
+    expect(state.getCachedSegmentNodes(13)?.map((node) => node.nodeId)).toEqual(
+      [5, 7],
+    );
+    expect(state.getCachedNode(5)).toEqual({
+      nodeId: 5,
+      segmentId: 13,
+      position: new Float32Array([7, 8, 9]),
       parentNodeId: undefined,
       labels: undefined,
     });
@@ -170,6 +234,81 @@ describe("skeleton/state", () => {
     expect(state.getCachedNode(5)).toBeUndefined();
   });
 
+  it("aborts pending full segment fetches when the cache generation is cleared", async () => {
+    const state = new SpatialSkeletonState();
+    let receivedSignal: AbortSignal | undefined;
+    const getSkeleton = vi.fn(
+      (_segmentId: number, options?: { signal?: AbortSignal }) =>
+        new Promise<never>((_resolve, reject) => {
+          receivedSignal = options?.signal;
+          options?.signal?.addEventListener(
+            "abort",
+            () => reject(options.signal?.reason),
+            { once: true },
+          );
+        }),
+    );
+
+    const pending = state.getFullSegmentNodes({ source: { getSkeleton } } as any, 11);
+
+    expect(receivedSignal?.aborted).toBe(false);
+    expect(state.clearInspectedSkeletonCache()).toBe(true);
+    expect(receivedSignal?.aborted).toBe(true);
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(state.getCachedSegmentNodes(11)).toBeUndefined();
+    expect(state.getCachedNode(11)).toBeUndefined();
+  });
+
+  it("aborts pending full segment fetches when a segment is invalidated", async () => {
+    const state = new SpatialSkeletonState();
+    let receivedSignal: AbortSignal | undefined;
+    const getSkeleton = vi.fn(
+      (_segmentId: number, options?: { signal?: AbortSignal }) =>
+        new Promise<never>((_resolve, reject) => {
+          receivedSignal = options?.signal;
+          options?.signal?.addEventListener(
+            "abort",
+            () => reject(options.signal?.reason),
+            { once: true },
+          );
+        }),
+    );
+
+    const pending = state.getFullSegmentNodes({ source: { getSkeleton } } as any, 11);
+
+    expect(receivedSignal?.aborted).toBe(false);
+    expect(state.invalidateCachedSegments([11])).toBe(false);
+    expect(receivedSignal?.aborted).toBe(true);
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(state.getCachedSegmentNodes(11)).toBeUndefined();
+    expect(state.getCachedNode(11)).toBeUndefined();
+  });
+
+  it("aborts pending full segment fetches when a segment is evicted", async () => {
+    const state = new SpatialSkeletonState();
+    let receivedSignal: AbortSignal | undefined;
+    const getSkeleton = vi.fn(
+      (_segmentId: number, options?: { signal?: AbortSignal }) =>
+        new Promise<never>((_resolve, reject) => {
+          receivedSignal = options?.signal;
+          options?.signal?.addEventListener(
+            "abort",
+            () => reject(options.signal?.reason),
+            { once: true },
+          );
+        }),
+    );
+
+    const pending = state.getFullSegmentNodes({ source: { getSkeleton } } as any, 11);
+
+    expect(receivedSignal?.aborted).toBe(false);
+    expect(state.evictInactiveSegmentNodes([])).toBe(false);
+    expect(receivedSignal?.aborted).toBe(true);
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(state.getCachedSegmentNodes(11)).toBeUndefined();
+    expect(state.getCachedNode(11)).toBeUndefined();
+  });
+
   it("notifies node data listeners after caching a fetched full segment", async () => {
     const state = new SpatialSkeletonState();
     const getSkeleton = vi.fn(async () => [
@@ -210,66 +349,57 @@ describe("skeleton/state", () => {
     });
   });
 
-  it("keeps inspection bounded to a primary and secondary segment", () => {
+  it("caches inspected revision metadata from full skeleton inspection", async () => {
     const state = new SpatialSkeletonState();
-    (state as any).fullSegmentNodeCache.set(11, [
+    const getSkeleton = vi.fn(async () => [
       {
-        nodeId: 1,
+        id: 5,
+        parent_id: null,
+        x: 1,
+        y: 2,
+        z: 3,
+        skeleton_id: 11,
+        revisionToken: "2026-03-29T12:30:00Z",
+      },
+    ]);
+
+    await expect(
+      state.getFullSegmentNodes({ source: { getSkeleton } } as any, 11),
+    ).resolves.toEqual([
+      {
+        nodeId: 5,
         segmentId: 11,
         position: new Float32Array([1, 2, 3]),
-      },
-    ]);
-    (state as any).fullSegmentNodeCache.set(13, [
-      {
-        nodeId: 2,
-        segmentId: 13,
-        position: new Float32Array([4, 5, 6]),
-      },
-    ]);
-    (state as any).fullSegmentNodeCache.set(17, [
-      {
-        nodeId: 3,
-        segmentId: 17,
-        position: new Float32Array([7, 8, 9]),
+        parentNodeId: undefined,
+        labels: undefined,
+        revisionToken: "2026-03-29T12:30:00Z",
       },
     ]);
 
-    expect(state.setInspectedSegments(11, 13)).toBe(true);
-    expect(state.getInspectedSegmentIds()).toEqual([11, 13]);
-    expect(state.getCachedSegmentNodes(17)).toBeUndefined();
-
-    expect(state.inspectSegment(17)).toBe(true);
-    expect(state.getInspectedSegmentIds()).toEqual([17]);
-    expect(state.getCachedSegmentNodes(11)).toBeUndefined();
-    expect(state.getCachedSegmentNodes(13)).toBeUndefined();
+    expect(getSkeleton).toHaveBeenCalledTimes(1);
+    expect(state.getCachedNode(5)).toEqual({
+      nodeId: 5,
+      segmentId: 11,
+      position: new Float32Array([1, 2, 3]),
+      parentNodeId: undefined,
+      labels: undefined,
+      revisionToken: "2026-03-29T12:30:00Z",
+    });
   });
 
-  it("stores merge anchor state only when both node and segment ids are valid", () => {
+  it("stores merge anchor state only when the node id is valid", () => {
     const state = new SpatialSkeletonState();
 
-    expect(state.setMergeAnchor(5, 11)).toBe(true);
+    expect(state.setMergeAnchor(5)).toBe(true);
     expect(state.mergeAnchorNodeId.value).toBe(5);
-    expect(state.mergeAnchorSegmentId.value).toBe(11);
 
-    expect(state.setMergeAnchor(7, undefined)).toBe(true);
+    expect(state.setMergeAnchor(0)).toBe(true);
     expect(state.mergeAnchorNodeId.value).toBeUndefined();
-    expect(state.mergeAnchorSegmentId.value).toBeUndefined();
-  });
-
-  it("keeps primary inspection stable when adding a secondary segment", () => {
-    const state = new SpatialSkeletonState();
-
-    expect(state.inspectSegment(11)).toBe(true);
-    expect(state.inspectSegment(13, { secondary: true })).toBe(true);
-    expect(state.getInspectedSegmentIds()).toEqual([11, 13]);
-
-    expect(state.inspectSegment(11, { secondary: true })).toBe(true);
-    expect(state.getInspectedSegmentIds()).toEqual([11]);
   });
 
   it("stores provided confidence when setting properties", () => {
     const state = new SpatialSkeletonState();
-    (state as any).fullSegmentNodeCache.set(11, [
+    (state as any).replaceCachedSegmentNodes(11, [
       {
         nodeId: 1,
         segmentId: 11,
@@ -279,7 +409,6 @@ describe("skeleton/state", () => {
         confidence: 50,
       },
     ]);
-    (state as any).rebuildCachedNodesById();
 
     expect(state.setNodeProperties(1, { radius: 6, confidence: 63 })).toBe(
       true,
@@ -288,15 +417,11 @@ describe("skeleton/state", () => {
       radius: 6,
       confidence: 63,
     });
-    expect(state.getNodePropertyOverride(1)).toEqual({
-      radius: 6,
-      confidence: 63,
-    });
   });
 
   it("reroots cached segment topology, confidence, and derived ordering", () => {
     const state = new SpatialSkeletonState();
-    (state as any).fullSegmentNodeCache.set(11, [
+    (state as any).replaceCachedSegmentNodes(11, [
       {
         nodeId: 1,
         segmentId: 11,
@@ -333,13 +458,8 @@ describe("skeleton/state", () => {
         confidence: 50,
       },
     ]);
-    (state as any).nodePropertyOverrides.set(2, {
-      radius: 7,
-      confidence: 20,
-    });
-    (state as any).rebuildCachedNodesById();
 
-    expect(state.rerootCachedSegment(3)).toBe(true);
+    expect(state.rerootCachedSegment(3)).toEqual([3, 2, 1]);
 
     const cachedNodes = state.getCachedSegmentNodes(11)!;
     expect(cachedNodes.find((node) => node.nodeId === 3)).toMatchObject({
@@ -361,10 +481,6 @@ describe("skeleton/state", () => {
     expect(cachedNodes.find((node) => node.nodeId === 5)).toMatchObject({
       parentNodeId: 1,
       confidence: 50,
-    });
-    expect(state.getNodePropertyOverride(2)).toEqual({
-      radius: 7,
-      confidence: 10,
     });
 
     const graph = buildSpatiallyIndexedSkeletonNavigationGraph(cachedNodes);

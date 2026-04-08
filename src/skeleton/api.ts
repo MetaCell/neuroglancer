@@ -1,3 +1,5 @@
+export type SpatiallyIndexedSkeletonRevisionToken = string | number;
+
 export interface SpatiallyIndexedSkeletonNode {
   id: number;
   parent_id: number | null;
@@ -8,6 +10,7 @@ export interface SpatiallyIndexedSkeletonNode {
   radius?: number;
   confidence?: number;
   labels?: string[];
+  revisionToken?: SpatiallyIndexedSkeletonRevisionToken;
 }
 
 export interface SpatiallyIndexedSkeletonOpenLeaf {
@@ -35,6 +38,39 @@ export interface SpatiallyIndexedSkeletonBranchNavigationTarget {
 export interface SpatiallyIndexedSkeletonAddNodeResult {
   treenodeId: number;
   skeletonId: number;
+  revisionToken?: SpatiallyIndexedSkeletonRevisionToken;
+  parentRevisionToken?: SpatiallyIndexedSkeletonRevisionToken;
+}
+
+export interface SpatiallyIndexedSkeletonNodeRevisionUpdate {
+  nodeId: number;
+  revisionToken: SpatiallyIndexedSkeletonRevisionToken;
+}
+
+export interface SpatiallyIndexedSkeletonNodeRevisionResult {
+  revisionToken?: SpatiallyIndexedSkeletonRevisionToken;
+}
+
+export interface SpatiallyIndexedSkeletonDeleteNodeResult {
+  childRevisionUpdates?: readonly SpatiallyIndexedSkeletonNodeRevisionUpdate[];
+}
+
+export interface SpatiallyIndexedSkeletonEditNodeContext {
+  nodeId: number;
+  parentNodeId?: number;
+  revisionToken: SpatiallyIndexedSkeletonRevisionToken;
+}
+
+export interface SpatiallyIndexedSkeletonEditParentContext {
+  nodeId: number;
+  revisionToken: SpatiallyIndexedSkeletonRevisionToken;
+}
+
+export interface SpatiallyIndexedSkeletonEditContext {
+  node?: SpatiallyIndexedSkeletonEditNodeContext;
+  parent?: SpatiallyIndexedSkeletonEditParentContext;
+  children?: readonly SpatiallyIndexedSkeletonEditParentContext[];
+  nodes?: readonly SpatiallyIndexedSkeletonEditParentContext[];
 }
 
 export interface SpatiallyIndexedSkeletonMergeResult {
@@ -62,7 +98,10 @@ export interface SpatiallyIndexedSkeletonPropertyEditingOptions {
 
 export interface SpatiallyIndexedSkeletonSource {
   listSkeletons(): Promise<number[]>;
-  getSkeleton(skeletonId: number): Promise<SpatiallyIndexedSkeletonNode[]>;
+  getSkeleton(
+    skeletonId: number,
+    options?: { signal?: AbortSignal },
+  ): Promise<SpatiallyIndexedSkeletonNode[]>;
   getDimensions(): Promise<{
     min: { x: number; y: number; z: number };
     max: { x: number; y: number; z: number };
@@ -92,28 +131,52 @@ export interface EditableSpatiallyIndexedSkeletonSource
     y: number,
     z: number,
     parentId?: number,
+    editContext?: SpatiallyIndexedSkeletonEditContext,
   ): Promise<SpatiallyIndexedSkeletonAddNodeResult>;
-  moveNode(nodeId: number, x: number, y: number, z: number): Promise<void>;
+  moveNode(
+    nodeId: number,
+    x: number,
+    y: number,
+    z: number,
+    editContext?: SpatiallyIndexedSkeletonEditContext,
+  ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult>;
   deleteNode(
     nodeId: number,
     options: {
-      parentNodeId?: number;
       childNodeIds?: readonly number[];
+      editContext?: SpatiallyIndexedSkeletonEditContext;
     },
+  ): Promise<SpatiallyIndexedSkeletonDeleteNodeResult>;
+  rerootSkeleton?(
+    nodeId: number,
+    editContext?: SpatiallyIndexedSkeletonEditContext,
   ): Promise<void>;
-  rerootSkeleton?(nodeId: number): Promise<void>;
   updateDescription(
     nodeId: number,
     description: string,
     options: SpatiallyIndexedSkeletonDescriptionUpdateOptions,
-  ): Promise<void>;
-  setTrueEnd(nodeId: number): Promise<void>;
-  removeTrueEnd(nodeId: number): Promise<void>;
-  updateRadius(nodeId: number, radius: number): Promise<void>;
-  updateConfidence(nodeId: number, confidence: number): Promise<void>;
+  ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult>;
+  setTrueEnd(nodeId: number): Promise<SpatiallyIndexedSkeletonNodeRevisionResult>;
+  removeTrueEnd(
+    nodeId: number,
+  ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult>;
+  updateRadius(
+    nodeId: number,
+    radius: number,
+    editContext?: SpatiallyIndexedSkeletonEditContext,
+  ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult>;
+  updateConfidence(
+    nodeId: number,
+    confidence: number,
+    editContext?: SpatiallyIndexedSkeletonEditContext,
+  ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult>;
   mergeSkeletons(
     fromNodeId: number,
     toNodeId: number,
+    editContext?: SpatiallyIndexedSkeletonEditContext,
   ): Promise<SpatiallyIndexedSkeletonMergeResult>;
-  splitSkeleton(nodeId: number): Promise<SpatiallyIndexedSkeletonSplitResult>;
+  splitSkeleton(
+    nodeId: number,
+    editContext?: SpatiallyIndexedSkeletonEditContext,
+  ): Promise<SpatiallyIndexedSkeletonSplitResult>;
 }

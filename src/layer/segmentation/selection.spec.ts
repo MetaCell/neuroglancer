@@ -24,6 +24,7 @@ import {
   getSpatialSkeletonSelectionRecoveryKey,
   getSpatialSkeletonNodeIdFromViewerSelection,
   hasSpatialSkeletonNodeSelection,
+  SpatialSkeletonSelectionRecoveryStatus,
 } from "#src/layer/segmentation/selection.js";
 
 describe("layer/segmentation/selection", () => {
@@ -209,12 +210,12 @@ describe("layer/segmentation/selection", () => {
         {
           hasInspectableSource: true,
           hasCachedSegment: false,
-          recoveryStatus: "pending",
+          recoveryStatus: SpatialSkeletonSelectionRecoveryStatus.PENDING,
         },
       ),
     ).toEqual({
       recoveryKey: "31:8",
-      recoveryStatus: "pending",
+      recoveryStatus: SpatialSkeletonSelectionRecoveryStatus.PENDING,
       shouldRequestRecovery: false,
       loading: true,
     });
@@ -245,12 +246,12 @@ describe("layer/segmentation/selection", () => {
         {
           hasInspectableSource: true,
           hasCachedSegment: false,
-          recoveryStatus: "failed",
+          recoveryStatus: SpatialSkeletonSelectionRecoveryStatus.FAILED,
         },
       ),
     ).toEqual({
       recoveryKey: "31:8",
-      recoveryStatus: "failed",
+      recoveryStatus: SpatialSkeletonSelectionRecoveryStatus.FAILED,
       shouldRequestRecovery: false,
       loading: false,
     });

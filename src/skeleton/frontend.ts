@@ -1842,17 +1842,12 @@ export interface SpatiallyIndexedSkeletonNodeInfo {
   radius?: number;
   confidence?: number;
   labels?: readonly string[];
+  revisionToken?: string | number;
 }
 
 interface SpatiallyIndexedSkeletonInspectionState {
   readonly nodeDataVersion: WatchableValueInterface<number>;
   readonly pendingNodePositionVersion: WatchableValueInterface<number>;
-  readonly primaryInspectedSegmentId: WatchableValueInterface<
-    number | undefined
-  >;
-  readonly secondaryInspectedSegmentId: WatchableValueInterface<
-    number | undefined
-  >;
   getCachedSegmentNodes(
     segmentId: number,
   ): readonly SpatiallyIndexedSkeletonNodeInfo[] | undefined;
@@ -1861,7 +1856,6 @@ interface SpatiallyIndexedSkeletonInspectionState {
     segmentId: number,
   ): Promise<readonly SpatiallyIndexedSkeletonNodeInfo[]>;
   evictInactiveSegmentNodes(activeSegmentIds: Iterable<number>): void;
-  getInspectedSegmentIds(): readonly number[];
 }
 
 interface SpatiallyIndexedSkeletonOverlayChunk
@@ -2605,16 +2599,6 @@ export class SpatiallyIndexedSkeletonLayer
     if (inspectionState !== undefined) {
       this.registerDisposer(
         inspectionState.nodeDataVersion.changed.add(() => {
-          this.redrawNeeded.dispatch();
-        }),
-      );
-      this.registerDisposer(
-        inspectionState.primaryInspectedSegmentId.changed.add(() => {
-          this.redrawNeeded.dispatch();
-        }),
-      );
-      this.registerDisposer(
-        inspectionState.secondaryInspectedSegmentId.changed.add(() => {
           this.redrawNeeded.dispatch();
         }),
       );

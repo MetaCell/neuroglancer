@@ -51,6 +51,7 @@ import {
   getSpatialSkeletonNodeIdFromViewerHover,
   getSpatialSkeletonSegmentIdFromLayerSelectionState,
   getSpatialSkeletonSelectionRecoveryKey,
+  SpatialSkeletonSelectionRecoveryStatus,
 } from "#src/layer/segmentation/selection.js";
 import { appendSpatialSkeletonSerializationState } from "#src/layer/segmentation/spatial_skeleton_serialization.js";
 import {
@@ -127,10 +128,18 @@ import {
   updateSpatialSkeletonTrueEndLabels,
 } from "#src/skeleton/node_types.js";
 import {
+  buildSpatiallyIndexedSkeletonNeighborhoodEditContext,
+  buildSpatiallyIndexedSkeletonNodeEditContext,
+  findSpatiallyIndexedSkeletonNodeInfo,
+  getSpatiallyIndexedSkeletonDirectChildren,
+  getSpatiallyIndexedSkeletonNodeParent,
+} from "#src/skeleton/edit_state.js";
+import {
   hasAnySpatiallyIndexedSkeletonEditingCapability,
   hasSpatiallyIndexedSkeletonSourceCapability,
   getEditableSpatiallyIndexedSkeletonSource,
   getSpatiallyIndexedSkeletonInspectionSource,
+  getSpatiallyIndexedSkeletonNodeRevisionLookupSource,
   getSpatiallyIndexedSkeletonPropertyEditingOptions,
   getSpatiallyIndexedSkeletonRerootSource,
   type SpatiallyIndexedSkeletonSourceCapabilities,
@@ -191,6 +200,7 @@ import {
   verifyString,
 } from "#src/util/json.js";
 import { Signal } from "#src/util/signal.js";
+import { isAbortError } from "#src/util/abort.js";
 import { makeWatchableShaderError } from "#src/webgl/dynamic_shader.js";
 import { makeDeleteButton } from "#src/widget/delete_button.js";
 import type { DependentViewContext } from "#src/widget/dependent_view_widget.js";
@@ -1012,7 +1022,10 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
   shaderError = makeWatchableShaderError();
   renderScaleHistogram = new RenderScaleHistogram();
   renderScaleTarget = trackableRenderScaleTarget(1);
-  selectSegment: (id: bigint, pin: boolean | "toggle") => void;
+  selectSegment: (
+    id: bigint,
+    pin: boolean | "toggle" | "force-unpin",
+  ) => void;
   transparentPickEnabled: TrackableBoolean;
   baseSegmentColoring = new TrackableBoolean(false, false);
   baseSegmentHighlighting = new TrackableBoolean(false, false);
@@ -1303,10 +1316,16 @@ export class SegmentationUserLayer extends Base {
   readonly spatialSkeletonState = this.registerDisposer(
     new SpatialSkeletonState(),
   );
+  readonly selectedSpatialSkeletonNodeId = new WatchableValue<
+    number | undefined
+  >(undefined);
+  readonly spatialSkeletonVisibleChunksNeeded = new WatchableValue(0);
+  readonly spatialSkeletonVisibleChunksAvailable = new WatchableValue(0);
+  readonly spatialSkeletonVisibleChunksLoaded = new WatchableValue(false);
   private spatialSkeletonSelectionRecovery:
     | {
         key: string;
-        status: "pending" | "failed";
+        status: SpatialSkeletonSelectionRecoveryStatus;
       }
     | undefined;
 
@@ -1421,8 +1440,7 @@ export class SegmentationUserLayer extends Base {
       return;
     }
     const selectedNodeInfo =
-      this.getSpatiallyIndexedSkeletonLayer()?.getNode(normalizedNodeId) ??
-      this.spatialSkeletonState.getCachedNode(normalizedNodeId);
+      this.getSpatiallyIndexedSkeletonLayer()?.getNode(normalizedNodeId);
     const requestedSegmentId =
       options.segmentId ?? selectedNodeInfo?.segmentId ?? undefined;
     const normalizedSegmentId =
@@ -1494,30 +1512,8 @@ export class SegmentationUserLayer extends Base {
     return true;
   };
 
-  getInspectedSpatialSkeletonSegmentIds = () => {
-    return [
-      ...getVisibleSegments(
-        this.displayState.segmentationGroupState.value,
-      ).keys(),
-    ]
-      .map((segmentId) => Number(segmentId))
-      .filter((segmentId) => Number.isSafeInteger(segmentId) && segmentId > 0)
-      .sort((a, b) => a - b);
-  };
-
-  clearInspectedSpatialSkeletonSegments = () => {
-    return false;
-  };
-
-  clearSecondaryInspectedSpatialSkeletonSegment = () => {
-    return false;
-  };
-
-  setSpatialSkeletonMergeAnchor = (
-    nodeId: number | undefined,
-    segmentId: number | undefined,
-  ) => {
-    return this.spatialSkeletonState.setMergeAnchor(nodeId, segmentId);
+  setSpatialSkeletonMergeAnchor = (nodeId: number | undefined) => {
+    return this.spatialSkeletonState.setMergeAnchor(nodeId);
   };
 
   clearSpatialSkeletonMergeAnchor = () => {
@@ -1588,16 +1584,6 @@ export class SegmentationUserLayer extends Base {
   readonly spatialSkeletonEditMode = this.spatialSkeletonState.editMode;
   readonly spatialSkeletonMergeMode = this.spatialSkeletonState.mergeMode;
   readonly spatialSkeletonSplitMode = this.spatialSkeletonState.splitMode;
-  readonly selectedSpatialSkeletonNodeId =
-    this.spatialSkeletonState.selectedNodeId;
-  readonly spatialSkeletonTreeEndNodeId =
-    this.spatialSkeletonState.treeEndNodeId;
-  readonly spatialSkeletonVisibleChunksNeeded =
-    this.spatialSkeletonState.visibleChunksNeeded;
-  readonly spatialSkeletonVisibleChunksAvailable =
-    this.spatialSkeletonState.visibleChunksAvailable;
-  readonly spatialSkeletonVisibleChunksLoaded =
-    this.spatialSkeletonState.visibleChunksLoaded;
   readonly spatialSkeletonNodeDataVersion =
     this.spatialSkeletonState.nodeDataVersion;
   readonly spatialSkeletonActionsAllowed = this.registerDisposer(
@@ -1885,10 +1871,23 @@ export class SegmentationUserLayer extends Base {
     return { presentCount: available, totalCount: needed };
   }
 
+  private setSpatialSkeletonChunkLoadState(needed: number, available: number) {
+    if (this.spatialSkeletonVisibleChunksNeeded.value !== needed) {
+      this.spatialSkeletonVisibleChunksNeeded.value = needed;
+    }
+    if (this.spatialSkeletonVisibleChunksAvailable.value !== available) {
+      this.spatialSkeletonVisibleChunksAvailable.value = available;
+    }
+    const loaded = needed > 0 && available >= needed;
+    if (this.spatialSkeletonVisibleChunksLoaded.value !== loaded) {
+      this.spatialSkeletonVisibleChunksLoaded.value = loaded;
+    }
+  }
+
   private updateSpatialSkeletonChunkLoadState() {
     const stats2d = this.getSpatialSkeletonChunkStats("2d");
     const stats3d = this.getSpatialSkeletonChunkStats("3d");
-    this.spatialSkeletonState.updateChunkLoadState(
+    this.setSpatialSkeletonChunkLoadState(
       stats2d.totalCount + stats3d.totalCount,
       stats2d.presentCount + stats3d.presentCount,
     );
@@ -1897,6 +1896,7 @@ export class SegmentationUserLayer extends Base {
 
   private updateSpatialSkeletonSourceState() {
     let capabilities: SpatiallyIndexedSkeletonSourceCapabilities | undefined;
+    let hasSpatialSkeletonLayer = false;
     for (const layer of this.renderLayers) {
       if (
         !(
@@ -1907,6 +1907,7 @@ export class SegmentationUserLayer extends Base {
       ) {
         continue;
       }
+      hasSpatialSkeletonLayer = true;
       const sourceCapabilities = layer.base.getSourceCapabilities();
       capabilities =
         capabilities === undefined
@@ -1941,6 +1942,9 @@ export class SegmentationUserLayer extends Base {
       ) {
         break;
       }
+    }
+    if (!hasSpatialSkeletonLayer) {
+      this.spatialSkeletonState.clearInspectedSkeletonCache();
     }
     this.spatialSkeletonState.updateSourceCapabilities(
       capabilities ?? {
@@ -2033,23 +2037,66 @@ export class SegmentationUserLayer extends Base {
     return undefined;
   }
 
-  setSpatialSkeletonNodeDescription(nodeId: number, description: string) {
-    this.spatialSkeletonState.setNodeDescription(nodeId, description);
+  getCachedSpatialSkeletonSegmentNodesForEdit(segmentId: number) {
+    const segmentNodes = this.spatialSkeletonState.getCachedSegmentNodes(segmentId);
+    if (segmentNodes === undefined) {
+      throw new Error(
+        `Segment ${segmentId} is not available in the inspected skeleton cache. Load the full skeleton before editing it.`,
+      );
+    }
+    return segmentNodes;
   }
 
-  getSpatialSkeletonNodeDescription(nodeId: number) {
-    return this.spatialSkeletonState.getNodeDescription(nodeId);
+  async getSpatialSkeletonDeleteOperationContext(
+    node: SpatiallyIndexedSkeletonNodeInfo,
+  ) {
+    const skeletonLayer = this.getSpatiallyIndexedSkeletonLayer();
+    if (skeletonLayer === undefined) {
+      throw new Error(
+        "No active spatial skeleton layer found for delete action.",
+      );
+    }
+    if (getEditableSpatiallyIndexedSkeletonSource(skeletonLayer) === undefined) {
+      throw new Error(
+        "Unable to resolve editable skeleton source for the active layer.",
+      );
+    }
+
+    const segmentNodes = this.getCachedSpatialSkeletonSegmentNodesForEdit(
+      node.segmentId,
+    );
+    const currentNode = findSpatiallyIndexedSkeletonNodeInfo(
+      segmentNodes,
+      node.nodeId,
+    );
+    if (currentNode === undefined) {
+      throw new Error(
+        `Node ${node.nodeId} is not available in the inspected skeleton cache.`,
+      );
+    }
+    const childNodes = getSpatiallyIndexedSkeletonDirectChildren(
+      segmentNodes,
+      currentNode.nodeId,
+    );
+    if (currentNode.parentNodeId === undefined && childNodes.length > 0) {
+      throw new Error(
+        "Deleting a root node with children is blocked. Reroot the skeleton manually before deleting it.",
+      );
+    }
+    return {
+      node: currentNode,
+      parentNode: getSpatiallyIndexedSkeletonNodeParent(segmentNodes, currentNode),
+      childNodes,
+      editContext: buildSpatiallyIndexedSkeletonNeighborhoodEditContext(
+        currentNode,
+        segmentNodes,
+      ),
+    };
   }
 
   getSpatialSkeletonNodeDisplayDescription(
     node: SpatiallyIndexedSkeletonNodeInfo,
   ) {
-    const localDescription = this.getSpatialSkeletonNodeDescription(
-      node.nodeId,
-    )?.trim();
-    if (localDescription !== undefined && localDescription.length > 0) {
-      return localDescription;
-    }
     const descriptiveLabels = getSpatialSkeletonDescriptionLabels(node.labels);
     return descriptiveLabels.length === 0
       ? undefined
@@ -2077,8 +2124,26 @@ export class SegmentationUserLayer extends Base {
         "Unable to resolve a reroot-capable skeleton source for the active layer.",
       );
     }
+    const segmentNodes = this.getCachedSpatialSkeletonSegmentNodesForEdit(
+      node.segmentId,
+    );
+    const currentNode = findSpatiallyIndexedSkeletonNodeInfo(
+      segmentNodes,
+      node.nodeId,
+    );
+    if (currentNode === undefined) {
+      throw new Error(
+        `Node ${node.nodeId} is not available in the inspected skeleton cache.`,
+      );
+    }
 
-    await skeletonSource.rerootSkeleton(node.nodeId);
+    await skeletonSource.rerootSkeleton(
+      node.nodeId,
+      buildSpatiallyIndexedSkeletonNeighborhoodEditContext(
+        currentNode,
+        segmentNodes,
+      ),
+    );
     this.selectSpatialSkeletonNode(
       node.nodeId,
       this.manager.root.selectionState.pin.value,
@@ -2087,11 +2152,27 @@ export class SegmentationUserLayer extends Base {
         position: node.position,
       },
     );
-    const updatedFromCache = this.spatialSkeletonState.rerootCachedSegment(
-      node.nodeId,
-    );
+    const rerootedPathNodeIds =
+      this.spatialSkeletonState.rerootCachedSegment(node.nodeId) ?? [];
+    const revisionLookupSource =
+      getSpatiallyIndexedSkeletonNodeRevisionLookupSource(skeletonLayer);
+    if (revisionLookupSource !== undefined && rerootedPathNodeIds.length > 0) {
+      try {
+        const revisionUpdates =
+          await revisionLookupSource.getNodeRevisionUpdates(rerootedPathNodeIds);
+        if (revisionUpdates.length > 0) {
+          this.spatialSkeletonState.setCachedNodeRevisions(revisionUpdates);
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : String(error);
+        StatusMessage.showTemporaryMessage(
+          `Set node ${node.nodeId} as root, but failed to refresh revision metadata: ${message}`,
+        );
+      }
+    }
     this.markSpatialSkeletonNodeDataChanged({
-      invalidateFullSkeletonCache: !updatedFromCache,
+      invalidateFullSkeletonCache: false,
     });
     StatusMessage.showTemporaryMessage(`Set node ${node.nodeId} as root.`);
   }
@@ -2774,9 +2855,6 @@ export class SegmentationUserLayer extends Base {
     context: DependentViewContext,
   ) {
     context.registerDisposer(
-      this.spatialSkeletonTreeEndNodeId.changed.add(context.redraw),
-    );
-    context.registerDisposer(
       this.spatialSkeletonNodeDataVersion.changed.add(context.redraw),
     );
     const nodeId = getSpatialSkeletonNodeIdFromLayerSelectionState(state);
@@ -2787,36 +2865,15 @@ export class SegmentationUserLayer extends Base {
     const selectedSegmentId =
       getSpatialSkeletonSegmentIdFromLayerSelectionState(state);
     const skeletonLayer = this.getSpatiallyIndexedSkeletonLayer();
-    const liveNodeInfo = skeletonLayer?.getNode(nodeId);
+    const nodeInfo = skeletonLayer?.getNode(nodeId);
     const cachedNodeInfo = this.spatialSkeletonState.getCachedNode(nodeId);
-    const propertyOverride =
-      this.spatialSkeletonState.getNodePropertyOverride(nodeId);
-    const nodeInfoBase =
-      liveNodeInfo === undefined
-        ? cachedNodeInfo
-        : cachedNodeInfo === undefined
-          ? liveNodeInfo
-          : {
-              ...cachedNodeInfo,
-              segmentId: liveNodeInfo.segmentId,
-              parentNodeId: liveNodeInfo.parentNodeId,
-              position: liveNodeInfo.position,
-            };
-    const nodeInfo =
-      nodeInfoBase === undefined || propertyOverride === undefined
-        ? nodeInfoBase
-        : {
-            ...nodeInfoBase,
-            radius: propertyOverride.radius,
-            confidence: propertyOverride.confidence,
-          };
     const cachedSelectedSegmentNodes =
       selectedSegmentId === undefined
         ? undefined
         : this.spatialSkeletonState.getCachedSegmentNodes(selectedSegmentId);
     const recoveryKey = getSpatialSkeletonSelectionRecoveryKey(state);
     if (
-      nodeInfoBase !== undefined &&
+      nodeInfo !== undefined &&
       recoveryKey !== undefined &&
       this.spatialSkeletonSelectionRecovery?.key === recoveryKey
     ) {
@@ -2868,14 +2925,15 @@ export class SegmentationUserLayer extends Base {
         const { recoveryKey } = missingSelectionDisplayState;
         this.spatialSkeletonSelectionRecovery = {
           key: recoveryKey,
-          status: "pending",
+          status: SpatialSkeletonSelectionRecoveryStatus.PENDING,
         };
         void this.spatialSkeletonState
           .getFullSegmentNodes(skeletonLayer, selectedSegmentId)
           .then((segmentNodes) => {
             if (
               this.spatialSkeletonSelectionRecovery?.key !== recoveryKey ||
-              this.spatialSkeletonSelectionRecovery.status !== "pending"
+              this.spatialSkeletonSelectionRecovery.status !==
+                SpatialSkeletonSelectionRecoveryStatus.PENDING
             ) {
               return;
             }
@@ -2887,22 +2945,30 @@ export class SegmentationUserLayer extends Base {
             }
             this.spatialSkeletonSelectionRecovery = {
               key: recoveryKey,
-              status: "failed",
+              status: SpatialSkeletonSelectionRecoveryStatus.FAILED,
             };
             this.spatialSkeletonState.markNodeDataChanged({
               invalidateFullSkeletonCache: false,
             });
           })
-          .catch(() => {
+          .catch((error) => {
             if (
               this.spatialSkeletonSelectionRecovery?.key !== recoveryKey ||
-              this.spatialSkeletonSelectionRecovery.status !== "pending"
+              this.spatialSkeletonSelectionRecovery.status !==
+                SpatialSkeletonSelectionRecoveryStatus.PENDING
             ) {
+              return;
+            }
+            if (isAbortError(error)) {
+              this.spatialSkeletonSelectionRecovery = undefined;
+              this.spatialSkeletonState.markNodeDataChanged({
+                invalidateFullSkeletonCache: false,
+              });
               return;
             }
             this.spatialSkeletonSelectionRecovery = {
               key: recoveryKey,
-              status: "failed",
+              status: SpatialSkeletonSelectionRecoveryStatus.FAILED,
             };
             this.spatialSkeletonState.markNodeDataChanged({
               invalidateFullSkeletonCache: false,
@@ -3006,6 +3072,8 @@ export class SegmentationUserLayer extends Base {
         ? "Unable to resolve editable skeleton source for the active layer."
         : segmentNodes === undefined
           ? "Load the active skeleton in the Skeleton tab before deleting from Selection."
+          : nodeInfo.parentNodeId === undefined && directChildNodeIds.length > 0
+            ? "Reroot the skeleton manually before deleting the current root node."
           : this.getSpatialSkeletonActionsDisabledReason("deleteNodes");
     const deleteButton = document.createElement("button");
     deleteButton.type = "button";
@@ -3024,38 +3092,40 @@ export class SegmentationUserLayer extends Base {
       ) {
         return;
       }
-      const parentNodeInfo =
-        nodeInfo.parentNodeId === undefined
-          ? undefined
-          : segmentNodes?.find(
-              (candidate) => candidate.nodeId === nodeInfo.parentNodeId,
-            );
       deletePending = true;
       void (async () => {
         try {
-          await skeletonSource.deleteNode(nodeInfo.nodeId, {
-            parentNodeId: nodeInfo.parentNodeId,
-            childNodeIds: directChildNodeIds,
+          const {
+            node: refreshedNode,
+            parentNode: parentNodeInfo,
+            childNodes,
+            editContext,
+          } = await this.getSpatialSkeletonDeleteOperationContext(nodeInfo);
+          const directChildIds = childNodes.map((child) => child.nodeId);
+          const result = await skeletonSource.deleteNode(refreshedNode.nodeId, {
+            childNodeIds: directChildIds,
+            editContext,
           });
-          if (this.spatialSkeletonTreeEndNodeId.value === nodeInfo.nodeId) {
-            this.spatialSkeletonTreeEndNodeId.value = undefined;
+          this.spatialSkeletonState.removeCachedNode(refreshedNode.nodeId, {
+            parentNodeId: refreshedNode.parentNodeId,
+            childNodeIds: directChildIds,
+          });
+          const childRevisionUpdates = result.childRevisionUpdates ?? [];
+          if (childRevisionUpdates.length > 0) {
+            this.spatialSkeletonState.setCachedNodeRevisions(childRevisionUpdates);
           }
-          this.spatialSkeletonState.removeCachedNode(nodeInfo.nodeId, {
-            parentNodeId: nodeInfo.parentNodeId,
-            childNodeIds: directChildNodeIds,
-          });
           this.selectAndMoveToSpatialSkeletonNode(
             parentNodeInfo,
             this.manager.root.selectionState.pin.value,
           );
           const remainingSegmentNodes =
             this.spatialSkeletonState.getCachedSegmentNodes(
-              nodeInfo.segmentId,
+              refreshedNode.segmentId,
             ) ?? [];
           if (remainingSegmentNodes.length === 0) {
             removeSegmentFromVisibleSets(
               this.displayState.segmentationGroupState.value,
-              BigInt(nodeInfo.segmentId),
+              BigInt(refreshedNode.segmentId),
               { deselect: true },
             );
           }
@@ -3064,7 +3134,7 @@ export class SegmentationUserLayer extends Base {
           });
           skeletonLayer?.invalidateSourceCaches();
           StatusMessage.showTemporaryMessage(
-            `Deleted node ${nodeInfo.nodeId}.`,
+            `Deleted node ${refreshedNode.nodeId}.`,
           );
         } catch (error) {
           const message =
@@ -3228,10 +3298,13 @@ export class SegmentationUserLayer extends Base {
         updateLeafTypeEditorState();
         void (async () => {
           try {
+            const result = nextTrueEnd
+              ? await skeletonSource!.setTrueEnd(nodeInfo.nodeId)
+              : await skeletonSource!.removeTrueEnd(nodeInfo.nodeId);
             if (nextTrueEnd) {
-              await skeletonSource!.setTrueEnd(nodeInfo.nodeId);
+              committedTrueEnd = true;
             } else {
-              await skeletonSource!.removeTrueEnd(nodeInfo.nodeId);
+              committedTrueEnd = false;
             }
             this.spatialSkeletonState.updateCachedNode(
               nodeInfo.nodeId,
@@ -3249,6 +3322,12 @@ export class SegmentationUserLayer extends Base {
                 };
               },
             );
+            if (result.revisionToken !== undefined) {
+              this.spatialSkeletonState.setCachedNodeRevision(
+                nodeInfo.nodeId,
+                result.revisionToken,
+              );
+            }
             this.markSpatialSkeletonNodeDataChanged({
               invalidateFullSkeletonCache: false,
             });
@@ -3431,14 +3510,54 @@ export class SegmentationUserLayer extends Base {
       updatePropertyEditorState();
       void (async () => {
         try {
+          let segmentNodes = this.getCachedSpatialSkeletonSegmentNodesForEdit(
+            nodeInfo.segmentId,
+          );
+          let refreshedNode = findSpatiallyIndexedSkeletonNodeInfo(
+            segmentNodes,
+            nodeInfo.nodeId,
+          );
+          if (refreshedNode === undefined) {
+            throw new Error(
+              `Node ${nodeInfo.nodeId} is missing from the inspected skeleton cache.`,
+            );
+          }
+          let currentRevisionToken = refreshedNode.revisionToken;
           if (radiusChanged) {
-            await skeletonSource!.updateRadius(nodeInfo.nodeId, radius);
+            const radiusResult = await skeletonSource!.updateRadius(
+              nodeInfo.nodeId,
+              radius,
+              buildSpatiallyIndexedSkeletonNodeEditContext(refreshedNode),
+            );
+            if (radiusResult.revisionToken !== undefined) {
+              currentRevisionToken = radiusResult.revisionToken;
+              this.spatialSkeletonState.setCachedNodeRevision(
+                nodeInfo.nodeId,
+                radiusResult.revisionToken,
+              );
+              refreshedNode = {
+                ...refreshedNode,
+                revisionToken: radiusResult.revisionToken,
+              };
+            }
           }
           if (confidenceChanged) {
-            await skeletonSource!.updateConfidence(
+            if (radiusChanged && currentRevisionToken === undefined) {
+              throw new Error(
+                `CATMAID radius update for node ${nodeInfo.nodeId} did not return refreshed revision metadata required for the subsequent confidence update.`,
+              );
+            }
+            const confidenceResult = await skeletonSource!.updateConfidence(
               nodeInfo.nodeId,
               confidence,
+              buildSpatiallyIndexedSkeletonNodeEditContext(refreshedNode),
             );
+            if (confidenceResult.revisionToken !== undefined) {
+              this.spatialSkeletonState.setCachedNodeRevision(
+                nodeInfo.nodeId,
+                confidenceResult.revisionToken,
+              );
+            }
           }
           committedRadius = radius;
           committedConfidence = confidence;
@@ -3471,9 +3590,6 @@ export class SegmentationUserLayer extends Base {
     radiusInput.addEventListener("change", commitProperties);
     confidenceControl.addEventListener("change", commitProperties);
     updatePropertyEditorState();
-    if (this.spatialSkeletonTreeEndNodeId.value === nodeId) {
-      appendValue("Branch", "Current tree-end anchor");
-    }
     const descriptionLabels = getSpatialSkeletonDescriptionLabels(
       cachedNodeInfo?.labels ?? nodeInfo.labels,
     );
@@ -3515,7 +3631,7 @@ export class SegmentationUserLayer extends Base {
               cachedNodeInfo.labels,
               nextDescriptionLabels,
             );
-            await skeletonSource.updateDescription(
+            const result = await skeletonSource.updateDescription(
               nodeInfo.nodeId,
               descriptionElement.value,
               {
@@ -3534,6 +3650,12 @@ export class SegmentationUserLayer extends Base {
                 };
               },
             );
+            if (result.revisionToken !== undefined) {
+              this.spatialSkeletonState.setCachedNodeRevision(
+                nodeInfo.nodeId,
+                result.revisionToken,
+              );
+            }
             this.markSpatialSkeletonNodeDataChanged({
               invalidateFullSkeletonCache: false,
             });

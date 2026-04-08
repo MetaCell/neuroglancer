@@ -56,7 +56,6 @@ import {
   getSpatialSkeletonNodeFilterLabel,
   getSpatialSkeletonNodeIconFilterType,
   hasSpatialSkeletonTrueEndLabel,
-  isSpatialSkeletonClosedEndLabel,
   SpatialSkeletonNodeFilterType,
   type SpatialSkeletonDisplayNodeType as SkeletonNodeType,
   updateSpatialSkeletonTrueEndLabels,
@@ -75,6 +74,7 @@ import {
 } from "#src/ui/spatial_skeleton_edit_tool.js";
 import { makeToolButton } from "#src/ui/tool.js";
 import { TrackableEnum } from "#src/util/trackable_enum.js";
+import { isAbortError } from "#src/util/abort.js";
 import { EnumSelectWidget } from "#src/widget/enum_widget.js";
 import { makeIcon } from "#src/widget/icon.js";
 import { Tab } from "#src/widget/tab_view.js";
@@ -383,10 +383,6 @@ export class SpatialSkeletonEditTab extends Tab {
       localPosition.value = nextLocal;
     };
 
-    const clearBranchEndAnchor = () => {
-      layer.spatialSkeletonTreeEndNodeId.value = undefined;
-    };
-
     const getNavigationNode = (nodeId: number) => {
       return skeletonState.getCachedNode(nodeId);
     };
@@ -463,23 +459,8 @@ export class SpatialSkeletonEditTab extends Tab {
       "Ctrl+right-click to pin selection\n" +
       "Ctrl+shift+right-click to unpin";
 
-    const getNodeDescriptionText = (node: SpatiallyIndexedSkeletonNodeInfo) => {
-      const localDescription = layer
-        .getSpatialSkeletonNodeDescription(node.nodeId)
-        ?.trim();
-      if (localDescription !== undefined && localDescription.length > 0) {
-        return localDescription;
-      }
-      const descriptiveLabels = (node.labels ?? [])
-        .map((label) => label.trim())
-        .filter(
-          (label) =>
-            label.length > 0 && !isSpatialSkeletonClosedEndLabel(label),
-        );
-      return descriptiveLabels.length > 0
-        ? descriptiveLabels.join(", ")
-        : undefined;
-    };
+    const getNodeDescriptionText = (node: SpatiallyIndexedSkeletonNodeInfo) =>
+      layer.getSpatialSkeletonNodeDisplayDescription(node);
 
     const getHoveredNodeIdFromViewer = () => {
       return getSpatialSkeletonNodeIdFromViewerHover(mouseState, layer);
@@ -656,17 +637,22 @@ export class SpatialSkeletonEditTab extends Tab {
       updateDisplay();
       void (async () => {
         try {
+          const result = present
+            ? await skeletonSource.setTrueEnd(node.nodeId)
+            : await skeletonSource.removeTrueEnd(node.nodeId);
           if (present) {
-            await skeletonSource.setTrueEnd(node.nodeId);
+            applyTrueEndLabelLocally(node.nodeId, true);
           } else {
-            await skeletonSource.removeTrueEnd(node.nodeId);
+            applyTrueEndLabelLocally(node.nodeId, false);
+          }
+          if (result.revisionToken !== undefined) {
+            skeletonState.setCachedNodeRevision(node.nodeId, result.revisionToken);
           }
           StatusMessage.showTemporaryMessage(
             present
               ? `Set node ${node.nodeId} as true end.`
               : `Removed true end from node ${node.nodeId}.`,
           );
-          applyTrueEndLabelLocally(node.nodeId, present);
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);
@@ -712,30 +698,19 @@ export class SpatialSkeletonEditTab extends Tab {
       })();
     };
 
-    const getDirectChildNodeIds = (node: SpatiallyIndexedSkeletonNodeInfo) => {
-      const segmentNodes = nodesBySegment.get(node.segmentId) ?? [];
-      const childNodeIds: number[] = [];
-      for (const candidate of segmentNodes) {
-        if (candidate.parentNodeId !== node.nodeId) continue;
-        childNodeIds.push(candidate.nodeId);
-      }
-      childNodeIds.sort((a, b) => a - b);
-      return childNodeIds;
-    };
-
-    const getParentNode = (node: SpatiallyIndexedSkeletonNodeInfo) => {
-      const parentNodeId = node.parentNodeId;
-      if (parentNodeId === undefined) {
-        return undefined;
-      }
-      return nodesBySegment
-        .get(node.segmentId)
-        ?.find((candidate) => candidate.nodeId === parentNodeId);
-    };
-
     const deleteNode = (node: SpatiallyIndexedSkeletonNodeInfo) => {
       if (!ensureActionsAllowed("deleteNodes")) return;
       if (pendingDeleteNodes.has(node.nodeId)) {
+        return;
+      }
+      const segmentNodes = nodesBySegment.get(node.segmentId) ?? [];
+      const hasChildren = segmentNodes.some(
+        (candidate) => candidate.parentNodeId === node.nodeId,
+      );
+      if (node.parentNodeId === undefined && hasChildren) {
+        StatusMessage.showTemporaryMessage(
+          "Reroot the skeleton manually before deleting the current root node.",
+        );
         return;
       }
       const skeletonLayer = layer.getSpatiallyIndexedSkeletonLayer();
@@ -757,20 +732,26 @@ export class SpatialSkeletonEditTab extends Tab {
       updateDisplay();
       void (async () => {
         try {
-          const directChildNodeIds = getDirectChildNodeIds(node);
-          const parentNode = getParentNode(node);
+          const {
+            node: refreshedNode,
+            parentNode,
+            childNodes,
+            editContext,
+          } = await layer.getSpatialSkeletonDeleteOperationContext(node);
+          const directChildNodeIds = childNodes.map((child) => child.nodeId);
           const deletingIsolatedRoot =
-            node.parentNodeId === undefined && directChildNodeIds.length === 0;
-          await skeletonSource.deleteNode(node.nodeId, {
-            parentNodeId: node.parentNodeId,
+            refreshedNode.parentNodeId === undefined &&
+            directChildNodeIds.length === 0;
+          const result = await skeletonSource.deleteNode(refreshedNode.nodeId, {
             childNodeIds: directChildNodeIds,
+            editContext,
           });
           if (deletingIsolatedRoot) {
             const segmentationGroupState =
               layer.displayState.segmentationGroupState.value;
             removeSegmentFromVisibleSets(
               segmentationGroupState,
-              BigInt(node.segmentId),
+              BigInt(refreshedNode.segmentId),
               { deselect: true },
             );
           }
@@ -779,21 +760,26 @@ export class SpatialSkeletonEditTab extends Tab {
               moveView: true,
               pin: layer.manager.root.selectionState.pin.value,
             });
-          } else if (layer.selectedSpatialSkeletonNodeId.value === node.nodeId) {
+          } else if (
+            layer.selectedSpatialSkeletonNodeId.value === refreshedNode.nodeId
+          ) {
             layer.clearSpatialSkeletonNodeSelection(false);
           }
-          if (layer.spatialSkeletonTreeEndNodeId.value === node.nodeId) {
-            layer.spatialSkeletonTreeEndNodeId.value = undefined;
-          }
-          skeletonState.removeCachedNode(node.nodeId, {
-            parentNodeId: node.parentNodeId,
+          skeletonState.removeCachedNode(refreshedNode.nodeId, {
+            parentNodeId: refreshedNode.parentNodeId,
             childNodeIds: directChildNodeIds,
           });
+          const childRevisionUpdates = result.childRevisionUpdates ?? [];
+          if (childRevisionUpdates.length > 0) {
+            skeletonState.setCachedNodeRevisions(childRevisionUpdates);
+          }
           layer.markSpatialSkeletonNodeDataChanged({
             invalidateFullSkeletonCache: false,
           });
           skeletonLayer.invalidateSourceCaches();
-          StatusMessage.showTemporaryMessage(`Deleted node ${node.nodeId}.`);
+          StatusMessage.showTemporaryMessage(
+            `Deleted node ${refreshedNode.nodeId}.`,
+          );
           refreshNodes();
         } catch (error) {
           const message =
@@ -848,7 +834,6 @@ export class SpatialSkeletonEditTab extends Tab {
       const { selectedNode, skeletonApi } = context;
       void (async () => {
         try {
-          clearBranchEndAnchor();
           navigateToNodeTarget(
             await skeletonApi.getSkeletonRootNode(selectedNode.segmentId),
           );
@@ -870,7 +855,6 @@ export class SpatialSkeletonEditTab extends Tab {
         const { selectedNode, skeletonApi } = context;
         void (async () => {
           try {
-            clearBranchEndAnchor();
             navigateToNodeTarget(
               await skeletonApi.getBranchStart(selectedNode.nodeId),
             );
@@ -893,7 +877,6 @@ export class SpatialSkeletonEditTab extends Tab {
         const { selectedNode, skeletonApi } = context;
         void (async () => {
           try {
-            clearBranchEndAnchor();
             navigateToNodeTarget(
               await skeletonApi.getBranchEnd(selectedNode.nodeId),
             );
@@ -916,7 +899,6 @@ export class SpatialSkeletonEditTab extends Tab {
         const { selectedNode, skeletonApi } = context;
         void (async () => {
           try {
-            clearBranchEndAnchor();
             navigateToNodeTarget(
               await skeletonApi.getNextCollapsedLevelNode(selectedNode.nodeId),
             );
@@ -939,7 +921,6 @@ export class SpatialSkeletonEditTab extends Tab {
         const { selectedNode, skeletonApi } = context;
         void (async () => {
           try {
-            clearBranchEndAnchor();
             const target = await skeletonApi.getParentNode(selectedNode.nodeId);
             if (target === undefined) {
               StatusMessage.showTemporaryMessage(
@@ -967,7 +948,6 @@ export class SpatialSkeletonEditTab extends Tab {
         const { selectedNode, skeletonApi } = context;
         void (async () => {
           try {
-            clearBranchEndAnchor();
             const target = await skeletonApi.getChildNode(selectedNode.nodeId);
             if (target === undefined) {
               StatusMessage.showTemporaryMessage("Selected node has no child.");
@@ -988,7 +968,6 @@ export class SpatialSkeletonEditTab extends Tab {
       svg_chevron_right,
       "Go to unfinished node",
       () => {
-        clearBranchEndAnchor();
         goToClosestUnfinishedBranch();
       },
     );
@@ -1608,6 +1587,10 @@ export class SpatialSkeletonEditTab extends Tab {
           if (requestId !== refreshRequestId) {
             return;
           }
+          if (isAbortError(error)) {
+            refreshNodes();
+            return;
+          }
           const message =
             error instanceof Error ? error.message : String(error);
           StatusMessage.showTemporaryMessage(
@@ -1759,11 +1742,6 @@ export class SpatialSkeletonEditTab extends Tab {
         refreshNodes();
       }),
     );
-    this.registerDisposer(() => {
-      deleteConfirmDialog?.close();
-      deleteConfirmDialog = undefined;
-    });
-
     updateCollapseButton();
     updateGateStatus();
     updateHoveredViewerNode();

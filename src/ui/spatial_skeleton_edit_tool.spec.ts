@@ -262,7 +262,7 @@ describe("spatial_skeleton_edit_tool", () => {
       deletedSkeletonId: number | undefined;
     };
     const updateVisibleSkeletonSegments = vi.fn();
-    const mergeCachedSegments = vi.fn();
+    const invalidateCachedSegments = vi.fn();
     const selectSpatialSkeletonNode = vi.fn();
     const markSpatialSkeletonNodeDataChanged = vi.fn();
     const clearSpatialSkeletonMergeAnchor = vi.fn();
@@ -282,7 +282,7 @@ describe("spatial_skeleton_edit_tool", () => {
           },
         },
         spatialSkeletonState: {
-          mergeCachedSegments,
+          invalidateCachedSegments,
         },
         selectSpatialSkeletonNode,
         markSpatialSkeletonNodeDataChanged,
@@ -316,12 +316,7 @@ describe("spatial_skeleton_edit_tool", () => {
       deletedSkeletonId: 11,
     });
     expect(updateVisibleSkeletonSegments).toHaveBeenCalledWith(17, 11);
-    expect(mergeCachedSegments).toHaveBeenCalledWith({
-      resultSegmentId: 17,
-      mergedSegmentId: 11,
-      childNodeId: 101,
-      parentNodeId: 202,
-    });
+    expect(invalidateCachedSegments).toHaveBeenCalledWith([17, 11]);
     expect(selectSpatialSkeletonNode).toHaveBeenCalledWith(101, true, {
       segmentId: 17,
     });

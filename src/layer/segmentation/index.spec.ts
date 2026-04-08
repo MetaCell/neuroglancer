@@ -79,6 +79,9 @@ describe("layer/segmentation spatial skeleton chunk stats", () => {
         multiscaleSliceLayer,
         slicePanelLayer,
       ],
+      spatialSkeletonVisibleChunksNeeded: new WatchableValue(0),
+      spatialSkeletonVisibleChunksAvailable: new WatchableValue(0),
+      spatialSkeletonVisibleChunksLoaded: new WatchableValue(false),
       displayState: {
         spatialSkeletonGridChunkStats2d: new WatchableValue({
           presentCount: 0,
@@ -89,18 +92,14 @@ describe("layer/segmentation spatial skeleton chunk stats", () => {
           totalCount: 0,
         }),
       },
-      spatialSkeletonState: {
-        updateChunkLoadState: vi.fn(),
-      },
       updateSpatialSkeletonSourceState: vi.fn(),
     });
 
     layer.updateSpatialSkeletonChunkLoadState();
 
-    expect(layer.spatialSkeletonState.updateChunkLoadState).toHaveBeenCalledWith(
-      15,
-      10,
-    );
+    expect(layer.spatialSkeletonVisibleChunksNeeded.value).toBe(15);
+    expect(layer.spatialSkeletonVisibleChunksAvailable.value).toBe(10);
+    expect(layer.spatialSkeletonVisibleChunksLoaded.value).toBe(false);
   });
 });
 
