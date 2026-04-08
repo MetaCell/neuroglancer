@@ -636,33 +636,35 @@ export class SegmentationUserLayer extends Base {
     x === undefined ? undefined : parseUint64(x),
   );
 
-  renderingAccordionState = new AccordionState({
-    accordionJsonKey: SEGMENTATION_RENDERING_ACCORDION_JSON_KEY,
-    sections: [
-      {
-        jsonKey: VISIBILITY_SECTION_JSON_KEY,
-        displayName: "Visibility",
-      },
-      {
-        jsonKey: APPEARANCE_SECTION_JSON_KEY,
-        displayName: "Appearance",
-        defaultExpanded: true,
-        isDefaultKey: true,
-      },
-      {
-        jsonKey: SLICE_SECTION_JSON_KEY,
-        displayName: "Slice 2D",
-      },
-      {
-        jsonKey: MESH_SECTION_JSON_KEY,
-        displayName: "Mesh 3D",
-      },
-      {
-        jsonKey: SKELETON_SECTION_JSON_KEY,
-        displayName: "Skeletons",
-      },
-    ],
-  });
+  renderingAccordionState = this.registerDisposer(
+    new AccordionState({
+      accordionJsonKey: SEGMENTATION_RENDERING_ACCORDION_JSON_KEY,
+      sections: [
+        {
+          jsonKey: VISIBILITY_SECTION_JSON_KEY,
+          displayName: "Visibility",
+        },
+        {
+          jsonKey: APPEARANCE_SECTION_JSON_KEY,
+          displayName: "Appearance",
+          defaultExpanded: true,
+          isDefaultKey: true,
+        },
+        {
+          jsonKey: SLICE_SECTION_JSON_KEY,
+          displayName: "Slice 2D",
+        },
+        {
+          jsonKey: MESH_SECTION_JSON_KEY,
+          displayName: "Mesh 3D",
+        },
+        {
+          jsonKey: SKELETON_SECTION_JSON_KEY,
+          displayName: "Skeletons",
+        },
+      ],
+    }),
+  );
 
   constructor(managedLayer: Borrowed<ManagedUserLayer>) {
     super(managedLayer);
