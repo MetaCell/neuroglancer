@@ -21,6 +21,7 @@ import {
   getSpatialSkeletonSegmentIdFromLayerSelectionState,
   hasSpatialSkeletonNodeSelection,
 } from "#src/layer/segmentation/selection.js";
+import { showSpatialSkeletonActionError } from "#src/layer/segmentation/spatial_skeleton_errors.js";
 import { RenderedDataPanel } from "#src/rendered_data_panel.js";
 import {
   addSegmentToVisibleSets,
@@ -664,9 +665,6 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
     };
   }
 
-  protected formatError(error: unknown) {
-    return error instanceof Error ? error.message : String(error);
-  }
 }
 
 export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
@@ -1230,9 +1228,7 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
                   clickPosition,
                 );
               } catch (error) {
-                StatusMessage.showTemporaryMessage(
-                  "Failed to commit node creation to the active skeleton source.",
-                );
+                showSpatialSkeletonActionError("create node", error);
                 const errorInfo: Record<string, unknown> =
                   error instanceof Error
                     ? { message: error.message, stack: error.stack }
@@ -1431,9 +1427,7 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
                   layer.spatialSkeletonState.clearPendingNodePosition(
                     pickedNode.nodeId,
                   );
-                  StatusMessage.showTemporaryMessage(
-                    `Failed to commit move for node ${pickedNode.nodeId}.`,
-                  );
+                  showSpatialSkeletonActionError("move node", error);
                   debugLog("move-node-commit-failed", {
                     nodeId: pickedNode.nodeId,
                     error: String(error),
@@ -1677,9 +1671,7 @@ class SpatialSkeletonMergeModeTool extends SpatialSkeletonToolBase {
               `Merged skeleton ${deletedSkeletonId} into ${resultSkeletonId}.${swapSuffix}`,
             );
           } catch (error) {
-            StatusMessage.showTemporaryMessage(
-              `Failed to merge skeletons: ${this.formatError(error)}`,
-            );
+            showSpatialSkeletonActionError("merge skeletons", error);
           } finally {
             pending = false;
             setReadyStatus();
@@ -1872,9 +1864,7 @@ class SpatialSkeletonSplitModeTool extends SpatialSkeletonToolBase {
               `Split skeleton ${existingSkeletonId}. New skeleton: ${newSkeletonId}.`,
             );
           } catch (error) {
-            StatusMessage.showTemporaryMessage(
-              `Failed to split skeleton: ${this.formatError(error)}`,
-            );
+            showSpatialSkeletonActionError("split skeleton", error);
           } finally {
             pending = false;
             setReadyStatus();

@@ -30,6 +30,7 @@ import svg_retweet from "ikonate/icons/retweet.svg?raw";
 import svg_share_android from "ikonate/icons/share-android.svg?raw";
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import { getSpatialSkeletonNodeIdFromViewerHover } from "#src/layer/segmentation/selection.js";
+import { showSpatialSkeletonActionError } from "#src/layer/segmentation/spatial_skeleton_errors.js";
 import {
   getSegmentEquivalences,
   getVisibleSegments,
@@ -782,11 +783,7 @@ export class SpatialSkeletonEditTab extends Tab {
           );
           refreshNodes();
         } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          StatusMessage.showTemporaryMessage(
-            `Failed to delete node: ${message}`,
-          );
+          showSpatialSkeletonActionError("delete node", error);
           updateDisplay();
         } finally {
           pendingDeleteNodes.delete(node.nodeId);
@@ -816,11 +813,7 @@ export class SpatialSkeletonEditTab extends Tab {
         try {
           await layer.rerootSpatialSkeletonNode(node);
         } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          StatusMessage.showTemporaryMessage(
-            `Failed to set node as root: ${message}`,
-          );
+          showSpatialSkeletonActionError("set node as root", error);
         } finally {
           pendingRerootNodes.delete(node.nodeId);
           updateDisplay();

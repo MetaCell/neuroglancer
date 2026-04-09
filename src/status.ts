@@ -208,6 +208,13 @@ export class StatusMessage {
     return msg;
   }
 
+  static showErrorMessage(message: string): StatusMessage {
+    const msg = new StatusMessage();
+    msg.setErrorMessage(message);
+    msg.setVisible(true);
+    return msg;
+  }
+
   static showTemporaryMessage(
     message: string,
     closeAfter = 2000,

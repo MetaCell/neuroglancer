@@ -53,6 +53,7 @@ import {
   getSpatialSkeletonSelectionRecoveryKey,
   SpatialSkeletonSelectionRecoveryStatus,
 } from "#src/layer/segmentation/selection.js";
+import { showSpatialSkeletonActionError } from "#src/layer/segmentation/spatial_skeleton_errors.js";
 import { appendSpatialSkeletonSerializationState } from "#src/layer/segmentation/spatial_skeleton_serialization.js";
 import {
   MeshLayer,
@@ -3056,11 +3057,7 @@ export class SegmentationUserLayer extends Base {
         try {
           await this.rerootSpatialSkeletonNode(nodeInfo);
         } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          StatusMessage.showTemporaryMessage(
-            `Failed to set node as root: ${message}`,
-          );
+          showSpatialSkeletonActionError("set node as root", error);
         } finally {
           rerootPending = false;
           context.redraw();
@@ -3137,11 +3134,7 @@ export class SegmentationUserLayer extends Base {
             `Deleted node ${refreshedNode.nodeId}.`,
           );
         } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          StatusMessage.showTemporaryMessage(
-            `Failed to delete node: ${message}`,
-          );
+          showSpatialSkeletonActionError("delete node", error);
         } finally {
           deletePending = false;
         }
@@ -3573,11 +3566,7 @@ export class SegmentationUserLayer extends Base {
             `Updated node ${nodeInfo.nodeId} properties.`,
           );
         } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          StatusMessage.showTemporaryMessage(
-            `Failed to update node properties: ${message}`,
-          );
+          showSpatialSkeletonActionError("update node properties", error);
           resetPropertyInputs();
         } finally {
           savePending = false;
