@@ -1393,6 +1393,9 @@ export class SegmentationUserLayer extends Base {
     return new Float32Array(layerPosition);
   }
 
+  // TODO (skm) might be able to be more integrated with the setLayerPosition
+  // e.g. the base UserLayer class provides this ability and the setLayerPosition
+  // just calls it - either way, the function is good
   private mapLayerPositionToGlobalSelectionPosition(
     transform: RenderLayerTransform,
     layerPosition: ArrayLike<number>,
@@ -1407,27 +1410,25 @@ export class SegmentationUserLayer extends Base {
   }
 
   moveViewToSpatialSkeletonNodePosition(position: ArrayLike<number>) {
-    const globalPosition = this.manager.root.globalPosition;
-    const nextGlobal = globalPosition.value.slice();
-    const globalRank = Math.min(nextGlobal.length, 3);
-    for (let i = 0; i < globalRank; ++i) {
-      const value = Number(position[i]);
-      if (Number.isFinite(value)) {
-        nextGlobal[i] = value;
-      }
+    const transform =
+      this.getSpatiallyIndexedSkeletonLayer()?.displayState.transform.value;
+    if (transform === undefined || transform.error !== undefined) return;
+    const rank = transform.rank;
+    // Skeleton positions are in model space; apply modelToRenderLayerTransform
+    // to convert to render layer space before mapping to global/local positions.
+    const modelPosition = new Float32Array(rank);
+    for (let i = 0; i < Math.min(position.length, rank); ++i) {
+      modelPosition[i] = Number(position[i]);
     }
-    globalPosition.value = nextGlobal;
-
-    const localPosition = this.localPosition;
-    const nextLocal = localPosition.value.slice();
-    const localRank = Math.min(nextLocal.length, 3);
-    for (let i = 0; i < localRank; ++i) {
-      const value = Number(position[i]);
-      if (Number.isFinite(value)) {
-        nextLocal[i] = value;
-      }
-    }
-    localPosition.value = nextLocal;
+    const layerPosition = new Float32Array(rank);
+    matrix.transformPoint(
+      layerPosition,
+      transform.modelToRenderLayerTransform,
+      rank + 1,
+      modelPosition,
+      rank,
+    );
+    this.setLayerPosition(transform, layerPosition);
   }
 
   selectSpatialSkeletonNode = (
