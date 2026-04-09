@@ -82,6 +82,26 @@ import { Tab } from "#src/widget/tab_view.js";
 
 const MAX_LISTED_NODES = 10000;
 
+export function syncShownSpatialSkeletonSegmentIds(
+  shownSegmentIds: Set<number>,
+  nextSegmentIds: readonly number[],
+  previousSegmentIds: readonly number[],
+) {
+  const nextVisibleIds = new Set(nextSegmentIds);
+  for (const segmentId of [...shownSegmentIds]) {
+    if (!nextVisibleIds.has(segmentId)) {
+      shownSegmentIds.delete(segmentId);
+    }
+  }
+
+  const previousVisibleIds = new Set(previousSegmentIds);
+  for (const segmentId of nextSegmentIds) {
+    if (!previousVisibleIds.has(segmentId)) {
+      shownSegmentIds.add(segmentId);
+    }
+  }
+}
+
 interface SpatiallyIndexedSkeletonNavigationApi {
   getSkeletonRootNode(
     skeletonId: number,
@@ -1001,18 +1021,6 @@ export class SpatialSkeletonEditTab extends Tab {
       shown: boolean;
     };
 
-    const syncShownSegmentIds = (nextSegmentIds: readonly number[]) => {
-      const nextVisibleIds = new Set(nextSegmentIds);
-      for (const segmentId of [...shownSegmentIds]) {
-        if (!nextVisibleIds.has(segmentId)) {
-          shownSegmentIds.delete(segmentId);
-        }
-      }
-      for (const segmentId of nextSegmentIds) {
-        shownSegmentIds.add(segmentId);
-      }
-    };
-
     const getSegmentDisplayLabel = (segmentId: number) => {
       const segmentationGroupState =
         layer.displayState.segmentationGroupState.value;
@@ -1524,7 +1532,7 @@ export class SpatialSkeletonEditTab extends Tab {
     const refreshNodes = () => {
       const requestId = ++refreshRequestId;
       const skeletonLayer = layer.getSpatiallyIndexedSkeletonLayer();
-      activeSegmentIds = [
+      const nextActiveSegmentIds = [
         ...getVisibleSegments(
           layer.displayState.segmentationGroupState.value,
         ).keys(),
@@ -1532,7 +1540,12 @@ export class SpatialSkeletonEditTab extends Tab {
         .map((segmentId) => Number(segmentId))
         .filter((segmentId) => Number.isFinite(segmentId))
         .sort((a, b) => a - b);
-      syncShownSegmentIds(activeSegmentIds);
+      syncShownSpatialSkeletonSegmentIds(
+        shownSegmentIds,
+        nextActiveSegmentIds,
+        activeSegmentIds,
+      );
+      activeSegmentIds = nextActiveSegmentIds;
       if (skeletonLayer === undefined || activeSegmentIds.length === 0) {
         allNodes = [];
         nodesBySegment = new Map();
