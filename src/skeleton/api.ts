@@ -117,7 +117,6 @@ export interface SpatiallyIndexedSkeletonSource {
     options?: {
       cacheProvider?: string;
       signal?: AbortSignal;
-      includeLabels?: boolean;
     },
   ): Promise<SpatiallyIndexedSkeletonNode[]>;
 }

@@ -147,7 +147,6 @@ export class CatmaidSpatiallyIndexedSkeletonSource
     options?: {
       cacheProvider?: string;
       signal?: AbortSignal;
-      includeLabels?: boolean;
     },
   ): Promise<SpatiallyIndexedSkeletonNode[]> {
     return this.client.fetchNodes(boundingBox, lod, options);

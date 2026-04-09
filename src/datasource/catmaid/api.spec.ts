@@ -19,6 +19,30 @@ import { describe, expect, it, vi } from "vitest";
 import { CatmaidClient } from "#src/datasource/catmaid/api.js";
 
 describe("CatmaidClient skeleton editing methods", () => {
+  it("does not cache transient metadata discovery failures as null", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    (client as any).listStacks = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("temporary stack lookup failure"))
+      .mockResolvedValueOnce([{ id: 7, title: "stack" }]);
+    (client as any).getStackInfo = vi.fn().mockResolvedValue({
+      dimension: { x: 10, y: 20, z: 30 },
+      resolution: { x: 2, y: 3, z: 4 },
+      translation: { x: 5, y: 6, z: 7 },
+    });
+
+    await expect(client.getDimensions()).resolves.toBeNull();
+    await expect(client.getDimensions()).resolves.toEqual({
+      min: { x: 5, y: 6, z: 7 },
+      max: { x: 25, y: 66, z: 127 },
+    });
+
+    expect((client as any).listStacks).toHaveBeenCalledTimes(2);
+    expect((client as any).getStackInfo).toHaveBeenCalledTimes(1);
+    warnSpy.mockRestore();
+  });
+
   it("parses live compact-detail history rows and label maps", async () => {
     const client = new CatmaidClient("https://example.invalid", 1);
     const fetchMock = vi.fn().mockResolvedValue([
@@ -493,6 +517,16 @@ describe("CatmaidClient skeleton editing methods", () => {
         "state",
       ),
     ).toBeNull();
+    expect(
+      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
+        "tags",
+      ),
+    ).toBe("updated description");
+    expect(
+      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
+        "delete_existing",
+      ),
+    ).toBe("true");
   });
 
   it("toggles true-end labels without CATMAID node state", async () => {
@@ -520,6 +554,21 @@ describe("CatmaidClient skeleton editing methods", () => {
         "state",
       ),
     ).toBeNull();
+    expect(
+      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
+        "tags",
+      ),
+    ).toBe("ends");
+    expect(
+      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
+        "delete_existing",
+      ),
+    ).toBe("false");
+    expect(
+      (fetchMock.mock.calls[1]?.[1] as { body: URLSearchParams }).body.get(
+        "tag",
+      ),
+    ).toBe("ends");
   });
 
   it("maps CATMAID state validation failures to a refresh-specific error", async () => {

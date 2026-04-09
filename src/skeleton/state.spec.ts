@@ -185,6 +185,45 @@ describe("skeleton/state", () => {
     });
   });
 
+  it("does not drop an existing cached node when upserting into an uncached segment without permission", () => {
+    const state = new SpatialSkeletonState();
+    (state as any).replaceCachedSegmentNodes(11, [
+      {
+        nodeId: 5,
+        segmentId: 11,
+        position: new Float32Array([1, 2, 3]),
+        parentNodeId: undefined,
+      },
+    ]);
+
+    expect(
+      state.upsertCachedNode({
+        nodeId: 5,
+        segmentId: 13,
+        position: new Float32Array([7, 8, 9]),
+        parentNodeId: undefined,
+      }),
+    ).toBe(false);
+
+    expect(state.getCachedSegmentNodes(11)).toEqual([
+      {
+        nodeId: 5,
+        segmentId: 11,
+        position: new Float32Array([1, 2, 3]),
+        parentNodeId: undefined,
+        labels: undefined,
+      },
+    ]);
+    expect(state.getCachedSegmentNodes(13)).toBeUndefined();
+    expect(state.getCachedNode(5)).toEqual({
+      nodeId: 5,
+      segmentId: 11,
+      position: new Float32Array([1, 2, 3]),
+      parentNodeId: undefined,
+      labels: undefined,
+    });
+  });
+
   it("does not cache a full segment fetch that was evicted while pending", async () => {
     const state = new SpatialSkeletonState();
     let resolveFetch: ((value: Array<{ id: number; parent_id: null; x: number; y: number; z: number; skeleton_id: number }>) => void) | undefined;
@@ -417,6 +456,68 @@ describe("skeleton/state", () => {
       radius: 6,
       confidence: 63,
     });
+  });
+
+  it("removes and reparents nodes within the affected cached segment only", () => {
+    const state = new SpatialSkeletonState();
+    (state as any).replaceCachedSegmentNodes(11, [
+      {
+        nodeId: 1,
+        segmentId: 11,
+        position: new Float32Array([1, 1, 1]),
+        parentNodeId: undefined,
+      },
+      {
+        nodeId: 2,
+        segmentId: 11,
+        position: new Float32Array([2, 2, 2]),
+        parentNodeId: 1,
+      },
+      {
+        nodeId: 3,
+        segmentId: 11,
+        position: new Float32Array([3, 3, 3]),
+        parentNodeId: 1,
+      },
+    ]);
+    (state as any).replaceCachedSegmentNodes(12, [
+      {
+        nodeId: 4,
+        segmentId: 12,
+        position: new Float32Array([4, 4, 4]),
+        parentNodeId: undefined,
+      },
+    ]);
+
+    expect(
+      state.removeCachedNode(1, { parentNodeId: undefined, childNodeIds: [2, 3] }),
+    ).toBe(true);
+
+    expect(state.getCachedSegmentNodes(11)).toEqual([
+      {
+        nodeId: 2,
+        segmentId: 11,
+        position: new Float32Array([2, 2, 2]),
+        parentNodeId: undefined,
+        labels: undefined,
+      },
+      {
+        nodeId: 3,
+        segmentId: 11,
+        position: new Float32Array([3, 3, 3]),
+        parentNodeId: undefined,
+        labels: undefined,
+      },
+    ]);
+    expect(state.getCachedSegmentNodes(12)).toEqual([
+      {
+        nodeId: 4,
+        segmentId: 12,
+        position: new Float32Array([4, 4, 4]),
+        parentNodeId: undefined,
+        labels: undefined,
+      },
+    ]);
   });
 
   it("reroots cached segment topology, confidence, and derived ordering", () => {
