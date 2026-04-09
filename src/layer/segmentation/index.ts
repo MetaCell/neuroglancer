@@ -1408,8 +1408,6 @@ export class SegmentationUserLayer extends Base {
       this.getSpatiallyIndexedSkeletonLayer()?.displayState.transform.value;
     if (transform === undefined || transform.error !== undefined) return;
     const rank = transform.rank;
-    // Skeleton positions are in model space; apply modelToRenderLayerTransform
-    // to convert to render layer space before mapping to global/local positions.
     const modelPosition = new Float32Array(rank);
     for (let i = 0; i < Math.min(position.length, rank); ++i) {
       modelPosition[i] = Number(position[i]);
