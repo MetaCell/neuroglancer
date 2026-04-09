@@ -224,12 +224,15 @@ describe("skeleton/navigation", () => {
       getOpenLeaves(graph, 3).map((leaf) => [leaf.nodeId, leaf.distance]),
     ).toEqual([
       [7, 1],
-      [1, 2],
       [6, 3],
       [11, 3],
     ]);
-    expect(getOpenLeaves(graph, 1).some((leaf) => leaf.nodeId === 1)).toBe(
-      true,
-    );
+    expect(
+      getOpenLeaves(graph, 1).map((leaf) => [leaf.nodeId, leaf.distance]),
+    ).toEqual([
+      [7, 3],
+      [6, 5],
+      [11, 5],
+    ]);
   });
 });
