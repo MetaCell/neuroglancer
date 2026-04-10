@@ -1221,14 +1221,14 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
               selectedParentNode === undefined
                 ? 0
                 : selectedParentNode.segmentId;
-            const clickPosition =
+            const clickPositionInModelSpace =
               this.getMousePositionInSkeletonCoordinates(skeletonLayer);
-            if (clickPosition === undefined) return;
+            if (clickPositionInModelSpace === undefined) return;
             debugLog("ctrl-add-attempt", {
               selectedParentNodeId,
               selectedParentSegmentId: selectedParentNode?.segmentId,
               targetSkeletonId,
-              clickPosition: formatVec3(clickPosition),
+              clickPosition: formatVec3(clickPositionInModelSpace),
             });
             void (async () => {
               let committedNode: SpatiallyIndexedSkeletonAddNodeResult;
@@ -1237,7 +1237,7 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
                   skeletonLayer,
                   targetSkeletonId,
                   selectedParentNodeId,
-                  clickPosition,
+                  clickPositionInModelSpace,
                 );
               } catch (error) {
                 StatusMessage.showTemporaryMessage(
@@ -1250,7 +1250,7 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
                 debugLog("add-node-commit-failed", {
                   ...errorInfo,
                   parentNodeId: selectedParentNodeId,
-                  clickPosition: formatVec3(clickPosition),
+                  clickPosition: formatVec3(clickPositionInModelSpace),
                 });
                 return;
               }
@@ -1258,13 +1258,13 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
                 skeletonLayer,
                 committedNode,
                 selectedParentNodeId,
-                clickPosition,
+                clickPositionInModelSpace,
               );
               debugLog("add-node-committed", {
                 nodeId: committedNode.treenodeId,
                 segmentId: committedNode.skeletonId,
                 parentNodeId: selectedParentNodeId,
-                position: formatVec3(clickPosition),
+                position: formatVec3(clickPositionInModelSpace),
               });
               setReadyStatus();
             })();
