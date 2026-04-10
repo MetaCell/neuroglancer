@@ -65,7 +65,7 @@ import { getChunkPositionFromCombinedGlobalLocalPositions } from "#src/render_co
 import type { ActionEvent } from "#src/util/event_action_map.js";
 import { EventActionMap } from "#src/util/event_action_map.js";
 import { removeChildren } from "#src/util/dom.js";
-import type { vec3 } from "#src/util/geom.js";
+import { vec3 } from "#src/util/geom.js";
 import { startRelativeMouseDrag } from "#src/util/mouse_drag.js";
 
 export const SPATIAL_SKELETON_EDIT_MODE_TOOL_ID = "spatialSkeletonEditMode";
@@ -319,9 +319,9 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
       const anchorSegmentId =
         mergeAnchorNodeId === undefined
           ? undefined
-          : skeletonLayer?.getNode(mergeAnchorNodeId)?.segmentId ??
+          : (skeletonLayer?.getNode(mergeAnchorNodeId)?.segmentId ??
             this.layer.spatialSkeletonState.getCachedNode(mergeAnchorNodeId)
-              ?.segmentId;
+              ?.segmentId);
       if (anchorSegmentId === pickedSegmentId) {
         this.layer.clearSpatialSkeletonMergeAnchor();
       }
@@ -395,8 +395,7 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
     if (nodeHit === undefined) {
       return undefined;
     }
-    const resolvedNodeInfo =
-      skeletonLayer.getNode(nodeHit.nodeId);
+    const resolvedNodeInfo = skeletonLayer.getNode(nodeHit.nodeId);
     return {
       nodeId: nodeHit.nodeId,
       segmentId: nodeHit.segmentId ?? resolvedNodeInfo?.segmentId,
@@ -657,6 +656,9 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
 
   private curChunkRank = -1;
   private tempChunkPosition = new Float32Array(0);
+  private readonly dragModelSpacePosition = vec3.create();
+  private readonly dragGlobalAnchorPosition = vec3.create();
+  private readonly dragGlobalPosition = vec3.create();
 
   private handleRankChanged(rank: number) {
     if (rank === this.curChunkRank) return;
@@ -664,19 +666,17 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
     this.tempChunkPosition = new Float32Array(rank);
   }
 
-  private getMousePositionInSkeletonCoordinates(
+  private globalToSkeletonCoordinates(
+    globalPosition: Float32Array,
     skeletonLayer: SpatiallyIndexedSkeletonLayer,
   ): Float32Array | undefined {
-    if (!this.mouseState.updateUnconditionally() || !this.mouseState.active) {
-      return undefined;
-    }
     const chunkTransform = skeletonLayer.chunkTransform.value;
     if (chunkTransform.error !== undefined) return undefined;
     this.handleRankChanged(chunkTransform.modelTransform.unpaddedRank);
     if (
       !getChunkPositionFromCombinedGlobalLocalPositions(
         this.tempChunkPosition,
-        this.mouseState.unsnappedPosition,
+        globalPosition,
         skeletonLayer.localPosition.value,
         chunkTransform.layerRank,
         chunkTransform.combinedGlobalLocalToChunkTransform,
@@ -685,6 +685,18 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
       return undefined;
     }
     return this.tempChunkPosition;
+  }
+
+  private getMousePositionInSkeletonCoordinates(
+    skeletonLayer: SpatiallyIndexedSkeletonLayer,
+  ): Float32Array | undefined {
+    if (!this.mouseState.updateUnconditionally() || !this.mouseState.active) {
+      return undefined;
+    }
+    return this.globalToSkeletonCoordinates(
+      this.mouseState.unsnappedPosition,
+      skeletonLayer,
+    );
   }
 
   private getSelectedParentNodeForAdd(
@@ -1152,7 +1164,8 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
             return;
           }
         }
-        const clickStartPosition = this.getMousePositionInSkeletonCoordinates(skeletonLayer);
+        const clickStartPosition =
+          this.getMousePositionInSkeletonCoordinates(skeletonLayer);
         if (clickStartPosition === undefined) {
           StatusMessage.showTemporaryMessage(
             "Unable to resolve add-node position for this click.",
@@ -1310,17 +1323,13 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
           Number.isFinite(pickedPosition[0]) &&
           Number.isFinite(pickedPosition[1]) &&
           Number.isFinite(pickedPosition[2]);
-        const nodeInfo = hasPickedPosition
-          ? {
-              nodeId: pickedNode.nodeId,
-              segmentId: pickedNode.segmentId ?? 0,
-              position: new Float32Array([
-                Number(pickedPosition[0]),
-                Number(pickedPosition[1]),
-                Number(pickedPosition[2]),
-              ]),
-            }
-          : skeletonLayer.getNode(pickedNode.nodeId);
+        if (!hasPickedPosition) {
+          debugLog("drag-node-no-global-position", {
+            nodeId: pickedNode.nodeId,
+          });
+          return;
+        }
+        const nodeInfo = skeletonLayer.getNode(pickedNode.nodeId);
         if (nodeInfo === undefined) {
           debugLog("drag-node-not-found", {
             nodeId: pickedNode.nodeId,
@@ -1338,15 +1347,13 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
         setDebug("hitPos", formatVec3(nodeInfo.position));
         setDebug("dragPanel", dragPanel.constructor?.name ?? "none");
         let moved = false;
-        const lastPosition = new Float32Array(
-          nodeInfo.position,
-        ) as unknown as vec3;
-        const dragAnchorPosition = new Float32Array(
-          nodeInfo.position,
-        ) as unknown as vec3;
-        const panelTranslatedPosition = new Float32Array(
-          nodeInfo.position,
-        ) as unknown as vec3;
+        this.dragModelSpacePosition.set(nodeInfo.position);
+        vec3.set(
+          this.dragGlobalAnchorPosition,
+          Number(pickedPosition[0]),
+          Number(pickedPosition[1]),
+          Number(pickedPosition[2]),
+        );
         let moveEvents = 0;
         let totalDeltaX = 0;
         let totalDeltaY = 0;
@@ -1368,35 +1375,36 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
             ++moveEvents;
             totalDeltaX += deltaX;
             totalDeltaY += deltaY;
-            panelTranslatedPosition[0] = dragAnchorPosition[0];
-            panelTranslatedPosition[1] = dragAnchorPosition[1];
-            panelTranslatedPosition[2] = dragAnchorPosition[2];
+            vec3.copy(this.dragGlobalPosition, this.dragGlobalAnchorPosition);
             dragPanel.translateDataPointByViewportPixels(
-              panelTranslatedPosition,
-              dragAnchorPosition,
+              this.dragGlobalPosition,
+              this.dragGlobalAnchorPosition,
               totalDeltaX,
               totalDeltaY,
             );
             if (
-              !Number.isFinite(panelTranslatedPosition[0]) ||
-              !Number.isFinite(panelTranslatedPosition[1]) ||
-              !Number.isFinite(panelTranslatedPosition[2])
+              !Number.isFinite(this.dragGlobalPosition[0]) ||
+              !Number.isFinite(this.dragGlobalPosition[1]) ||
+              !Number.isFinite(this.dragGlobalPosition[2])
             ) {
               return;
             }
+            const modelPosition = this.globalToSkeletonCoordinates(
+              this.dragGlobalPosition,
+              skeletonLayer,
+            );
+            if (modelPosition === undefined) return;
             const previewChanged =
               layer.spatialSkeletonState.setPendingNodePosition(
                 pickedNode.nodeId,
-                panelTranslatedPosition,
+                modelPosition,
               );
             if (!previewChanged) return;
             moved = true;
-            lastPosition[0] = panelTranslatedPosition[0];
-            lastPosition[1] = panelTranslatedPosition[1];
-            lastPosition[2] = panelTranslatedPosition[2];
+            this.dragModelSpacePosition.set(modelPosition);
             setDebug("draggingNode", String(pickedNode.nodeId));
             setDebug("dragMoves", String(moveEvents));
-            setDebug("lastAppliedPos", formatVec3(lastPosition));
+            setDebug("lastAppliedPos", formatVec3(this.dragModelSpacePosition));
           },
           (_finishEvent) => {
             if (!dragActive) {
@@ -1411,13 +1419,13 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
               nodeId: pickedNode.nodeId,
               moved,
               moveEvents,
-              finalPosition: formatVec3(lastPosition),
+              finalPosition: formatVec3(this.dragModelSpacePosition),
             });
             if (moved) {
               void this.commitMoveNode(
                 skeletonLayer,
                 pickedNode.nodeId,
-                lastPosition,
+                this.dragModelSpacePosition,
               )
                 .then(() => {
                   layer.spatialSkeletonState.clearPendingNodePosition(
@@ -1434,7 +1442,7 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
                   debugLog("move-node-commit-failed", {
                     nodeId: pickedNode.nodeId,
                     error: String(error),
-                    position: formatVec3(lastPosition),
+                    position: formatVec3(this.dragModelSpacePosition),
                   });
                 });
               return;
