@@ -660,6 +660,13 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
   private readonly dragGlobalAnchorPosition = vec3.create();
   private readonly dragGlobalPosition = vec3.create();
 
+  // TODO (skm): really we can't handle a rank change right now
+  // and heavily assume rank 3. This is likely mostly fine
+  // but need to test a little more how it works if embedded in
+  // higher dim spaces or alongside images with a t dim / channel dim
+  // can also possibly remove this and just set tempChunkPosition 
+  // to be vec3 instead of Float32Array
+  // will verify and clean up
   private handleRankChanged(rank: number) {
     if (rank === this.curChunkRank) return;
     this.curChunkRank = rank;
