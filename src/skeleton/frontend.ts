@@ -70,6 +70,7 @@ import type {
   ThreeDimensionalRenderLayerAttachmentState,
 } from "#src/renderlayer.js";
 import { update3dRenderLayerAttachment } from "#src/renderlayer.js";
+import type { RenderLayerTransform } from "#src/render_coordinate_transform.js";
 import { RenderScaleHistogram } from "#src/render_scale_statistics.js";
 import { Uint64Set } from "#src/uint64_set.js";
 import {
@@ -129,9 +130,11 @@ import {
   WatchableValueInterface,
   registerNested,
 } from "#src/trackable_value.js";
+import { gatherUpdate } from "#src/util/array.js";
 import { DATA_TYPE_SIGNED, DataType } from "#src/util/data_type.js";
 import { RefCounted } from "#src/util/disposable.js";
 import { mat4 } from "#src/util/geom.js";
+import * as matrix from "#src/util/matrix.js";
 import { verifyFinitePositiveFloat } from "#src/util/json.js";
 import { getObjectId } from "#src/util/object_id.js";
 import { NullarySignal } from "#src/util/signal.js";
@@ -1004,31 +1007,36 @@ function getSkeletonNodeDiameter(
   return lineWidth;
 }
 
-function snapMouseStateToSpatialSkeletonNode(
+function setMouseStatePositionFromSpatialSkeletonNode(
   mouseState: MouseSelectionState,
-  nodePositions: Float32Array,
-  pickedOffset: number,
+  nodePosition: Float32Array,
+  transform: RenderLayerTransform,
 ) {
-  const sourceOffset = pickedOffset * 3;
-  if (sourceOffset + 2 >= nodePositions.length) {
-    return;
-  }
-  const x = nodePositions[sourceOffset];
-  const y = nodePositions[sourceOffset + 1];
-  const z = nodePositions[sourceOffset + 2];
+  if (nodePosition.length < 3) return;
+  const x = nodePosition[0];
+  const y = nodePosition[1];
+  const z = nodePosition[2];
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
     return;
   }
-  const { position } = mouseState;
-  if (position.length > 0) {
-    position[0] = x;
-  }
-  if (position.length > 1) {
-    position[1] = y;
-  }
-  if (position.length > 2) {
-    position[2] = z;
-  }
+  const rank = transform.rank;
+  const modelPosition = new Float32Array(rank);
+  modelPosition[0] = x;
+  if (rank > 1) modelPosition[1] = y;
+  if (rank > 2) modelPosition[2] = z;
+  const layerPosition = new Float32Array(rank);
+  matrix.transformPoint(
+    layerPosition,
+    transform.modelToRenderLayerTransform,
+    rank + 1,
+    modelPosition,
+    rank,
+  );
+  gatherUpdate(
+    mouseState.position,
+    layerPosition,
+    transform.globalToRenderLayerDimensions
+  );
 }
 
 export interface ViewSpecificSkeletonRenderingOptions {
@@ -3514,11 +3522,14 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
       const nodeId = pickData.nodeIds[pickedOffset];
       if (!Number.isSafeInteger(nodeId) || nodeId <= 0) return;
       mouseState.pickedSpatialSkeletonNodeId = nodeId;
-      snapMouseStateToSpatialSkeletonNode(
-        mouseState,
-        pickData.nodePositions,
-        pickedOffset,
+      const nodePosition = pickData.nodePositions.subarray(
+        pickedOffset * 3,
+        pickedOffset * 3 + 3,
       );
+      const transform = this.base.displayState.transform.value;
+      if (transform.error === undefined) {
+        setMouseStatePositionFromSpatialSkeletonNode(mouseState, nodePosition, transform);
+      }
       return;
     }
     if (pickData.kind === "edge") {
@@ -3816,11 +3827,14 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
       const nodeId = pickData.nodeIds[pickedOffset];
       if (!Number.isSafeInteger(nodeId) || nodeId <= 0) return;
       mouseState.pickedSpatialSkeletonNodeId = nodeId;
-      snapMouseStateToSpatialSkeletonNode(
-        mouseState,
-        pickData.nodePositions,
-        pickedOffset,
+      const nodePosition = pickData.nodePositions.subarray(
+        pickedOffset * 3,
+        pickedOffset * 3 + 3,
       );
+      const transform = this.base.displayState.transform.value;
+      if (transform.error === undefined) {
+        setMouseStatePositionFromSpatialSkeletonNode(mouseState, nodePosition, transform);
+      }
       return;
     }
     if (pickData.kind === "edge") {

@@ -179,6 +179,7 @@ export function getSpatialSkeletonNodeIdFromViewerHover<TRenderLayer>(
       return undefined;
     }
   }
+  // TODO (SKM): I think we can inline this function
   return normalizeSpatialSkeletonViewerHoverNodeId(
     mouseState.pickedSpatialSkeletonNodeId,
   );
