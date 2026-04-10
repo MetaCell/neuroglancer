@@ -70,7 +70,11 @@ import type {
   ThreeDimensionalRenderLayerAttachmentState,
 } from "#src/renderlayer.js";
 import { update3dRenderLayerAttachment } from "#src/renderlayer.js";
-import type { RenderLayerTransform } from "#src/render_coordinate_transform.js";
+import type {
+  ChunkTransformParameters,
+  RenderLayerTransform,
+} from "#src/render_coordinate_transform.js";
+import { getChunkTransformParameters } from "#src/render_coordinate_transform.js";
 import { RenderScaleHistogram } from "#src/render_scale_statistics.js";
 import { Uint64Set } from "#src/uint64_set.js";
 import {
@@ -125,11 +129,14 @@ import {
 } from "#src/sliceview/base.js";
 import { ChunkLayout } from "#src/sliceview/chunk_layout.js";
 import {
+  makeCachedLazyDerivedWatchableValue,
   TrackableValue,
   WatchableValue,
   WatchableValueInterface,
   registerNested,
 } from "#src/trackable_value.js";
+import type { ValueOrError } from "#src/util/error.js";
+import { makeValueOrError, valueOrThrow } from "#src/util/error.js";
 import { gatherUpdate } from "#src/util/array.js";
 import { DATA_TYPE_SIGNED, DataType } from "#src/util/data_type.js";
 import { RefCounted } from "#src/util/disposable.js";
@@ -2089,6 +2096,9 @@ export class SpatiallyIndexedSkeletonLayer
   );
   backend: ChunkRenderLayerFrontend;
   localPosition: WatchableValueInterface<Float32Array>;
+  readonly chunkTransform: WatchableValueInterface<
+    ValueOrError<ChunkTransformParameters>
+  >;
   rpc: RPC | undefined;
 
   private overlayAttributeTextureFormats = [
@@ -2492,6 +2502,15 @@ export class SpatiallyIndexedSkeletonLayer
     this.sources2d = sources2d;
     this.source = sources3d[0].chunkSource;
     this.localPosition = displayState.localPosition;
+    this.chunkTransform = this.registerDisposer(
+      makeCachedLazyDerivedWatchableValue(
+        (modelTransform) =>
+          makeValueOrError(() =>
+            getChunkTransformParameters(valueOrThrow(modelTransform)),
+          ),
+        this.displayState.transform,
+      ),
+    );
     this.gridLevel =
       options.gridLevel ??
       (displayState as any).spatialSkeletonGridLevel3d ??
