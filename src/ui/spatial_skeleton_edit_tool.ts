@@ -1382,7 +1382,6 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
             ++moveEvents;
             totalDeltaX += deltaX;
             totalDeltaY += deltaY;
-            vec3.copy(this.dragGlobalPosition, this.dragGlobalAnchorPosition);
             dragPanel.translateDataPointByViewportPixels(
               this.dragGlobalPosition,
               this.dragGlobalAnchorPosition,
