@@ -655,6 +655,15 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
     return "skeleton edit mode";
   }
 
+  private curChunkRank = -1;
+  private tempChunkPosition = new Float32Array(0);
+
+  private handleRankChanged(rank: number) {
+    if (rank === this.curChunkRank) return;
+    this.curChunkRank = rank;
+    this.tempChunkPosition = new Float32Array(rank);
+  }
+
   private getMousePositionInSkeletonCoordinates(
     skeletonLayer: SpatiallyIndexedSkeletonLayer,
   ): Float32Array | undefined {
@@ -663,12 +672,10 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
     }
     const chunkTransform = skeletonLayer.chunkTransform.value;
     if (chunkTransform.error !== undefined) return undefined;
-    const chunkPosition = new Float32Array(
-      chunkTransform.modelTransform.unpaddedRank,
-    );
+    this.handleRankChanged(chunkTransform.modelTransform.unpaddedRank);
     if (
       !getChunkPositionFromCombinedGlobalLocalPositions(
-        chunkPosition,
+        this.tempChunkPosition,
         this.mouseState.unsnappedPosition,
         skeletonLayer.localPosition.value,
         chunkTransform.layerRank,
@@ -677,7 +684,7 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
     ) {
       return undefined;
     }
-    return chunkPosition;
+    return this.tempChunkPosition;
   }
 
   private getSelectedParentNodeForAdd(
