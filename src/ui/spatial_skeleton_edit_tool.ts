@@ -117,13 +117,13 @@ const SPATIAL_SKELETON_PICK_AUX_INPUT_EVENT_MAP = EventActionMap.fromObject({
 });
 
 const DRAG_START_DISTANCE_PX = 4;
-const SPATIAL_SKELETON_EDIT_DEBUG_LOGS = true;
+const DEBUG_SKELETON_EDIT = true;
 
 function logSpatialSkeletonEdit(
   label: string,
   data: Record<string, unknown> = {},
 ) {
-  if (!SPATIAL_SKELETON_EDIT_DEBUG_LOGS) return;
+  if (!DEBUG_SKELETON_EDIT) return;
   console.debug(`[SpatialSkeletonEdit] ${label}`, data);
 }
 
