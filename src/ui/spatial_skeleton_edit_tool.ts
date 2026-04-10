@@ -117,13 +117,13 @@ const SPATIAL_SKELETON_PICK_AUX_INPUT_EVENT_MAP = EventActionMap.fromObject({
 });
 
 const DRAG_START_DISTANCE_PX = 4;
-const DEBUG_SPATIAL_SKELETON_EDIT = true;
+const SPATIAL_SKELETON_EDIT_DEBUG_LOGS = true;
 
 function logSpatialSkeletonEdit(
   label: string,
   data: Record<string, unknown> = {},
 ) {
-  if (!DEBUG_SPATIAL_SKELETON_EDIT) return;
+  if (!SPATIAL_SKELETON_EDIT_DEBUG_LOGS) return;
   console.debug(`[SpatialSkeletonEdit] ${label}`, data);
 }
 
@@ -365,30 +365,6 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
         this.togglePickedSpatialSkeletonVisibility();
       },
     );
-  }
-
-  protected moveViewToNodePosition(position: ArrayLike<number>) {
-    const globalPosition = this.layer.manager.root.globalPosition;
-    const nextGlobal = globalPosition.value.slice();
-    const globalRank = Math.min(nextGlobal.length, 3);
-    for (let i = 0; i < globalRank; ++i) {
-      const value = Number(position[i]);
-      if (Number.isFinite(value)) {
-        nextGlobal[i] = value;
-      }
-    }
-    globalPosition.value = nextGlobal;
-
-    const localPosition = this.layer.localPosition;
-    const nextLocal = localPosition.value.slice();
-    const localRank = Math.min(nextLocal.length, 3);
-    for (let i = 0; i < localRank; ++i) {
-      const value = Number(position[i]);
-      if (Number.isFinite(value)) {
-        nextLocal[i] = value;
-      }
-    }
-    localPosition.value = nextLocal;
   }
 
   protected resolvePickedNodeForAction(
@@ -883,7 +859,7 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
         position: newNode.position,
       },
     );
-    this.moveViewToNodePosition(newNode.position);
+    this.layer.moveViewToSpatialSkeletonNodePosition(newNode.position);
     // Match move-node semantics: update the overlay/cache immediately and let
     // browse chunks reconcile later through explicit invalidation paths.
     if (parentNodeId !== undefined) {
