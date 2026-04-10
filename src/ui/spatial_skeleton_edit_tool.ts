@@ -1209,7 +1209,8 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
                 ? 0
                 : selectedParentNode.segmentId;
             const clickPosition =
-              this.getMousePositionInSkeletonCoordinates(skeletonLayer) ?? new Float32Array(clickStartPosition);
+              this.getMousePositionInSkeletonCoordinates(skeletonLayer);
+            if (clickPosition === undefined) return;
             debugLog("ctrl-add-attempt", {
               selectedParentNodeId,
               selectedParentSegmentId: selectedParentNode?.segmentId,
