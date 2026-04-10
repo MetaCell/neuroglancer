@@ -1012,18 +1012,13 @@ function setMouseStatePositionFromSpatialSkeletonNode(
   nodePosition: Float32Array,
   transform: RenderLayerTransform,
 ) {
-  if (nodePosition.length < 3) return;
-  const x = nodePosition[0];
-  const y = nodePosition[1];
-  const z = nodePosition[2];
-  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
-    return;
-  }
   const rank = transform.rank;
   const modelPosition = new Float32Array(rank);
-  modelPosition[0] = x;
-  if (rank > 1) modelPosition[1] = y;
-  if (rank > 2) modelPosition[2] = z;
+  for (let i = 0; i < Math.min(nodePosition.length, rank); ++i) {
+    const v = nodePosition[i];
+    if (!Number.isFinite(v)) return;
+    modelPosition[i] = v;
+  }
   const layerPosition = new Float32Array(rank);
   matrix.transformPoint(
     layerPosition,
