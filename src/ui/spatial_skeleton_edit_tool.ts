@@ -61,6 +61,7 @@ import {
   getSpatialSkeletonMergeBannerMessage,
   getSpatialSkeletonToolPointStatusFields,
 } from "#src/ui/spatial_skeleton_tool_messages.js";
+import { getChunkPositionFromCombinedGlobalLocalPositions } from "#src/render_coordinate_transform.js";
 import type { ActionEvent } from "#src/util/event_action_map.js";
 import { EventActionMap } from "#src/util/event_action_map.js";
 import { removeChildren } from "#src/util/dom.js";
@@ -654,19 +655,29 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
     return "skeleton edit mode";
   }
 
-  private getMousePosition() {
+  private getMousePositionInSkeletonCoordinates(
+    skeletonLayer: SpatiallyIndexedSkeletonLayer,
+  ): Float32Array | undefined {
     if (!this.mouseState.updateUnconditionally() || !this.mouseState.active) {
       return undefined;
     }
-    const pos = this.mouseState.unsnappedPosition;
-    if (pos.length < 3) return undefined;
-    const x = Number(pos[0]);
-    const y = Number(pos[1]);
-    const z = Number(pos[2]);
-    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+    const chunkTransform = skeletonLayer.chunkTransform.value;
+    if (chunkTransform.error !== undefined) return undefined;
+    const chunkPosition = new Float32Array(
+      chunkTransform.modelTransform.unpaddedRank,
+    );
+    if (
+      !getChunkPositionFromCombinedGlobalLocalPositions(
+        chunkPosition,
+        this.mouseState.unsnappedPosition,
+        skeletonLayer.localPosition.value,
+        chunkTransform.layerRank,
+        chunkTransform.combinedGlobalLocalToChunkTransform,
+      )
+    ) {
       return undefined;
     }
-    return new Float32Array([x, y, z]);
+    return chunkPosition;
   }
 
   private getSelectedParentNodeForAdd(
@@ -1134,7 +1145,7 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
             return;
           }
         }
-        const clickStartPosition = this.getMousePosition();
+        const clickStartPosition = this.getMousePositionInSkeletonCoordinates(skeletonLayer);
         if (clickStartPosition === undefined) {
           StatusMessage.showTemporaryMessage(
             "Unable to resolve add-node position for this click.",
@@ -1156,6 +1167,8 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
           (_finishEvent) => {
             const thresholdSquared =
               DRAG_START_DISTANCE_PX * DRAG_START_DISTANCE_PX;
+            // Block adding nodes if the mouse release position
+            // is too far from the click position
             if (dragDistanceSquared > thresholdSquared) {
               setReadyStatus();
               setDebug("dragState", "ignored-ctrl-drag");
@@ -1189,7 +1202,7 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
                 ? 0
                 : selectedParentNode.segmentId;
             const clickPosition =
-              this.getMousePosition() ?? new Float32Array(clickStartPosition);
+              this.getMousePositionInSkeletonCoordinates(skeletonLayer) ?? new Float32Array(clickStartPosition);
             debugLog("ctrl-add-attempt", {
               selectedParentNodeId,
               selectedParentSegmentId: selectedParentNode?.segmentId,
