@@ -26,8 +26,10 @@ import svg_circle from "ikonate/icons/circle.svg?raw";
 import svg_flag from "ikonate/icons/flag.svg?raw";
 import svg_minus from "ikonate/icons/minus.svg?raw";
 import svg_origin from "ikonate/icons/origin.svg?raw";
+import svg_redo from "ikonate/icons/redo.svg?raw";
 import svg_retweet from "ikonate/icons/retweet.svg?raw";
 import svg_share_android from "ikonate/icons/share-android.svg?raw";
+import svg_undo from "ikonate/icons/undo.svg?raw";
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import { getSpatialSkeletonNodeIdFromViewerHover } from "#src/layer/segmentation/selection.js";
 import { showSpatialSkeletonActionError } from "#src/layer/segmentation/spatial_skeleton_errors.js";
@@ -186,33 +188,49 @@ export class SpatialSkeletonEditTab extends Tab {
         title: "Toggle skeleton split mode",
       }),
     );
-    const undoButton = document.createElement("button");
-    undoButton.type = "button";
-    undoButton.className = "neuroglancer-button";
-    undoButton.textContent = "Undo";
-    toolbox.appendChild(undoButton);
-    const redoButton = document.createElement("button");
-    redoButton.type = "button";
-    redoButton.className = "neuroglancer-button";
-    redoButton.textContent = "Redo";
-    toolbox.appendChild(redoButton);
+    const toolbarActions = document.createElement("div");
+    toolbarActions.className = "neuroglancer-spatial-skeleton-toolbar-actions";
 
-    const navTools = document.createElement("div");
-    navTools.className = "neuroglancer-spatial-skeleton-nav-tools";
-    const makeNavIconButton = (
+    const makeIconButton = (
+      parent: HTMLElement,
       svg: string,
       title: string,
       onClick: () => void,
     ) => {
       const button = document.createElement("button");
-      button.className = "neuroglancer-spatial-skeleton-nav-tool";
+      button.className = "neuroglancer-spatial-skeleton-icon-button";
       button.type = "button";
       button.title = title;
+      button.setAttribute("aria-label", title);
       button.appendChild(makeIcon({ svg, title, clickable: false }));
       button.addEventListener("click", () => onClick());
-      navTools.appendChild(button);
+      parent.appendChild(button);
       return button;
     };
+    const undoButton = makeIconButton(toolbarActions, svg_undo, "Undo", () => {
+      if (undoButton.disabled) return;
+      void (async () => {
+        try {
+          await undoSpatialSkeletonCommand(layer);
+        } catch (error) {
+          showSpatialSkeletonActionError("undo", error);
+        }
+      })();
+    });
+    const redoButton = makeIconButton(toolbarActions, svg_redo, "Redo", () => {
+      if (redoButton.disabled) return;
+      void (async () => {
+        try {
+          await redoSpatialSkeletonCommand(layer);
+        } catch (error) {
+          showSpatialSkeletonActionError("redo", error);
+        }
+      })();
+    });
+    toolbox.appendChild(toolbarActions);
+
+    const navTools = document.createElement("div");
+    navTools.className = "neuroglancer-spatial-skeleton-nav-tools";
 
     const nodesSection = document.createElement("div");
     nodesSection.className = "neuroglancer-spatial-skeleton-section";
@@ -263,6 +281,9 @@ export class SpatialSkeletonEditTab extends Tab {
     showFilterList.className = "neuroglancer-spatial-skeleton-show-list";
     showFilterSection.appendChild(showFilterLabel);
     showFilterSection.appendChild(showFilterList);
+    const nodesNavigationBar = document.createElement("div");
+    nodesNavigationBar.className =
+      "neuroglancer-spatial-skeleton-navigation-bar";
     const nodesSummaryBar = document.createElement("div");
     nodesSummaryBar.className = "neuroglancer-spatial-skeleton-summary-bar";
     const nodesSummary = document.createElement("div");
@@ -272,6 +293,8 @@ export class SpatialSkeletonEditTab extends Tab {
     nodesSection.appendChild(filterInput);
     nodesSection.appendChild(nodeFilterTypeRow);
     nodesSection.appendChild(showFilterSection);
+    nodesNavigationBar.appendChild(navTools);
+    nodesSection.appendChild(nodesNavigationBar);
     nodesSummaryBar.appendChild(nodesSummary);
     nodesSummaryBar.appendChild(collapseButton);
     nodesSection.appendChild(nodesSummaryBar);
@@ -760,25 +783,31 @@ export class SpatialSkeletonEditTab extends Tab {
       })();
     };
 
-    const goRootButton = makeNavIconButton(svg_origin, "Go to root", () => {
-      const context = getSelectedNavigationContext();
-      if (context === undefined) return;
-      const { selectedNode, skeletonApi } = context;
-      void (async () => {
-        try {
-          navigateToNodeTarget(
-            await skeletonApi.getSkeletonRootNode(selectedNode.segmentId),
-          );
-        } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          StatusMessage.showTemporaryMessage(
-            `Failed to locate skeleton root: ${message}`,
-          );
-        }
-      })();
-    });
-    const goBranchStartButton = makeNavIconButton(
+    const goRootButton = makeIconButton(
+      navTools,
+      svg_origin,
+      "Go to root",
+      () => {
+        const context = getSelectedNavigationContext();
+        if (context === undefined) return;
+        const { selectedNode, skeletonApi } = context;
+        void (async () => {
+          try {
+            navigateToNodeTarget(
+              await skeletonApi.getSkeletonRootNode(selectedNode.segmentId),
+            );
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            StatusMessage.showTemporaryMessage(
+              `Failed to locate skeleton root: ${message}`,
+            );
+          }
+        })();
+      },
+    );
+    const goBranchStartButton = makeIconButton(
+      navTools,
       svg_chevrons_left,
       "Go to start of the branch",
       () => {
@@ -800,7 +829,8 @@ export class SpatialSkeletonEditTab extends Tab {
         })();
       },
     );
-    const goTreeEndButton = makeNavIconButton(
+    const goTreeEndButton = makeIconButton(
+      navTools,
       svg_chevrons_right,
       "Go to end of the branch",
       () => {
@@ -822,7 +852,8 @@ export class SpatialSkeletonEditTab extends Tab {
         })();
       },
     );
-    const cycleBranchesButton = makeNavIconButton(
+    const cycleBranchesButton = makeIconButton(
+      navTools,
       svg_retweet,
       "Cycle through level nodes",
       () => {
@@ -844,7 +875,8 @@ export class SpatialSkeletonEditTab extends Tab {
         })();
       },
     );
-    const goParentButton = makeNavIconButton(
+    const goParentButton = makeIconButton(
+      navTools,
       svg_arrow_left,
       "Go to parent",
       () => {
@@ -871,7 +903,8 @@ export class SpatialSkeletonEditTab extends Tab {
         })();
       },
     );
-    const goChildButton = makeNavIconButton(
+    const goChildButton = makeIconButton(
+      navTools,
       svg_arrow_right,
       "Go to child",
       () => {
@@ -896,14 +929,14 @@ export class SpatialSkeletonEditTab extends Tab {
         })();
       },
     );
-    const goUnfinishedBranchButton = makeNavIconButton(
+    const goUnfinishedBranchButton = makeIconButton(
+      navTools,
       svg_chevron_right,
       "Go to unfinished node",
       () => {
         goToClosestUnfinishedBranch();
       },
     );
-    toolbox.appendChild(navTools);
     element.insertBefore(toolbox, nodesSection);
 
     const gatedControls = [
@@ -1552,28 +1585,9 @@ export class SpatialSkeletonEditTab extends Tab {
         : redoLabel === undefined
           ? "Nothing to redo."
           : `Redo ${redoLabel}`;
+      undoButton.setAttribute("aria-label", undoButton.title);
+      redoButton.setAttribute("aria-label", redoButton.title);
     };
-
-    undoButton.addEventListener("click", () => {
-      if (undoButton.disabled) return;
-      void (async () => {
-        try {
-          await undoSpatialSkeletonCommand(layer);
-        } catch (error) {
-          showSpatialSkeletonActionError("undo", error);
-        }
-      })();
-    });
-    redoButton.addEventListener("click", () => {
-      if (redoButton.disabled) return;
-      void (async () => {
-        try {
-          await redoSpatialSkeletonCommand(layer);
-        } catch (error) {
-          showSpatialSkeletonActionError("redo", error);
-        }
-      })();
-    });
 
     filterInput.addEventListener("input", () => {
       filterText = filterInput.value.trim().toLowerCase();

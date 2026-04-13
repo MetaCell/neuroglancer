@@ -176,9 +176,7 @@ import { registerSegmentSelectTools } from "#src/ui/segment_select_tools.js";
 import { registerSegmentSplitMergeTools } from "#src/ui/segment_split_merge_tools.js";
 import { DisplayOptionsTab } from "#src/ui/segmentation_display_options_tab.js";
 import { SpatialSkeletonEditTab } from "#src/ui/spatial_skeleton_edit_tab.js";
-import {
-  registerSpatialSkeletonEditModeTool,
-} from "#src/ui/spatial_skeleton_edit_tool.js";
+import { registerSpatialSkeletonEditModeTool } from "#src/ui/spatial_skeleton_edit_tool.js";
 import { Uint64Map } from "#src/uint64_map.js";
 import { Uint64OrderedSet } from "#src/uint64_ordered_set.js";
 import { Uint64Set } from "#src/uint64_set.js";
@@ -1025,10 +1023,7 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
   shaderError = makeWatchableShaderError();
   renderScaleHistogram = new RenderScaleHistogram();
   renderScaleTarget = trackableRenderScaleTarget(1);
-  selectSegment: (
-    id: bigint,
-    pin: boolean | "toggle" | "force-unpin",
-  ) => void;
+  selectSegment: (id: bigint, pin: boolean | "toggle" | "force-unpin") => void;
   transparentPickEnabled: TrackableBoolean;
   baseSegmentColoring = new TrackableBoolean(false, false);
   baseSegmentHighlighting = new TrackableBoolean(false, false);
@@ -1474,7 +1469,10 @@ export class SegmentationUserLayer extends Base {
 
   selectAndMoveToSpatialSkeletonNode(
     node:
-      | Pick<SpatiallyIndexedSkeletonNodeInfo, "nodeId" | "segmentId" | "position">
+      | Pick<
+          SpatiallyIndexedSkeletonNodeInfo,
+          "nodeId" | "segmentId" | "position"
+        >
       | undefined,
     pin: boolean | "toggle" = this.manager.root.selectionState.pin.value,
   ) {
@@ -1900,7 +1898,7 @@ export class SegmentationUserLayer extends Base {
   private updateSpatialSkeletonSourceState() {
     let capabilities: SpatiallyIndexedSkeletonSourceCapabilities | undefined;
     let hasSpatialSkeletonLayer = false;
-    let commandHistoryOwner: unknown;
+    let commandHistoryDataSourceIdentity: unknown;
     for (const layer of this.renderLayers) {
       if (
         !(
@@ -1912,7 +1910,7 @@ export class SegmentationUserLayer extends Base {
         continue;
       }
       hasSpatialSkeletonLayer = true;
-      commandHistoryOwner ??= layer.base.source;
+      commandHistoryDataSourceIdentity ??= layer.base.source;
       const sourceCapabilities = layer.base.getSourceCapabilities();
       capabilities =
         capabilities === undefined
@@ -1953,7 +1951,9 @@ export class SegmentationUserLayer extends Base {
     if (!hasSpatialSkeletonLayer) {
       this.spatialSkeletonState.clearInspectedSkeletonCache();
     }
-    this.spatialSkeletonState.updateCommandHistoryOwner(commandHistoryOwner);
+    this.spatialSkeletonState.updateCommandHistoryDataSourceIdentity(
+      commandHistoryDataSourceIdentity,
+    );
     this.spatialSkeletonState.updateSourceCapabilities(
       capabilities ?? {
         inspectSkeletons: false,
@@ -2049,7 +2049,8 @@ export class SegmentationUserLayer extends Base {
   }
 
   getCachedSpatialSkeletonSegmentNodesForEdit(segmentId: number) {
-    const segmentNodes = this.spatialSkeletonState.getCachedSegmentNodes(segmentId);
+    const segmentNodes =
+      this.spatialSkeletonState.getCachedSegmentNodes(segmentId);
     if (segmentNodes === undefined) {
       throw new Error(
         `Segment ${segmentId} is not available in the inspected skeleton cache. Load the full skeleton before editing it.`,
@@ -2067,7 +2068,9 @@ export class SegmentationUserLayer extends Base {
         "No active spatial skeleton layer found for delete action.",
       );
     }
-    if (getEditableSpatiallyIndexedSkeletonSource(skeletonLayer) === undefined) {
+    if (
+      getEditableSpatiallyIndexedSkeletonSource(skeletonLayer) === undefined
+    ) {
       throw new Error(
         "Unable to resolve editable skeleton source for the active layer.",
       );
@@ -2096,7 +2099,10 @@ export class SegmentationUserLayer extends Base {
     }
     return {
       node: currentNode,
-      parentNode: getSpatiallyIndexedSkeletonNodeParent(segmentNodes, currentNode),
+      parentNode: getSpatiallyIndexedSkeletonNodeParent(
+        segmentNodes,
+        currentNode,
+      ),
       childNodes,
       editContext: buildSpatiallyIndexedSkeletonNeighborhoodEditContext(
         currentNode,
@@ -2984,7 +2990,11 @@ export class SegmentationUserLayer extends Base {
     rerootButton.disabled = rerootDisabledReason !== undefined;
     rerootButton.title = rerootDisabledReason ?? "Set as root";
     rerootButton.appendChild(
-      makeIcon({ svg: svg_origin, title: rerootButton.title, clickable: false }),
+      makeIcon({
+        svg: svg_origin,
+        title: rerootButton.title,
+        clickable: false,
+      }),
     );
     let rerootPending = false;
     rerootButton.addEventListener("click", () => {
@@ -3015,7 +3025,7 @@ export class SegmentationUserLayer extends Base {
           ? "Load the active skeleton in the Skeleton tab before deleting from Selection."
           : nodeInfo.parentNodeId === undefined && directChildNodeIds.length > 0
             ? "Reroot the skeleton manually before deleting the current root node."
-          : this.getSpatialSkeletonActionsDisabledReason("deleteNodes");
+            : this.getSpatialSkeletonActionsDisabledReason("deleteNodes");
     const deleteButton = document.createElement("button");
     deleteButton.type = "button";
     deleteButton.className = "neuroglancer-spatial-skeleton-selection-action";
@@ -3248,9 +3258,9 @@ export class SegmentationUserLayer extends Base {
     radiusInput.step = "any";
     radiusInput.value = formatSpatialSkeletonEditableNumber(nodeInfo.radius);
     appendValue("Radius", radiusInput);
-    const supportedConfidenceValues = (confidenceEditingOptions?.values ?? []).filter(
-      (value): value is number => Number.isFinite(value),
-    );
+    const supportedConfidenceValues = (
+      confidenceEditingOptions?.values ?? []
+    ).filter((value): value is number => Number.isFinite(value));
     const confidenceSelectValues = Array.from(
       new Set([...supportedConfidenceValues, committedConfidence]),
     );

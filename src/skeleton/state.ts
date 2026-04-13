@@ -155,7 +155,10 @@ export function getSpatiallyIndexedSkeletonNodeRevisionLookupSource(
 export function getSpatiallyIndexedSkeletonPropertyEditingOptions(
   value: SpatialSkeletonSourceAccess | undefined,
 ): SpatiallyIndexedSkeletonPropertyEditingOptions | undefined {
-  if (value === undefined || !hasFunction(value.source, "getPropertyEditingOptions")) {
+  if (
+    value === undefined ||
+    !hasFunction(value.source, "getPropertyEditingOptions")
+  ) {
     return undefined;
   }
   return (
@@ -436,8 +439,8 @@ export class SpatialSkeletonState extends RefCounted {
     this.sourceCapabilities.value = capabilities;
   }
 
-  updateCommandHistoryOwner(owner: unknown) {
-    return this.commandHistory.setOwner(owner);
+  updateCommandHistoryDataSourceIdentity(dataSourceIdentity: unknown) {
+    return this.commandHistory.setDataSourceIdentity(dataSourceIdentity);
   }
 
   clearInspectedSkeletonCache() {
@@ -500,17 +503,12 @@ export class SpatialSkeletonState extends RefCounted {
     return this.replaceCachedSegmentNodes(segmentId, []);
   }
 
-  private abortPendingFullSegmentNodeFetch(
-    segmentId: number,
-    message: string,
-  ) {
+  private abortPendingFullSegmentNodeFetch(segmentId: number, message: string) {
     const pendingEntry = this.pendingFullSegmentNodeFetches.get(segmentId);
     if (pendingEntry === undefined) {
       return false;
     }
-    pendingEntry.abortController.abort(
-      new DOMException(message, "AbortError"),
-    );
+    pendingEntry.abortController.abort(new DOMException(message, "AbortError"));
     this.pendingFullSegmentNodeFetches.delete(segmentId);
     return true;
   }
@@ -664,8 +662,10 @@ export class SpatialSkeletonState extends RefCounted {
       return true;
     }
     return (
-      this.upsertCachedNodeInSegment(normalizedNode.segmentId, normalizedNode) ||
-      changed
+      this.upsertCachedNodeInSegment(
+        normalizedNode.segmentId,
+        normalizedNode,
+      ) || changed
     );
   }
 
@@ -761,9 +761,7 @@ export class SpatialSkeletonState extends RefCounted {
     });
   }
 
-  rerootCachedSegment(
-    nodeId: number,
-  ) {
+  rerootCachedSegment(nodeId: number) {
     const normalizedNodeId = this.normalizeNodeId(nodeId);
     if (normalizedNodeId === undefined) {
       return undefined;

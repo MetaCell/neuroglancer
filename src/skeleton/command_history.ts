@@ -142,7 +142,10 @@ export class SpatialSkeletonCommandMappings {
     return true;
   }
 
-  remapSegmentId(originalSegmentId: number | undefined, currentSegmentId: number) {
+  remapSegmentId(
+    originalSegmentId: number | undefined,
+    currentSegmentId: number,
+  ) {
     const normalizedOriginalSegmentId = normalizeIdentifier(originalSegmentId);
     const normalizedCurrentSegmentId = normalizeIdentifier(currentSegmentId);
     if (
@@ -184,7 +187,7 @@ export class SpatialSkeletonCommandHistory extends RefCounted {
   private redoEntries: SpatialSkeletonCommandHistoryEntry[] = [];
   private operationQueue = Promise.resolve();
   private pendingOperations = 0;
-  private owner: unknown;
+  private dataSourceIdentity: unknown;
   private readonly maxEntries = SPATIAL_SKELETON_COMMAND_HISTORY_MAX_ENTRIES;
 
   private updateState() {
@@ -248,11 +251,11 @@ export class SpatialSkeletonCommandHistory extends RefCounted {
     this.updateState();
   }
 
-  setOwner(owner: unknown) {
-    if (this.owner === owner) {
+  setDataSourceIdentity(dataSourceIdentity: unknown) {
+    if (this.dataSourceIdentity === dataSourceIdentity) {
       return false;
     }
-    this.owner = owner;
+    this.dataSourceIdentity = dataSourceIdentity;
     this.clear();
     return true;
   }
