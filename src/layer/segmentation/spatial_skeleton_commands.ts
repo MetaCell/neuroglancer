@@ -1072,13 +1072,12 @@ class RerootCommand implements SpatialSkeletonCommand {
     if (resolvedNode.node.parentNodeId === undefined) {
       return;
     }
-    const rerootSource = resolvedNode.skeletonSource.rerootSkeleton;
-    if (rerootSource === undefined) {
+    if (resolvedNode.skeletonSource.rerootSkeleton === undefined) {
       throw new Error(
         "Unable to resolve a reroot-capable skeleton source for the active layer.",
       );
     }
-    await rerootSource(
+    await resolvedNode.skeletonSource.rerootSkeleton(
       resolvedNode.node.nodeId,
       buildSpatiallyIndexedSkeletonNeighborhoodEditContext(
         resolvedNode.node,
