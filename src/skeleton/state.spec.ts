@@ -32,6 +32,7 @@ describe("skeleton/state", () => {
     const editableSource = {
       getSkeleton: async () => [],
       addNode: async () => ({ treenodeId: 1, skeletonId: 1 }),
+      insertNode: async () => ({ treenodeId: 1, skeletonId: 1 }),
       moveNode: async () => {},
       deleteNode: async () => {},
       updateDescription: async () => {},

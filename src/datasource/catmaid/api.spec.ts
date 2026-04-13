@@ -267,6 +267,75 @@ describe("CatmaidClient skeleton editing methods", () => {
     ).toBe(JSON.stringify({ parent: [-1, ""] }));
   });
 
+  it("inserts nodes using CATMAID local parent-and-child state", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const fetchMock = vi.fn().mockResolvedValue({
+      treenode_id: 89,
+      skeleton_id: 13,
+      edition_time: "2026-03-29T12:01:00Z",
+      parent_edition_time: "2026-03-29T12:01:01Z",
+      child_edition_times: [
+        [11, "2026-03-29T12:01:02Z"],
+        [12, "2026-03-29T12:01:03Z"],
+      ],
+    });
+    (client as any).fetch = fetchMock;
+
+    await expect(
+      client.insertNode(13, 1, 2, 3, 7, [11, 12], {
+        node: {
+          nodeId: 7,
+          revisionToken: "2026-03-29T12:00:30Z",
+        },
+        children: [
+          { nodeId: 11, revisionToken: "2026-03-29T12:00:31Z" },
+          { nodeId: 12, revisionToken: "2026-03-29T12:00:32Z" },
+        ],
+      }),
+    ).resolves.toEqual({
+      treenodeId: 89,
+      skeletonId: 13,
+      revisionToken: "2026-03-29T12:01:00Z",
+      parentRevisionToken: "2026-03-29T12:01:01Z",
+      childRevisionUpdates: [
+        { nodeId: 11, revisionToken: "2026-03-29T12:01:02Z" },
+        { nodeId: 12, revisionToken: "2026-03-29T12:01:03Z" },
+      ],
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("treenode/insert");
+    expect(
+      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
+        "parent_id",
+      ),
+    ).toBe("7");
+    expect(
+      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
+        "child_id",
+      ),
+    ).toBe("11");
+    expect(
+      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
+        "takeover_child_ids[0]",
+      ),
+    ).toBe("12");
+    expect(
+      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
+        "state",
+      ),
+    ).toBe(
+      JSON.stringify({
+        edition_time: "2026-03-29T12:00:30Z",
+        children: [
+          [11, "2026-03-29T12:00:31Z"],
+          [12, "2026-03-29T12:00:32Z"],
+        ],
+        links: [],
+      }),
+    );
+  });
+
   it("reroots skeletons using treenode ids", async () => {
     const client = new CatmaidClient("https://example.invalid", 1);
     const fetchMock = vi

@@ -22,6 +22,7 @@ import type {
   SpatiallyIndexedSkeletonNodeRevisionUpdate,
   SpatiallyIndexedSkeletonRevisionToken,
 } from "#src/skeleton/api.js";
+import { SpatialSkeletonCommandHistory } from "#src/skeleton/command_history.js";
 import type {
   SpatiallyIndexedSkeletonLayer,
   SpatiallyIndexedSkeletonNodeInfo,
@@ -36,6 +37,7 @@ interface SpatialSkeletonSourceAccess {
 export interface SpatiallyIndexedSkeletonSourceCapabilities {
   inspectSkeletons: boolean;
   addNodes: boolean;
+  insertNodes: boolean;
   moveNodes: boolean;
   deleteNodes: boolean;
   rerootSkeletons: boolean;
@@ -76,6 +78,7 @@ export const NO_SPATIALLY_INDEXED_SKELETON_SOURCE_CAPABILITIES: SpatiallyIndexed
   {
     inspectSkeletons: false,
     addNodes: false,
+    insertNodes: false,
     moveNodes: false,
     deleteNodes: false,
     rerootSkeletons: false,
@@ -103,6 +106,7 @@ export function isEditableSpatiallyIndexedSkeletonSource(
   return (
     capabilities.inspectSkeletons &&
     capabilities.addNodes &&
+    capabilities.insertNodes &&
     capabilities.moveNodes &&
     capabilities.deleteNodes &&
     capabilities.editNodeLabels &&
@@ -165,6 +169,7 @@ export function getSpatiallyIndexedSkeletonSourceCapabilities(
   return {
     inspectSkeletons: hasFunction(value, "getSkeleton"),
     addNodes: hasFunction(value, "addNode"),
+    insertNodes: hasFunction(value, "insertNode"),
     moveNodes: hasFunction(value, "moveNode"),
     deleteNodes: hasFunction(value, "deleteNode"),
     rerootSkeletons: hasFunction(value, "rerootSkeleton"),
@@ -209,6 +214,7 @@ function spatiallyIndexedSkeletonSourceCapabilitiesEqual(
   return (
     a.inspectSkeletons === b.inspectSkeletons &&
     a.addNodes === b.addNodes &&
+    a.insertNodes === b.insertNodes &&
     a.moveNodes === b.moveNodes &&
     a.deleteNodes === b.deleteNodes &&
     a.rerootSkeletons === b.rerootSkeletons &&
@@ -278,6 +284,9 @@ function cloneSpatiallyIndexedSkeletonNodeInfo(
 export class SpatialSkeletonState extends RefCounted {
   readonly sourceCapabilities = new WatchableValue(
     NO_SPATIALLY_INDEXED_SKELETON_SOURCE_CAPABILITIES,
+  );
+  readonly commandHistory = this.registerDisposer(
+    new SpatialSkeletonCommandHistory(),
   );
   readonly editMode = new WatchableValue(false);
   readonly mergeMode = new WatchableValue(false);
@@ -425,6 +434,10 @@ export class SpatialSkeletonState extends RefCounted {
       return;
     }
     this.sourceCapabilities.value = capabilities;
+  }
+
+  updateCommandHistoryOwner(owner: unknown) {
+    return this.commandHistory.setOwner(owner);
   }
 
   clearInspectedSkeletonCache() {

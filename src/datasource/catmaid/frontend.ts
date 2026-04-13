@@ -28,8 +28,9 @@ import type {
   EditableSpatiallyIndexedSkeletonSource,
   SpatiallyIndexedSkeletonAddNodeResult,
   SpatiallyIndexedSkeletonDeleteNodeResult,
-  SpatiallyIndexedSkeletonEditContext,
   SpatiallyIndexedSkeletonDescriptionUpdateOptions,
+  SpatiallyIndexedSkeletonEditContext,
+  SpatiallyIndexedSkeletonInsertNodeResult,
   SpatiallyIndexedSkeletonMergeResult,
   SpatiallyIndexedSkeletonNode,
   SpatiallyIndexedSkeletonNodeRevisionResult,
@@ -161,6 +162,26 @@ export class CatmaidSpatiallyIndexedSkeletonSource
     editContext?: SpatiallyIndexedSkeletonEditContext,
   ): Promise<SpatiallyIndexedSkeletonAddNodeResult> {
     return this.client.addNode(skeletonId, x, y, z, parentId, editContext);
+  }
+
+  insertNode(
+    skeletonId: number,
+    x: number,
+    y: number,
+    z: number,
+    parentId: number,
+    childNodeIds: readonly number[],
+    editContext?: SpatiallyIndexedSkeletonEditContext,
+  ): Promise<SpatiallyIndexedSkeletonInsertNodeResult> {
+    return this.client.insertNode(
+      skeletonId,
+      x,
+      y,
+      z,
+      parentId,
+      childNodeIds,
+      editContext,
+    );
   }
 
   moveNode(
