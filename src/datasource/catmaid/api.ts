@@ -349,6 +349,10 @@ function getComparableCatmaidRevisionTime(value: unknown) {
 }
 
 function isCatmaidLiveHistoryRow(row: readonly unknown[]) {
+  const ordering = Number(row[10]);
+  if (Number.isFinite(ordering)) {
+    return Math.round(ordering) === 1;
+  }
   if (row.length < 10) {
     return true;
   }

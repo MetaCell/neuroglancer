@@ -147,6 +147,47 @@ describe("CatmaidClient skeleton editing methods", () => {
     ]);
   });
 
+  it("ignores zero-width history rows when compact-detail includes ordering", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const fetchMock = vi.fn().mockResolvedValue([
+      [
+        [
+          11422971,
+          11422970,
+          2,
+          24313028.0,
+          14983333.0,
+          6761820.5,
+          2000.0,
+          5,
+          "2026-04-14 08:56:49.985049+00:00",
+          "2026-04-14 08:56:49.985049+00:00",
+          2,
+        ],
+        [
+          11422972,
+          11422971,
+          2,
+          24318870.0,
+          14984255.0,
+          6765134.0,
+          2000.0,
+          5,
+          "2026-04-14 08:56:49.985049+00:00",
+          "2026-04-14 08:56:49.985049+00:00",
+          2,
+        ],
+      ],
+      [],
+      {},
+      [],
+      [],
+    ]);
+    (client as any).fetch = fetchMock;
+
+    await expect(client.getSkeleton(1140285)).resolves.toEqual([]);
+  });
+
   it("merges skeletons using from/to treenode ids", async () => {
     const client = new CatmaidClient("https://example.invalid", 1);
     const fetchMock = vi.fn().mockResolvedValue({
