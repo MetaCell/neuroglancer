@@ -1231,7 +1231,19 @@ class SplitCommand implements SpatialSkeletonCommand {
       ]);
       throw error;
     }
-    const resultSkeletonId = result.resultSkeletonId ?? formerParent.node.segmentId;
+    const resultSkeletonId =
+      result.resultSkeletonId ?? formerParent.node.segmentId;
+    const deletedSkeletonId =
+      result.deletedSkeletonId ??
+      (resultSkeletonId === splitNode.node.segmentId
+        ? formerParent.node.segmentId
+        : splitNode.node.segmentId);
+    if (this.stableSegmentId !== undefined) {
+      this.layer.spatialSkeletonState.commandHistory.mappings.remapSegmentId(
+        this.stableSegmentId,
+        resultSkeletonId,
+      );
+    }
     if (this.stableNewSegmentId !== undefined) {
       this.layer.spatialSkeletonState.commandHistory.mappings.remapSegmentId(
         this.stableNewSegmentId,
@@ -1239,7 +1251,13 @@ class SplitCommand implements SpatialSkeletonCommand {
       );
     }
     ensureVisibleSegment(this.layer, resultSkeletonId);
-    removeVisibleSegment(this.layer, splitNode.node.segmentId, { deselect: true });
+    if (deletedSkeletonId !== resultSkeletonId) {
+      removeVisibleSegment(this.layer, deletedSkeletonId, { deselect: true });
+      this.layer.displayState.segmentStatedColors.value.delete(
+        BigInt(deletedSkeletonId),
+      );
+      splitNode.skeletonLayer.suppressBrowseSegment(deletedSkeletonId);
+    }
     this.layer.selectSpatialSkeletonNode(
       splitNode.node.nodeId,
       this.layer.manager.root.selectionState.pin.value,
@@ -1249,7 +1267,7 @@ class SplitCommand implements SpatialSkeletonCommand {
     );
     await refreshTopologySegments(this.layer, [
       resultSkeletonId,
-      splitNode.node.segmentId,
+      deletedSkeletonId,
     ]);
     StatusMessage.showTemporaryMessage(
       `${statusPrefix} split at node ${splitNode.node.nodeId}.`,
