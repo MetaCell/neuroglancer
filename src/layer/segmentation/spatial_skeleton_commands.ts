@@ -1216,12 +1216,12 @@ class SplitCommand implements SpatialSkeletonCommand {
     );
     let result: SpatiallyIndexedSkeletonMergeResult;
     try {
-      result = await splitNode.skeletonSource.mergeSkeletons(
-        splitNode.node.nodeId,
+      result = await formerParent.skeletonSource.mergeSkeletons(
         formerParent.node.nodeId,
+        splitNode.node.nodeId,
         buildSpatiallyIndexedSkeletonMultiNodeEditContext(
-          splitNode.node,
           formerParent.node,
+          splitNode.node,
         ),
       );
     } catch (error) {
