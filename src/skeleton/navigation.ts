@@ -48,7 +48,10 @@ interface NavigationGraphDerivedState {
   sortPriorityByNodeId: Map<number, number>;
   orderedChildNodeIdsByNodeId: Map<number, readonly number[]>;
   collapsedPathByNodeId: Map<number, readonly number[]>;
-  collapsedOrderedChildPathsByNodeId: Map<number, readonly CollapsedChildPath[]>;
+  collapsedOrderedChildPathsByNodeId: Map<
+    number,
+    readonly CollapsedChildPath[]
+  >;
   flatListNodeIds?: readonly number[];
   collapsedFlatListNodeIds?: readonly number[];
   collapsedLevelContext?: CollapsedLevelContext;
@@ -147,7 +150,10 @@ export function buildSpatiallyIndexedSkeletonNavigationGraph(
     childrenByParent,
     rootNodeIds,
   };
-  navigationGraphDerivedState.set(graph, buildNavigationGraphDerivedState(graph));
+  navigationGraphDerivedState.set(
+    graph,
+    buildNavigationGraphDerivedState(graph),
+  );
   return graph;
 }
 
@@ -163,9 +169,8 @@ function getFlatListNodeSortPriority(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
   nodeId: number,
 ) {
-  const priority = getNavigationGraphDerivedState(graph).sortPriorityByNodeId.get(
-    nodeId,
-  );
+  const priority =
+    getNavigationGraphDerivedState(graph).sortPriorityByNodeId.get(nodeId);
   if (priority === undefined) {
     throw new Error(`Node ${nodeId} is not available in the loaded skeleton.`);
   }
@@ -210,7 +215,11 @@ export function getFlatListNodeIds(
       const childNodeIds = [...getChildNodeIds(graph, nodeId)].sort((a, b) =>
         compareFlatListNodeIds(graph, a, b),
       );
-      for (let childIndex = childNodeIds.length - 1; childIndex >= 0; --childIndex) {
+      for (
+        let childIndex = childNodeIds.length - 1;
+        childIndex >= 0;
+        --childIndex
+      ) {
         const childNodeId = childNodeIds[childIndex];
         if (!visited.has(childNodeId)) {
           stack.push(childNodeId);
@@ -733,7 +742,11 @@ export function getOpenLeaves(
       distances.set(neighborNodeId, nextDistance);
       queue.push(neighborNodeId);
     }
-    if (!parentAdded && parentNodeId !== undefined && !distances.has(parentNodeId)) {
+    if (
+      !parentAdded &&
+      parentNodeId !== undefined &&
+      !distances.has(parentNodeId)
+    ) {
       distances.set(parentNodeId, nextDistance);
       queue.push(parentNodeId);
     }

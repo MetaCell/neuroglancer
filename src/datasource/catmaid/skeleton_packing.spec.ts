@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
 import { packCatmaidSkeletonNodes } from "#src/datasource/catmaid/skeleton_packing.js";
+import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
 
 describe("datasource/catmaid/skeleton_packing", () => {
   it("packs vertex, segment, index, and node-map data", () => {

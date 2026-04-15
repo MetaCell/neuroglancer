@@ -18,6 +18,36 @@ import { describe, expect, it, vi } from "vitest";
 
 import { CatmaidClient } from "#src/datasource/catmaid/api.js";
 
+type FetchMock = ReturnType<typeof vi.fn>;
+
+function getFetchCall(fetchMock: FetchMock, callIndex = 0) {
+  const call = fetchMock.mock.calls[callIndex];
+  if (call === undefined) {
+    throw new Error(`Expected fetch call ${callIndex + 1} to exist.`);
+  }
+  return call;
+}
+
+function getFetchPath(fetchMock: FetchMock, callIndex = 0) {
+  return getFetchCall(fetchMock, callIndex)[0];
+}
+
+function getFetchBody(fetchMock: FetchMock, callIndex = 0) {
+  const [, requestInit] = getFetchCall(fetchMock, callIndex);
+  if (requestInit === undefined || typeof requestInit !== "object") {
+    throw new Error(
+      `Expected fetch call ${callIndex + 1} to include request options.`,
+    );
+  }
+  const body = (requestInit as { body?: unknown }).body;
+  if (!(body instanceof URLSearchParams)) {
+    throw new Error(
+      `Expected fetch call ${callIndex + 1} to include a URLSearchParams body.`,
+    );
+  }
+  return body;
+}
+
 describe("CatmaidClient skeleton editing methods", () => {
   it("does not cache transient metadata discovery failures as null", async () => {
     const client = new CatmaidClient("https://example.invalid", 1);
@@ -211,22 +241,11 @@ describe("CatmaidClient skeleton editing methods", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("skeleton/join");
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
-        "from_id",
-      ),
-    ).toBe("101");
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
-        "to_id",
-      ),
-    ).toBe("202");
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
-        "state",
-      ),
-    ).toBe(
+    const requestBody = getFetchBody(fetchMock);
+    expect(getFetchPath(fetchMock)).toBe("skeleton/join");
+    expect(requestBody.get("from_id")).toBe("101");
+    expect(requestBody.get("to_id")).toBe("202");
+    expect(requestBody.get("state")).toBe(
       JSON.stringify([
         [101, "2026-03-29T11:50:00Z"],
         [202, "2026-03-29T11:51:00Z"],
@@ -252,14 +271,12 @@ describe("CatmaidClient skeleton editing methods", () => {
 
   it("returns ids and revisions from addNode and sends CATMAID parent state", async () => {
     const client = new CatmaidClient("https://example.invalid", 1);
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue({
-        treenode_id: 88,
-        skeleton_id: 13,
-        edition_time: "2026-03-29T12:00:00Z",
-        parent_edition_time: "2026-03-29T12:00:01Z",
-      });
+    const fetchMock = vi.fn().mockResolvedValue({
+      treenode_id: 88,
+      skeleton_id: 13,
+      edition_time: "2026-03-29T12:00:00Z",
+      parent_edition_time: "2026-03-29T12:00:01Z",
+    });
     (client as any).fetch = fetchMock;
 
     await expect(
@@ -276,22 +293,18 @@ describe("CatmaidClient skeleton editing methods", () => {
       parentRevisionToken: "2026-03-29T12:00:01Z",
     });
 
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
-        "state",
-      ),
-    ).toBe(JSON.stringify({ parent: [7, "2026-03-29T11:59:00Z"] }));
+    expect(getFetchBody(fetchMock).get("state")).toBe(
+      JSON.stringify({ parent: [7, "2026-03-29T11:59:00Z"] }),
+    );
   });
 
   it("sends CATMAID root parent state when creating a root node", async () => {
     const client = new CatmaidClient("https://example.invalid", 1);
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue({
-        treenode_id: 88,
-        skeleton_id: 13,
-        edition_time: "2026-03-29T12:00:00Z",
-      });
+    const fetchMock = vi.fn().mockResolvedValue({
+      treenode_id: 88,
+      skeleton_id: 13,
+      edition_time: "2026-03-29T12:00:00Z",
+    });
     (client as any).fetch = fetchMock;
 
     await expect(client.addNode(13, 1, 2, 3)).resolves.toEqual({
@@ -301,11 +314,9 @@ describe("CatmaidClient skeleton editing methods", () => {
       parentRevisionToken: undefined,
     });
 
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
-        "state",
-      ),
-    ).toBe(JSON.stringify({ parent: [-1, ""] }));
+    expect(getFetchBody(fetchMock).get("state")).toBe(
+      JSON.stringify({ parent: [-1, ""] }),
+    );
   });
 
   it("inserts nodes using CATMAID local parent-and-child state", async () => {
@@ -345,27 +356,12 @@ describe("CatmaidClient skeleton editing methods", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("treenode/insert");
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
-        "parent_id",
-      ),
-    ).toBe("7");
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
-        "child_id",
-      ),
-    ).toBe("11");
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
-        "takeover_child_ids[0]",
-      ),
-    ).toBe("12");
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
-        "state",
-      ),
-    ).toBe(
+    const requestBody = getFetchBody(fetchMock);
+    expect(getFetchPath(fetchMock)).toBe("treenode/insert");
+    expect(requestBody.get("parent_id")).toBe("7");
+    expect(requestBody.get("child_id")).toBe("11");
+    expect(requestBody.get("takeover_child_ids[0]")).toBe("12");
+    expect(requestBody.get("state")).toBe(
       JSON.stringify({
         edition_time: "2026-03-29T12:00:30Z",
         children: [
@@ -403,17 +399,10 @@ describe("CatmaidClient skeleton editing methods", () => {
     ).resolves.toBeUndefined();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("skeleton/reroot");
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
-        "treenode_id",
-      ),
-    ).toBe("202");
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
-        "state",
-      ),
-    ).toBe(
+    const requestBody = getFetchBody(fetchMock);
+    expect(getFetchPath(fetchMock)).toBe("skeleton/reroot");
+    expect(requestBody.get("treenode_id")).toBe("202");
+    expect(requestBody.get("state")).toBe(
       JSON.stringify({
         edition_time: "2026-03-29T12:05:00Z",
         parent: [201, "2026-03-29T12:04:00Z"],
@@ -466,9 +455,7 @@ describe("CatmaidClient skeleton editing methods", () => {
           nodeId: 201,
           revisionToken: "2026-03-29T12:04:00Z",
         },
-        children: [
-          { nodeId: 203, revisionToken: "2026-03-29T12:06:00Z" },
-        ],
+        children: [{ nodeId: 203, revisionToken: "2026-03-29T12:06:00Z" }],
       }),
     ).resolves.toEqual({
       existingSkeletonId: 17,
@@ -476,17 +463,10 @@ describe("CatmaidClient skeleton editing methods", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("skeleton/split");
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
-        "treenode_id",
-      ),
-    ).toBe("202");
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
-        "state",
-      ),
-    ).toBe(
+    const requestBody = getFetchBody(fetchMock);
+    expect(getFetchPath(fetchMock)).toBe("skeleton/split");
+    expect(requestBody.get("treenode_id")).toBe("202");
+    expect(requestBody.get("state")).toBe(
       JSON.stringify({
         edition_time: "2026-03-29T12:05:00Z",
         parent: [201, "2026-03-29T12:04:00Z"],
@@ -510,17 +490,17 @@ describe("CatmaidClient skeleton editing methods", () => {
     ]);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("treenodes/compact-detail");
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.toString(),
-    ).toBe("treenode_ids%5B0%5D=11&treenode_ids%5B1%5D=12");
+    expect(getFetchPath(fetchMock)).toBe("treenodes/compact-detail");
+    expect(getFetchBody(fetchMock).toString()).toBe(
+      "treenode_ids%5B0%5D=11&treenode_ids%5B1%5D=12",
+    );
   });
 
   it("rejects partial treenode compact-detail revision responses", async () => {
     const client = new CatmaidClient("https://example.invalid", 1);
-    const fetchMock = vi.fn().mockResolvedValue([
-      [11, 7, 1, 2, 3, 5, 2000, 13, 1711711711.25, 9],
-    ]);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue([[11, 7, 1, 2, 3, 5, 2000, 13, 1711711711.25, 9]]);
     (client as any).fetch = fetchMock;
 
     await expect(client.getNodeRevisionUpdates([11, 12])).rejects.toThrow(
@@ -548,11 +528,9 @@ describe("CatmaidClient skeleton editing methods", () => {
       revisionToken: "2026-03-29T12:10:00Z",
     });
 
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
-        "state",
-      ),
-    ).toBe(JSON.stringify([[42, "2026-03-29T12:00:00Z"]]));
+    expect(getFetchBody(fetchMock).get("state")).toBe(
+      JSON.stringify([[42, "2026-03-29T12:00:00Z"]]),
+    );
   });
 
   it("deletes nodes using neighborhood state and returns child revisions", async () => {
@@ -592,11 +570,7 @@ describe("CatmaidClient skeleton editing methods", () => {
       ],
     });
 
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
-        "state",
-      ),
-    ).toBe(
+    expect(getFetchBody(fetchMock).get("state")).toBe(
       JSON.stringify({
         edition_time: "2026-03-29T12:15:00Z",
         parent: [7, "2026-03-29T12:14:00Z"],
@@ -622,21 +596,10 @@ describe("CatmaidClient skeleton editing methods", () => {
       revisionToken: "2026-03-29T13:00:00Z",
     });
 
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
-        "state",
-      ),
-    ).toBeNull();
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
-        "tags",
-      ),
-    ).toBe("updated description");
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
-        "delete_existing",
-      ),
-    ).toBe("true");
+    const requestBody = getFetchBody(fetchMock);
+    expect(requestBody.get("state")).toBeNull();
+    expect(requestBody.get("tags")).toBe("updated description");
+    expect(requestBody.get("delete_existing")).toBe("true");
   });
 
   it("toggles true-end labels without CATMAID node state", async () => {
@@ -654,52 +617,32 @@ describe("CatmaidClient skeleton editing methods", () => {
       revisionToken: "2026-03-29T13:11:00Z",
     });
 
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
-        "state",
-      ),
-    ).toBeNull();
-    expect(
-      (fetchMock.mock.calls[1]?.[1] as { body: URLSearchParams }).body.get(
-        "state",
-      ),
-    ).toBeNull();
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
-        "tags",
-      ),
-    ).toBe("ends");
-    expect(
-      (fetchMock.mock.calls[0]?.[1] as { body: URLSearchParams }).body.get(
-        "delete_existing",
-      ),
-    ).toBe("false");
-    expect(
-      (fetchMock.mock.calls[1]?.[1] as { body: URLSearchParams }).body.get(
-        "tag",
-      ),
-    ).toBe("ends");
+    const addTagRequestBody = getFetchBody(fetchMock, 0);
+    const removeTagRequestBody = getFetchBody(fetchMock, 1);
+    expect(addTagRequestBody.get("state")).toBeNull();
+    expect(removeTagRequestBody.get("state")).toBeNull();
+    expect(addTagRequestBody.get("tags")).toBe("ends");
+    expect(addTagRequestBody.get("delete_existing")).toBe("false");
+    expect(removeTagRequestBody.get("tag")).toBe("ends");
   });
 
   it("maps CATMAID state validation failures to a refresh-specific error", async () => {
     const client = new CatmaidClient("https://example.invalid", 1);
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            type: "StateMatchingError",
-            error:
-              "The provided state differs from the database state: {'edition_time': '2026-03-29T13:12:00Z'}",
-          }),
-          {
-            status: 400,
-            headers: {
-              "Content-Type": "application/json",
-            },
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          type: "StateMatchingError",
+          error:
+            "The provided state differs from the database state: {'edition_time': '2026-03-29T13:12:00Z'}",
+        }),
+        {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
           },
-        ),
-      );
+        },
+      ),
+    );
 
     await expect(
       client.moveNode(11, 1, 2, 3, {
@@ -717,22 +660,20 @@ describe("CatmaidClient skeleton editing methods", () => {
 
   it("preserves generic CATMAID 400 value errors", async () => {
     const client = new CatmaidClient("https://example.invalid", 1);
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            type: "ValueError",
-            error: "No valid state provided, missing edition time",
-          }),
-          {
-            status: 400,
-            headers: {
-              "Content-Type": "application/json",
-            },
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          type: "ValueError",
+          error: "No valid state provided, missing edition time",
+        }),
+        {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
           },
-        ),
-      );
+        },
+      ),
+    );
 
     await expect(
       client.moveNode(11, 1, 2, 3, {

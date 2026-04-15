@@ -211,21 +211,14 @@ export class SpatialSkeletonCommandHistory extends RefCounted {
 
   private async runOperation<T>(operation: () => Promise<T>) {
     const previousOperation = this.operationQueue.catch(() => undefined);
-    let resolveResult: (value: T | PromiseLike<T>) => void;
-    let rejectResult: (reason?: unknown) => void;
-    const result = new Promise<T>((resolve, reject) => {
-      resolveResult = resolve;
-      rejectResult = reject;
-    });
-    this.operationQueue = previousOperation.then(async () => {
-      this.pendingOperations += 1;
-      if (!this.isBusy.value) {
-        this.isBusy.value = true;
-      }
+    const startsImmediately = this.pendingOperations === 0;
+    this.pendingOperations += 1;
+    if (!this.isBusy.value) {
+      this.isBusy.value = true;
+    }
+    const run = async () => {
       try {
-        resolveResult(await operation());
-      } catch (error) {
-        rejectResult(error);
+        return await operation();
       } finally {
         this.pendingOperations -= 1;
         if (this.pendingOperations === 0 && this.isBusy.value) {
@@ -233,7 +226,12 @@ export class SpatialSkeletonCommandHistory extends RefCounted {
         }
         this.updateState();
       }
-    });
+    };
+    const result = startsImmediately ? run() : previousOperation.then(run);
+    this.operationQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
     return result;
   }
 

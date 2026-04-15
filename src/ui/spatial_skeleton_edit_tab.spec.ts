@@ -26,8 +26,9 @@ async function getSyncShownSpatialSkeletonSegmentIds() {
       get: () => 0,
     },
   );
-  (globalThis as { WebGL2RenderingContext?: unknown }).WebGL2RenderingContext ??=
-    webglContextStub;
+  (
+    globalThis as { WebGL2RenderingContext?: unknown }
+  ).WebGL2RenderingContext ??= webglContextStub;
   return (await import("#src/ui/spatial_skeleton_edit_tab.js"))
     .syncShownSpatialSkeletonSegmentIds;
 }
@@ -168,7 +169,11 @@ describe("spatial skeleton edit tab state", () => {
       await getSyncShownSpatialSkeletonSegmentIds();
     const shownSegmentIds = new Set([1, 3]);
 
-    syncShownSpatialSkeletonSegmentIds(shownSegmentIds, [1, 2, 3, 4], [1, 2, 3]);
+    syncShownSpatialSkeletonSegmentIds(
+      shownSegmentIds,
+      [1, 2, 3, 4],
+      [1, 2, 3],
+    );
 
     expect([...shownSegmentIds]).toEqual([1, 3, 4]);
   });

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { registerProvider } from "#src/datasource/default_provider.js";
 import { CatmaidDataSourceProvider } from "#src/datasource/catmaid/frontend.js";
+import { registerProvider } from "#src/datasource/default_provider.js";
 
 registerProvider(new CatmaidDataSourceProvider());

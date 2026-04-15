@@ -112,8 +112,7 @@ export class RenderScaleWidget extends RefCounted {
     }
     this.hoverTarget.value = undefined;
     const logScaleMax = Math.round(
-      this.logScaleOrigin +
-        numRenderScaleHistogramBins * this.logScaleBinSize,
+      this.logScaleOrigin + numRenderScaleHistogramBins * this.logScaleBinSize,
     );
     const targetValue = clampToInterval(
       [2 ** this.logScaleOrigin, 2 ** (logScaleMax - 1)],
@@ -427,7 +426,6 @@ export class VolumeRenderingRenderScaleWidget extends RenderScaleWidget {
     return -event.deltaY;
   }
 }
-
 
 export class SpatialSkeletonGridRenderScaleWidget extends RenderScaleWidget {
   protected unitOfTarget = "nm";

@@ -227,7 +227,18 @@ describe("skeleton/state", () => {
 
   it("does not cache a full segment fetch that was evicted while pending", async () => {
     const state = new SpatialSkeletonState();
-    let resolveFetch: ((value: Array<{ id: number; parent_id: null; x: number; y: number; z: number; skeleton_id: number }>) => void) | undefined;
+    let resolveFetch:
+      | ((
+          value: Array<{
+            id: number;
+            parent_id: null;
+            x: number;
+            y: number;
+            z: number;
+            skeleton_id: number;
+          }>,
+        ) => void)
+      | undefined;
     const getSkeleton = vi.fn(
       () =>
         new Promise<
@@ -289,7 +300,10 @@ describe("skeleton/state", () => {
         }),
     );
 
-    const pending = state.getFullSegmentNodes({ source: { getSkeleton } } as any, 11);
+    const pending = state.getFullSegmentNodes(
+      { source: { getSkeleton } } as any,
+      11,
+    );
 
     expect(receivedSignal?.aborted).toBe(false);
     expect(state.clearInspectedSkeletonCache()).toBe(true);
@@ -314,7 +328,10 @@ describe("skeleton/state", () => {
         }),
     );
 
-    const pending = state.getFullSegmentNodes({ source: { getSkeleton } } as any, 11);
+    const pending = state.getFullSegmentNodes(
+      { source: { getSkeleton } } as any,
+      11,
+    );
 
     expect(receivedSignal?.aborted).toBe(false);
     expect(state.invalidateCachedSegments([11])).toBe(false);
@@ -339,7 +356,10 @@ describe("skeleton/state", () => {
         }),
     );
 
-    const pending = state.getFullSegmentNodes({ source: { getSkeleton } } as any, 11);
+    const pending = state.getFullSegmentNodes(
+      { source: { getSkeleton } } as any,
+      11,
+    );
 
     expect(receivedSignal?.aborted).toBe(false);
     expect(state.evictInactiveSegmentNodes([])).toBe(false);
@@ -369,15 +389,17 @@ describe("skeleton/state", () => {
       notifications += 1;
     });
 
-    await expect(state.getFullSegmentNodes(skeletonLayer, 11)).resolves.toEqual([
-      {
-        nodeId: 5,
-        segmentId: 11,
-        position: new Float32Array([1, 2, 3]),
-        parentNodeId: undefined,
-        labels: undefined,
-      },
-    ]);
+    await expect(state.getFullSegmentNodes(skeletonLayer, 11)).resolves.toEqual(
+      [
+        {
+          nodeId: 5,
+          segmentId: 11,
+          position: new Float32Array([1, 2, 3]),
+          parentNodeId: undefined,
+          labels: undefined,
+        },
+      ],
+    );
 
     expect(notifications).toBe(1);
     expect(state.getCachedNode(5)).toEqual({
@@ -491,7 +513,10 @@ describe("skeleton/state", () => {
     ]);
 
     expect(
-      state.removeCachedNode(1, { parentNodeId: undefined, childNodeIds: [2, 3] }),
+      state.removeCachedNode(1, {
+        parentNodeId: undefined,
+        childNodeIds: [2, 3],
+      }),
     ).toBe(true);
 
     expect(state.getCachedSegmentNodes(11)).toEqual([

@@ -28,9 +28,9 @@ import type {
   SpatiallyIndexedSkeletonNodeRevisionUpdate,
   SpatiallyIndexedSkeletonSplitResult,
 } from "#src/skeleton/api.js";
-import {
+import type {
   SpatialSkeletonCommand,
-  type SpatialSkeletonCommandContext,
+  SpatialSkeletonCommandContext,
 } from "#src/skeleton/command_history.js";
 import {
   buildSpatiallyIndexedSkeletonMultiNodeEditContext,
@@ -176,8 +176,9 @@ function normalizeStableNodeId(
     return undefined;
   }
   return (
-    layer.spatialSkeletonState.commandHistory.mappings.getStableNodeId(nodeId) ??
-    nodeId
+    layer.spatialSkeletonState.commandHistory.mappings.getStableNodeId(
+      nodeId,
+    ) ?? nodeId
   );
 }
 
@@ -195,9 +196,7 @@ function normalizeStableSegmentId(
   );
 }
 
-function getEditableSkeletonSourceForLayer(
-  layer: SegmentationUserLayer,
-): {
+function getEditableSkeletonSourceForLayer(layer: SegmentationUserLayer): {
   skeletonLayer: SpatiallyIndexedSkeletonLayer;
   skeletonSource: EditableSpatiallyIndexedSkeletonSource;
 } {
@@ -207,7 +206,8 @@ function getEditableSkeletonSourceForLayer(
       "No spatially indexed skeleton source is currently loaded.",
     );
   }
-  const skeletonSource = getEditableSpatiallyIndexedSkeletonSource(skeletonLayer);
+  const skeletonSource =
+    getEditableSpatiallyIndexedSkeletonSource(skeletonLayer);
   if (skeletonSource === undefined) {
     throw new Error(
       "Unable to resolve editable skeleton source for the active layer.",
@@ -287,9 +287,8 @@ async function getResolvedNodeForEdit(
   if (currentNodeId === undefined) {
     throw new Error(`Unable to resolve current node ${stableNodeId}.`);
   }
-  const { skeletonLayer, skeletonSource } = getEditableSkeletonSourceForLayer(
-    layer,
-  );
+  const { skeletonLayer, skeletonSource } =
+    getEditableSkeletonSourceForLayer(layer);
   const cachedNode =
     layer.spatialSkeletonState.getCachedNode(currentNodeId) ??
     skeletonLayer.getNode(currentNodeId);
@@ -311,7 +310,10 @@ async function getResolvedNodeForEdit(
       candidateSegmentId,
     );
   }
-  const node = findSpatiallyIndexedSkeletonNodeInfo(segmentNodes, currentNodeId);
+  const node = findSpatiallyIndexedSkeletonNodeInfo(
+    segmentNodes,
+    currentNodeId,
+  );
   if (node === undefined) {
     throw new Error(
       `Node ${currentNodeId} is not available in the inspected skeleton cache.`,
@@ -512,7 +514,9 @@ async function restoreNodeMetadata(
       revisionToken: confidenceResult.revisionToken ?? nextNode.revisionToken,
     };
   }
-  const nextDescriptionLabels = getSpatialSkeletonDescriptionLabels(snapshot.labels);
+  const nextDescriptionLabels = getSpatialSkeletonDescriptionLabels(
+    snapshot.labels,
+  );
   const nextLabels = mergeSpatialSkeletonNodeLabels(
     snapshot.labels,
     nextDescriptionLabels,
@@ -579,7 +583,8 @@ class AddNodeCommand implements SpatialSkeletonCommand {
         )
       ).node;
       resolvedSkeletonId = parentNode.segmentId;
-      resolvedEditContext = buildSpatiallyIndexedSkeletonNodeEditContext(parentNode);
+      resolvedEditContext =
+        buildSpatiallyIndexedSkeletonNodeEditContext(parentNode);
     }
     const result = await skeletonSource.addNode(
       resolvedSkeletonId,
@@ -640,7 +645,9 @@ class AddNodeCommand implements SpatialSkeletonCommand {
       this.stableSegmentId,
     );
     const deleteContext =
-      await this.layer.getSpatialSkeletonDeleteOperationContext(resolvedNode.node);
+      await this.layer.getSpatialSkeletonDeleteOperationContext(
+        resolvedNode.node,
+      );
     const result = await resolvedNode.skeletonSource.deleteNode(
       resolvedNode.node.nodeId,
       {
@@ -648,7 +655,12 @@ class AddNodeCommand implements SpatialSkeletonCommand {
         editContext: deleteContext.editContext,
       },
     );
-    applyDeleteNodeToCache(this.layer, deleteContext, { moveView: false }, result.childRevisionUpdates);
+    applyDeleteNodeToCache(
+      this.layer,
+      deleteContext,
+      { moveView: false },
+      result.childRevisionUpdates,
+    );
     StatusMessage.showTemporaryMessage(
       `Undid add node ${resolvedNode.node.nodeId}.`,
     );
@@ -674,15 +686,13 @@ class MoveNodeCommand implements SpatialSkeletonCommand {
     private afterPosition: Float32Array,
   ) {}
 
-  private async moveTo(
-    position: Float32Array,
-    statusPrefix: string,
-  ) {
-    const { node, skeletonLayer, skeletonSource } = await getResolvedNodeForEdit(
-      this.layer,
-      this.stableNodeId,
-      this.stableSegmentId,
-    );
+  private async moveTo(position: Float32Array, statusPrefix: string) {
+    const { node, skeletonLayer, skeletonSource } =
+      await getResolvedNodeForEdit(
+        this.layer,
+        this.stableNodeId,
+        this.stableSegmentId,
+      );
     const result = await skeletonSource.moveNode(
       node.nodeId,
       Number(position[0]),
@@ -751,7 +761,9 @@ class DeleteNodeCommand implements SpatialSkeletonCommand {
       this.stableSegmentId,
     );
     const deleteContext =
-      await this.layer.getSpatialSkeletonDeleteOperationContext(resolvedNode.node);
+      await this.layer.getSpatialSkeletonDeleteOperationContext(
+        resolvedNode.node,
+      );
     const result = await resolvedNode.skeletonSource.deleteNode(
       resolvedNode.node.nodeId,
       {
@@ -937,15 +949,18 @@ class NodeLabelsCommand implements SpatialSkeletonCommand {
         trueEnd: hasSpatialSkeletonTrueEndLabel(labels),
       },
     );
-    this.layer.spatialSkeletonState.updateCachedNode(node.nodeId, (candidate) => {
-      if (spatialSkeletonLabelListsEqual(candidate.labels, restoredLabels)) {
-        return candidate;
-      }
-      return {
-        ...candidate,
-        labels: restoredLabels,
-      };
-    });
+    this.layer.spatialSkeletonState.updateCachedNode(
+      node.nodeId,
+      (candidate) => {
+        if (spatialSkeletonLabelListsEqual(candidate.labels, restoredLabels)) {
+          return candidate;
+        }
+        return {
+          ...candidate,
+          labels: restoredLabels,
+        };
+      },
+    );
     if (result.revisionToken !== undefined) {
       this.layer.spatialSkeletonState.setCachedNodeRevision(
         node.nodeId,
@@ -955,7 +970,9 @@ class NodeLabelsCommand implements SpatialSkeletonCommand {
     this.layer.markSpatialSkeletonNodeDataChanged({
       invalidateFullSkeletonCache: false,
     });
-    StatusMessage.showTemporaryMessage(`${statusPrefix} node ${node.nodeId} labels.`);
+    StatusMessage.showTemporaryMessage(
+      `${statusPrefix} node ${node.nodeId} labels.`,
+    );
   }
 
   execute() {
@@ -1060,10 +1077,7 @@ class RerootCommand implements SpatialSkeletonCommand {
     private stablePreviousRootNodeId: number,
   ) {}
 
-  private async rerootAt(
-    stableTargetNodeId: number,
-    statusPrefix: string,
-  ) {
+  private async rerootAt(stableTargetNodeId: number, statusPrefix: string) {
     const resolvedNode = await getResolvedNodeForEdit(
       this.layer,
       stableTargetNodeId,
@@ -1095,9 +1109,13 @@ class RerootCommand implements SpatialSkeletonCommand {
             resolvedNode.skeletonLayer,
           );
         const revisionUpdates =
-          await revisionLookupSource?.getNodeRevisionUpdates(rerootedPathNodeIds);
+          await revisionLookupSource?.getNodeRevisionUpdates(
+            rerootedPathNodeIds,
+          );
         if (revisionUpdates !== undefined && revisionUpdates.length > 0) {
-          this.layer.spatialSkeletonState.setCachedNodeRevisions(revisionUpdates);
+          this.layer.spatialSkeletonState.setCachedNodeRevisions(
+            revisionUpdates,
+          );
         }
       } catch {
         // Ignore follow-up revision refresh failures. The reroot itself succeeded.
@@ -1194,7 +1212,10 @@ class SplitCommand implements SpatialSkeletonCommand {
         segmentId: newSkeletonId,
       },
     );
-    await refreshTopologySegments(this.layer, [existingSkeletonId, newSkeletonId]);
+    await refreshTopologySegments(this.layer, [
+      existingSkeletonId,
+      newSkeletonId,
+    ]);
     StatusMessage.showTemporaryMessage(
       `${statusPrefix} skeleton ${existingSkeletonId}. New skeleton: ${newSkeletonId}.`,
     );
@@ -1335,7 +1356,9 @@ class MergeCommand implements SpatialSkeletonCommand {
         ? secondNode.node
         : firstNode.node;
     const losingNode =
-      winningNode.nodeId === firstNode.node.nodeId ? secondNode.node : firstNode.node;
+      winningNode.nodeId === firstNode.node.nodeId
+        ? secondNode.node
+        : firstNode.node;
     const losingSegmentNodes =
       losingNode.segmentId === firstNode.node.segmentId
         ? firstNode.segmentNodes
@@ -1344,7 +1367,8 @@ class MergeCommand implements SpatialSkeletonCommand {
     const resultSkeletonId = result.resultSkeletonId ?? winningNode.segmentId;
     const deletedSkeletonId = result.deletedSkeletonId ?? losingNode.segmentId;
     this.stableAttachedNodeId =
-      this.stableAttachedNodeId ?? normalizeStableNodeId(this.layer, losingNode.nodeId);
+      this.stableAttachedNodeId ??
+      normalizeStableNodeId(this.layer, losingNode.nodeId);
     this.stableAttachedRootNodeId =
       this.stableAttachedRootNodeId ??
       normalizeStableNodeId(this.layer, attachedRoot?.nodeId);
@@ -1368,12 +1392,17 @@ class MergeCommand implements SpatialSkeletonCommand {
         segmentId: resultSkeletonId,
       },
     );
-    this.layer.displayState.segmentStatedColors.value.delete(BigInt(deletedSkeletonId));
+    this.layer.displayState.segmentStatedColors.value.delete(
+      BigInt(deletedSkeletonId),
+    );
     if (deletedSkeletonId !== resultSkeletonId) {
       firstNode.skeletonLayer.suppressBrowseSegment(deletedSkeletonId);
     }
     this.layer.clearSpatialSkeletonMergeAnchor();
-    await refreshTopologySegments(this.layer, [resultSkeletonId, deletedSkeletonId]);
+    await refreshTopologySegments(this.layer, [
+      resultSkeletonId,
+      deletedSkeletonId,
+    ]);
     const swapSuffix = result.stableAnnotationSwap
       ? " Merge direction was adjusted by the active source."
       : "";
@@ -1420,7 +1449,10 @@ class MergeCommand implements SpatialSkeletonCommand {
     );
     const survivingSegmentId =
       splitResult.existingSkeletonId ?? attachedNode.node.segmentId;
-    await refreshTopologySegments(this.layer, [survivingSegmentId, restoredSegmentId]);
+    await refreshTopologySegments(this.layer, [
+      survivingSegmentId,
+      restoredSegmentId,
+    ]);
     if (
       this.stableAttachedRootNodeId !== undefined &&
       this.stableAttachedRootNodeId !== this.stableAttachedNodeId
@@ -1512,7 +1544,10 @@ export function executeSpatialSkeletonDeleteNode(
   const segmentNodes = layer.getCachedSpatialSkeletonSegmentNodesForEdit(
     node.segmentId,
   );
-  const refreshedNode = findSpatiallyIndexedSkeletonNodeInfo(segmentNodes, node.nodeId);
+  const refreshedNode = findSpatiallyIndexedSkeletonNodeInfo(
+    segmentNodes,
+    node.nodeId,
+  );
   if (refreshedNode === undefined) {
     throw new Error(
       `Node ${node.nodeId} is not available in the inspected skeleton cache.`,
@@ -1596,7 +1631,10 @@ export function executeSpatialSkeletonSplit(
   const segmentNodes = layer.getCachedSpatialSkeletonSegmentNodesForEdit(
     node.segmentId,
   );
-  const splitNode = findSpatiallyIndexedSkeletonNodeInfo(segmentNodes, node.nodeId);
+  const splitNode = findSpatiallyIndexedSkeletonNodeInfo(
+    segmentNodes,
+    node.nodeId,
+  );
   if (splitNode === undefined) {
     throw new Error(
       `Node ${node.nodeId} is not available in the inspected skeleton cache.`,

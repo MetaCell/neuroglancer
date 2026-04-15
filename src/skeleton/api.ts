@@ -169,7 +169,9 @@ export interface EditableSpatiallyIndexedSkeletonSource
     description: string,
     options: SpatiallyIndexedSkeletonDescriptionUpdateOptions,
   ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult>;
-  setTrueEnd(nodeId: number): Promise<SpatiallyIndexedSkeletonNodeRevisionResult>;
+  setTrueEnd(
+    nodeId: number,
+  ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult>;
   removeTrueEnd(
     nodeId: number,
   ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult>;

@@ -1,3 +1,19 @@
+import { Unpackr } from "msgpackr";
+import { fetchOkWithCredentials } from "#src/credentials_provider/http_request.js";
+import type { CredentialsProvider } from "#src/credentials_provider/index.js";
+import type {
+  EditableSpatiallyIndexedSkeletonSource,
+  SpatiallyIndexedSkeletonDescriptionUpdateOptions,
+  SpatiallyIndexedSkeletonDeleteNodeResult,
+  SpatiallyIndexedSkeletonEditContext,
+  SpatiallyIndexedSkeletonInsertNodeResult,
+  SpatiallyIndexedSkeletonNode,
+  SpatiallyIndexedSkeletonNodeRevisionResult,
+  SpatiallyIndexedSkeletonNodeRevisionUpdate,
+  SpatiallyIndexedSkeletonRevisionToken,
+} from "#src/skeleton/api.js";
+import { HttpError } from "#src/util/http_request.js";
+
 export interface CatmaidCacheConfiguration {
   cache_type: string;
   cell_width: number;
@@ -17,22 +33,6 @@ export interface CatmaidStackInfo {
     cache_configurations?: CatmaidCacheConfiguration[];
   };
 }
-
-import { fetchOkWithCredentials } from "#src/credentials_provider/http_request.js";
-import type { CredentialsProvider } from "#src/credentials_provider/index.js";
-import {
-  EditableSpatiallyIndexedSkeletonSource,
-  SpatiallyIndexedSkeletonDescriptionUpdateOptions,
-  SpatiallyIndexedSkeletonDeleteNodeResult,
-  SpatiallyIndexedSkeletonEditContext,
-  SpatiallyIndexedSkeletonInsertNodeResult,
-  SpatiallyIndexedSkeletonNode,
-  SpatiallyIndexedSkeletonNodeRevisionResult,
-  SpatiallyIndexedSkeletonNodeRevisionUpdate,
-  SpatiallyIndexedSkeletonRevisionToken,
-} from "#src/skeleton/api.js";
-import { HttpError } from "#src/util/http_request.js";
-import { Unpackr } from "msgpackr";
 
 export interface CatmaidToken {
   token?: string;
@@ -55,8 +55,7 @@ export interface CatmaidAddNodeResult {
   parentRevisionToken?: SpatiallyIndexedSkeletonRevisionToken;
 }
 
-export interface CatmaidInsertNodeResult
-  extends SpatiallyIndexedSkeletonInsertNodeResult {}
+export type CatmaidInsertNodeResult = SpatiallyIndexedSkeletonInsertNodeResult;
 
 export interface CatmaidDeleteNodeOptions {
   childNodeIds?: readonly number[];
@@ -120,7 +119,11 @@ function isNoMatchingNodeProviderErrorPayload(payload: unknown): boolean {
 }
 
 function getCatmaidErrorMessage(payload: unknown): string | undefined {
-  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+  if (
+    payload === null ||
+    typeof payload !== "object" ||
+    Array.isArray(payload)
+  ) {
     return undefined;
   }
   const value = payload as { error?: unknown };
@@ -128,16 +131,18 @@ function getCatmaidErrorMessage(payload: unknown): string | undefined {
 }
 
 function isCatmaidStateMatchingErrorPayload(payload: unknown): boolean {
-  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+  if (
+    payload === null ||
+    typeof payload !== "object" ||
+    Array.isArray(payload)
+  ) {
     return false;
   }
   const value = payload as { type?: unknown };
   return value.type === CATMAID_STATE_MATCHING_ERROR_TYPE;
 }
 
-function parseCatmaidNodeLabels(
-  rawLabels: unknown,
-): Map<number, string[]> {
+function parseCatmaidNodeLabels(rawLabels: unknown): Map<number, string[]> {
   const labelsByNodeId = new Map<number, string[]>();
   if (rawLabels === null || typeof rawLabels !== "object") {
     return labelsByNodeId;
@@ -236,7 +241,8 @@ function mapPercentConfidenceToCatmaid(confidence: number) {
     const distance = Math.abs(candidate - normalized);
     if (
       distance < bestDistance ||
-      (distance === bestDistance && candidate > CATMAID_CONFIDENCE_VALUES[bestIndex])
+      (distance === bestDistance &&
+        candidate > CATMAID_CONFIDENCE_VALUES[bestIndex])
     ) {
       bestDistance = distance;
       bestIndex = i;
@@ -426,16 +432,10 @@ function buildCatmaidMultiNodeState(
       `CATMAID ${operation} node state does not match the requested node ids.`,
     );
   }
-  return nodes.map(
-    (node): [number, SpatiallyIndexedSkeletonRevisionToken] => [
-      node.nodeId,
-      requireCatmaidRevisionToken(
-        node.revisionToken,
-        operation,
-        "node",
-      ),
-    ],
-  );
+  return nodes.map((node): [number, SpatiallyIndexedSkeletonRevisionToken] => [
+    node.nodeId,
+    requireCatmaidRevisionToken(node.revisionToken, operation, "node"),
+  ]);
 }
 
 function buildCatmaidAddNodeState(
@@ -546,11 +546,7 @@ function buildCatmaidNeighborhoodState(
     children: childStates.map(
       (child): [number, SpatiallyIndexedSkeletonRevisionToken] => [
         child.nodeId,
-        requireCatmaidRevisionToken(
-          child.revisionToken,
-          operation,
-          "child",
-        ),
+        requireCatmaidRevisionToken(child.revisionToken, operation, "child"),
       ],
     ),
     links: [],
@@ -564,9 +560,7 @@ function buildCatmaidInsertNodeState(
 ) {
   const parentNode = editContext?.node;
   if (parentNode === undefined) {
-    throw new Error(
-      "CATMAID insert-node requires inspected parent state.",
-    );
+    throw new Error("CATMAID insert-node requires inspected parent state.");
   }
   if (parentNode.nodeId !== parentId) {
     throw new Error(
@@ -579,7 +573,9 @@ function buildCatmaidInsertNodeState(
       "CATMAID insert-node requires revision state for all reattached child nodes.",
     );
   }
-  if (childStates.some((child, index) => child.nodeId !== childNodeIds[index])) {
+  if (
+    childStates.some((child, index) => child.nodeId !== childNodeIds[index])
+  ) {
     throw new Error(
       "CATMAID insert-node child state does not match the requested child ids.",
     );
@@ -667,7 +663,10 @@ function parseCatmaidConfidenceRevisionToken(
   response: any,
   nodeId: number,
 ): SpatiallyIndexedSkeletonRevisionToken | undefined {
-  const directRevision = parseCatmaidUpdatedNodesRevisionToken(response, nodeId);
+  const directRevision = parseCatmaidUpdatedNodesRevisionToken(
+    response,
+    nodeId,
+  );
   if (directRevision !== undefined) {
     return directRevision;
   }
@@ -952,7 +951,11 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
     const labelsByNodeId = parseCatmaidNodeLabels(data?.[2]);
     const liveNodes = new Map<number, any[]>();
     for (const node of rawNodes) {
-      if (!Array.isArray(node) || node.length < 8 || !isCatmaidLiveHistoryRow(node)) {
+      if (
+        !Array.isArray(node) ||
+        node.length < 8 ||
+        !isCatmaidLiveHistoryRow(node)
+      ) {
         continue;
       }
       const nodeId = Number(node[0]);
@@ -1139,7 +1142,9 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
       body,
     });
     const revisionUpdates = parseCatmaidNodeRevisionUpdates(response);
-    const returnedNodeIds = new Set(revisionUpdates.map((update) => update.nodeId));
+    const returnedNodeIds = new Set(
+      revisionUpdates.map((update) => update.nodeId),
+    );
     const missingNodeIds = normalizedNodeIds.filter(
       (nodeId) => !returnedNodeIds.has(nodeId),
     );
@@ -1348,10 +1353,7 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
     return labels;
   }
 
-  private async replaceNodeLabels(
-    nodeId: number,
-    labels: readonly string[],
-  ) {
+  private async replaceNodeLabels(nodeId: number, labels: readonly string[]) {
     const normalizedLabels = this.normalizeNodeLabels(labels);
     return this.updateNodeLabel(
       nodeId,
@@ -1363,10 +1365,7 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
     );
   }
 
-  private async addNodeLabel(
-    nodeId: number,
-    label: string,
-  ) {
+  private async addNodeLabel(nodeId: number, label: string) {
     const normalizedLabel = label.trim();
     if (normalizedLabel.length === 0) {
       throw new Error("Node label must not be empty.");
@@ -1381,10 +1380,7 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
     );
   }
 
-  private async removeNodeLabel(
-    nodeId: number,
-    label: string,
-  ) {
+  private async removeNodeLabel(nodeId: number, label: string) {
     const normalizedLabel = label.trim();
     if (normalizedLabel.length === 0) {
       throw new Error("Node label must not be empty.");
@@ -1413,10 +1409,7 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
   async setTrueEnd(
     nodeId: number,
   ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult> {
-    const response = await this.addNodeLabel(
-      nodeId,
-      CATMAID_TRUE_END_LABEL,
-    );
+    const response = await this.addNodeLabel(nodeId, CATMAID_TRUE_END_LABEL);
     return getCatmaidSingleNodeRevisionResult(
       normalizeCatmaidRevisionToken((response as any)?.edition_time),
     );
@@ -1425,10 +1418,7 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
   async removeTrueEnd(
     nodeId: number,
   ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult> {
-    const response = await this.removeNodeLabel(
-      nodeId,
-      CATMAID_TRUE_END_LABEL,
-    );
+    const response = await this.removeNodeLabel(nodeId, CATMAID_TRUE_END_LABEL);
     return getCatmaidSingleNodeRevisionResult(
       normalizeCatmaidRevisionToken((response as any)?.edition_time),
     );

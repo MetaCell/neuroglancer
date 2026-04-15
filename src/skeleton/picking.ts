@@ -6,7 +6,10 @@ export function resolveSpatiallyIndexedSkeletonSegmentPick(
 ) {
   if (pickedOffset < 0) return undefined;
   if (kind === "node") {
-    if (pickedOffset >= segmentIds.length || pickedOffset >= chunk.numVertices) {
+    if (
+      pickedOffset >= segmentIds.length ||
+      pickedOffset >= chunk.numVertices
+    ) {
       return undefined;
     }
     const segmentId = segmentIds[pickedOffset];

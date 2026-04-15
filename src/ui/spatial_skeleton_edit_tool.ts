@@ -18,15 +18,15 @@ import "#src/ui/spatial_skeleton_edit_tool.css";
 
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import {
+  getSpatialSkeletonSegmentIdFromLayerSelectionState,
+  hasSpatialSkeletonNodeSelection,
+} from "#src/layer/segmentation/selection.js";
+import {
   executeSpatialSkeletonAddNode,
   executeSpatialSkeletonMerge,
   executeSpatialSkeletonMoveNode,
   executeSpatialSkeletonSplit,
 } from "#src/layer/segmentation/spatial_skeleton_commands.js";
-import {
-  getSpatialSkeletonSegmentIdFromLayerSelectionState,
-  hasSpatialSkeletonNodeSelection,
-} from "#src/layer/segmentation/selection.js";
 import { showSpatialSkeletonActionError } from "#src/layer/segmentation/spatial_skeleton_errors.js";
 import { RenderedDataPanel } from "#src/rendered_data_panel.js";
 import {
@@ -44,12 +44,6 @@ import {
 import { hasSpatialSkeletonTrueEndLabel } from "#src/skeleton/node_types.js";
 import type { SpatiallyIndexedSkeletonSourceCapability } from "#src/skeleton/state.js";
 import { StatusMessage } from "#src/status.js";
-import type { ToolActivation } from "#src/ui/tool.js";
-import {
-  LayerTool,
-  makeToolActivationStatusMessageWithHeader,
-  registerTool,
-} from "#src/ui/tool.js";
 import type { SpatialSkeletonToolPointInfo } from "#src/ui/spatial_skeleton_tool_messages.js";
 import {
   SPATIAL_SKELETON_SPLIT_BANNER_MESSAGE,
@@ -57,9 +51,15 @@ import {
   getSpatialSkeletonMergeBannerMessage,
   getSpatialSkeletonToolPointStatusFields,
 } from "#src/ui/spatial_skeleton_tool_messages.js";
+import type { ToolActivation } from "#src/ui/tool.js";
+import {
+  LayerTool,
+  makeToolActivationStatusMessageWithHeader,
+  registerTool,
+} from "#src/ui/tool.js";
+import { removeChildren } from "#src/util/dom.js";
 import type { ActionEvent } from "#src/util/event_action_map.js";
 import { EventActionMap } from "#src/util/event_action_map.js";
-import { removeChildren } from "#src/util/dom.js";
 import type { vec3 } from "#src/util/geom.js";
 import { startRelativeMouseDrag } from "#src/util/mouse_drag.js";
 
@@ -277,9 +277,9 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
       const anchorSegmentId =
         mergeAnchorNodeId === undefined
           ? undefined
-          : skeletonLayer?.getNode(mergeAnchorNodeId)?.segmentId ??
+          : (skeletonLayer?.getNode(mergeAnchorNodeId)?.segmentId ??
             this.layer.spatialSkeletonState.getCachedNode(mergeAnchorNodeId)
-              ?.segmentId;
+              ?.segmentId);
       if (anchorSegmentId === pickedSegmentId) {
         this.layer.clearSpatialSkeletonMergeAnchor();
       }
@@ -377,8 +377,7 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
     if (nodeHit === undefined) {
       return undefined;
     }
-    const resolvedNodeInfo =
-      skeletonLayer.getNode(nodeHit.nodeId);
+    const resolvedNodeInfo = skeletonLayer.getNode(nodeHit.nodeId);
     return {
       nodeId: nodeHit.nodeId,
       segmentId: nodeHit.segmentId ?? resolvedNodeInfo?.segmentId,
@@ -526,7 +525,6 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
       ),
     );
   }
-
 }
 
 export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
@@ -898,7 +896,6 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
         const panelTranslatedPosition = new Float32Array(
           nodeInfo.position,
         ) as unknown as vec3;
-        let moveEvents = 0;
         let totalDeltaX = 0;
         let totalDeltaY = 0;
         let dragDistanceSquared = 0;
@@ -914,7 +911,6 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
               setStatus("Dragging node");
             }
             if (!dragActive) return;
-            ++moveEvents;
             totalDeltaX += deltaX;
             totalDeltaY += deltaY;
             panelTranslatedPosition[0] = dragAnchorPosition[0];

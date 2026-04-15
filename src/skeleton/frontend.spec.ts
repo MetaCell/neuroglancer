@@ -2,10 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import { resolveSpatiallyIndexedSkeletonSegmentPick } from "#src/skeleton/picking.js";
 import { spatiallyIndexedSkeletonTextureAttributeSpecs } from "#src/skeleton/spatial_attribute_layout.js";
-import { DataType } from "#src/util/data_type.js";
-import { getObjectId } from "#src/util/object_id.js";
 import { WatchableValue } from "#src/trackable_value.js";
 import { Uint64Set } from "#src/uint64_set.js";
+import { DataType } from "#src/util/data_type.js";
+import { getObjectId } from "#src/util/object_id.js";
 
 if (!("WebGL2RenderingContext" in globalThis)) {
   Object.defineProperty(globalThis, "WebGL2RenderingContext", {
@@ -21,9 +21,7 @@ if (!("WebGL2RenderingContext" in globalThis)) {
   });
 }
 
-const {
-  SpatiallyIndexedSkeletonLayer,
-} = await import(
+const { SpatiallyIndexedSkeletonLayer } = await import(
   "#src/skeleton/frontend.js"
 );
 
@@ -36,12 +34,7 @@ describe("resolveSpatiallyIndexedSkeletonSegmentPick", () => {
     const segmentIds = new Uint32Array([11, 13, 17]);
 
     expect(
-      resolveSpatiallyIndexedSkeletonSegmentPick(
-        chunk,
-        segmentIds,
-        1,
-        "node",
-      ),
+      resolveSpatiallyIndexedSkeletonSegmentPick(chunk, segmentIds, 1, "node"),
     ).toBe(13);
   });
 
@@ -53,20 +46,10 @@ describe("resolveSpatiallyIndexedSkeletonSegmentPick", () => {
     const segmentIds = new Uint32Array([0, 19, 23]);
 
     expect(
-      resolveSpatiallyIndexedSkeletonSegmentPick(
-        chunk,
-        segmentIds,
-        0,
-        "edge",
-      ),
+      resolveSpatiallyIndexedSkeletonSegmentPick(chunk, segmentIds, 0, "edge"),
     ).toBe(19);
     expect(
-      resolveSpatiallyIndexedSkeletonSegmentPick(
-        chunk,
-        segmentIds,
-        1,
-        "edge",
-      ),
+      resolveSpatiallyIndexedSkeletonSegmentPick(chunk, segmentIds, 1, "edge"),
     ).toBe(19);
   });
 
@@ -78,20 +61,10 @@ describe("resolveSpatiallyIndexedSkeletonSegmentPick", () => {
     const segmentIds = new Uint32Array([5, 7]);
 
     expect(
-      resolveSpatiallyIndexedSkeletonSegmentPick(
-        chunk,
-        segmentIds,
-        4,
-        "node",
-      ),
+      resolveSpatiallyIndexedSkeletonSegmentPick(chunk, segmentIds, 4, "node"),
     ).toBeUndefined();
     expect(
-      resolveSpatiallyIndexedSkeletonSegmentPick(
-        chunk,
-        segmentIds,
-        2,
-        "edge",
-      ),
+      resolveSpatiallyIndexedSkeletonSegmentPick(chunk, segmentIds, 2, "edge"),
     ).toBeUndefined();
   });
 });

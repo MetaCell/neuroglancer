@@ -21,15 +21,10 @@ function formatError(error: unknown) {
 }
 
 export function isSpatialSkeletonOutdatedStateError(error: unknown) {
-  return (
-    error instanceof Error && error.name === "CatmaidStateValidationError"
-  );
+  return error instanceof Error && error.name === "CatmaidStateValidationError";
 }
 
-export function showSpatialSkeletonActionError(
-  action: string,
-  error: unknown,
-) {
+export function showSpatialSkeletonActionError(action: string, error: unknown) {
   if (isSpatialSkeletonOutdatedStateError(error)) {
     return StatusMessage.showErrorMessage(
       `Failed to ${action} due to outdated state. Refresh the page to sync.`,

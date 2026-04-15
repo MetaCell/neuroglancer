@@ -876,7 +876,7 @@ export class SpatialSkeletonState extends RefCounted {
       if (activeSegmentIdSet.has(segmentId)) continue;
       changed = this.deleteCachedSegment(segmentId) || changed;
     }
-    for (const segmentId of [...this.pendingFullSegmentNodeFetches.keys()]) {
+    for (const segmentId of this.pendingFullSegmentNodeFetches.keys()) {
       if (activeSegmentIdSet.has(segmentId)) continue;
       this.abortPendingFullSegmentNodeFetch(
         segmentId,
@@ -956,7 +956,7 @@ export class SpatialSkeletonState extends RefCounted {
 
   private clearFullSkeletonCache() {
     this.fullSkeletonCacheGeneration++;
-    for (const segmentId of [...this.pendingFullSegmentNodeFetches.keys()]) {
+    for (const segmentId of this.pendingFullSegmentNodeFetches.keys()) {
       this.abortPendingFullSegmentNodeFetch(
         segmentId,
         "stale spatial skeleton full-segment inspection request",

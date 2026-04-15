@@ -14,37 +14,6 @@
  * limitations under the License.
  */
 
-import { GPUHashTable, HashSetShaderManager } from "#src/gpu_hash/shader.js";
-import {
-  SegmentColorShaderManager,
-  SegmentStatedColorShaderManager,
-} from "#src/segment_color.js";
-import { uploadVertexAttributesToGPU } from "#src/skeleton/gpu_upload_utils.js";
-import {
-  resolveSpatiallyIndexedSkeletonSegmentPick,
-} from "#src/skeleton/picking.js";
-import {
-  buildSpatiallyIndexedSkeletonOverlayGeometry,
-} from "#src/skeleton/overlay_geometry.js";
-import { SkeletonRenderMode } from "#src/skeleton/render_mode.js";
-import {
-  DEFAULT_MAX_RETAINED_OVERLAY_SEGMENTS,
-  mergeSpatiallyIndexedSkeletonOverlaySegmentIds,
-  retainSpatiallyIndexedSkeletonOverlaySegment,
-} from "#src/skeleton/overlay_segment_retention.js";
-import { spatiallyIndexedSkeletonTextureAttributeSpecs } from "#src/skeleton/spatial_attribute_layout.js";
-import {
-  getSpatiallyIndexedSkeletonGridIndex,
-  getSpatiallyIndexedSkeletonSourceView,
-  selectSpatiallyIndexedSkeletonEntriesByGrid,
-  selectSpatiallyIndexedSkeletonEntriesForView,
-  type SpatiallyIndexedSkeletonView,
-} from "#src/skeleton/source_selection.js";
-import {
-  getSpatiallyIndexedSkeletonSourceCapabilities,
-  type SpatiallyIndexedSkeletonSourceCapabilities,
-} from "#src/skeleton/state.js";
-
 import { ChunkState, LayerChunkProgressInfo } from "#src/chunk_manager/base.js";
 import type { ChunkManager } from "#src/chunk_manager/frontend.js";
 import {
@@ -52,6 +21,7 @@ import {
   ChunkRenderLayerFrontend,
   ChunkSource,
 } from "#src/chunk_manager/frontend.js";
+import { GPUHashTable, HashSetShaderManager } from "#src/gpu_hash/shader.js";
 import type {
   LayerView,
   MouseSelectionState,
@@ -65,13 +35,17 @@ import type {
   PerspectiveViewRenderContext,
 } from "#src/perspective_view/render_layer.js";
 import { PerspectiveViewRenderLayer } from "#src/perspective_view/render_layer.js";
+import { RENDERED_VIEW_ADD_LAYER_RPC_ID } from "#src/render_layer_common.js";
+import type { RenderScaleHistogram } from "#src/render_scale_statistics.js";
 import type {
   RenderLayer,
   ThreeDimensionalRenderLayerAttachmentState,
 } from "#src/renderlayer.js";
 import { update3dRenderLayerAttachment } from "#src/renderlayer.js";
-import { RenderScaleHistogram } from "#src/render_scale_statistics.js";
-import { Uint64Set } from "#src/uint64_set.js";
+import {
+  SegmentColorShaderManager,
+  SegmentStatedColorShaderManager,
+} from "#src/segment_color.js";
 import {
   forEachVisibleSegment,
   getVisibleSegments,
@@ -86,6 +60,7 @@ import {
   registerRedrawWhenSegmentationDisplayState3DChanged,
   SegmentationLayerSharedObject,
 } from "#src/segmentation_display_state/frontend.js";
+import { SharedWatchableValue } from "#src/shared_watchable_value.js";
 import type { VertexAttributeInfo } from "#src/skeleton/base.js";
 import {
   SKELETON_LAYER_RPC_ID,
@@ -93,27 +68,27 @@ import {
   SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_UPDATE_SOURCES_RPC_ID,
   SPATIALLY_INDEXED_SKELETON_SLICEVIEW_RENDER_LAYER_RPC_ID,
 } from "#src/skeleton/base.js";
-import { RENDERED_VIEW_ADD_LAYER_RPC_ID } from "#src/render_layer_common.js";
-import type { SliceViewPanel } from "#src/sliceview/panel.js";
-import { SharedWatchableValue } from "#src/shared_watchable_value.js";
-import type { RPC } from "#src/worker_rpc.js";
+import { uploadVertexAttributesToGPU } from "#src/skeleton/gpu_upload_utils.js";
+import { buildSpatiallyIndexedSkeletonOverlayGeometry } from "#src/skeleton/overlay_geometry.js";
 import {
-  getVolumetricTransformedSources,
-  serializeAllTransformedSources,
-  SliceViewSingleResolutionSource,
-} from "#src/sliceview/frontend.js";
+  DEFAULT_MAX_RETAINED_OVERLAY_SEGMENTS,
+  mergeSpatiallyIndexedSkeletonOverlaySegmentIds,
+  retainSpatiallyIndexedSkeletonOverlaySegment,
+} from "#src/skeleton/overlay_segment_retention.js";
+import { resolveSpatiallyIndexedSkeletonSegmentPick } from "#src/skeleton/picking.js";
+import { SkeletonRenderMode } from "#src/skeleton/render_mode.js";
 import {
-  type SliceViewPanelReadyRenderContext,
-  SliceViewPanelRenderLayer,
-  SliceViewPanelRenderContext,
-  SliceViewRenderLayer,
-  SliceViewRenderContext,
-} from "#src/sliceview/renderlayer.js";
+  getSpatiallyIndexedSkeletonGridIndex,
+  getSpatiallyIndexedSkeletonSourceView,
+  selectSpatiallyIndexedSkeletonEntriesByGrid,
+  selectSpatiallyIndexedSkeletonEntriesForView,
+  type SpatiallyIndexedSkeletonView,
+} from "#src/skeleton/source_selection.js";
+import { spatiallyIndexedSkeletonTextureAttributeSpecs } from "#src/skeleton/spatial_attribute_layout.js";
 import {
-  SliceViewChunk,
-  SliceViewChunkSource,
-  MultiscaleSliceViewChunkSource,
-} from "#src/sliceview/frontend.js";
+  getSpatiallyIndexedSkeletonSourceCapabilities,
+  type SpatiallyIndexedSkeletonSourceCapabilities,
+} from "#src/skeleton/state.js";
 import {
   forEachPlaneIntersectingVolumetricChunk,
   getNormalizedChunkLayout,
@@ -122,13 +97,32 @@ import {
   type SliceViewChunkSpecification,
   type TransformedSource,
 } from "#src/sliceview/base.js";
-import { ChunkLayout } from "#src/sliceview/chunk_layout.js";
+import type { ChunkLayout } from "#src/sliceview/chunk_layout.js";
+import type { SliceViewSingleResolutionSource } from "#src/sliceview/frontend.js";
+import {
+  getVolumetricTransformedSources,
+  serializeAllTransformedSources,
+  SliceViewChunk,
+  SliceViewChunkSource,
+  MultiscaleSliceViewChunkSource,
+} from "#src/sliceview/frontend.js";
+import type { SliceViewPanel } from "#src/sliceview/panel.js";
+import type {
+  SliceViewPanelRenderContext,
+  SliceViewRenderContext,
+  SliceViewPanelReadyRenderContext,
+} from "#src/sliceview/renderlayer.js";
+import {
+  SliceViewPanelRenderLayer,
+  SliceViewRenderLayer,
+} from "#src/sliceview/renderlayer.js";
+import type { WatchableValueInterface } from "#src/trackable_value.js";
 import {
   TrackableValue,
   WatchableValue,
-  WatchableValueInterface,
   registerNested,
 } from "#src/trackable_value.js";
+import { Uint64Set } from "#src/uint64_set.js";
 import { DATA_TYPE_SIGNED, DataType } from "#src/util/data_type.js";
 import { RefCounted } from "#src/util/disposable.js";
 import { mat4 } from "#src/util/geom.js";
@@ -181,6 +175,7 @@ import {
   TextureFormat,
 } from "#src/webgl/texture_access.js";
 import { defineVertexId, VertexIdHelper } from "#src/webgl/vertex_id.js";
+import type { RPC } from "#src/worker_rpc.js";
 
 const tempMat2 = mat4.create();
 const DEFAULT_FRAGMENT_MAIN = `void main() {
@@ -1798,7 +1793,9 @@ export class MultiscaleSliceViewSpatiallyIndexedSkeletonLayer extends SliceViewR
       | number
       | undefined;
     const sliceView = renderContext.sliceView;
-    this.registerChunkStatsSliceView(sliceView as RefCounted & { rpcId: number });
+    this.registerChunkStatsSliceView(
+      sliceView as RefCounted & { rpcId: number },
+    );
     if (displayState.objectAlpha?.value <= 0.0 || lodValue === undefined) {
       this.clearVisibleChunkKeysForSliceView(sliceView.rpcId);
       return;
@@ -1858,8 +1855,7 @@ interface SpatiallyIndexedSkeletonInspectionState {
   evictInactiveSegmentNodes(activeSegmentIds: Iterable<number>): void;
 }
 
-interface SpatiallyIndexedSkeletonOverlayChunk
-  extends SkeletonChunkInterface {
+interface SpatiallyIndexedSkeletonOverlayChunk extends SkeletonChunkInterface {
   dispose(gl: GL): void;
 }
 
@@ -1980,10 +1976,7 @@ function updateSpatialSkeletonGridChunkStatsWatchable(
 ) {
   if (watchable === undefined) return;
   const prev = watchable.value;
-  if (
-    prev.presentCount === presentCount &&
-    prev.totalCount === totalCount
-  ) {
+  if (prev.presentCount === presentCount && prev.totalCount === totalCount) {
     return;
   }
   watchable.value = { presentCount, totalCount };
@@ -2290,7 +2283,9 @@ export class SpatiallyIndexedSkeletonLayer
       this.browseExcludedSegments.clear();
       this.browseExcludedSegments.add(
         segmentIds
-          .filter((segmentId) => Number.isSafeInteger(segmentId) && segmentId > 0)
+          .filter(
+            (segmentId) => Number.isSafeInteger(segmentId) && segmentId > 0,
+          )
           .map((segmentId) => BigInt(segmentId)),
       );
       this.browseExcludedSegmentsKey = excludedSegmentsKey;
@@ -2314,7 +2309,8 @@ export class SpatiallyIndexedSkeletonLayer
     const segmentNodeSets: SpatiallyIndexedSkeletonNodeInfo[][] = [];
     const loadedSegmentIds: number[] = [];
     for (const segmentId of overlaySegmentIds) {
-      const segmentNodes = this.inspectionState.getCachedSegmentNodes(segmentId);
+      const segmentNodes =
+        this.inspectionState.getCachedSegmentNodes(segmentId);
       if (segmentNodes === undefined) {
         this.requestOverlaySegmentLoad(segmentId);
         continue;
@@ -2327,7 +2323,10 @@ export class SpatiallyIndexedSkeletonLayer
       return undefined;
     }
     const overlayChunkKey = this.getOverlayChunkKey(loadedSegmentIds);
-    if (this.overlayChunk !== undefined && this.overlayChunkKey === overlayChunkKey) {
+    if (
+      this.overlayChunk !== undefined &&
+      this.overlayChunkKey === overlayChunkKey
+    ) {
       return this.overlayChunk;
     }
     this.disposeOverlayChunk();
@@ -2748,9 +2747,15 @@ export class SpatiallyIndexedSkeletonLayer
       this.visibleChunkKeysByRenderedView.get(view);
     if (visibleChunkKeysByRenderedView === undefined) {
       visibleChunkKeysByRenderedView = new Map();
-      this.visibleChunkKeysByRenderedView.set(view, visibleChunkKeysByRenderedView);
+      this.visibleChunkKeysByRenderedView.set(
+        view,
+        visibleChunkKeysByRenderedView,
+      );
     }
-    visibleChunkKeysByRenderedView.set(renderedViewId, visibleChunkKeysBySource);
+    visibleChunkKeysByRenderedView.set(
+      renderedViewId,
+      visibleChunkKeysBySource,
+    );
     this.updateSelectedChunkStatsForView(view);
   }
 
@@ -3043,8 +3048,12 @@ export class SpatiallyIndexedSkeletonLayer
   ) {
     const { gl } = this;
     const excludedSegments = this.getBrowsePassExcludedSegments();
-    const edgeShaderResult = renderHelper.edgeShaderGetter(renderContext.emitter);
-    const nodeShaderResult = renderHelper.nodeShaderGetter(renderContext.emitter);
+    const edgeShaderResult = renderHelper.edgeShaderGetter(
+      renderContext.emitter,
+    );
+    const nodeShaderResult = renderHelper.nodeShaderGetter(
+      renderContext.emitter,
+    );
     const { shader: edgeShader, parameters: edgeShaderParameters } =
       edgeShaderResult;
     const { shader: nodeShader, parameters: nodeShaderParameters } =
@@ -3168,8 +3177,12 @@ export class SpatiallyIndexedSkeletonLayer
       return;
     }
     const { gl } = this;
-    const edgeShaderResult = renderHelper.edgeShaderGetter(renderContext.emitter);
-    const nodeShaderResult = renderHelper.nodeShaderGetter(renderContext.emitter);
+    const edgeShaderResult = renderHelper.edgeShaderGetter(
+      renderContext.emitter,
+    );
+    const nodeShaderResult = renderHelper.nodeShaderGetter(
+      renderContext.emitter,
+    );
     const { shader: edgeShader, parameters: edgeShaderParameters } =
       edgeShaderResult;
     const { shader: nodeShader, parameters: nodeShaderParameters } =
@@ -3505,9 +3518,9 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
       }
       mouseState.pickedSpatialSkeletonSegmentId = segmentId;
       if (
-        !getVisibleSegments(this.base.displayState.segmentationGroupState.value).has(
-          BigInt(segmentId),
-        )
+        !getVisibleSegments(
+          this.base.displayState.segmentationGroupState.value,
+        ).has(BigInt(segmentId))
       ) {
         return;
       }
@@ -3668,7 +3681,7 @@ export class SliceViewSpatiallyIndexedSkeletonLayer extends SliceViewRenderLayer
         localPosition: (base.displayState as any).localPosition,
       },
     );
-    // @ts-ignore
+    // @ts-expect-error RenderHelper requires panel-specific initialization here.
     this.renderHelper = this.registerDisposer(new RenderHelper(base, true));
     this.renderOptions = base.displayState.skeletonRenderingOptions.params2d;
     this.layerChunkProgressInfo = base.layerChunkProgressInfo;
@@ -3807,9 +3820,9 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
       }
       mouseState.pickedSpatialSkeletonSegmentId = segmentId;
       if (
-        !getVisibleSegments(this.base.displayState.segmentationGroupState.value).has(
-          BigInt(segmentId),
-        )
+        !getVisibleSegments(
+          this.base.displayState.segmentationGroupState.value,
+        ).has(BigInt(segmentId))
       ) {
         return;
       }

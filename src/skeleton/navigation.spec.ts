@@ -16,6 +16,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import type { SpatiallyIndexedSkeletonNodeInfo } from "#src/skeleton/frontend.js";
 import {
   buildSpatiallyIndexedSkeletonNavigationGraph,
   getBranchEnd,
@@ -30,7 +31,6 @@ import {
   getPreviousBranchOrRoot,
   getSkeletonRootNode,
 } from "#src/skeleton/navigation.js";
-import type { SpatiallyIndexedSkeletonNodeInfo } from "#src/skeleton/frontend.js";
 
 function makeNode(
   nodeId: number,

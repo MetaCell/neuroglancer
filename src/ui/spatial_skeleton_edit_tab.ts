@@ -32,13 +32,13 @@ import svg_share_android from "ikonate/icons/share-android.svg?raw";
 import svg_undo from "ikonate/icons/undo.svg?raw";
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import { getSpatialSkeletonNodeIdFromViewerHover } from "#src/layer/segmentation/selection.js";
-import { showSpatialSkeletonActionError } from "#src/layer/segmentation/spatial_skeleton_errors.js";
 import {
   executeSpatialSkeletonDeleteNode,
   executeSpatialSkeletonNodeLabelUpdate,
   redoSpatialSkeletonCommand,
   undoSpatialSkeletonCommand,
 } from "#src/layer/segmentation/spatial_skeleton_commands.js";
+import { showSpatialSkeletonActionError } from "#src/layer/segmentation/spatial_skeleton_errors.js";
 import {
   getSegmentEquivalences,
   getVisibleSegments,
@@ -80,8 +80,8 @@ import {
   SPATIAL_SKELETON_SPLIT_MODE_TOOL_ID,
 } from "#src/ui/spatial_skeleton_edit_tool.js";
 import { makeToolButton } from "#src/ui/tool.js";
-import { TrackableEnum } from "#src/util/trackable_enum.js";
 import { isAbortError } from "#src/util/abort.js";
+import { TrackableEnum } from "#src/util/trackable_enum.js";
 import { EnumSelectWidget } from "#src/widget/enum_widget.js";
 import { makeIcon } from "#src/widget/icon.js";
 import { Tab } from "#src/widget/tab_view.js";
@@ -94,7 +94,7 @@ export function syncShownSpatialSkeletonSegmentIds(
   previousSegmentIds: readonly number[],
 ) {
   const nextVisibleIds = new Set(nextSegmentIds);
-  for (const segmentId of [...shownSegmentIds]) {
+  for (const segmentId of shownSegmentIds) {
     if (!nextVisibleIds.has(segmentId)) {
       shownSegmentIds.delete(segmentId);
     }

@@ -53,13 +53,13 @@ import {
   getSpatialSkeletonSelectionRecoveryKey,
   SpatialSkeletonSelectionRecoveryStatus,
 } from "#src/layer/segmentation/selection.js";
-import { showSpatialSkeletonActionError } from "#src/layer/segmentation/spatial_skeleton_errors.js";
 import {
   executeSpatialSkeletonDeleteNode,
   executeSpatialSkeletonNodeLabelUpdate,
   executeSpatialSkeletonNodePropertiesUpdate,
   executeSpatialSkeletonReroot,
 } from "#src/layer/segmentation/spatial_skeleton_commands.js";
+import { showSpatialSkeletonActionError } from "#src/layer/segmentation/spatial_skeleton_errors.js";
 import { appendSpatialSkeletonSerializationState } from "#src/layer/segmentation/spatial_skeleton_serialization.js";
 import {
   MeshLayer,
@@ -110,6 +110,12 @@ import { SegmentationGraphSourceTab } from "#src/segmentation_graph/source.js";
 import { SharedDisjointUint64Sets } from "#src/shared_disjoint_sets.js";
 import { SharedWatchableValue } from "#src/shared_watchable_value.js";
 import {
+  buildSpatiallyIndexedSkeletonNeighborhoodEditContext,
+  findSpatiallyIndexedSkeletonNodeInfo,
+  getSpatiallyIndexedSkeletonDirectChildren,
+  getSpatiallyIndexedSkeletonNodeParent,
+} from "#src/skeleton/edit_state.js";
+import {
   PerspectiveViewSkeletonLayer,
   SkeletonLayer,
   SkeletonRenderingOptions,
@@ -133,12 +139,6 @@ import {
   type SpatialSkeletonDisplayNodeType,
   updateSpatialSkeletonTrueEndLabels,
 } from "#src/skeleton/node_types.js";
-import {
-  buildSpatiallyIndexedSkeletonNeighborhoodEditContext,
-  findSpatiallyIndexedSkeletonNodeInfo,
-  getSpatiallyIndexedSkeletonDirectChildren,
-  getSpatiallyIndexedSkeletonNodeParent,
-} from "#src/skeleton/edit_state.js";
 import {
   hasAnySpatiallyIndexedSkeletonEditingCapability,
   hasSpatiallyIndexedSkeletonSourceCapability,
@@ -180,6 +180,7 @@ import { registerSpatialSkeletonEditModeTool } from "#src/ui/spatial_skeleton_ed
 import { Uint64Map } from "#src/uint64_map.js";
 import { Uint64OrderedSet } from "#src/uint64_ordered_set.js";
 import { Uint64Set } from "#src/uint64_set.js";
+import { isAbortError } from "#src/util/abort.js";
 import { gatherUpdate } from "#src/util/array.js";
 import {
   packColor,
@@ -201,7 +202,6 @@ import {
   verifyString,
 } from "#src/util/json.js";
 import { Signal } from "#src/util/signal.js";
-import { isAbortError } from "#src/util/abort.js";
 import { makeWatchableShaderError } from "#src/webgl/dynamic_shader.js";
 import { makeDeleteButton } from "#src/widget/delete_button.js";
 import type { DependentViewContext } from "#src/widget/dependent_view_widget.js";

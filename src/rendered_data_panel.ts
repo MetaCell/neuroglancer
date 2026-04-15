@@ -82,9 +82,7 @@ function isSpatialSkeletonSelectableLayer(
   );
 }
 
-function isSpatialSkeletonNodeSelectionValue(
-  state: unknown,
-) {
+function isSpatialSkeletonNodeSelectionValue(state: unknown) {
   return hasSpatialSkeletonNodeSelection(
     state as { spatialSkeletonNodeId?: unknown } | undefined,
   );
