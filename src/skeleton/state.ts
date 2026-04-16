@@ -934,7 +934,14 @@ export class SpatialSkeletonState extends RefCounted {
         this.pendingFullSegmentNodeFetches.get(segmentId)?.promise ===
           pendingFetch.promise
       ) {
-        this.replaceCachedSegmentNodes(segmentId, normalizedNodes);
+        if (normalizedNodes.length > 0) {
+          this.replaceCachedSegmentNodes(segmentId, normalizedNodes);
+        } else {
+          // Explicitly cache the empty result so that non-existent skeletons
+          // don't trigger repeated fetches. replaceCachedSegmentNodes treats
+          // an empty array as a delete, so we write directly here.
+          this.fullSegmentNodeCache.set(segmentId, []);
+        }
         this.markNodeDataChanged({ invalidateFullSkeletonCache: false });
       }
       return normalizedNodes;
