@@ -18,10 +18,7 @@ export const DEFAULT_MAX_RETAINED_OVERLAY_SEGMENTS = 4;
 
 function normalizeSegmentId(segmentId: number) {
   const normalizedSegmentId = Math.round(Number(segmentId));
-  if (
-    !Number.isSafeInteger(normalizedSegmentId) ||
-    normalizedSegmentId <= 0
-  ) {
+  if (!Number.isSafeInteger(normalizedSegmentId) || normalizedSegmentId <= 0) {
     return undefined;
   }
   return normalizedSegmentId;

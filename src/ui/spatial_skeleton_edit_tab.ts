@@ -26,14 +26,22 @@ import svg_circle from "ikonate/icons/circle.svg?raw";
 import svg_flag from "ikonate/icons/flag.svg?raw";
 import svg_minus from "ikonate/icons/minus.svg?raw";
 import svg_origin from "ikonate/icons/origin.svg?raw";
+import svg_redo from "ikonate/icons/redo.svg?raw";
 import svg_retweet from "ikonate/icons/retweet.svg?raw";
 import svg_share_android from "ikonate/icons/share-android.svg?raw";
+import svg_undo from "ikonate/icons/undo.svg?raw";
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import { getSpatialSkeletonNodeIdFromViewerHover } from "#src/layer/segmentation/selection.js";
 import {
+  executeSpatialSkeletonDeleteNode,
+  executeSpatialSkeletonNodeLabelUpdate,
+  redoSpatialSkeletonCommand,
+  undoSpatialSkeletonCommand,
+} from "#src/layer/segmentation/spatial_skeleton_commands.js";
+import { showSpatialSkeletonActionError } from "#src/layer/segmentation/spatial_skeleton_errors.js";
+import {
   getSegmentEquivalences,
   getVisibleSegments,
-  removeSegmentFromVisibleSets,
 } from "#src/segmentation_display_state/base.js";
 import { getBaseObjectColor } from "#src/segmentation_display_state/frontend.js";
 import type {
@@ -60,7 +68,6 @@ import {
   type SpatialSkeletonDisplayNodeType as SkeletonNodeType,
   updateSpatialSkeletonTrueEndLabels,
 } from "#src/skeleton/node_types.js";
-import { getEditableSpatiallyIndexedSkeletonSource } from "#src/skeleton/state.js";
 import { StatusMessage } from "#src/status.js";
 import { observeWatchable, registerNested } from "#src/trackable_value.js";
 import {
@@ -73,13 +80,33 @@ import {
   SPATIAL_SKELETON_SPLIT_MODE_TOOL_ID,
 } from "#src/ui/spatial_skeleton_edit_tool.js";
 import { makeToolButton } from "#src/ui/tool.js";
-import { TrackableEnum } from "#src/util/trackable_enum.js";
 import { isAbortError } from "#src/util/abort.js";
+import { TrackableEnum } from "#src/util/trackable_enum.js";
 import { EnumSelectWidget } from "#src/widget/enum_widget.js";
 import { makeIcon } from "#src/widget/icon.js";
 import { Tab } from "#src/widget/tab_view.js";
 
 const MAX_LISTED_NODES = 10000;
+
+export function syncShownSpatialSkeletonSegmentIds(
+  shownSegmentIds: Set<number>,
+  nextSegmentIds: readonly number[],
+  previousSegmentIds: readonly number[],
+) {
+  const nextVisibleIds = new Set(nextSegmentIds);
+  for (const segmentId of shownSegmentIds) {
+    if (!nextVisibleIds.has(segmentId)) {
+      shownSegmentIds.delete(segmentId);
+    }
+  }
+
+  const previousVisibleIds = new Set(previousSegmentIds);
+  for (const segmentId of nextSegmentIds) {
+    if (!previousVisibleIds.has(segmentId)) {
+      shownSegmentIds.add(segmentId);
+    }
+  }
+}
 
 interface SpatiallyIndexedSkeletonNavigationApi {
   getSkeletonRootNode(
@@ -161,23 +188,49 @@ export class SpatialSkeletonEditTab extends Tab {
         title: "Toggle skeleton split mode",
       }),
     );
+    const toolbarActions = document.createElement("div");
+    toolbarActions.className = "neuroglancer-spatial-skeleton-toolbar-actions";
 
-    const navTools = document.createElement("div");
-    navTools.className = "neuroglancer-spatial-skeleton-nav-tools";
-    const makeNavIconButton = (
+    const makeIconButton = (
+      parent: HTMLElement,
       svg: string,
       title: string,
       onClick: () => void,
     ) => {
       const button = document.createElement("button");
-      button.className = "neuroglancer-spatial-skeleton-nav-tool";
+      button.className = "neuroglancer-spatial-skeleton-icon-button";
       button.type = "button";
       button.title = title;
+      button.setAttribute("aria-label", title);
       button.appendChild(makeIcon({ svg, title, clickable: false }));
       button.addEventListener("click", () => onClick());
-      navTools.appendChild(button);
+      parent.appendChild(button);
       return button;
     };
+    const undoButton = makeIconButton(toolbarActions, svg_undo, "Undo", () => {
+      if (undoButton.disabled) return;
+      void (async () => {
+        try {
+          await undoSpatialSkeletonCommand(layer);
+        } catch (error) {
+          showSpatialSkeletonActionError("undo", error);
+        }
+      })();
+    });
+    const redoButton = makeIconButton(toolbarActions, svg_redo, "Redo", () => {
+      if (redoButton.disabled) return;
+      void (async () => {
+        try {
+          await redoSpatialSkeletonCommand(layer);
+        } catch (error) {
+          showSpatialSkeletonActionError("redo", error);
+        }
+      })();
+    });
+    toolbox.appendChild(toolbarActions);
+
+    const navTools = document.createElement("div");
+    navTools.className = "neuroglancer-spatial-skeleton-nav-tools";
 
     const nodesSection = document.createElement("div");
     nodesSection.className = "neuroglancer-spatial-skeleton-section";
@@ -228,6 +281,9 @@ export class SpatialSkeletonEditTab extends Tab {
     showFilterList.className = "neuroglancer-spatial-skeleton-show-list";
     showFilterSection.appendChild(showFilterLabel);
     showFilterSection.appendChild(showFilterList);
+    const nodesNavigationBar = document.createElement("div");
+    nodesNavigationBar.className =
+      "neuroglancer-spatial-skeleton-navigation-bar";
     const nodesSummaryBar = document.createElement("div");
     nodesSummaryBar.className = "neuroglancer-spatial-skeleton-summary-bar";
     const nodesSummary = document.createElement("div");
@@ -237,6 +293,8 @@ export class SpatialSkeletonEditTab extends Tab {
     nodesSection.appendChild(filterInput);
     nodesSection.appendChild(nodeFilterTypeRow);
     nodesSection.appendChild(showFilterSection);
+    nodesNavigationBar.appendChild(navTools);
+    nodesSection.appendChild(nodesNavigationBar);
     nodesSummaryBar.appendChild(nodesSummary);
     nodesSummaryBar.appendChild(collapseButton);
     nodesSection.appendChild(nodesSummaryBar);
@@ -294,21 +352,6 @@ export class SpatialSkeletonEditTab extends Tab {
           clickable: false,
         }),
       );
-    };
-
-    const labelsEqual = (
-      a: readonly string[] | undefined,
-      b: readonly string[] | undefined,
-    ) => {
-      if (a === b) return true;
-      if (a === undefined || b === undefined) {
-        return a === undefined && b === undefined;
-      }
-      if (a.length !== b.length) return false;
-      for (let i = 0; i < a.length; i++) {
-        if (a[i] !== b[i]) return false;
-      }
-      return true;
     };
 
     const ensureActionsAllowed = (
@@ -598,41 +641,23 @@ export class SpatialSkeletonEditTab extends Tab {
     ) => {
       if (!ensureActionsAllowed("editNodeLabels")) return;
       if (pendingTrueEndNodes.has(node.nodeId)) return;
-      const skeletonLayer = layer.getSpatiallyIndexedSkeletonLayer();
-      if (skeletonLayer === undefined) {
-        StatusMessage.showTemporaryMessage(
-          "No active spatial skeleton layer found for label update.",
-        );
-        return;
-      }
-      const skeletonSource =
-        getEditableSpatiallyIndexedSkeletonSource(skeletonLayer);
-      if (skeletonSource === undefined) {
-        StatusMessage.showTemporaryMessage(
-          "Unable to resolve editable skeleton source for the active layer.",
-        );
-        return;
-      }
       pendingTrueEndNodes.add(node.nodeId);
       updateDisplay();
       void (async () => {
         try {
-          const result = present
-            ? await skeletonSource.setTrueEnd(node.nodeId)
-            : await skeletonSource.removeTrueEnd(node.nodeId);
-          if (present) {
-            applyTrueEndLabelLocally(node.nodeId, true);
-          } else {
-            applyTrueEndLabelLocally(node.nodeId, false);
+          const currentNode = skeletonState.getCachedNode(node.nodeId);
+          if (currentNode === undefined) {
+            throw new Error(
+              `Node ${node.nodeId} is missing from the inspected skeleton cache.`,
+            );
           }
-          if (result.revisionToken !== undefined) {
-            skeletonState.setCachedNodeRevision(node.nodeId, result.revisionToken);
-          }
-          StatusMessage.showTemporaryMessage(
-            present
-              ? `Set node ${node.nodeId} as true end.`
-              : `Removed true end from node ${node.nodeId}.`,
-          );
+          await executeSpatialSkeletonNodeLabelUpdate(layer, {
+            node: currentNode,
+            nextLabels: updateSpatialSkeletonTrueEndLabels(
+              currentNode.labels,
+              present,
+            ),
+          });
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);
@@ -693,80 +718,14 @@ export class SpatialSkeletonEditTab extends Tab {
         );
         return;
       }
-      const skeletonLayer = layer.getSpatiallyIndexedSkeletonLayer();
-      if (skeletonLayer === undefined) {
-        StatusMessage.showTemporaryMessage(
-          "No active spatial skeleton layer found for delete action.",
-        );
-        return;
-      }
-      const skeletonSource =
-        getEditableSpatiallyIndexedSkeletonSource(skeletonLayer);
-      if (skeletonSource === undefined) {
-        StatusMessage.showTemporaryMessage(
-          "Unable to resolve editable skeleton source for the active layer.",
-        );
-        return;
-      }
       pendingDeleteNodes.add(node.nodeId);
       updateDisplay();
       void (async () => {
         try {
-          const {
-            node: refreshedNode,
-            parentNode,
-            childNodes,
-            editContext,
-          } = await layer.getSpatialSkeletonDeleteOperationContext(node);
-          const directChildNodeIds = childNodes.map((child) => child.nodeId);
-          const deletingIsolatedRoot =
-            refreshedNode.parentNodeId === undefined &&
-            directChildNodeIds.length === 0;
-          const result = await skeletonSource.deleteNode(refreshedNode.nodeId, {
-            childNodeIds: directChildNodeIds,
-            editContext,
-          });
-          if (deletingIsolatedRoot) {
-            const segmentationGroupState =
-              layer.displayState.segmentationGroupState.value;
-            removeSegmentFromVisibleSets(
-              segmentationGroupState,
-              BigInt(refreshedNode.segmentId),
-              { deselect: true },
-            );
-          }
-          if (parentNode !== undefined) {
-            selectNode(parentNode, {
-              moveView: true,
-              pin: layer.manager.root.selectionState.pin.value,
-            });
-          } else if (
-            layer.selectedSpatialSkeletonNodeId.value === refreshedNode.nodeId
-          ) {
-            layer.clearSpatialSkeletonNodeSelection(false);
-          }
-          skeletonState.removeCachedNode(refreshedNode.nodeId, {
-            parentNodeId: refreshedNode.parentNodeId,
-            childNodeIds: directChildNodeIds,
-          });
-          const childRevisionUpdates = result.childRevisionUpdates ?? [];
-          if (childRevisionUpdates.length > 0) {
-            skeletonState.setCachedNodeRevisions(childRevisionUpdates);
-          }
-          layer.markSpatialSkeletonNodeDataChanged({
-            invalidateFullSkeletonCache: false,
-          });
-          skeletonLayer.invalidateSourceCaches();
-          StatusMessage.showTemporaryMessage(
-            `Deleted node ${refreshedNode.nodeId}.`,
-          );
+          await executeSpatialSkeletonDeleteNode(layer, node);
           refreshNodes();
         } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          StatusMessage.showTemporaryMessage(
-            `Failed to delete node: ${message}`,
-          );
+          showSpatialSkeletonActionError("delete node", error);
           updateDisplay();
         } finally {
           pendingDeleteNodes.delete(node.nodeId);
@@ -796,11 +755,7 @@ export class SpatialSkeletonEditTab extends Tab {
         try {
           await layer.rerootSpatialSkeletonNode(node);
         } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          StatusMessage.showTemporaryMessage(
-            `Failed to set node as root: ${message}`,
-          );
+          showSpatialSkeletonActionError("set node as root", error);
         } finally {
           pendingRerootNodes.delete(node.nodeId);
           updateDisplay();
@@ -808,25 +763,31 @@ export class SpatialSkeletonEditTab extends Tab {
       })();
     };
 
-    const goRootButton = makeNavIconButton(svg_origin, "Go to root", () => {
-      const context = getSelectedNavigationContext();
-      if (context === undefined) return;
-      const { selectedNode, skeletonApi } = context;
-      void (async () => {
-        try {
-          navigateToNodeTarget(
-            await skeletonApi.getSkeletonRootNode(selectedNode.segmentId),
-          );
-        } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          StatusMessage.showTemporaryMessage(
-            `Failed to locate skeleton root: ${message}`,
-          );
-        }
-      })();
-    });
-    const goBranchStartButton = makeNavIconButton(
+    const goRootButton = makeIconButton(
+      navTools,
+      svg_origin,
+      "Go to root",
+      () => {
+        const context = getSelectedNavigationContext();
+        if (context === undefined) return;
+        const { selectedNode, skeletonApi } = context;
+        void (async () => {
+          try {
+            navigateToNodeTarget(
+              await skeletonApi.getSkeletonRootNode(selectedNode.segmentId),
+            );
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            StatusMessage.showTemporaryMessage(
+              `Failed to locate skeleton root: ${message}`,
+            );
+          }
+        })();
+      },
+    );
+    const goBranchStartButton = makeIconButton(
+      navTools,
       svg_chevrons_left,
       "Go to start of the branch",
       () => {
@@ -848,7 +809,8 @@ export class SpatialSkeletonEditTab extends Tab {
         })();
       },
     );
-    const goTreeEndButton = makeNavIconButton(
+    const goTreeEndButton = makeIconButton(
+      navTools,
       svg_chevrons_right,
       "Go to end of the branch",
       () => {
@@ -870,7 +832,8 @@ export class SpatialSkeletonEditTab extends Tab {
         })();
       },
     );
-    const cycleBranchesButton = makeNavIconButton(
+    const cycleBranchesButton = makeIconButton(
+      navTools,
       svg_retweet,
       "Cycle through level nodes",
       () => {
@@ -892,7 +855,8 @@ export class SpatialSkeletonEditTab extends Tab {
         })();
       },
     );
-    const goParentButton = makeNavIconButton(
+    const goParentButton = makeIconButton(
+      navTools,
       svg_arrow_left,
       "Go to parent",
       () => {
@@ -919,7 +883,8 @@ export class SpatialSkeletonEditTab extends Tab {
         })();
       },
     );
-    const goChildButton = makeNavIconButton(
+    const goChildButton = makeIconButton(
+      navTools,
       svg_arrow_right,
       "Go to child",
       () => {
@@ -944,14 +909,14 @@ export class SpatialSkeletonEditTab extends Tab {
         })();
       },
     );
-    const goUnfinishedBranchButton = makeNavIconButton(
+    const goUnfinishedBranchButton = makeIconButton(
+      navTools,
       svg_chevron_right,
       "Go to unfinished node",
       () => {
         goToClosestUnfinishedBranch();
       },
     );
-    toolbox.appendChild(navTools);
     element.insertBefore(toolbox, nodesSection);
 
     const gatedControls = [
@@ -986,18 +951,6 @@ export class SpatialSkeletonEditTab extends Tab {
     type SegmentDisplayState = SpatialSkeletonSegmentRenderState & {
       segmentLabel: string | undefined;
       shown: boolean;
-    };
-
-    const syncShownSegmentIds = (nextSegmentIds: readonly number[]) => {
-      const nextVisibleIds = new Set(nextSegmentIds);
-      for (const segmentId of [...shownSegmentIds]) {
-        if (!nextVisibleIds.has(segmentId)) {
-          shownSegmentIds.delete(segmentId);
-        }
-      }
-      for (const segmentId of nextSegmentIds) {
-        shownSegmentIds.add(segmentId);
-      }
     };
 
     const getSegmentDisplayLabel = (segmentId: number) => {
@@ -1472,46 +1425,10 @@ export class SpatialSkeletonEditTab extends Tab {
       updateDisplay(summarySuffix);
     };
 
-    const applyTrueEndLabelLocally = (nodeId: number, present: boolean) => {
-      const updateNode = (node: SpatiallyIndexedSkeletonNodeInfo) => {
-        const nextLabels = updateSpatialSkeletonTrueEndLabels(
-          node.labels,
-          present,
-        );
-        if (labelsEqual(node.labels, nextLabels)) {
-          return node;
-        }
-        return { ...node, labels: nextLabels };
-      };
-      skeletonState.updateCachedNode(nodeId, updateNode);
-      let changed = false;
-      const nextNodesBySegment = new Map<
-        number,
-        SpatiallyIndexedSkeletonNodeInfo[]
-      >();
-      for (const [segmentId, segmentNodes] of nodesBySegment) {
-        let segmentChanged = false;
-        const nextSegmentNodes = segmentNodes.map((candidate) => {
-          if (candidate.nodeId !== nodeId) return candidate;
-          const updatedNode = updateNode(candidate);
-          segmentChanged ||= updatedNode !== candidate;
-          return updatedNode;
-        });
-        nextNodesBySegment.set(
-          segmentId,
-          segmentChanged ? nextSegmentNodes : segmentNodes,
-        );
-        changed ||= segmentChanged;
-      }
-      if (changed) {
-        applyNodesBySegment(nextNodesBySegment, loadedNodeSummarySuffix);
-      }
-    };
-
     const refreshNodes = () => {
       const requestId = ++refreshRequestId;
       const skeletonLayer = layer.getSpatiallyIndexedSkeletonLayer();
-      activeSegmentIds = [
+      const nextActiveSegmentIds = [
         ...getVisibleSegments(
           layer.displayState.segmentationGroupState.value,
         ).keys(),
@@ -1519,7 +1436,12 @@ export class SpatialSkeletonEditTab extends Tab {
         .map((segmentId) => Number(segmentId))
         .filter((segmentId) => Number.isFinite(segmentId))
         .sort((a, b) => a - b);
-      syncShownSegmentIds(activeSegmentIds);
+      syncShownSpatialSkeletonSegmentIds(
+        shownSegmentIds,
+        nextActiveSegmentIds,
+        activeSegmentIds,
+      );
+      activeSegmentIds = nextActiveSegmentIds;
       if (skeletonLayer === undefined || activeSegmentIds.length === 0) {
         allNodes = [];
         nodesBySegment = new Map();
@@ -1626,6 +1548,27 @@ export class SpatialSkeletonEditTab extends Tab {
       }
     };
 
+    const updateHistoryButtons = () => {
+      const { commandHistory } = layer.spatialSkeletonState;
+      const undoLabel = commandHistory.undoLabel.value;
+      const redoLabel = commandHistory.redoLabel.value;
+      const busy = commandHistory.isBusy.value;
+      undoButton.disabled = busy || !commandHistory.canUndo.value;
+      redoButton.disabled = busy || !commandHistory.canRedo.value;
+      undoButton.title = busy
+        ? "Wait for the current skeleton edit to finish."
+        : undoLabel === undefined
+          ? "Nothing to undo."
+          : `Undo ${undoLabel}`;
+      redoButton.title = busy
+        ? "Wait for the current skeleton edit to finish."
+        : redoLabel === undefined
+          ? "Nothing to redo."
+          : `Redo ${redoLabel}`;
+      undoButton.setAttribute("aria-label", undoButton.title);
+      redoButton.setAttribute("aria-label", redoButton.title);
+    };
+
     filterInput.addEventListener("input", () => {
       filterText = filterInput.value.trim().toLowerCase();
       updateDisplay();
@@ -1678,6 +1621,31 @@ export class SpatialSkeletonEditTab extends Tab {
       }),
     );
     this.registerDisposer(
+      layer.spatialSkeletonState.commandHistory.canUndo.changed.add(() => {
+        updateHistoryButtons();
+      }),
+    );
+    this.registerDisposer(
+      layer.spatialSkeletonState.commandHistory.canRedo.changed.add(() => {
+        updateHistoryButtons();
+      }),
+    );
+    this.registerDisposer(
+      layer.spatialSkeletonState.commandHistory.isBusy.changed.add(() => {
+        updateHistoryButtons();
+      }),
+    );
+    this.registerDisposer(
+      layer.spatialSkeletonState.commandHistory.undoLabel.changed.add(() => {
+        updateHistoryButtons();
+      }),
+    );
+    this.registerDisposer(
+      layer.spatialSkeletonState.commandHistory.redoLabel.changed.add(() => {
+        updateHistoryButtons();
+      }),
+    );
+    this.registerDisposer(
       registerNested((context, segmentationGroupState) => {
         context.registerDisposer(
           segmentationGroupState.visibleSegments.changed.add(() => {
@@ -1724,6 +1692,7 @@ export class SpatialSkeletonEditTab extends Tab {
     );
     updateCollapseButton();
     updateGateStatus();
+    updateHistoryButtons();
     updateHoveredViewerNode();
     refreshNodes();
   }

@@ -48,7 +48,10 @@ interface NavigationGraphDerivedState {
   sortPriorityByNodeId: Map<number, number>;
   orderedChildNodeIdsByNodeId: Map<number, readonly number[]>;
   collapsedPathByNodeId: Map<number, readonly number[]>;
-  collapsedOrderedChildPathsByNodeId: Map<number, readonly CollapsedChildPath[]>;
+  collapsedOrderedChildPathsByNodeId: Map<
+    number,
+    readonly CollapsedChildPath[]
+  >;
   flatListNodeIds?: readonly number[];
   collapsedFlatListNodeIds?: readonly number[];
   collapsedLevelContext?: CollapsedLevelContext;
@@ -147,7 +150,10 @@ export function buildSpatiallyIndexedSkeletonNavigationGraph(
     childrenByParent,
     rootNodeIds,
   };
-  navigationGraphDerivedState.set(graph, buildNavigationGraphDerivedState(graph));
+  navigationGraphDerivedState.set(
+    graph,
+    buildNavigationGraphDerivedState(graph),
+  );
   return graph;
 }
 
@@ -163,9 +169,8 @@ function getFlatListNodeSortPriority(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
   nodeId: number,
 ) {
-  const priority = getNavigationGraphDerivedState(graph).sortPriorityByNodeId.get(
-    nodeId,
-  );
+  const priority =
+    getNavigationGraphDerivedState(graph).sortPriorityByNodeId.get(nodeId);
   if (priority === undefined) {
     throw new Error(`Node ${nodeId} is not available in the loaded skeleton.`);
   }
@@ -210,7 +215,11 @@ export function getFlatListNodeIds(
       const childNodeIds = [...getChildNodeIds(graph, nodeId)].sort((a, b) =>
         compareFlatListNodeIds(graph, a, b),
       );
-      for (let childIndex = childNodeIds.length - 1; childIndex >= 0; --childIndex) {
+      for (
+        let childIndex = childNodeIds.length - 1;
+        childIndex >= 0;
+        --childIndex
+      ) {
         const childNodeId = childNodeIds[childIndex];
         if (!visited.has(childNodeId)) {
           stack.push(childNodeId);
@@ -709,7 +718,6 @@ export function getOpenLeaves(
 ): SpatiallyIndexedSkeletonOpenLeaf[] {
   getNodeOrThrow(graph, nodeId);
   const distances = new Map<number, number>([[nodeId, 0]]);
-  const rootedChildCount = new Map<number, number>([[nodeId, 0]]);
   const queue = [nodeId];
   for (let queueIndex = 0; queueIndex < queue.length; ++queueIndex) {
     const currentNodeId = queue[queueIndex];
@@ -725,14 +733,6 @@ export function getOpenLeaves(
       ) {
         if (!distances.has(parentNodeId)) {
           distances.set(parentNodeId, nextDistance);
-          rootedChildCount.set(
-            currentNodeId,
-            (rootedChildCount.get(currentNodeId) ?? 0) + 1,
-          );
-          rootedChildCount.set(
-            parentNodeId,
-            rootedChildCount.get(parentNodeId) ?? 0,
-          );
           queue.push(parentNodeId);
         }
         parentAdded = true;
@@ -740,36 +740,21 @@ export function getOpenLeaves(
       const neighborNodeId = childNodeId;
       if (distances.has(neighborNodeId)) continue;
       distances.set(neighborNodeId, nextDistance);
-      rootedChildCount.set(
-        currentNodeId,
-        (rootedChildCount.get(currentNodeId) ?? 0) + 1,
-      );
-      rootedChildCount.set(
-        neighborNodeId,
-        rootedChildCount.get(neighborNodeId) ?? 0,
-      );
       queue.push(neighborNodeId);
     }
-    if (!parentAdded && parentNodeId !== undefined && !distances.has(parentNodeId)) {
+    if (
+      !parentAdded &&
+      parentNodeId !== undefined &&
+      !distances.has(parentNodeId)
+    ) {
       distances.set(parentNodeId, nextDistance);
-      rootedChildCount.set(
-        currentNodeId,
-        (rootedChildCount.get(currentNodeId) ?? 0) + 1,
-      );
-      rootedChildCount.set(
-        parentNodeId,
-        rootedChildCount.get(parentNodeId) ?? 0,
-      );
       queue.push(parentNodeId);
     }
   }
 
   const leaves: SpatiallyIndexedSkeletonOpenLeaf[] = [];
   for (const candidateNodeId of queue) {
-    const childCount = rootedChildCount.get(candidateNodeId) ?? 0;
-    const isLeaf =
-      childCount === 0 || (candidateNodeId === nodeId && childCount === 1);
-    if (!isLeaf) continue;
+    if (getChildNodeIds(graph, candidateNodeId).length !== 0) continue;
     const candidateNode = getNodeOrThrow(graph, candidateNodeId);
     if (hasClosedEndLabel(candidateNode)) continue;
     leaves.push({

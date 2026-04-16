@@ -52,10 +52,7 @@ function parseSpatialSkeletonSelectionStateId(value: unknown) {
 
 function normalizeSpatialSkeletonSelectionStateId(value: unknown) {
   const parsedValue = parseSpatialSkeletonSelectionStateId(value);
-  if (
-    parsedValue === undefined ||
-    parsedValue > MAX_SAFE_INTEGER_BIGINT
-  ) {
+  if (parsedValue === undefined || parsedValue > MAX_SAFE_INTEGER_BIGINT) {
     return undefined;
   }
   return Number(parsedValue);
@@ -66,9 +63,7 @@ function getSpatialSkeletonSelectionIdString(value: unknown) {
 }
 
 function normalizeSpatialSkeletonViewerHoverNodeId(value: unknown) {
-  return typeof value === "number" &&
-    Number.isSafeInteger(value) &&
-    value > 0
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
     ? value
     : undefined;
 }
@@ -76,9 +71,7 @@ function normalizeSpatialSkeletonViewerHoverNodeId(value: unknown) {
 export function getSpatialSkeletonNodeIdFromLayerSelectionState(
   state: SpatialSkeletonSelectionStateLike | undefined,
 ) {
-  return normalizeSpatialSkeletonSelectionStateId(
-    state?.spatialSkeletonNodeId,
-  );
+  return normalizeSpatialSkeletonSelectionStateId(state?.spatialSkeletonNodeId);
 }
 
 export function getSpatialSkeletonSegmentIdFromLayerSelectionState(
@@ -131,9 +124,7 @@ export function getSpatialSkeletonMissingSelectionDisplayState(
     };
   }
   const shouldRequestRecovery =
-    !hasCachedSegment &&
-    hasInspectableSource &&
-    recoveryStatus === undefined;
+    !hasCachedSegment && hasInspectableSource && recoveryStatus === undefined;
   return {
     recoveryKey,
     recoveryStatus,
@@ -145,8 +136,10 @@ export function getSpatialSkeletonMissingSelectionDisplayState(
 export function hasSpatialSkeletonNodeSelection(
   state: SpatialSkeletonSelectionStateLike | undefined,
 ) {
-  return getSpatialSkeletonSelectionIdString(state?.spatialSkeletonNodeId) !==
-    undefined;
+  return (
+    getSpatialSkeletonSelectionIdString(state?.spatialSkeletonNodeId) !==
+    undefined
+  );
 }
 
 export function getSpatialSkeletonNodeIdFromViewerSelection<TLayer>(

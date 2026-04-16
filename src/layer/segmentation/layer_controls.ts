@@ -1,11 +1,11 @@
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import * as json_keys from "#src/layer/segmentation/json_keys.js";
+import { makeCachedDerivedWatchableValue } from "#src/trackable_value.js";
 import type { LayerControlDefinition } from "#src/widget/layer_control.js";
 import { registerLayerControl } from "#src/widget/layer_control.js";
 import { checkboxLayerControl } from "#src/widget/layer_control_checkbox.js";
 import { enumLayerControl } from "#src/widget/layer_control_enum.js";
 import { rangeLayerControl } from "#src/widget/layer_control_range.js";
-import { makeCachedDerivedWatchableValue } from "#src/trackable_value.js";
 import {
   renderScaleLayerControl,
   spatialSkeletonGridRenderScaleLayerControl,
@@ -85,17 +85,15 @@ export const LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
       ),
     title:
       "Select the grid size level for spatially indexed skeletons in 2D views",
-    ...spatialSkeletonGridRenderScaleLayerControl(
-      (layer) => ({
-        histogram: layer.displayState.spatialSkeletonGridRenderScaleHistogram2d,
-        target: layer.displayState.spatialSkeletonGridResolutionTarget2d,
-        relative: layer.displayState.spatialSkeletonGridResolutionRelative2d,
-        pixelSize: layer.displayState.spatialSkeletonGridPixelSize2d,
-        chunkStats: layer.displayState.spatialSkeletonGridChunkStats2d,
-        relativeTooltip:
-          "Interpret the 2D skeleton grid resolution target as relative to zoom",
-      }),
-    ),
+    ...spatialSkeletonGridRenderScaleLayerControl((layer) => ({
+      histogram: layer.displayState.spatialSkeletonGridRenderScaleHistogram2d,
+      target: layer.displayState.spatialSkeletonGridResolutionTarget2d,
+      relative: layer.displayState.spatialSkeletonGridResolutionRelative2d,
+      pixelSize: layer.displayState.spatialSkeletonGridPixelSize2d,
+      chunkStats: layer.displayState.spatialSkeletonGridChunkStats2d,
+      relativeTooltip:
+        "Interpret the 2D skeleton grid resolution target as relative to zoom",
+    })),
   },
   {
     label: "Resolution (skeleton grid 3D)",
@@ -111,17 +109,15 @@ export const LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
       ),
     title:
       "Select the grid size level for spatially indexed skeletons in 3D views",
-    ...spatialSkeletonGridRenderScaleLayerControl(
-      (layer) => ({
-        histogram: layer.displayState.spatialSkeletonGridRenderScaleHistogram3d,
-        target: layer.displayState.spatialSkeletonGridResolutionTarget3d,
-        relative: layer.displayState.spatialSkeletonGridResolutionRelative3d,
-        pixelSize: layer.displayState.spatialSkeletonGridPixelSize3d,
-        chunkStats: layer.displayState.spatialSkeletonGridChunkStats3d,
-        relativeTooltip:
-          "Interpret the 3D skeleton grid resolution target as relative to zoom",
-      }),
-    ),
+    ...spatialSkeletonGridRenderScaleLayerControl((layer) => ({
+      histogram: layer.displayState.spatialSkeletonGridRenderScaleHistogram3d,
+      target: layer.displayState.spatialSkeletonGridResolutionTarget3d,
+      relative: layer.displayState.spatialSkeletonGridResolutionRelative3d,
+      pixelSize: layer.displayState.spatialSkeletonGridPixelSize3d,
+      chunkStats: layer.displayState.spatialSkeletonGridChunkStats3d,
+      relativeTooltip:
+        "Interpret the 3D skeleton grid resolution target as relative to zoom",
+    })),
   },
   {
     label: "Opacity (3d)",

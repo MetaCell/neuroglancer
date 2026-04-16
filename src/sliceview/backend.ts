@@ -78,7 +78,8 @@ class SliceViewCounterpartBase extends SliceViewBase<
   SliceViewChunkSourceBackend,
   SliceViewRenderLayerBackend
 > {
-  protected invalidateVisibleSourcesBound = () => this.invalidateVisibleSources();
+  protected invalidateVisibleSourcesBound = () =>
+    this.invalidateVisibleSources();
 
   constructor(rpc: RPC, options: any) {
     super(rpc.get(options.projectionParameters));

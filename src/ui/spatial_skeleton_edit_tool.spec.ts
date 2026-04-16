@@ -1,7 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import {
+  executeSpatialSkeletonAddNode,
+  executeSpatialSkeletonMerge,
+} from "#src/layer/segmentation/spatial_skeleton_commands.js";
+import { SpatialSkeletonCommandHistory } from "#src/skeleton/command_history.js";
 import { setSpatialSkeletonModesToLinesAndPoints } from "#src/skeleton/edit_mode_rendering.js";
+import type { SpatiallyIndexedSkeletonNodeInfo } from "#src/skeleton/frontend.js";
 import { SkeletonRenderMode } from "#src/skeleton/render_mode.js";
+import { StatusMessage } from "#src/status.js";
 
 if (!("WebGL2RenderingContext" in globalThis)) {
   Object.defineProperty(globalThis, "WebGL2RenderingContext", {
@@ -21,7 +28,48 @@ const { SpatialSkeletonEditModeTool } = await import(
   "#src/ui/spatial_skeleton_edit_tool.js"
 );
 
+function makeVisibleSegmentsState(initialVisibleSegments: bigint[] = []) {
+  return {
+    visibleSegments: new Set<bigint>(initialVisibleSegments),
+    selectedSegments: new Set<bigint>(),
+    segmentEquivalences: {},
+    temporaryVisibleSegments: new Set<bigint>(),
+    temporarySegmentEquivalences: {},
+    useTemporaryVisibleSegments: { value: false },
+    useTemporarySegmentEquivalences: { value: false },
+  };
+}
+
+function makeEditableSkeletonSource(overrides: Record<string, unknown> = {}) {
+  return {
+    getSkeleton: vi.fn(),
+    addNode: vi.fn(),
+    insertNode: vi.fn(),
+    moveNode: vi.fn(),
+    deleteNode: vi.fn(),
+    rerootSkeleton: vi.fn(),
+    updateDescription: vi.fn(),
+    setTrueEnd: vi.fn(),
+    removeTrueEnd: vi.fn(),
+    updateRadius: vi.fn(),
+    updateConfidence: vi.fn(),
+    mergeSkeletons: vi.fn(),
+    splitSkeleton: vi.fn(),
+    ...overrides,
+  };
+}
+
+function suppressStatusMessages() {
+  vi.spyOn(StatusMessage, "showTemporaryMessage").mockImplementation((() => ({
+    dispose() {},
+  })) as typeof StatusMessage.showTemporaryMessage);
+}
+
 describe("spatial_skeleton_edit_tool", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("switches 2d and 3d skeleton rendering to lines and points", () => {
     const layer = {
       displayState: {
@@ -42,47 +90,65 @@ describe("spatial_skeleton_edit_tool", () => {
     ).toBe(SkeletonRenderMode.LINES_AND_POINTS);
   });
 
-  it("keeps parented add-node commits overlay-first without refetching chunks", () => {
-    const applyCommittedAddNode = (
-      SpatialSkeletonEditModeTool.prototype as any
-    ).applyCommittedAddNode as (
-      this: any,
-      skeletonLayer: any,
-      committedNode: { treenodeId: number; skeletonId: number },
-      parentNodeId: number | undefined,
-      position: Float32Array,
-    ) => void;
+  it("keeps parented add-node commits overlay-first without refetching chunks", async () => {
+    suppressStatusMessages();
     const upsertCachedNode = vi.fn();
+    const setCachedNodeRevision = vi.fn();
+    const selectSegment = vi.fn();
     const selectSpatialSkeletonNode = vi.fn();
     const markSpatialSkeletonNodeDataChanged = vi.fn();
-    const ensureSegmentVisibleByNumber = vi.fn();
-    const pinSegmentByNumber = vi.fn();
+    const moveViewToSpatialSkeletonNodePosition = vi.fn();
+    const getFullSegmentNodes = vi.fn();
+    const parentNode: SpatiallyIndexedSkeletonNodeInfo = {
+      nodeId: 5,
+      segmentId: 11,
+      position: new Float32Array([8, 9, 10]),
+      revisionToken: "parent-before",
+    };
+    const addNode = vi.fn().mockResolvedValue({
+      treenodeId: 17,
+      skeletonId: 11,
+      revisionToken: "node-after",
+      parentRevisionToken: "parent-after",
+    });
     const skeletonLayer = {
+      source: makeEditableSkeletonSource({ addNode }),
+      getNode: vi.fn((nodeId: number) =>
+        nodeId === parentNode.nodeId ? parentNode : undefined,
+      ),
       retainOverlaySegment: vi.fn(),
       invalidateSourceCaches: vi.fn(),
     };
-    const globalPosition = { value: new Float32Array([10, 20, 30]) };
-    const localPosition = { value: new Float32Array([40, 50, 60]) };
-    const tool = {
-      ensureSegmentVisibleByNumber,
-      pinSegmentByNumber,
-      moveViewToNodePosition: (
-        SpatialSkeletonEditModeTool.prototype as any
-      ).moveViewToNodePosition,
-      layer: {
-        localPosition,
-        spatialSkeletonState: {
-          upsertCachedNode,
+    const commandHistory = new SpatialSkeletonCommandHistory();
+    const visibleSegmentsState = makeVisibleSegmentsState();
+    const layer = {
+      displayState: {
+        segmentationGroupState: {
+          value: visibleSegmentsState,
         },
-        selectSpatialSkeletonNode,
-        markSpatialSkeletonNodeDataChanged,
-        manager: {
-          root: {
-            globalPosition,
-            selectionState: {
-              pin: {
-                value: true,
-              },
+      },
+      spatialSkeletonState: {
+        commandHistory,
+        getCachedNode: vi.fn((nodeId: number) =>
+          nodeId === parentNode.nodeId ? parentNode : undefined,
+        ),
+        getCachedSegmentNodes: vi.fn((segmentId: number) =>
+          segmentId === parentNode.segmentId ? [parentNode] : undefined,
+        ),
+        getFullSegmentNodes,
+        upsertCachedNode,
+        setCachedNodeRevision,
+      },
+      getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
+      selectSegment,
+      selectSpatialSkeletonNode,
+      markSpatialSkeletonNodeDataChanged,
+      moveViewToSpatialSkeletonNodePosition,
+      manager: {
+        root: {
+          selectionState: {
+            pin: {
+              value: true,
             },
           },
         },
@@ -90,79 +156,93 @@ describe("spatial_skeleton_edit_tool", () => {
     };
     const position = new Float32Array([1, 2, 3]);
 
-    applyCommittedAddNode.call(
-      tool,
-      skeletonLayer,
-      { treenodeId: 17, skeletonId: 11 },
-      5,
+    await executeSpatialSkeletonAddNode(layer as any, {
+      skeletonId: 11,
+      parentNodeId: 5,
       position,
-    );
+    });
 
+    expect(addNode).toHaveBeenCalledWith(11, 1, 2, 3, 5, {
+      node: {
+        nodeId: 5,
+        parentNodeId: undefined,
+        revisionToken: "parent-before",
+      },
+    });
     expect(upsertCachedNode).toHaveBeenCalledWith(
       {
         nodeId: 17,
         segmentId: 11,
         position: new Float32Array([1, 2, 3]),
         parentNodeId: 5,
+        revisionToken: "node-after",
       },
       { allowUncachedSegment: false },
     );
-    expect(ensureSegmentVisibleByNumber).toHaveBeenCalledWith(11);
-    expect(pinSegmentByNumber).toHaveBeenCalledWith(11);
+    expect(setCachedNodeRevision).toHaveBeenCalledWith(5, "parent-after");
+    expect(visibleSegmentsState.visibleSegments.has(11n)).toBe(true);
+    expect(selectSegment).toHaveBeenCalledWith(11n, true);
     expect(selectSpatialSkeletonNode).toHaveBeenCalledWith(17, true, {
       segmentId: 11,
       position: new Float32Array([1, 2, 3]),
     });
-    expect(globalPosition.value).toEqual(new Float32Array([1, 2, 3]));
-    expect(localPosition.value).toEqual(new Float32Array([1, 2, 3]));
+    expect(moveViewToSpatialSkeletonNodePosition).toHaveBeenCalledWith(
+      new Float32Array([1, 2, 3]),
+    );
     expect(skeletonLayer.retainOverlaySegment).toHaveBeenCalledWith(11);
     expect(markSpatialSkeletonNodeDataChanged).toHaveBeenCalledWith({
       invalidateFullSkeletonCache: false,
     });
+    expect(getFullSegmentNodes).not.toHaveBeenCalled();
     expect(skeletonLayer.invalidateSourceCaches).not.toHaveBeenCalled();
   });
 
-  it("seeds root add-node commits locally without overlay retention or refetching chunks", () => {
-    const applyCommittedAddNode = (
-      SpatialSkeletonEditModeTool.prototype as any
-    ).applyCommittedAddNode as (
-      this: any,
-      skeletonLayer: any,
-      committedNode: { treenodeId: number; skeletonId: number },
-      parentNodeId: number | undefined,
-      position: Float32Array,
-    ) => void;
+  it("seeds root add-node commits locally without overlay retention or refetching chunks", async () => {
+    suppressStatusMessages();
     const upsertCachedNode = vi.fn();
+    const setCachedNodeRevision = vi.fn();
+    const selectSegment = vi.fn();
     const selectSpatialSkeletonNode = vi.fn();
     const markSpatialSkeletonNodeDataChanged = vi.fn();
-    const ensureSegmentVisibleByNumber = vi.fn();
-    const pinSegmentByNumber = vi.fn();
+    const moveViewToSpatialSkeletonNodePosition = vi.fn();
+    const getFullSegmentNodes = vi.fn();
+    const addNode = vi.fn().mockResolvedValue({
+      treenodeId: 29,
+      skeletonId: 13,
+      revisionToken: "root-after",
+    });
     const skeletonLayer = {
+      source: makeEditableSkeletonSource({ addNode }),
+      getNode: vi.fn(),
       retainOverlaySegment: vi.fn(),
       invalidateSourceCaches: vi.fn(),
     };
-    const globalPosition = { value: new Float32Array([10, 20, 30]) };
-    const localPosition = { value: new Float32Array([40, 50, 60]) };
-    const tool = {
-      ensureSegmentVisibleByNumber,
-      pinSegmentByNumber,
-      moveViewToNodePosition: (
-        SpatialSkeletonEditModeTool.prototype as any
-      ).moveViewToNodePosition,
-      layer: {
-        localPosition,
-        spatialSkeletonState: {
-          upsertCachedNode,
+    const commandHistory = new SpatialSkeletonCommandHistory();
+    const visibleSegmentsState = makeVisibleSegmentsState();
+    const layer = {
+      displayState: {
+        segmentationGroupState: {
+          value: visibleSegmentsState,
         },
-        selectSpatialSkeletonNode,
-        markSpatialSkeletonNodeDataChanged,
-        manager: {
-          root: {
-            globalPosition,
-            selectionState: {
-              pin: {
-                value: false,
-              },
+      },
+      spatialSkeletonState: {
+        commandHistory,
+        getCachedNode: vi.fn(),
+        getCachedSegmentNodes: vi.fn(),
+        getFullSegmentNodes,
+        upsertCachedNode,
+        setCachedNodeRevision,
+      },
+      getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
+      selectSegment,
+      selectSpatialSkeletonNode,
+      markSpatialSkeletonNodeDataChanged,
+      moveViewToSpatialSkeletonNodePosition,
+      manager: {
+        root: {
+          selectionState: {
+            pin: {
+              value: false,
             },
           },
         },
@@ -170,35 +250,38 @@ describe("spatial_skeleton_edit_tool", () => {
     };
     const position = new Float32Array([4, 5, 6]);
 
-    applyCommittedAddNode.call(
-      tool,
-      skeletonLayer,
-      { treenodeId: 29, skeletonId: 13 },
-      undefined,
+    await executeSpatialSkeletonAddNode(layer as any, {
+      skeletonId: 13,
+      parentNodeId: undefined,
       position,
-    );
+    });
 
+    expect(addNode).toHaveBeenCalledWith(13, 4, 5, 6, undefined, undefined);
     expect(upsertCachedNode).toHaveBeenCalledWith(
       {
         nodeId: 29,
         segmentId: 13,
         position: new Float32Array([4, 5, 6]),
         parentNodeId: undefined,
+        revisionToken: "root-after",
       },
       { allowUncachedSegment: true },
     );
-    expect(ensureSegmentVisibleByNumber).toHaveBeenCalledWith(13);
-    expect(pinSegmentByNumber).toHaveBeenCalledWith(13);
+    expect(setCachedNodeRevision).not.toHaveBeenCalled();
+    expect(visibleSegmentsState.visibleSegments.has(13n)).toBe(true);
+    expect(selectSegment).toHaveBeenCalledWith(13n, true);
     expect(selectSpatialSkeletonNode).toHaveBeenCalledWith(29, false, {
       segmentId: 13,
       position: new Float32Array([4, 5, 6]),
     });
-    expect(globalPosition.value).toEqual(new Float32Array([4, 5, 6]));
-    expect(localPosition.value).toEqual(new Float32Array([4, 5, 6]));
+    expect(moveViewToSpatialSkeletonNodePosition).toHaveBeenCalledWith(
+      new Float32Array([4, 5, 6]),
+    );
     expect(skeletonLayer.retainOverlaySegment).not.toHaveBeenCalled();
     expect(markSpatialSkeletonNodeDataChanged).toHaveBeenCalledWith({
       invalidateFullSkeletonCache: false,
     });
+    expect(getFullSegmentNodes).not.toHaveBeenCalled();
     expect(skeletonLayer.invalidateSourceCaches).not.toHaveBeenCalled();
   });
 
@@ -235,9 +318,7 @@ describe("spatial_skeleton_edit_tool", () => {
     expect(getAddNodeBlockedReason.call(tool, { getNode }, 17)).toBe(
       "Node 17 is marked as a true end. Remove the true end label before appending a child node.",
     );
-    expect(getAddNodeBlockedReason.call(tool, { getNode }, 18)).toBe(
-      undefined,
-    );
+    expect(getAddNodeBlockedReason.call(tool, { getNode }, 18)).toBe(undefined);
     expect(getAddNodeBlockedReason.call(tool, { getNode }, undefined)).toBe(
       undefined,
     );
@@ -245,78 +326,101 @@ describe("spatial_skeleton_edit_tool", () => {
     expect(getNode).toHaveBeenCalledWith(18);
   });
 
-  it("suppresses the deleted merge segment while keeping the surviving result selected", () => {
-    const applyCommittedMerge = (SpatialSkeletonEditModeTool.prototype as any)
-      .applyCommittedMerge as (
-      this: any,
-      skeletonLayer: any,
-      firstNode: { nodeId: number; segmentId?: number },
-      secondNode: { nodeId: number; segmentId?: number },
-      result: {
-        resultSkeletonId?: number;
-        deletedSkeletonId?: number;
-        stableAnnotationSwap: boolean;
-      },
-    ) => {
-      resultSkeletonId: number | undefined;
-      deletedSkeletonId: number | undefined;
+  it("suppresses the deleted merge segment while keeping the surviving result selected", async () => {
+    suppressStatusMessages();
+    const firstNode: SpatiallyIndexedSkeletonNodeInfo = {
+      nodeId: 101,
+      segmentId: 11,
+      position: new Float32Array([1, 2, 3]),
+      revisionToken: "first-before",
     };
-    const updateVisibleSkeletonSegments = vi.fn();
+    const secondNode: SpatiallyIndexedSkeletonNodeInfo = {
+      nodeId: 202,
+      segmentId: 17,
+      position: new Float32Array([4, 5, 6]),
+      revisionToken: "second-before",
+    };
+    const mergeSkeletons = vi.fn().mockResolvedValue({
+      resultSkeletonId: 17,
+      deletedSkeletonId: 11,
+      stableAnnotationSwap: true,
+    });
     const invalidateCachedSegments = vi.fn();
+    const getFullSegmentNodes = vi.fn(async () => []);
+    const selectSegment = vi.fn();
     const selectSpatialSkeletonNode = vi.fn();
     const markSpatialSkeletonNodeDataChanged = vi.fn();
     const clearSpatialSkeletonMergeAnchor = vi.fn();
     const deleteSegmentColor = vi.fn();
     const skeletonLayer = {
+      source: makeEditableSkeletonSource({ mergeSkeletons }),
+      getNode: vi.fn((nodeId: number) => {
+        if (nodeId === firstNode.nodeId) return firstNode;
+        if (nodeId === secondNode.nodeId) return secondNode;
+        return undefined;
+      }),
       suppressBrowseSegment: vi.fn(),
       invalidateSourceCaches: vi.fn(),
     };
-    const tool = {
-      updateVisibleSkeletonSegments,
-      layer: {
-        displayState: {
-          segmentStatedColors: {
-            value: {
-              delete: deleteSegmentColor,
-            },
+    const commandHistory = new SpatialSkeletonCommandHistory();
+    const visibleSegmentsState = makeVisibleSegmentsState([11n, 17n]);
+    const layer = {
+      displayState: {
+        segmentationGroupState: {
+          value: visibleSegmentsState,
+        },
+        segmentStatedColors: {
+          value: {
+            delete: deleteSegmentColor,
           },
         },
-        spatialSkeletonState: {
-          invalidateCachedSegments,
-        },
-        selectSpatialSkeletonNode,
-        markSpatialSkeletonNodeDataChanged,
-        clearSpatialSkeletonMergeAnchor,
-        manager: {
-          root: {
-            selectionState: {
-              pin: {
-                value: true,
-              },
+      },
+      spatialSkeletonState: {
+        commandHistory,
+        getCachedNode: vi.fn((nodeId: number) => {
+          if (nodeId === firstNode.nodeId) return firstNode;
+          if (nodeId === secondNode.nodeId) return secondNode;
+          return undefined;
+        }),
+        getCachedSegmentNodes: vi.fn((segmentId: number) => {
+          if (segmentId === firstNode.segmentId) return [firstNode];
+          if (segmentId === secondNode.segmentId) return [secondNode];
+          return undefined;
+        }),
+        getFullSegmentNodes,
+        invalidateCachedSegments,
+      },
+      getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
+      selectSegment,
+      selectSpatialSkeletonNode,
+      markSpatialSkeletonNodeDataChanged,
+      clearSpatialSkeletonMergeAnchor,
+      manager: {
+        root: {
+          selectionState: {
+            pin: {
+              value: true,
             },
           },
         },
       },
     };
 
-    const result = applyCommittedMerge.call(
-      tool,
-      skeletonLayer,
+    await executeSpatialSkeletonMerge(
+      layer as any,
       { nodeId: 101, segmentId: 11 },
       { nodeId: 202, segmentId: 17 },
-      {
-        resultSkeletonId: 17,
-        deletedSkeletonId: 11,
-        stableAnnotationSwap: true,
-      },
     );
 
-    expect(result).toEqual({
-      resultSkeletonId: 17,
-      deletedSkeletonId: 11,
+    expect(mergeSkeletons).toHaveBeenCalledWith(101, 202, {
+      nodes: [
+        { nodeId: 101, revisionToken: "first-before" },
+        { nodeId: 202, revisionToken: "second-before" },
+      ],
     });
-    expect(updateVisibleSkeletonSegments).toHaveBeenCalledWith(17, 11);
     expect(invalidateCachedSegments).toHaveBeenCalledWith([17, 11]);
+    expect(getFullSegmentNodes).toHaveBeenCalledTimes(2);
+    expect(selectSegment).toHaveBeenCalledWith(17n, false);
     expect(selectSpatialSkeletonNode).toHaveBeenCalledWith(101, true, {
       segmentId: 17,
     });
@@ -325,6 +429,8 @@ describe("spatial_skeleton_edit_tool", () => {
     expect(markSpatialSkeletonNodeDataChanged).toHaveBeenCalledWith({
       invalidateFullSkeletonCache: false,
     });
+    expect(visibleSegmentsState.visibleSegments.has(17n)).toBe(true);
+    expect(visibleSegmentsState.visibleSegments.has(11n)).toBe(false);
     expect(skeletonLayer.invalidateSourceCaches).toHaveBeenCalledTimes(1);
     expect(clearSpatialSkeletonMergeAnchor).toHaveBeenCalledTimes(1);
   });
