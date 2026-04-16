@@ -403,27 +403,7 @@ export class SpatialSkeletonEditTab extends Tab {
     };
 
     const moveViewToNodePosition = (position: ArrayLike<number>) => {
-      const globalPosition = layer.manager.root.globalPosition;
-      const nextGlobal = globalPosition.value.slice();
-      const globalRank = Math.min(nextGlobal.length, 3);
-      for (let i = 0; i < globalRank; ++i) {
-        const value = Number(position[i]);
-        if (Number.isFinite(value)) {
-          nextGlobal[i] = value;
-        }
-      }
-      globalPosition.value = nextGlobal;
-
-      const localPosition = layer.localPosition;
-      const nextLocal = localPosition.value.slice();
-      const localRank = Math.min(nextLocal.length, 3);
-      for (let i = 0; i < localRank; ++i) {
-        const value = Number(position[i]);
-        if (Number.isFinite(value)) {
-          nextLocal[i] = value;
-        }
-      }
-      localPosition.value = nextLocal;
+      layer.moveViewToSpatialSkeletonNodePosition(position);
     };
 
     const getNavigationNode = (nodeId: number) => {

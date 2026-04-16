@@ -67,7 +67,6 @@ import {
   MultiscaleMeshLayer,
   MultiscaleMeshSource,
 } from "#src/mesh/frontend.js";
-import type { RenderLayerTransform } from "#src/render_coordinate_transform.js";
 import {
   RenderScaleHistogram,
   numRenderScaleHistogramBins,
@@ -182,6 +181,7 @@ import { Uint64OrderedSet } from "#src/uint64_ordered_set.js";
 import { Uint64Set } from "#src/uint64_set.js";
 import { isAbortError } from "#src/util/abort.js";
 import { gatherUpdate } from "#src/util/array.js";
+import * as matrix from "#src/util/matrix.js";
 import {
   packColor,
   parseRGBColorSpecification,
@@ -1371,30 +1371,27 @@ export class SegmentationUserLayer extends Base {
     };
   }
 
-  private getGlobalSelectionPositionFromLayerPosition(
-    layerPosition: ArrayLike<number> | undefined,
+  private getGlobalSelectionPositionFromModelPosition(
+    modelPosition: ArrayLike<number> | undefined,
   ) {
-    if (layerPosition === undefined) return undefined;
-    const coordinateSpace =
-      this.manager.root.selectionState.coordinateSpace.value;
+    if (modelPosition === undefined) return undefined;
     const transform =
       this.getSpatiallyIndexedSkeletonLayer()?.displayState.transform.value;
-    if (transform !== undefined && transform.error === undefined) {
-      return this.mapLayerPositionToGlobalSelectionPosition(
-        transform,
-        layerPosition,
-      );
-    }
-    if (coordinateSpace.rank !== layerPosition.length) {
+    if (transform === undefined || transform.error !== undefined)
       return undefined;
+    const rank = transform.rank;
+    const paddedModelPosition = new Float32Array(rank);
+    for (let i = 0; i < Math.min(modelPosition.length, rank); ++i) {
+      paddedModelPosition[i] = Number(modelPosition[i]);
     }
-    return new Float32Array(layerPosition);
-  }
-
-  private mapLayerPositionToGlobalSelectionPosition(
-    transform: RenderLayerTransform,
-    layerPosition: ArrayLike<number>,
-  ) {
+    const layerPosition = new Float32Array(rank);
+    matrix.transformPoint(
+      layerPosition,
+      transform.modelToRenderLayerTransform,
+      rank + 1,
+      paddedModelPosition,
+      rank,
+    );
     const result = this.manager.root.globalPosition.value.slice();
     gatherUpdate(
       result,
@@ -1405,27 +1402,23 @@ export class SegmentationUserLayer extends Base {
   }
 
   moveViewToSpatialSkeletonNodePosition(position: ArrayLike<number>) {
-    const globalPosition = this.manager.root.globalPosition;
-    const nextGlobal = globalPosition.value.slice();
-    const globalRank = Math.min(nextGlobal.length, 3);
-    for (let i = 0; i < globalRank; ++i) {
-      const value = Number(position[i]);
-      if (Number.isFinite(value)) {
-        nextGlobal[i] = value;
-      }
+    const transform =
+      this.getSpatiallyIndexedSkeletonLayer()?.displayState.transform.value;
+    if (transform === undefined || transform.error !== undefined) return;
+    const rank = transform.rank;
+    const modelPosition = new Float32Array(rank);
+    for (let i = 0; i < Math.min(position.length, rank); ++i) {
+      modelPosition[i] = Number(position[i]);
     }
-    globalPosition.value = nextGlobal;
-
-    const localPosition = this.localPosition;
-    const nextLocal = localPosition.value.slice();
-    const localRank = Math.min(nextLocal.length, 3);
-    for (let i = 0; i < localRank; ++i) {
-      const value = Number(position[i]);
-      if (Number.isFinite(value)) {
-        nextLocal[i] = value;
-      }
-    }
-    localPosition.value = nextLocal;
+    const layerPosition = new Float32Array(rank);
+    matrix.transformPoint(
+      layerPosition,
+      transform.modelToRenderLayerTransform,
+      rank + 1,
+      modelPosition,
+      rank,
+    );
+    this.setLayerPosition(transform, layerPosition);
   }
 
   selectSpatialSkeletonNode = (
@@ -1447,7 +1440,7 @@ export class SegmentationUserLayer extends Base {
         : Math.round(Number(requestedSegmentId));
     const selectedNodePosition = options.position ?? selectedNodeInfo?.position;
     const selectedGlobalPosition =
-      this.getGlobalSelectionPositionFromLayerPosition(selectedNodePosition);
+      this.getGlobalSelectionPositionFromModelPosition(selectedNodePosition);
     this.captureSpatialSkeletonSelectionState(
       (state) => {
         const segmentId =

@@ -51,6 +51,7 @@ import {
   getSpatialSkeletonMergeBannerMessage,
   getSpatialSkeletonToolPointStatusFields,
 } from "#src/ui/spatial_skeleton_tool_messages.js";
+import { getChunkPositionFromCombinedGlobalLocalPositions } from "#src/render_coordinate_transform.js";
 import type { ToolActivation } from "#src/ui/tool.js";
 import {
   LayerTool,
@@ -60,7 +61,7 @@ import {
 import { removeChildren } from "#src/util/dom.js";
 import type { ActionEvent } from "#src/util/event_action_map.js";
 import { EventActionMap } from "#src/util/event_action_map.js";
-import type { vec3 } from "#src/util/geom.js";
+import { vec3 } from "#src/util/geom.js";
 import { startRelativeMouseDrag } from "#src/util/mouse_drag.js";
 
 export const SPATIAL_SKELETON_EDIT_MODE_TOOL_ID = "spatialSkeletonEditMode";
@@ -326,30 +327,6 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
     );
   }
 
-  protected moveViewToNodePosition(position: ArrayLike<number>) {
-    const globalPosition = this.layer.manager.root.globalPosition;
-    const nextGlobal = globalPosition.value.slice();
-    const globalRank = Math.min(nextGlobal.length, 3);
-    for (let i = 0; i < globalRank; ++i) {
-      const value = Number(position[i]);
-      if (Number.isFinite(value)) {
-        nextGlobal[i] = value;
-      }
-    }
-    globalPosition.value = nextGlobal;
-
-    const localPosition = this.layer.localPosition;
-    const nextLocal = localPosition.value.slice();
-    const localRank = Math.min(nextLocal.length, 3);
-    for (let i = 0; i < localRank; ++i) {
-      const value = Number(position[i]);
-      if (Number.isFinite(value)) {
-        nextLocal[i] = value;
-      }
-    }
-    localPosition.value = nextLocal;
-  }
-
   protected resolvePickedNodeForAction(
     skeletonLayer: SpatiallyIndexedSkeletonLayer,
   ) {
@@ -536,19 +513,56 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
     return "skeleton edit mode";
   }
 
-  private getMousePosition() {
+  private curChunkRank = -1;
+  private tempChunkPosition = new Float32Array(0);
+  private readonly dragModelSpacePosition = vec3.create();
+  private readonly dragGlobalAnchorPosition = vec3.create();
+  private readonly dragGlobalPosition = vec3.create();
+
+  // TODO (skm): really we can't handle a rank change right now
+  // and heavily assume rank 3. This is likely mostly fine
+  // but need to test a little more how it works if embedded in
+  // higher dim spaces or alongside images with a t dim / channel dim
+  // can also possibly remove this and just set tempChunkPosition 
+  // to be vec3 instead of Float32Array
+  // will verify and clean up
+  private handleRankChanged(rank: number) {
+    if (rank === this.curChunkRank) return;
+    this.curChunkRank = rank;
+    this.tempChunkPosition = new Float32Array(rank);
+  }
+
+  private globalToSkeletonCoordinates(
+    globalPosition: Float32Array,
+    skeletonLayer: SpatiallyIndexedSkeletonLayer,
+  ): Float32Array | undefined {
+    const chunkTransform = skeletonLayer.chunkTransform.value;
+    if (chunkTransform.error !== undefined) return undefined;
+    this.handleRankChanged(chunkTransform.modelTransform.unpaddedRank);
+    if (
+      !getChunkPositionFromCombinedGlobalLocalPositions(
+        this.tempChunkPosition,
+        globalPosition,
+        skeletonLayer.localPosition.value,
+        chunkTransform.layerRank,
+        chunkTransform.combinedGlobalLocalToChunkTransform,
+      )
+    ) {
+      return undefined;
+    }
+    return this.tempChunkPosition;
+  }
+
+  private getMousePositionInSkeletonCoordinates(
+    skeletonLayer: SpatiallyIndexedSkeletonLayer,
+  ): Float32Array | undefined {
     if (!this.mouseState.updateUnconditionally() || !this.mouseState.active) {
       return undefined;
     }
-    const pos = this.mouseState.unsnappedPosition;
-    if (pos.length < 3) return undefined;
-    const x = Number(pos[0]);
-    const y = Number(pos[1]);
-    const z = Number(pos[2]);
-    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
-      return undefined;
-    }
-    return new Float32Array([x, y, z]);
+    return this.globalToSkeletonCoordinates(
+      this.mouseState.unsnappedPosition,
+      skeletonLayer,
+    );
   }
 
   private getSelectedParentNodeForAdd(
@@ -772,13 +786,15 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
             return;
           }
         }
-        const clickStartPosition = this.getMousePosition();
+        const clickStartPosition =
+          this.getMousePositionInSkeletonCoordinates(skeletonLayer);
         if (clickStartPosition === undefined) {
           StatusMessage.showTemporaryMessage(
             "Unable to resolve add-node position for this click.",
           );
           return;
         }
+        const clickStartPositionCopy = new Float32Array(clickStartPosition);
         let dragDistanceSquared = 0;
         startRelativeMouseDrag(
           event.detail,
@@ -788,6 +804,8 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
           (_finishEvent) => {
             const thresholdSquared =
               DRAG_START_DISTANCE_PX * DRAG_START_DISTANCE_PX;
+            // Block adding nodes if the mouse release position
+            // is too far from the click position
             if (dragDistanceSquared > thresholdSquared) {
               setReadyStatus();
               return;
@@ -811,14 +829,15 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
               selectedParentNode === undefined
                 ? 0
                 : selectedParentNode.segmentId;
-            const clickPosition =
-              this.getMousePosition() ?? new Float32Array(clickStartPosition);
+            const clickPositionInModelSpace =
+              this.getMousePositionInSkeletonCoordinates(skeletonLayer) ??
+              clickStartPositionCopy;
             void (async () => {
               try {
                 await executeSpatialSkeletonAddNode(layer, {
                   skeletonId: targetSkeletonId,
                   parentNodeId: selectedParentNodeId,
-                  position: clickPosition,
+                  position: new Float32Array(clickPositionInModelSpace),
                 });
               } catch (error) {
                 showSpatialSkeletonActionError("create node", error);
@@ -865,17 +884,8 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
           Number.isFinite(pickedPosition[0]) &&
           Number.isFinite(pickedPosition[1]) &&
           Number.isFinite(pickedPosition[2]);
-        const nodeInfo = hasPickedPosition
-          ? {
-              nodeId: pickedNode.nodeId,
-              segmentId: pickedNode.segmentId ?? 0,
-              position: new Float32Array([
-                Number(pickedPosition[0]),
-                Number(pickedPosition[1]),
-                Number(pickedPosition[2]),
-              ]),
-            }
-          : skeletonLayer.getNode(pickedNode.nodeId);
+        if (!hasPickedPosition) return;
+        const nodeInfo = skeletonLayer.getNode(pickedNode.nodeId);
         if (nodeInfo === undefined) {
           return;
         }
@@ -887,15 +897,13 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
           return;
         }
         let moved = false;
-        const lastPosition = new Float32Array(
-          nodeInfo.position,
-        ) as unknown as vec3;
-        const dragAnchorPosition = new Float32Array(
-          nodeInfo.position,
-        ) as unknown as vec3;
-        const panelTranslatedPosition = new Float32Array(
-          nodeInfo.position,
-        ) as unknown as vec3;
+        this.dragModelSpacePosition.set(nodeInfo.position);
+        vec3.set(
+          this.dragGlobalAnchorPosition,
+          Number(pickedPosition[0]),
+          Number(pickedPosition[1]),
+          Number(pickedPosition[2]),
+        );
         let totalDeltaX = 0;
         let totalDeltaY = 0;
         let dragDistanceSquared = 0;
@@ -913,32 +921,32 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
             if (!dragActive) return;
             totalDeltaX += deltaX;
             totalDeltaY += deltaY;
-            panelTranslatedPosition[0] = dragAnchorPosition[0];
-            panelTranslatedPosition[1] = dragAnchorPosition[1];
-            panelTranslatedPosition[2] = dragAnchorPosition[2];
             dragPanel.translateDataPointByViewportPixels(
-              panelTranslatedPosition,
-              dragAnchorPosition,
+              this.dragGlobalPosition,
+              this.dragGlobalAnchorPosition,
               totalDeltaX,
               totalDeltaY,
             );
             if (
-              !Number.isFinite(panelTranslatedPosition[0]) ||
-              !Number.isFinite(panelTranslatedPosition[1]) ||
-              !Number.isFinite(panelTranslatedPosition[2])
+              !Number.isFinite(this.dragGlobalPosition[0]) ||
+              !Number.isFinite(this.dragGlobalPosition[1]) ||
+              !Number.isFinite(this.dragGlobalPosition[2])
             ) {
               return;
             }
+            const modelPosition = this.globalToSkeletonCoordinates(
+              this.dragGlobalPosition,
+              skeletonLayer,
+            );
+            if (modelPosition === undefined) return;
             const previewChanged =
               layer.spatialSkeletonState.setPendingNodePosition(
                 pickedNode.nodeId,
-                panelTranslatedPosition,
-              );
+                modelPosition,
+            );
             if (!previewChanged) return;
             moved = true;
-            lastPosition[0] = panelTranslatedPosition[0];
-            lastPosition[1] = panelTranslatedPosition[1];
-            lastPosition[2] = panelTranslatedPosition[2];
+            this.dragModelSpacePosition.set(modelPosition);
           },
           (_finishEvent) => {
             if (!dragActive) {
@@ -949,7 +957,7 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
             if (moved) {
               void executeSpatialSkeletonMoveNode(layer, {
                 node: nodeInfo,
-                nextPosition: new Float32Array(lastPosition),
+                nextPosition: new Float32Array(this.dragModelSpacePosition),
               })
                 .then(() => {
                   layer.spatialSkeletonState.clearPendingNodePosition(
