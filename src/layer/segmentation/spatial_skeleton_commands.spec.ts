@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  executeSpatialSkeletonMoveNode,
   executeSpatialSkeletonSplit,
   undoSpatialSkeletonCommand,
 } from "#src/layer/segmentation/spatial_skeleton_commands.js";
@@ -43,15 +44,97 @@ function setSegmentNodes(
   }
 }
 
+function suppressStatusMessages() {
+  const fakeStatusMessage = {
+    dispose() {},
+  } as unknown as StatusMessage;
+  vi.spyOn(StatusMessage, "showTemporaryMessage").mockImplementation(
+    (_message: string, _closeAfter?: number) => fakeStatusMessage,
+  );
+}
+
 describe("spatial_skeleton_commands", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
+  it("commits move-node commands using model-space positions", async () => {
+    suppressStatusMessages();
+
+    const node: SpatiallyIndexedSkeletonNodeInfo = {
+      nodeId: 17,
+      segmentId: 23,
+      position: new Float32Array([1, 2, 3]),
+      revisionToken: "before",
+    };
+    const nextPositionInModelSpace = new Float32Array([7, 8, 9]);
+    const moveNode = vi.fn().mockResolvedValue({
+      revisionToken: "after",
+    });
+    const skeletonLayer = {
+      source: {
+        getSkeleton: vi.fn(),
+        addNode: vi.fn(),
+        insertNode: vi.fn(),
+        moveNode,
+        deleteNode: vi.fn(),
+        rerootSkeleton: vi.fn(),
+        updateDescription: vi.fn(),
+        setTrueEnd: vi.fn(),
+        removeTrueEnd: vi.fn(),
+        updateRadius: vi.fn(),
+        updateConfidence: vi.fn(),
+        mergeSkeletons: vi.fn(),
+        splitSkeleton: vi.fn(),
+      },
+      getNode: vi.fn((nodeId: number) => (nodeId === node.nodeId ? node : undefined)),
+      retainOverlaySegment: vi.fn(),
+      invalidateSourceCaches: vi.fn(),
+    };
+    const commandHistory = new SpatialSkeletonCommandHistory();
+    const moveCachedNode = vi.fn();
+    const setCachedNodeRevision = vi.fn();
+    const markSpatialSkeletonNodeDataChanged = vi.fn();
+    const layer = {
+      spatialSkeletonState: {
+        commandHistory,
+        getCachedNode: vi.fn((nodeId: number) => (nodeId === node.nodeId ? node : undefined)),
+        getCachedSegmentNodes: vi.fn((segmentId: number) =>
+          segmentId === node.segmentId ? [node] : undefined,
+        ),
+        moveCachedNode,
+        setCachedNodeRevision,
+      },
+      getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
+      markSpatialSkeletonNodeDataChanged,
+    };
+
+    await executeSpatialSkeletonMoveNode(layer as any, {
+      node,
+      nextPositionInModelSpace,
+    });
+
+    expect(moveNode).toHaveBeenCalledWith(17, 7, 8, 9, {
+      node: {
+        nodeId: 17,
+        parentNodeId: undefined,
+        revisionToken: "before",
+      },
+    });
+    expect(skeletonLayer.retainOverlaySegment).toHaveBeenCalledWith(23);
+    expect(moveCachedNode).toHaveBeenCalledWith(
+      17,
+      new Float32Array([7, 8, 9]),
+    );
+    expect(setCachedNodeRevision).toHaveBeenCalledWith(17, "after");
+    expect(markSpatialSkeletonNodeDataChanged).toHaveBeenCalledWith({
+      invalidateFullSkeletonCache: false,
+    });
+    expect(skeletonLayer.invalidateSourceCaches).not.toHaveBeenCalled();
+  });
+
   it("suppresses and clears the deleted segment when undoing a split", async () => {
-    vi.spyOn(StatusMessage, "showTemporaryMessage").mockImplementation((() => ({
-      dispose() {},
-    })) as typeof StatusMessage.showTemporaryMessage);
+    suppressStatusMessages();
 
     const originalSegmentId = 2973964;
     const splitSegmentId = 2973946;
@@ -250,9 +333,7 @@ describe("spatial_skeleton_commands", () => {
   });
 
   it("uses the original skeleton side as the join winner when undoing a split", async () => {
-    vi.spyOn(StatusMessage, "showTemporaryMessage").mockImplementation((() => ({
-      dispose() {},
-    })) as typeof StatusMessage.showTemporaryMessage);
+    suppressStatusMessages();
 
     const originalSegmentId = 2973964;
     const splitSegmentId = 2973946;

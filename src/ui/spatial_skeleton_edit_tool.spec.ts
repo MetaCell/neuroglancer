@@ -60,9 +60,12 @@ function makeEditableSkeletonSource(overrides: Record<string, unknown> = {}) {
 }
 
 function suppressStatusMessages() {
-  vi.spyOn(StatusMessage, "showTemporaryMessage").mockImplementation((() => ({
+  const fakeStatusMessage = {
     dispose() {},
-  })) as typeof StatusMessage.showTemporaryMessage);
+  } as unknown as StatusMessage;
+  vi.spyOn(StatusMessage, "showTemporaryMessage").mockImplementation(
+    (_message: string, _closeAfter?: number) => fakeStatusMessage,
+  );
 }
 
 describe("spatial_skeleton_edit_tool", () => {
@@ -159,7 +162,7 @@ describe("spatial_skeleton_edit_tool", () => {
     await executeSpatialSkeletonAddNode(layer as any, {
       skeletonId: 11,
       parentNodeId: 5,
-      position,
+      positionInModelSpace: position,
     });
 
     expect(addNode).toHaveBeenCalledWith(11, 1, 2, 3, 5, {
@@ -253,7 +256,7 @@ describe("spatial_skeleton_edit_tool", () => {
     await executeSpatialSkeletonAddNode(layer as any, {
       skeletonId: 13,
       parentNodeId: undefined,
-      position,
+      positionInModelSpace: position,
     });
 
     expect(addNode).toHaveBeenCalledWith(13, 4, 5, 6, undefined, undefined);

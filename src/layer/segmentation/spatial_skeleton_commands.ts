@@ -376,7 +376,7 @@ function applyAddNodeToCache(
   skeletonLayer: SpatiallyIndexedSkeletonLayer,
   committedNode: SpatiallyIndexedSkeletonAddNodeResult,
   parentNodeId: number | undefined,
-  position: Float32Array,
+  positionInModelSpace: Float32Array,
   options: {
     focusSelection: boolean;
     moveView: boolean;
@@ -386,7 +386,7 @@ function applyAddNodeToCache(
   const newNode: CachedNodeTarget = {
     nodeId: committedNode.treenodeId,
     segmentId: committedNode.skeletonId,
-    position: new Float32Array(position),
+    position: new Float32Array(positionInModelSpace),
     parentNodeId,
     ...(committedNode.revisionToken === undefined
       ? {}
@@ -552,7 +552,7 @@ class AddNodeCommand implements SpatialSkeletonCommand {
     private layer: SegmentationUserLayer,
     private stableParentNodeId: number | undefined,
     private targetSkeletonId: number,
-    private position: Float32Array,
+    private positionInModelSpace: Float32Array,
   ) {}
 
   private async addNode(
@@ -588,9 +588,9 @@ class AddNodeCommand implements SpatialSkeletonCommand {
     }
     const result = await skeletonSource.addNode(
       resolvedSkeletonId,
-      Number(this.position[0]),
-      Number(this.position[1]),
-      Number(this.position[2]),
+      Number(this.positionInModelSpace[0]),
+      Number(this.positionInModelSpace[1]),
+      Number(this.positionInModelSpace[2]),
       currentParentNodeId,
       resolvedEditContext,
     );
@@ -615,7 +615,7 @@ class AddNodeCommand implements SpatialSkeletonCommand {
       skeletonLayer,
       result,
       currentParentNodeId,
-      this.position,
+      this.positionInModelSpace,
       {
         focusSelection: true,
         moveView: options.moveView,
@@ -682,11 +682,14 @@ class MoveNodeCommand implements SpatialSkeletonCommand {
     private layer: SegmentationUserLayer,
     private stableNodeId: number,
     private stableSegmentId: number | undefined,
-    private beforePosition: Float32Array,
-    private afterPosition: Float32Array,
+    private beforePositionInModelSpace: Float32Array,
+    private afterPositionInModelSpace: Float32Array,
   ) {}
 
-  private async moveTo(position: Float32Array, statusPrefix: string) {
+  private async moveTo(
+    positionInModelSpace: Float32Array,
+    statusPrefix: string,
+  ) {
     const { node, skeletonLayer, skeletonSource } =
       await getResolvedNodeForEdit(
         this.layer,
@@ -695,13 +698,16 @@ class MoveNodeCommand implements SpatialSkeletonCommand {
       );
     const result = await skeletonSource.moveNode(
       node.nodeId,
-      Number(position[0]),
-      Number(position[1]),
-      Number(position[2]),
+      Number(positionInModelSpace[0]),
+      Number(positionInModelSpace[1]),
+      Number(positionInModelSpace[2]),
       buildSpatiallyIndexedSkeletonNodeEditContext(node),
     );
     skeletonLayer.retainOverlaySegment(node.segmentId);
-    this.layer.spatialSkeletonState.moveCachedNode(node.nodeId, position);
+    this.layer.spatialSkeletonState.moveCachedNode(
+      node.nodeId,
+      positionInModelSpace,
+    );
     if (result.revisionToken !== undefined) {
       this.layer.spatialSkeletonState.setCachedNodeRevision(
         node.nodeId,
@@ -712,20 +718,20 @@ class MoveNodeCommand implements SpatialSkeletonCommand {
       invalidateFullSkeletonCache: false,
     });
     StatusMessage.showTemporaryMessage(
-      `${statusPrefix} node ${node.nodeId} to (${Math.round(position[0])}, ${Math.round(position[1])}, ${Math.round(position[2])}).`,
+      `${statusPrefix} node ${node.nodeId} to (${Math.round(positionInModelSpace[0])}, ${Math.round(positionInModelSpace[1])}, ${Math.round(positionInModelSpace[2])}).`,
     );
   }
 
   execute() {
-    return this.moveTo(this.afterPosition, "Moved");
+    return this.moveTo(this.afterPositionInModelSpace, "Moved");
   }
 
   undo() {
-    return this.moveTo(this.beforePosition, "Undid move of");
+    return this.moveTo(this.beforePositionInModelSpace, "Undid move of");
   }
 
   redo() {
-    return this.moveTo(this.afterPosition, "Redid move of");
+    return this.moveTo(this.afterPositionInModelSpace, "Redid move of");
   }
 }
 
@@ -1508,14 +1514,15 @@ export function executeSpatialSkeletonAddNode(
   options: {
     skeletonId: number;
     parentNodeId: number | undefined;
-    position: Float32Array;
+    // Callers must convert viewer/global coordinates to skeleton model space.
+    positionInModelSpace: Float32Array;
   },
 ) {
   const command = new AddNodeCommand(
     layer,
     normalizeStableNodeId(layer, options.parentNodeId),
     normalizeStableSegmentId(layer, options.skeletonId) ?? options.skeletonId,
-    new Float32Array(options.position),
+    new Float32Array(options.positionInModelSpace),
   );
   return layer.spatialSkeletonState.commandHistory.execute(command);
 }
@@ -1524,7 +1531,8 @@ export function executeSpatialSkeletonMoveNode(
   layer: SegmentationUserLayer,
   options: {
     node: SpatiallyIndexedSkeletonNodeInfo;
-    nextPosition: Float32Array;
+    // Callers must convert viewer/global coordinates to skeleton model space.
+    nextPositionInModelSpace: Float32Array;
   },
 ) {
   const command = new MoveNodeCommand(
@@ -1532,7 +1540,7 @@ export function executeSpatialSkeletonMoveNode(
     normalizeStableNodeId(layer, options.node.nodeId)!,
     normalizeStableSegmentId(layer, options.node.segmentId),
     new Float32Array(options.node.position),
-    new Float32Array(options.nextPosition),
+    new Float32Array(options.nextPositionInModelSpace),
   );
   return layer.spatialSkeletonState.commandHistory.execute(command);
 }

@@ -794,7 +794,6 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
           );
           return;
         }
-        const clickStartPositionCopy = new Float32Array(clickStartPosition);
         let dragDistanceSquared = 0;
         startRelativeMouseDrag(
           event.detail,
@@ -830,14 +829,16 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
                 ? 0
                 : selectedParentNode.segmentId;
             const clickPositionInModelSpace =
-              this.getMousePositionInSkeletonCoordinates(skeletonLayer) ??
-              clickStartPositionCopy;
+              this.getMousePositionInSkeletonCoordinates(skeletonLayer);
+            if (clickPositionInModelSpace === undefined) return;
             void (async () => {
               try {
                 await executeSpatialSkeletonAddNode(layer, {
                   skeletonId: targetSkeletonId,
                   parentNodeId: selectedParentNodeId,
-                  position: new Float32Array(clickPositionInModelSpace),
+                  positionInModelSpace: new Float32Array(
+                    clickPositionInModelSpace,
+                  ),
                 });
               } catch (error) {
                 showSpatialSkeletonActionError("create node", error);
@@ -957,7 +958,9 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
             if (moved) {
               void executeSpatialSkeletonMoveNode(layer, {
                 node: nodeInfo,
-                nextPosition: new Float32Array(this.dragModelSpacePosition),
+                nextPositionInModelSpace: new Float32Array(
+                  this.dragModelSpacePosition,
+                ),
               })
                 .then(() => {
                   layer.spatialSkeletonState.clearPendingNodePosition(
