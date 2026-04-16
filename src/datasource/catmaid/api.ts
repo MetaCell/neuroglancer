@@ -73,6 +73,13 @@ export interface CatmaidSplitSkeletonResult {
   newSkeletonId: number | undefined;
 }
 
+export class CatmaidNotFoundError extends Error {
+  constructor(detail?: string) {
+    super(detail ?? "CATMAID resource not found.");
+    this.name = "CatmaidNotFoundError";
+  }
+}
+
 export class CatmaidStateValidationError extends Error {
   constructor(detail?: string) {
     super(
@@ -128,6 +135,15 @@ function getCatmaidErrorMessage(payload: unknown): string | undefined {
   }
   const value = payload as { error?: unknown };
   return typeof value.error === "string" ? value.error.trim() : undefined;
+}
+
+function isCatmaidNotFoundPayload(payload: unknown): boolean {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload))
+    return false;
+  const value = payload as { detail?: unknown };
+  return (
+    typeof value.detail === "string" && value.detail.includes("doesn't exist")
+  );
 }
 
 function isCatmaidStateMatchingErrorPayload(payload: unknown): boolean {
@@ -762,6 +778,10 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
     if (isCatmaidStateMatchingErrorPayload(payload)) {
       return new CatmaidStateValidationError(getCatmaidErrorMessage(payload));
     }
+    if (error.status === 404 && isCatmaidNotFoundPayload(payload)) {
+      const detail = (payload as { detail: string }).detail;
+      return new CatmaidNotFoundError(detail);
+    }
     return error;
   }
 
@@ -943,10 +963,19 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
     skeletonId: number,
     options: { signal?: AbortSignal } = {},
   ): Promise<SpatiallyIndexedSkeletonNode[]> {
-    const data = await this.fetch(
-      `skeletons/${skeletonId}/compact-detail?with_tags=true&with_history=true`,
-      { signal: options.signal },
-    );
+    let data: any;
+    try {
+      data = await this.fetch(
+        `skeletons/${skeletonId}/compact-detail?with_tags=true&with_history=true`,
+        { signal: options.signal },
+      );
+    } catch (error) {
+      if (error instanceof CatmaidNotFoundError) {
+        return [];
+      } else {
+        throw error;
+      }
+    }
     const rawNodes = Array.isArray(data?.[0]) ? data[0] : [];
     const labelsByNodeId = parseCatmaidNodeLabels(data?.[2]);
     const liveNodes = new Map<number, any[]>();
