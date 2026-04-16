@@ -75,6 +75,10 @@ export function buildSpatiallyIndexedSkeletonNeighborhoodEditContext(
   node: SpatiallyIndexedSkeletonNodeInfo,
   segmentNodes: readonly SpatiallyIndexedSkeletonNodeInfo[],
 ): SpatiallyIndexedSkeletonEditContext {
+  // This intentionally derives parent/child state from the cached inspected
+  // segment on demand. If large inspected segments make edit preparation
+  // measurably slow, consider maintaining an adjacency index in
+  // SpatialSkeletonState instead of rescanning here.
   const parentNode = getSpatiallyIndexedSkeletonNodeParent(segmentNodes, node);
   const childNodes = getSpatiallyIndexedSkeletonDirectChildren(
     segmentNodes,

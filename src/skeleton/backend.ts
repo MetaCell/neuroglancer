@@ -14,20 +14,31 @@
  * limitations under the License.
  */
 
+import { debounce } from "lodash-es";
+import type { ChunkManager } from "#src/chunk_manager/backend.js";
 import {
   Chunk,
-  ChunkManager,
   ChunkRenderLayerBackend,
   ChunkSource,
   withChunkManager,
 } from "#src/chunk_manager/backend.js";
-import { ChunkPriorityTier, ChunkState } from "#src/chunk_manager/base.js";
+import { ChunkState } from "#src/chunk_manager/base.js";
 import { decodeVertexPositionsAndIndices } from "#src/mesh/backend.js";
+import {
+  type DisplayDimensionRenderInfo,
+  validateDisplayDimensionRenderInfoProperty,
+} from "#src/navigation_state.js";
+import type {
+  RenderLayerBackendAttachment,
+  RenderedViewBackend,
+} from "#src/render_layer_backend.js";
+import { RenderLayerBackend } from "#src/render_layer_backend.js";
 import { withSegmentationLayerBackendState } from "#src/segmentation_display_state/backend.js";
 import {
   forEachVisibleSegment,
   getObjectKey,
 } from "#src/segmentation_display_state/base.js";
+import type { SharedWatchableValue } from "#src/shared_watchable_value.js";
 import {
   SKELETON_LAYER_RPC_ID,
   SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_RPC_ID,
@@ -35,9 +46,30 @@ import {
   SPATIALLY_INDEXED_SKELETON_SLICEVIEW_RENDER_LAYER_RPC_ID,
 } from "#src/skeleton/base.js";
 import {
+  freeSkeletonChunkSystemMemory,
+  getVertexAttributeBytes,
+  serializeSkeletonChunkData,
+  type SkeletonChunkData,
+} from "#src/skeleton/skeleton_chunk_serialization.js";
+import {
   getSpatiallyIndexedSkeletonGridIndex,
   selectSpatiallyIndexedSkeletonEntriesByGrid,
 } from "#src/skeleton/source_selection.js";
+import {
+  BASE_PRIORITY,
+  deserializeTransformedSources,
+  SCALE_PRIORITY_MULTIPLIER,
+  SliceViewChunk,
+  SliceViewChunkSourceBackend,
+  SliceViewRenderLayerBackend,
+} from "#src/sliceview/backend.js";
+import {
+  forEachVisibleVolumetricChunk,
+  type SliceViewBase,
+  type SliceViewChunkSpecification,
+  type SliceViewProjectionParameters,
+  type TransformedSource,
+} from "#src/sliceview/base.js";
 import type { TypedNumberArray } from "#src/util/array.js";
 import type { Endianness } from "#src/util/endian.js";
 import { vec3 } from "#src/util/geom.js";
@@ -47,41 +79,10 @@ import {
   withSharedVisibility,
 } from "#src/visibility_priority/backend.js";
 
-import {
-  BASE_PRIORITY,
-  SliceViewChunk,
-  SliceViewChunkSourceBackend,
-  SliceViewRenderLayerBackend,
-} from "#src/sliceview/backend.js";
-import {
-  SliceViewChunkSpecification,
-  forEachVisibleVolumetricChunk,
-  type SliceViewBase,
-  type SliceViewProjectionParameters,
-  type TransformedSource,
-} from "#src/sliceview/base.js";
-import { SCALE_PRIORITY_MULTIPLIER } from "#src/sliceview/backend.js";
-import type { RenderLayerBackendAttachment } from "#src/render_layer_backend.js";
-import { RenderLayerBackend } from "#src/render_layer_backend.js";
-import type { RenderedViewBackend } from "#src/render_layer_backend.js";
-import type { SharedWatchableValue } from "#src/shared_watchable_value.js";
-import {
-  type DisplayDimensionRenderInfo,
-  validateDisplayDimensionRenderInfoProperty,
-} from "#src/navigation_state.js";
-import {
-  freeSkeletonChunkSystemMemory,
-  getVertexAttributeBytes,
-  serializeSkeletonChunkData,
-  type SkeletonChunkData,
-} from "#src/skeleton/skeleton_chunk_serialization.js";
 import type { RPC } from "#src/worker_rpc.js";
 import { registerRPC, registerSharedObject } from "#src/worker_rpc.js";
-import { deserializeTransformedSources } from "#src/sliceview/backend.js";
-import { debounce } from "lodash-es";
-
-
-export interface SpatiallyIndexedSkeletonChunkSpecification extends SliceViewChunkSpecification {
+export interface SpatiallyIndexedSkeletonChunkSpecification
+  extends SliceViewChunkSpecification {
   chunkLayout: any;
 }
 
@@ -291,7 +292,10 @@ export function decodeSkeletonVertexPositionsAndIndices(
   chunk.indices = meshData.indices as Uint32Array;
 }
 
-export class SpatiallyIndexedSkeletonChunk extends SliceViewChunk implements SkeletonChunkData {
+export class SpatiallyIndexedSkeletonChunk
+  extends SliceViewChunk
+  implements SkeletonChunkData
+{
   vertexPositions: Float32Array | null = null;
   vertexAttributes: TypedNumberArray[] | null = null;
   indices: Uint32Array | null = null;
@@ -317,7 +321,10 @@ export class SpatiallyIndexedSkeletonChunk extends SliceViewChunk implements Ske
   }
 }
 
-export class SpatiallyIndexedSkeletonSourceBackend extends SliceViewChunkSourceBackend<SpatiallyIndexedSkeletonChunkSpecification, SpatiallyIndexedSkeletonChunk> {
+export class SpatiallyIndexedSkeletonSourceBackend extends SliceViewChunkSourceBackend<
+  SpatiallyIndexedSkeletonChunkSpecification,
+  SpatiallyIndexedSkeletonChunk
+> {
   chunkConstructor = SpatiallyIndexedSkeletonChunk;
   currentLod: number = 0;
   currentRequestGeneration = -1;
@@ -328,7 +335,9 @@ export class SpatiallyIndexedSkeletonSourceBackend extends SliceViewChunkSourceB
     const key = `${chunkGridPosition.join()}:${lodValue}`;
     let chunk = this.chunks.get(key);
     if (chunk === undefined) {
-      chunk = this.getNewChunk_(this.chunkConstructor) as SpatiallyIndexedSkeletonChunk;
+      chunk = this.getNewChunk_(
+        this.chunkConstructor,
+      ) as SpatiallyIndexedSkeletonChunk;
       chunk.initializeVolumeChunk(key, chunkGridPosition);
       chunk.lod = lodValue;
       this.addChunk(chunk);
@@ -344,7 +353,10 @@ export class SpatiallyIndexedSkeletonSourceBackend extends SliceViewChunkSourceB
 
 interface SpatiallyIndexedSkeletonRenderLayerAttachmentState {
   displayDimensionRenderInfo: DisplayDimensionRenderInfo;
-  transformedSources: TransformedSource<SpatiallyIndexedSkeletonRenderLayerBackend, SpatiallyIndexedSkeletonSourceBackend>[][];
+  transformedSources: TransformedSource<
+    SpatiallyIndexedSkeletonRenderLayerBackend,
+    SpatiallyIndexedSkeletonSourceBackend
+  >[][];
 }
 
 @registerSharedObject(SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_RPC_ID)
@@ -374,16 +386,13 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
     this.registerDisposer(
       this.skeletonGridLevel.changed.add(scheduleUpdateChunkPriorities),
     );
-    
+
     // Debounce LOD changes to avoid making requests for every slider value
-    const debouncedLodUpdate = debounce(
-      () => {
-        scheduleUpdateChunkPriorities();
-      },
-      SPATIALLY_INDEXED_SKELETON_LOD_DEBOUNCE_MS,
-    );
+    const debouncedLodUpdate = debounce(() => {
+      scheduleUpdateChunkPriorities();
+    }, SPATIALLY_INDEXED_SKELETON_LOD_DEBOUNCE_MS);
     this.registerDisposer(() => debouncedLodUpdate.cancel());
-    
+
     this.registerDisposer(
       this.skeletonLod.changed.add(() => {
         this.pendingLodCleanup = true;
@@ -400,10 +409,9 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
         if (!this.pendingLodCleanup) return;
         const sources = new Set<SpatiallyIndexedSkeletonSourceBackend>();
         for (const attachment of this.attachments.values()) {
-          const attachmentState =
-            attachment.state as
-              | SpatiallyIndexedSkeletonRenderLayerAttachmentState
-              | undefined;
+          const attachmentState = attachment.state as
+            | SpatiallyIndexedSkeletonRenderLayerAttachmentState
+            | undefined;
           if (attachmentState === undefined) continue;
           for (const scales of attachmentState.transformedSources) {
             for (const tsource of scales) {
@@ -524,7 +532,8 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
         }
         if (
           scales.every(
-            (scale) => getSpatiallyIndexedSkeletonGridIndex(scale) !== undefined,
+            (scale) =>
+              getSpatiallyIndexedSkeletonGridIndex(scale) !== undefined,
           )
         ) {
           return selectSpatiallyIndexedSkeletonEntriesByGrid(
@@ -664,14 +673,11 @@ export class SpatiallyIndexedSkeletonSliceViewRenderLayerBackend extends SliceVi
       this.skeletonGridLevel.changed.add(scheduleUpdateChunkPriorities),
     );
     // Debounce LOD changes to avoid making requests for every slider value.
-    const debouncedLodUpdate = debounce(
-      () => {
-        scheduleUpdateChunkPriorities();
-      },
-      SPATIALLY_INDEXED_SKELETON_LOD_DEBOUNCE_MS,
-    );
+    const debouncedLodUpdate = debounce(() => {
+      scheduleUpdateChunkPriorities();
+    }, SPATIALLY_INDEXED_SKELETON_LOD_DEBOUNCE_MS);
     this.registerDisposer(() => debouncedLodUpdate.cancel());
-    
+
     this.registerDisposer(
       this.skeletonLod.changed.add(() => {
         this.pendingLodCleanup = true;

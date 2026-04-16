@@ -760,9 +760,7 @@ export class PerspectivePanel extends RenderedDataPanel {
       mousePosition = mouseState.position = new Float32Array(rank);
     }
     if (unsnappedPosition.length !== rank) {
-      unsnappedPosition = mouseState.unsnappedPosition = new Float32Array(
-        rank,
-      );
+      unsnappedPosition = mouseState.unsnappedPosition = new Float32Array(rank);
     }
     mousePosition.set(voxelCoordinates);
     mouseState.coordinateSpace = this.navigationState.coordinateSpace.value;

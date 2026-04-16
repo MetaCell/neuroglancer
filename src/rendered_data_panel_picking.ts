@@ -99,9 +99,8 @@ export function clearOutOfBoundsPickData(
       const x = startX + relativeX;
       const y = startY + relativeY;
       if (x < 0 || y < 0 || x >= viewportWidth || y >= viewportHeight) {
-        buffer[
-          baseOffset + (relativeY * pickDiameter + relativeX) * stride
-        ] = 0;
+        buffer[baseOffset + (relativeY * pickDiameter + relativeX) * stride] =
+          0;
       }
     }
   }
@@ -125,15 +124,18 @@ export function resolveNearestPanelPickSample(
     stride?: number;
   } = {},
 ): ResolvedPanelPickSample | undefined {
-  const { depthBaseOffset, pickBaseOffset = depthBaseOffset ?? 0, stride = 4 } =
-    options;
+  const {
+    depthBaseOffset,
+    pickBaseOffset = depthBaseOffset ?? 0,
+    stride = 4,
+  } = options;
   const pickDiameter = getPickDiameter(pickRadius);
   for (let i = 0; i < pickOffsetSequence.length; ++i) {
     const offset = pickOffsetSequence[i];
     const depthValue =
       depthBaseOffset === undefined
         ? undefined
-        : data[depthBaseOffset + stride * offset] ?? 0;
+        : (data[depthBaseOffset + stride * offset] ?? 0);
     if (depthBaseOffset !== undefined && depthValue === 0) {
       continue;
     }

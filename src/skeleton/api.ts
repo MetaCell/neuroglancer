@@ -47,6 +47,11 @@ export interface SpatiallyIndexedSkeletonNodeRevisionUpdate {
   revisionToken: SpatiallyIndexedSkeletonRevisionToken;
 }
 
+export interface SpatiallyIndexedSkeletonInsertNodeResult
+  extends SpatiallyIndexedSkeletonAddNodeResult {
+  childRevisionUpdates?: readonly SpatiallyIndexedSkeletonNodeRevisionUpdate[];
+}
+
 export interface SpatiallyIndexedSkeletonNodeRevisionResult {
   revisionToken?: SpatiallyIndexedSkeletonRevisionToken;
 }
@@ -117,7 +122,6 @@ export interface SpatiallyIndexedSkeletonSource {
     options?: {
       cacheProvider?: string;
       signal?: AbortSignal;
-      includeLabels?: boolean;
     },
   ): Promise<SpatiallyIndexedSkeletonNode[]>;
 }
@@ -133,6 +137,15 @@ export interface EditableSpatiallyIndexedSkeletonSource
     parentId?: number,
     editContext?: SpatiallyIndexedSkeletonEditContext,
   ): Promise<SpatiallyIndexedSkeletonAddNodeResult>;
+  insertNode(
+    skeletonId: number,
+    x: number,
+    y: number,
+    z: number,
+    parentId: number,
+    childNodeIds: readonly number[],
+    editContext?: SpatiallyIndexedSkeletonEditContext,
+  ): Promise<SpatiallyIndexedSkeletonInsertNodeResult>;
   moveNode(
     nodeId: number,
     x: number,
@@ -156,7 +169,9 @@ export interface EditableSpatiallyIndexedSkeletonSource
     description: string,
     options: SpatiallyIndexedSkeletonDescriptionUpdateOptions,
   ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult>;
-  setTrueEnd(nodeId: number): Promise<SpatiallyIndexedSkeletonNodeRevisionResult>;
+  setTrueEnd(
+    nodeId: number,
+  ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult>;
   removeTrueEnd(
     nodeId: number,
   ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult>;

@@ -14,60 +14,61 @@
  * limitations under the License.
  */
 
+import { makeDataBoundsBoundingBoxAnnotationSet } from "#src/annotation/index.js";
+import type { ChunkManager } from "#src/chunk_manager/frontend.js";
+import { WithParameters } from "#src/chunk_manager/frontend.js";
 import {
   makeCoordinateSpace,
   makeIdentityTransform,
 } from "#src/coordinate_transform.js";
-import { makeDataBoundsBoundingBoxAnnotationSet } from "#src/annotation/index.js";
+import { WithCredentialsProvider } from "#src/credentials_provider/chunk_source_frontend.js";
+import type { CredentialsProvider } from "#src/credentials_provider/index.js";
+import type { CatmaidToken } from "#src/datasource/catmaid/api.js";
 import {
-  SpatiallyIndexedSkeletonSource,
-  SkeletonSource,
-  MultiscaleSpatiallyIndexedSkeletonSource,
-} from "#src/skeleton/frontend.js";
+  CatmaidClient,
+  CATMAID_CONFIDENCE_VALUES,
+  credentialsKey,
+} from "#src/datasource/catmaid/api.js";
+import {
+  CatmaidSkeletonSourceParameters,
+  CatmaidCompleteSkeletonSourceParameters,
+  CatmaidDataSourceParameters,
+} from "#src/datasource/catmaid/base.js";
+import type {
+  DataSource,
+  DataSourceProvider,
+  GetDataSourceOptions,
+} from "#src/datasource/index.js";
+import type { InlineSegmentPropertyMap } from "#src/segmentation_display_state/property_map.js";
+import {
+  SegmentPropertyMap,
+  normalizeInlineSegmentPropertyMap,
+} from "#src/segmentation_display_state/property_map.js";
 import type {
   EditableSpatiallyIndexedSkeletonSource,
   SpatiallyIndexedSkeletonAddNodeResult,
   SpatiallyIndexedSkeletonDeleteNodeResult,
-  SpatiallyIndexedSkeletonEditContext,
   SpatiallyIndexedSkeletonDescriptionUpdateOptions,
+  SpatiallyIndexedSkeletonEditContext,
+  SpatiallyIndexedSkeletonInsertNodeResult,
   SpatiallyIndexedSkeletonMergeResult,
   SpatiallyIndexedSkeletonNode,
   SpatiallyIndexedSkeletonNodeRevisionResult,
   SpatiallyIndexedSkeletonPropertyEditingOptions,
   SpatiallyIndexedSkeletonSplitResult,
 } from "#src/skeleton/api.js";
-import { WithParameters } from "#src/chunk_manager/frontend.js";
 import {
-  DataSource,
-  DataSourceProvider,
-  GetDataSourceOptions,
-} from "#src/datasource/index.js";
-import {
-  CatmaidSkeletonSourceParameters,
-  CatmaidCompleteSkeletonSourceParameters,
-  CatmaidDataSourceParameters,
-} from "#src/datasource/catmaid/base.js";
-import { mat4, vec3 } from "#src/util/geom.js";
-import {
-  CatmaidClient,
-  CATMAID_CONFIDENCE_VALUES,
-  CatmaidToken,
-  credentialsKey,
-} from "#src/datasource/catmaid/api.js";
-import { DataType } from "#src/util/data_type.js";
-import { ChunkLayout } from "#src/sliceview/chunk_layout.js";
+  SpatiallyIndexedSkeletonSource,
+  SkeletonSource,
+  MultiscaleSpatiallyIndexedSkeletonSource,
+} from "#src/skeleton/frontend.js";
 import type { SliceViewSourceOptions } from "#src/sliceview/base.js";
 import { makeSliceViewChunkSpecification } from "#src/sliceview/base.js";
-import {
-  InlineSegmentPropertyMap,
-  SegmentPropertyMap,
-  normalizeInlineSegmentPropertyMap,
-} from "#src/segmentation_display_state/property_map.js";
-import { CredentialsProvider } from "#src/credentials_provider/index.js";
-import { WithCredentialsProvider } from "#src/credentials_provider/chunk_source_frontend.js";
-import { SliceViewSingleResolutionSource } from "#src/sliceview/frontend.js";
-import { ChunkManager } from "#src/chunk_manager/frontend.js";
-import { Borrowed } from "#src/util/disposable.js";
+import { ChunkLayout } from "#src/sliceview/chunk_layout.js";
+import type { SliceViewSingleResolutionSource } from "#src/sliceview/frontend.js";
+import { DataType } from "#src/util/data_type.js";
+import type { Borrowed } from "#src/util/disposable.js";
+import { mat4, vec3 } from "#src/util/geom.js";
 import "#src/datasource/catmaid/register_credentials_provider.js";
 
 const METERS_PER_NANOMETER = 1e-9;
@@ -147,7 +148,6 @@ export class CatmaidSpatiallyIndexedSkeletonSource
     options?: {
       cacheProvider?: string;
       signal?: AbortSignal;
-      includeLabels?: boolean;
     },
   ): Promise<SpatiallyIndexedSkeletonNode[]> {
     return this.client.fetchNodes(boundingBox, lod, options);
@@ -162,6 +162,26 @@ export class CatmaidSpatiallyIndexedSkeletonSource
     editContext?: SpatiallyIndexedSkeletonEditContext,
   ): Promise<SpatiallyIndexedSkeletonAddNodeResult> {
     return this.client.addNode(skeletonId, x, y, z, parentId, editContext);
+  }
+
+  insertNode(
+    skeletonId: number,
+    x: number,
+    y: number,
+    z: number,
+    parentId: number,
+    childNodeIds: readonly number[],
+    editContext?: SpatiallyIndexedSkeletonEditContext,
+  ): Promise<SpatiallyIndexedSkeletonInsertNodeResult> {
+    return this.client.insertNode(
+      skeletonId,
+      x,
+      y,
+      z,
+      parentId,
+      childNodeIds,
+      editContext,
+    );
   }
 
   moveNode(
@@ -203,7 +223,9 @@ export class CatmaidSpatiallyIndexedSkeletonSource
     return this.client.updateDescription(nodeId, description, options);
   }
 
-  setTrueEnd(nodeId: number): Promise<SpatiallyIndexedSkeletonNodeRevisionResult> {
+  setTrueEnd(
+    nodeId: number,
+  ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult> {
     return this.client.setTrueEnd(nodeId);
   }
 

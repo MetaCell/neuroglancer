@@ -21,20 +21,17 @@ import {
   type TextureFormat,
 } from "#src/webgl/texture_access.js";
 
-function getOneDimensionalTextureRowCapacity(
-  gl: GL,
-  numElements: number,
-) {
+function getOneDimensionalTextureRowCapacity(gl: GL, numElements: number) {
   const minX = Math.ceil(numElements / gl.maxTextureSize);
   return 1 << Math.ceil(Math.log2(Math.max(minX, 1)));
 }
 
 /**
  * Uploads vertex attribute data to GPU as 1D textures.
- * 
+ *
  * This function takes contiguous packed vertex attribute data and creates separate
  * GPU textures for each attribute type (e.g., positions, segment IDs, etc.).
- * 
+ *
  * @param gl - WebGL rendering context
  * @param vertexAttributes - Packed byte array containing all vertex attributes
  * @param vertexAttributeOffsets - Byte offsets marking the start of each attribute in the packed array
@@ -49,7 +46,7 @@ export function uploadVertexAttributesToGPU(
 ): (WebGLTexture | null)[] {
   const vertexAttributeTextures: (WebGLTexture | null)[] = [];
   const numAttributes = vertexAttributeOffsets.length;
-  
+
   for (let i = 0; i < numAttributes; ++i) {
     const texture = gl.createTexture();
     gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, texture);
@@ -66,7 +63,7 @@ export function uploadVertexAttributesToGPU(
     vertexAttributeTextures[i] = texture;
   }
   gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, null);
-  
+
   return vertexAttributeTextures;
 }
 
@@ -90,10 +87,7 @@ export function updateOneDimensionalTextureElement(
       data.byteLength / arrayConstructor.BYTES_PER_ELEMENT,
     );
   }
-  const elementsPerRow = getOneDimensionalTextureRowCapacity(
-    gl,
-    numElements,
-  );
+  const elementsPerRow = getOneDimensionalTextureRowCapacity(gl, numElements);
   const x = (elementIndex % elementsPerRow) * texelsPerElement;
   const y = Math.floor(elementIndex / elementsPerRow);
   gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, texture);

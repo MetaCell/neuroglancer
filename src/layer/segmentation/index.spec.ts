@@ -16,9 +16,9 @@ if (!("WebGL2RenderingContext" in globalThis)) {
   });
 }
 
-const {
-  SegmentationUserLayer,
-} = await import("#src/layer/segmentation/index.js");
+const { SegmentationUserLayer } = await import(
+  "#src/layer/segmentation/index.js"
+);
 
 const {
   PerspectiveViewSpatiallyIndexedSkeletonLayer,
@@ -27,9 +27,9 @@ const {
   MultiscaleSliceViewSpatiallyIndexedSkeletonLayer,
 } = await import("#src/skeleton/frontend.js");
 
-const {
-  SegmentSelectionState,
-} = await import("#src/segmentation_display_state/frontend.js");
+const { SegmentSelectionState } = await import(
+  "#src/segmentation_display_state/frontend.js"
+);
 
 describe("layer/segmentation spatial skeleton chunk stats", () => {
   it("tracks combined chunk load state from the loading render layers only", () => {
@@ -52,9 +52,7 @@ describe("layer/segmentation spatial skeleton chunk stats", () => {
       },
     );
     const multiscaleSliceLayer = Object.assign(
-      Object.create(
-        MultiscaleSliceViewSpatiallyIndexedSkeletonLayer.prototype,
-      ),
+      Object.create(MultiscaleSliceViewSpatiallyIndexedSkeletonLayer.prototype),
       {
         layerChunkProgressInfo: {
           numVisibleChunksNeeded: 6,
@@ -72,28 +70,31 @@ describe("layer/segmentation spatial skeleton chunk stats", () => {
       },
     );
 
-    const layer = Object.assign(Object.create(SegmentationUserLayer.prototype), {
-      renderLayers: [
-        perspectiveLayer,
-        sliceLayer,
-        multiscaleSliceLayer,
-        slicePanelLayer,
-      ],
-      spatialSkeletonVisibleChunksNeeded: new WatchableValue(0),
-      spatialSkeletonVisibleChunksAvailable: new WatchableValue(0),
-      spatialSkeletonVisibleChunksLoaded: new WatchableValue(false),
-      displayState: {
-        spatialSkeletonGridChunkStats2d: new WatchableValue({
-          presentCount: 0,
-          totalCount: 0,
-        }),
-        spatialSkeletonGridChunkStats3d: new WatchableValue({
-          presentCount: 0,
-          totalCount: 0,
-        }),
+    const layer = Object.assign(
+      Object.create(SegmentationUserLayer.prototype),
+      {
+        renderLayers: [
+          perspectiveLayer,
+          sliceLayer,
+          multiscaleSliceLayer,
+          slicePanelLayer,
+        ],
+        spatialSkeletonVisibleChunksNeeded: new WatchableValue(0),
+        spatialSkeletonVisibleChunksAvailable: new WatchableValue(0),
+        spatialSkeletonVisibleChunksLoaded: new WatchableValue(false),
+        displayState: {
+          spatialSkeletonGridChunkStats2d: new WatchableValue({
+            presentCount: 0,
+            totalCount: 0,
+          }),
+          spatialSkeletonGridChunkStats3d: new WatchableValue({
+            presentCount: 0,
+            totalCount: 0,
+          }),
+        },
+        updateSpatialSkeletonSourceState: vi.fn(),
       },
-      updateSpatialSkeletonSourceState: vi.fn(),
-    });
+    );
 
     layer.updateSpatialSkeletonChunkLoadState();
 
@@ -105,23 +106,26 @@ describe("layer/segmentation spatial skeleton chunk stats", () => {
 
 describe("layer/segmentation spatial skeleton action gating", () => {
   it("does not require max lod for skeleton actions", () => {
-    const layer = Object.assign(Object.create(SegmentationUserLayer.prototype), {
-      spatialSkeletonSourceCapabilities: new WatchableValue({
-        inspectSkeletons: true,
-        addNodes: true,
-        moveNodes: true,
-        deleteNodes: true,
-        rerootSkeletons: true,
-        editNodeLabels: true,
-        editNodeProperties: true,
-        mergeSkeletons: true,
-        splitSkeletons: true,
-      }),
-      spatialSkeletonEditModeAllowed: new WatchableValue(false),
-      spatialSkeletonVisibleChunksLoaded: new WatchableValue(true),
-      spatialSkeletonVisibleChunksNeeded: new WatchableValue(0),
-      spatialSkeletonVisibleChunksAvailable: new WatchableValue(0),
-    });
+    const layer = Object.assign(
+      Object.create(SegmentationUserLayer.prototype),
+      {
+        spatialSkeletonSourceCapabilities: new WatchableValue({
+          inspectSkeletons: true,
+          addNodes: true,
+          moveNodes: true,
+          deleteNodes: true,
+          rerootSkeletons: true,
+          editNodeLabels: true,
+          editNodeProperties: true,
+          mergeSkeletons: true,
+          splitSkeletons: true,
+        }),
+        spatialSkeletonEditModeAllowed: new WatchableValue(false),
+        spatialSkeletonVisibleChunksLoaded: new WatchableValue(true),
+        spatialSkeletonVisibleChunksNeeded: new WatchableValue(0),
+        spatialSkeletonVisibleChunksAvailable: new WatchableValue(0),
+      },
+    );
 
     expect(
       layer.getSpatialSkeletonActionsDisabledReason("mergeSkeletons"),
@@ -137,22 +141,25 @@ describe("layer/segmentation spatial skeleton action gating", () => {
   });
 
   it("still reports visible chunk loading when requested", () => {
-    const layer = Object.assign(Object.create(SegmentationUserLayer.prototype), {
-      spatialSkeletonSourceCapabilities: new WatchableValue({
-        inspectSkeletons: true,
-        addNodes: false,
-        moveNodes: false,
-        deleteNodes: false,
-        rerootSkeletons: false,
-        editNodeLabels: false,
-        editNodeProperties: false,
-        mergeSkeletons: false,
-        splitSkeletons: true,
-      }),
-      spatialSkeletonVisibleChunksLoaded: new WatchableValue(false),
-      spatialSkeletonVisibleChunksNeeded: new WatchableValue(3),
-      spatialSkeletonVisibleChunksAvailable: new WatchableValue(1),
-    });
+    const layer = Object.assign(
+      Object.create(SegmentationUserLayer.prototype),
+      {
+        spatialSkeletonSourceCapabilities: new WatchableValue({
+          inspectSkeletons: true,
+          addNodes: false,
+          moveNodes: false,
+          deleteNodes: false,
+          rerootSkeletons: false,
+          editNodeLabels: false,
+          editNodeProperties: false,
+          mergeSkeletons: false,
+          splitSkeletons: true,
+        }),
+        spatialSkeletonVisibleChunksLoaded: new WatchableValue(false),
+        spatialSkeletonVisibleChunksNeeded: new WatchableValue(3),
+        spatialSkeletonVisibleChunksAvailable: new WatchableValue(1),
+      },
+    );
 
     expect(
       layer.getSpatialSkeletonActionsDisabledReason("splitSkeletons", {
@@ -162,22 +169,25 @@ describe("layer/segmentation spatial skeleton action gating", () => {
   });
 
   it("reports missing reroot support explicitly", () => {
-    const layer = Object.assign(Object.create(SegmentationUserLayer.prototype), {
-      spatialSkeletonSourceCapabilities: new WatchableValue({
-        inspectSkeletons: true,
-        addNodes: true,
-        moveNodes: true,
-        deleteNodes: true,
-        rerootSkeletons: false,
-        editNodeLabels: true,
-        editNodeProperties: true,
-        mergeSkeletons: true,
-        splitSkeletons: true,
-      }),
-      spatialSkeletonVisibleChunksLoaded: new WatchableValue(true),
-      spatialSkeletonVisibleChunksNeeded: new WatchableValue(0),
-      spatialSkeletonVisibleChunksAvailable: new WatchableValue(0),
-    });
+    const layer = Object.assign(
+      Object.create(SegmentationUserLayer.prototype),
+      {
+        spatialSkeletonSourceCapabilities: new WatchableValue({
+          inspectSkeletons: true,
+          addNodes: true,
+          moveNodes: true,
+          deleteNodes: true,
+          rerootSkeletons: false,
+          editNodeLabels: true,
+          editNodeProperties: true,
+          mergeSkeletons: true,
+          splitSkeletons: true,
+        }),
+        spatialSkeletonVisibleChunksLoaded: new WatchableValue(true),
+        spatialSkeletonVisibleChunksNeeded: new WatchableValue(0),
+        spatialSkeletonVisibleChunksAvailable: new WatchableValue(0),
+      },
+    );
 
     expect(
       layer.getSpatialSkeletonActionsDisabledReason("rerootSkeletons", {
@@ -230,11 +240,14 @@ describe("layer/segmentation spatial skeleton node navigation helpers", () => {
     const selectSpatialSkeletonNode = vi.fn();
     const moveViewToSpatialSkeletonNodePosition = vi.fn();
     const clearSpatialSkeletonNodeSelection = vi.fn();
-    const layer = Object.assign(Object.create(SegmentationUserLayer.prototype), {
-      selectSpatialSkeletonNode,
-      moveViewToSpatialSkeletonNodePosition,
-      clearSpatialSkeletonNodeSelection,
-    });
+    const layer = Object.assign(
+      Object.create(SegmentationUserLayer.prototype),
+      {
+        selectSpatialSkeletonNode,
+        moveViewToSpatialSkeletonNodePosition,
+        clearSpatialSkeletonNodeSelection,
+      },
+    );
     Object.defineProperty(layer, "manager", {
       value: {
         root: {

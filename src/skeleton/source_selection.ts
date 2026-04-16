@@ -58,16 +58,16 @@ function getSpatiallyIndexedSkeletonParameterHolder(
 export function getSpatiallyIndexedSkeletonGridIndex(
   value: SpatiallyIndexedSkeletonParameterAccess,
 ) {
-  const gridIndex = getSpatiallyIndexedSkeletonParameterHolder(value)
-    ?.parameters?.gridIndex;
+  const gridIndex =
+    getSpatiallyIndexedSkeletonParameterHolder(value)?.parameters?.gridIndex;
   return typeof gridIndex === "number" ? gridIndex : undefined;
 }
 
 export function getSpatiallyIndexedSkeletonSourceView(
   value: SpatiallyIndexedSkeletonParameterAccess,
 ) {
-  const sourceView = getSpatiallyIndexedSkeletonParameterHolder(value)
-    ?.parameters?.view;
+  const sourceView =
+    getSpatiallyIndexedSkeletonParameterHolder(value)?.parameters?.view;
   return typeof sourceView === "string" ? sourceView : undefined;
 }
 

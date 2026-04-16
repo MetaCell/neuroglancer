@@ -19,6 +19,20 @@ function makeNode(
   };
 }
 
+async function getSyncShownSpatialSkeletonSegmentIds() {
+  const webglContextStub = new Proxy(
+    {},
+    {
+      get: () => 0,
+    },
+  );
+  (
+    globalThis as { WebGL2RenderingContext?: unknown }
+  ).WebGL2RenderingContext ??= webglContextStub;
+  return (await import("#src/ui/spatial_skeleton_edit_tab.js"))
+    .syncShownSpatialSkeletonSegmentIds;
+}
+
 describe("spatial skeleton edit tab render state", () => {
   it("shows only directly matching nodes for text filtering", () => {
     const graph = buildSpatiallyIndexedSkeletonNavigationGraph([
@@ -146,5 +160,32 @@ describe("spatial skeleton edit tab render state", () => {
     expect(state.displayedNodeCount).toBe(1);
     expect(state.branchCount).toBe(1);
     expect(state.rows.map((row) => row.node.nodeId)).toEqual([31]);
+  });
+});
+
+describe("spatial skeleton edit tab state", () => {
+  it("preserves hidden segments across data refreshes while showing new segments", async () => {
+    const syncShownSpatialSkeletonSegmentIds =
+      await getSyncShownSpatialSkeletonSegmentIds();
+    const shownSegmentIds = new Set([1, 3]);
+
+    syncShownSpatialSkeletonSegmentIds(
+      shownSegmentIds,
+      [1, 2, 3, 4],
+      [1, 2, 3],
+    );
+
+    expect([...shownSegmentIds]).toEqual([1, 3, 4]);
+  });
+
+  it("re-adds a segment when it becomes active again after leaving the view", async () => {
+    const syncShownSpatialSkeletonSegmentIds =
+      await getSyncShownSpatialSkeletonSegmentIds();
+    const shownSegmentIds = new Set([1]);
+
+    syncShownSpatialSkeletonSegmentIds(shownSegmentIds, [1], [1, 2]);
+    syncShownSpatialSkeletonSegmentIds(shownSegmentIds, [1, 2], [1]);
+
+    expect([...shownSegmentIds]).toEqual([1, 2]);
   });
 });
