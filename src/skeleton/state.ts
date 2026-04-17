@@ -486,9 +486,12 @@ export class SpatialSkeletonState extends RefCounted {
     }
     if (nextSegmentNodes.length === 0) {
       if (previousSegmentNodes === undefined) {
-        return false;
+        // No previous entry, assume this is an empty segment
+        this.fullSegmentNodeCache.set(segmentId, []);
+      } else {
+        // Previous entry exists, this is a segment being cleared
+        this.fullSegmentNodeCache.delete(segmentId);
       }
-      this.fullSegmentNodeCache.delete(segmentId);
       return true;
     }
     const normalizedSegmentNodes = [...nextSegmentNodes];
@@ -500,7 +503,16 @@ export class SpatialSkeletonState extends RefCounted {
   }
 
   private deleteCachedSegment(segmentId: number) {
-    return this.replaceCachedSegmentNodes(segmentId, []);
+    const previousSegmentNodes = this.fullSegmentNodeCache.get(segmentId);
+    if (previousSegmentNodes === undefined) return false;
+    for (const node of previousSegmentNodes) {
+      if (this.cachedNodesById.get(node.nodeId) === node) {
+        this.cachedNodesById.delete(node.nodeId);
+      }
+    }
+
+    this.fullSegmentNodeCache.delete(segmentId);
+    return true;
   }
 
   private abortPendingFullSegmentNodeFetch(segmentId: number, message: string) {
@@ -934,14 +946,7 @@ export class SpatialSkeletonState extends RefCounted {
         this.pendingFullSegmentNodeFetches.get(segmentId)?.promise ===
           pendingFetch.promise
       ) {
-        if (normalizedNodes.length > 0) {
-          this.replaceCachedSegmentNodes(segmentId, normalizedNodes);
-        } else {
-          // Explicitly cache the empty result so that non-existent skeletons
-          // don't trigger repeated fetches. replaceCachedSegmentNodes treats
-          // an empty array as a delete, so we write directly here.
-          this.fullSegmentNodeCache.set(segmentId, []);
-        }
+        this.replaceCachedSegmentNodes(segmentId, normalizedNodes);
         this.markNodeDataChanged({ invalidateFullSkeletonCache: false });
       }
       return normalizedNodes;
