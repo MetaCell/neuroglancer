@@ -14,18 +14,24 @@
  * limitations under the License.
  */
 
+import type { TypedArray } from "#src/util/array.js";
 import type { GL } from "#src/webgl/context.js";
 import {
   setOneDimensionalTextureData,
   type TextureFormat,
 } from "#src/webgl/texture_access.js";
 
+function getOneDimensionalTextureRowCapacity(gl: GL, numElements: number) {
+  const minX = Math.ceil(numElements / gl.maxTextureSize);
+  return 1 << Math.ceil(Math.log2(Math.max(minX, 1)));
+}
+
 /**
  * Uploads vertex attribute data to GPU as 1D textures.
- * 
+ *
  * This function takes contiguous packed vertex attribute data and creates separate
  * GPU textures for each attribute type (e.g., positions, segment IDs, etc.).
- * 
+ *
  * @param gl - WebGL rendering context
  * @param vertexAttributes - Packed byte array containing all vertex attributes
  * @param vertexAttributeOffsets - Byte offsets marking the start of each attribute in the packed array
@@ -40,7 +46,7 @@ export function uploadVertexAttributesToGPU(
 ): (WebGLTexture | null)[] {
   const vertexAttributeTextures: (WebGLTexture | null)[] = [];
   const numAttributes = vertexAttributeOffsets.length;
-  
+
   for (let i = 0; i < numAttributes; ++i) {
     const texture = gl.createTexture();
     gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, texture);
@@ -57,6 +63,45 @@ export function uploadVertexAttributesToGPU(
     vertexAttributeTextures[i] = texture;
   }
   gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, null);
-  
+
   return vertexAttributeTextures;
+}
+
+export function updateOneDimensionalTextureElement(
+  gl: GL,
+  texture: WebGLTexture,
+  format: TextureFormat,
+  numElements: number,
+  elementIndex: number,
+  data: TypedArray,
+) {
+  if (elementIndex < 0 || elementIndex >= numElements) {
+    return;
+  }
+  const { arrayConstructor, texelsPerElement, textureFormat, texelType } =
+    format;
+  if (data.constructor !== arrayConstructor) {
+    data = new arrayConstructor(
+      data.buffer,
+      data.byteOffset,
+      data.byteLength / arrayConstructor.BYTES_PER_ELEMENT,
+    );
+  }
+  const elementsPerRow = getOneDimensionalTextureRowCapacity(gl, numElements);
+  const x = (elementIndex % elementsPerRow) * texelsPerElement;
+  const y = Math.floor(elementIndex / elementsPerRow);
+  gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, texture);
+  gl.pixelStorei(WebGL2RenderingContext.UNPACK_ALIGNMENT, 1);
+  gl.texSubImage2D(
+    WebGL2RenderingContext.TEXTURE_2D,
+    0,
+    x,
+    y,
+    texelsPerElement,
+    1,
+    textureFormat,
+    texelType,
+    data,
+  );
+  gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, null);
 }

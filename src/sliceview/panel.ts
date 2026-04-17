@@ -24,11 +24,11 @@ import type {
   RenderedDataViewerState,
 } from "#src/rendered_data_panel.js";
 import {
-  clearOutOfBoundsPickData,
-  pickDiameter,
-  pickOffsetSequence,
-  pickRadius,
+  getCenteredPickWindowCoordinate,
+  getPickDiameter,
+  getPickOffsetSequence,
   RenderedDataPanel,
+  resolveNearestPanelPickSample,
 } from "#src/rendered_data_panel.js";
 import type { SliceView } from "#src/sliceview/frontend.js";
 import { SliceViewRenderHelper } from "#src/sliceview/frontend.js";
@@ -449,8 +449,9 @@ export class SliceViewPanel extends RenderedDataPanel {
     this.sliceView.projectionParameters.setViewport(this.renderViewport);
   }
 
-  issuePickRequest(glWindowX: number, glWindowY: number) {
+  issuePickRequest(glWindowX: number, glWindowY: number, pickRadius: number) {
     const { offscreenFramebuffer } = this;
+    const pickDiameter = getPickDiameter(pickRadius);
     offscreenFramebuffer.readPixelFloat32IntoBuffer(
       OffscreenTextures.PICK,
       glWindowX - pickRadius,
@@ -466,32 +467,32 @@ export class SliceViewPanel extends RenderedDataPanel {
     glWindowY: number,
     data: Float32Array,
     pickingData: FramePickingData,
+    pickRadius: number,
   ) {
     const { mouseState } = this.viewer;
     mouseState.pickedRenderLayer = null;
-    clearOutOfBoundsPickData(
-      data,
-      0,
-      4,
-      glWindowX,
-      glWindowY,
-      pickingData.viewportWidth,
-      pickingData.viewportHeight,
-    );
+    const pickOffsetSequence = getPickOffsetSequence(pickRadius);
     const { viewportWidth, viewportHeight } = pickingData;
-    const numOffsets = pickOffsetSequence.length;
     const { value: voxelCoordinates } = this.navigationState.position;
     const rank = voxelCoordinates.length;
     const displayDimensions = this.navigationState.pose.displayDimensions.value;
     const { displayRank, displayDimensionIndices } = displayDimensions;
 
     const setPosition = (
-      xOffset: number,
-      yOffset: number,
+      relativeX: number,
+      relativeY: number,
       position: Float32Array,
     ) => {
-      const x = glWindowX + xOffset;
-      const y = glWindowY + yOffset;
+      const x = getCenteredPickWindowCoordinate(
+        glWindowX,
+        relativeX,
+        pickRadius,
+      );
+      const y = getCenteredPickWindowCoordinate(
+        glWindowY,
+        relativeY,
+        pickRadius,
+      );
       tempVec3[0] = (2.0 * x) / viewportWidth - 1.0;
       tempVec3[1] = (2.0 * y) / viewportHeight - 1.0;
       tempVec3[2] = 0;
@@ -509,7 +510,7 @@ export class SliceViewPanel extends RenderedDataPanel {
     mouseState.coordinateSpace = this.navigationState.coordinateSpace.value;
     mouseState.displayDimensions = displayDimensions;
 
-    setPosition(0, 0, unsnappedPosition);
+    setPosition(pickRadius, pickRadius, unsnappedPosition);
 
     const setStateFromRelative = (
       relativeX: number,
@@ -520,21 +521,21 @@ export class SliceViewPanel extends RenderedDataPanel {
       if (mousePosition.length !== rank) {
         mousePosition = mouseState.position = new Float32Array(rank);
       }
-      setPosition(
-        relativeX - pickRadius,
-        relativeY - pickRadius,
-        mousePosition,
-      );
+      setPosition(relativeX, relativeY, mousePosition);
       this.pickIDs.setMouseState(mouseState, pickId);
       mouseState.setActive(true);
     };
-    for (let i = 0; i < numOffsets; ++i) {
-      const offset = pickOffsetSequence[i];
-      const pickId = data[4 * i];
-      if (pickId === 0) continue;
-      const relativeX = offset % pickDiameter;
-      const relativeY = (offset - relativeX) / pickDiameter;
-      setStateFromRelative(relativeX, relativeY, pickId);
+    const resolvedPick = resolveNearestPanelPickSample(
+      data,
+      pickOffsetSequence,
+      pickRadius,
+    );
+    if (resolvedPick !== undefined) {
+      setStateFromRelative(
+        resolvedPick.relativeX,
+        resolvedPick.relativeY,
+        resolvedPick.pickValue,
+      );
       return;
     }
     setStateFromRelative(pickRadius, pickRadius, 0);

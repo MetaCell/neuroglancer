@@ -74,6 +74,10 @@ export interface SpatialSkeletonGridRenderScaleWidgetOptions {
   target: TrackableValueInterface<number>;
   relative: WatchableValueInterface<boolean>;
   pixelSize: WatchableValueInterface<number>;
+  chunkStats?: WatchableValueInterface<{
+    presentCount: number;
+    totalCount: number;
+  }>;
   relativeLabel?: string;
   relativeTooltip?: string;
 }
@@ -108,8 +112,7 @@ export class RenderScaleWidget extends RefCounted {
     }
     this.hoverTarget.value = undefined;
     const logScaleMax = Math.round(
-      this.logScaleOrigin +
-        numRenderScaleHistogramBins * this.logScaleBinSize,
+      this.logScaleOrigin + numRenderScaleHistogramBins * this.logScaleBinSize,
     );
     const targetValue = clampToInterval(
       [2 ** this.logScaleOrigin, 2 ** (logScaleMax - 1)],
@@ -208,6 +211,16 @@ export class RenderScaleWidget extends RefCounted {
   reset() {
     this.hoverTarget.value = undefined;
     this.target.reset();
+  }
+
+  protected getLegendChunkCounts(
+    totalPresent: number,
+    totalNotPresent: number,
+  ) {
+    return {
+      presentCount: totalPresent,
+      totalCount: totalPresent + totalNotPresent,
+    };
   }
 
   updateView() {
@@ -327,10 +340,10 @@ export class RenderScaleWidget extends RefCounted {
     } else {
       this.legendSpatialScale.textContent = "";
     }
+    const { presentCount: legendPresentCount, totalCount: legendTotalCount } =
+      this.getLegendChunkCounts(totalPresent, totalNotPresent);
 
-    this.legendChunks.textContent = `${totalPresent}/${
-      totalPresent + totalNotPresent
-    }`;
+    this.legendChunks.textContent = `${legendPresentCount}/${legendTotalCount}`;
 
     const spatialScaleColors = sortedSpatialScales.map((spatialScale) => {
       const saturation = spatialScale === hoverSpatialScale ? 0.5 : 1;
@@ -414,10 +427,13 @@ export class VolumeRenderingRenderScaleWidget extends RenderScaleWidget {
   }
 }
 
-
 export class SpatialSkeletonGridRenderScaleWidget extends RenderScaleWidget {
   protected unitOfTarget = "nm";
   private relative?: WatchableValueInterface<boolean>;
+  private chunkStats?: WatchableValueInterface<{
+    presentCount: number;
+    totalCount: number;
+  }>;
 
   private syncScaleConfig() {
     this.logScaleOrigin = this.histogram.logScaleOrigin;
@@ -430,6 +446,10 @@ export class SpatialSkeletonGridRenderScaleWidget extends RenderScaleWidget {
     options: {
       relative?: WatchableValueInterface<boolean>;
       pixelSize?: WatchableValueInterface<number>;
+      chunkStats?: WatchableValueInterface<{
+        presentCount: number;
+        totalCount: number;
+      }>;
       relativeLabel?: string;
       relativeTooltip?: string;
     } = {},
@@ -438,6 +458,12 @@ export class SpatialSkeletonGridRenderScaleWidget extends RenderScaleWidget {
     this.element.classList.add("neuroglancer-render-scale-widget-grid");
     this.syncScaleConfig();
     this.relative = options.relative;
+    this.chunkStats = options.chunkStats;
+    if (options.chunkStats !== undefined) {
+      this.registerDisposer(
+        options.chunkStats.changed.add(() => this.updateView()),
+      );
+    }
     if (options.relative !== undefined) {
       const relativeTooltip =
         options.relativeTooltip ??
@@ -478,6 +504,17 @@ export class SpatialSkeletonGridRenderScaleWidget extends RenderScaleWidget {
   adjustViaWheel(event: WheelEvent) {
     this.syncScaleConfig();
     super.adjustViaWheel(event);
+  }
+
+  protected getLegendChunkCounts(
+    totalPresent: number,
+    totalNotPresent: number,
+  ) {
+    const chunkStats = this.chunkStats?.value;
+    if (chunkStats !== undefined) {
+      return chunkStats;
+    }
+    return super.getLegendChunkCounts(totalPresent, totalNotPresent);
   }
 
   updateView() {
@@ -544,6 +581,7 @@ export function spatialSkeletonGridRenderScaleLayerControl<
         target,
         relative,
         pixelSize,
+        chunkStats,
         relativeLabel,
         relativeTooltip,
       } = getter(layer);
@@ -551,6 +589,7 @@ export function spatialSkeletonGridRenderScaleLayerControl<
         new SpatialSkeletonGridRenderScaleWidget(histogram, target, {
           relative,
           pixelSize,
+          chunkStats,
           relativeLabel,
           relativeTooltip,
         }),
