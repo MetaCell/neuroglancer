@@ -16,7 +16,7 @@
 
 import type { SpatiallyIndexedSkeletonNodeBase } from "#src/skeleton/api.js";
 
-export interface PackedCatmaidSkeletonData {
+interface PackedCatmaidSkeletonData {
   vertexPositions: Float32Array;
   segmentIds: Uint32Array;
   indices: Uint32Array;

@@ -50,7 +50,6 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
       client = new CatmaidClient(
         catmaidParameters.url,
         catmaidParameters.projectId,
-        catmaidParameters.token,
         this.credentialsProvider,
       );
       this.clientInstance = client;
@@ -115,7 +114,6 @@ export class CatmaidSkeletonSourceBackend extends WithParameters(
       client = new CatmaidClient(
         catmaidParameters.url,
         catmaidParameters.projectId,
-        catmaidParameters.token,
         this.credentialsProvider,
       );
       this.clientInstance = client;

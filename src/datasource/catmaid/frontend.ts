@@ -91,22 +91,10 @@ export class CatmaidSpatiallyIndexedSkeletonSource
     client = new CatmaidClient(
       catmaidParameters.url,
       catmaidParameters.projectId,
-      catmaidParameters.token,
       this.credentialsProvider,
     );
     this.client_ = client;
     return client;
-  }
-
-  getChunk(chunkData: any) {
-    return super.getChunk(chunkData);
-  }
-  static encodeOptions(options: any) {
-    return super.encodeOptions(options);
-  }
-
-  listSkeletons(): Promise<number[]> {
-    return this.client.listSkeletons();
   }
 
   getSkeleton(
@@ -114,6 +102,10 @@ export class CatmaidSpatiallyIndexedSkeletonSource
     options?: { signal?: AbortSignal },
   ): Promise<SpatiallyIndexedSkeletonNode[]> {
     return this.client.getSkeleton(skeletonId, options);
+  }
+
+  listSkeletons(): Promise<number[]> {
+    return this.client.listSkeletons();
   }
 
   getSpatialIndexMetadata(): Promise<SpatiallyIndexedSkeletonMetadata | null> {
@@ -250,13 +242,6 @@ export class CatmaidSkeletonSource extends WithParameters(
   get vertexAttributes() {
     return this.parameters.metadata.vertexAttributes;
   }
-
-  getChunk(objectId: bigint) {
-    return super.getChunk(objectId);
-  }
-  static encodeOptions(options: any) {
-    return super.encodeOptions(options);
-  }
 }
 
 export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleSpatiallyIndexedSkeletonSource {
@@ -293,8 +278,7 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
   }
 
   getSliceViewPanelSources(): SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>[] {
-    const sources = this.getSources({} as any);
-    return sources.length > 0 ? sources[0] : [];
+    return this.getPerspectiveSources();
   }
 
   getSources(
@@ -418,7 +402,6 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
     const client = new CatmaidClient(
       baseUrl,
       projectId,
-      undefined,
       credentialsProvider,
     );
 

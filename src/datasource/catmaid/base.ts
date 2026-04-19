@@ -14,38 +14,21 @@
  * limitations under the License.
  */
 
-import type { AnnotationGeometryChunkSpecification } from "#src/annotation/base.js";
-import {
-  AnnotationSourceParameters,
-  SkeletonSourceParameters,
-} from "#src/datasource/precomputed/base.js";
+import { SkeletonSourceParameters } from "#src/datasource/precomputed/base.js";
 
 export class CatmaidDataSourceParameters {
-  url: string;
-  projectId: number;
-  token?: string;
+  url!: string;
+  projectId!: number;
   cacheProvider?: string;
 }
 
-export class CatmaidAnnotationSourceParameters extends AnnotationSourceParameters {
-  catmaidParameters: CatmaidDataSourceParameters;
-}
-
-export class CatmaidAnnotationGeometryChunkSourceParameters {
-  catmaidParameters: CatmaidDataSourceParameters;
-  spec: AnnotationGeometryChunkSpecification;
-
-  static readonly RPC_ID = "catmaid/AnnotationGeometryChunkSource";
-}
-
 export class CatmaidSkeletonSourceParameters extends SkeletonSourceParameters {
-  catmaidParameters: CatmaidDataSourceParameters;
+  catmaidParameters!: CatmaidDataSourceParameters;
   gridIndex?: number;
-  view?: string;
   static RPC_ID = "catmaid/SkeletonSource";
 }
 
 export class CatmaidCompleteSkeletonSourceParameters extends SkeletonSourceParameters {
-  catmaidParameters: CatmaidDataSourceParameters;
+  catmaidParameters!: CatmaidDataSourceParameters;
   static RPC_ID = "catmaid/CompleteSkeletonSource";
 }

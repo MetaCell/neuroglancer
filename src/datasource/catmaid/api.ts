@@ -43,15 +43,12 @@ interface CatmaidCacheConfiguration {
   cell_width: number;
   cell_height: number;
   cell_depth: number;
-  [key: string]: any;
 }
 
 interface CatmaidStackInfo {
   dimension: { x: number; y: number; z: number };
   resolution: { x: number; y: number; z: number };
   translation: { x: number; y: number; z: number };
-  orientation?: number;
-  title?: string;
   metadata?: {
     cache_provider?: string;
     cache_configurations?: CatmaidCacheConfiguration[];
@@ -77,7 +74,7 @@ interface CatmaidDeleteNodeOptions {
   editContext?: SpatiallyIndexedSkeletonEditContext;
 }
 
-export class CatmaidNotFoundError extends Error {
+class CatmaidNotFoundError extends Error {
   constructor(detail?: string) {
     super(detail ?? "CATMAID resource not found.");
     this.name = "CatmaidNotFoundError";
@@ -95,7 +92,7 @@ export class CatmaidStateValidationError extends Error {
   }
 }
 
-export const CATMAID_TRUE_END_LABEL = "ends";
+const CATMAID_TRUE_END_LABEL = "ends";
 const CATMAID_CLOSED_END_LABEL_PATTERNS = [
   /^uncertain continuation$/i,
   /^not a branch$/i,
@@ -812,10 +809,7 @@ function fetchWithCatmaidCredentials(
 }
 
 export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
-  private metadataInfoPromiseByKey = new Map<
-    string,
-    Promise<CatmaidStackInfo | null>
-  >();
+  private metadataInfoPromise: Promise<CatmaidStackInfo | null> | undefined;
   private readonly msgpackUnpackr = new Unpackr({
     mapsAsObjects: false,
     int64AsType: "number",
@@ -824,7 +818,6 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
   constructor(
     public baseUrl: string,
     public projectId: number,
-    public token?: string,
     public credentialsProvider?: CredentialsProvider<CatmaidToken>,
   ) {}
 
@@ -852,9 +845,6 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
     const baseUrl = this.baseUrl.replace(/\/$/, "");
     const url = `${baseUrl}/${this.projectId}/${endpoint}`;
     const headers = new Headers(options.headers);
-    if (this.token) {
-      headers.append("X-Authorization", `Token ${this.token}`);
-    }
     // CATMAID API often expects form-encoded data for POST
     if (options.method === "POST" && options.body instanceof URLSearchParams) {
       headers.append("Content-Type", "application/x-www-form-urlencoded");
@@ -913,7 +903,7 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
     return this.fetch("skeletons/");
   }
 
-  private async listStacks(): Promise<{ id: number; title: string }[]> {
+  private async listStacks(): Promise<{ id: number }[]> {
     return this.fetch("stacks");
   }
 
@@ -921,46 +911,29 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
     return this.fetch(`stack/${stackId}/info`);
   }
 
-  private getMetadataCacheKey(stackId?: number) {
-    return stackId === undefined ? "default" : `stack:${stackId}`;
+  private async loadMetadataInfo(): Promise<CatmaidStackInfo | null> {
+    const stacks = await this.listStacks();
+    if (!stacks || stacks.length === 0) return null;
+    return this.getStackInfo(stacks[0].id);
   }
 
-  private async loadMetadataInfo(
-    stackId?: number,
-  ): Promise<CatmaidStackInfo | null> {
-    let effectiveStackId: number;
-
-    if (stackId !== undefined) {
-      effectiveStackId = stackId;
-    } else {
-      const stacks = await this.listStacks();
-      if (!stacks || stacks.length === 0) return null;
-      effectiveStackId = stacks[0].id;
-    }
-
-    return this.getStackInfo(effectiveStackId);
-  }
-
-  private getMetadataInfo(stackId?: number): Promise<CatmaidStackInfo | null> {
-    const key = this.getMetadataCacheKey(stackId);
-    let promise = this.metadataInfoPromiseByKey.get(key);
+  private getMetadataInfo(): Promise<CatmaidStackInfo | null> {
+    let promise = this.metadataInfoPromise;
     if (promise === undefined) {
-      promise = this.loadMetadataInfo(stackId);
-      this.metadataInfoPromiseByKey.set(key, promise);
+      promise = this.loadMetadataInfo();
+      this.metadataInfoPromise = promise;
       promise.catch(() => {
-        if (this.metadataInfoPromiseByKey.get(key) === promise) {
-          this.metadataInfoPromiseByKey.delete(key);
+        if (this.metadataInfoPromise === promise) {
+          this.metadataInfoPromise = undefined;
         }
       });
     }
     return promise;
   }
 
-  private async tryGetMetadataInfo(
-    stackId?: number,
-  ): Promise<CatmaidStackInfo | null> {
+  private async tryGetMetadataInfo(): Promise<CatmaidStackInfo | null> {
     try {
-      return await this.getMetadataInfo(stackId);
+      return await this.getMetadataInfo();
     } catch (e) {
       console.warn("Failed to fetch stack info:", e);
       return null;
