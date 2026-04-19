@@ -671,4 +671,25 @@ describe("skeleton/spatial_skeleton_manager", () => {
     expect(getSkeletonRootNode(graph).nodeId).toBe(3);
     expect(getFlatListNodeIds(graph)).toEqual([3, 2, 4, 1, 5]);
   });
+
+  it("stores empty segments in the cache if nothing present for that segment in cache", () => {
+    const state = new SpatialSkeletonState();
+    (state as any).replaceCachedSegmentNodes(1, []);
+    expect(state.getCachedSegmentNodes(1)?.length).toBe(0);
+  });
+
+  it("deletes segment from cache if the segment becomes empty", () => {
+    const state = new SpatialSkeletonState();
+    const node = {
+      nodeId: 1,
+      segmentId: 1,
+      position: new Float32Array([1, 1, 1]),
+    };
+    (state as any).replaceCachedSegmentNodes(1, [node]);
+    expect(state.getCachedSegmentNodes(1)).toStrictEqual([node]);
+    expect(state.getCachedNode(1)).toBe(node);
+    (state as any).replaceCachedSegmentNodes(1, []);
+    expect(state.getCachedSegmentNodes(1)).toBeUndefined();
+    expect(state.getCachedNode(1)).toBeUndefined();
+  });
 });
