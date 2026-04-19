@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { SpatiallyIndexedSkeletonNodeInfo } from "#src/skeleton/frontend.js";
+import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
 import { buildSpatiallyIndexedSkeletonNavigationGraph } from "#src/skeleton/navigation.js";
 import { SpatialSkeletonNodeFilterType } from "#src/skeleton/node_types.js";
 import { buildSpatialSkeletonSegmentRenderState } from "#src/ui/spatial_skeleton_edit_tab_render_state.js";
@@ -8,14 +8,18 @@ import { buildSpatialSkeletonSegmentRenderState } from "#src/ui/spatial_skeleton
 function makeNode(
   nodeId: number,
   parentNodeId: number | undefined,
-  labels?: readonly string[],
-): SpatiallyIndexedSkeletonNodeInfo {
+  options: {
+    description?: string;
+    isTrueEnd?: boolean;
+  } = {},
+): SpatiallyIndexedSkeletonNode {
   return {
     nodeId,
     segmentId: 20380,
     parentNodeId,
     position: new Float32Array([nodeId, nodeId + 1, nodeId + 2]),
-    labels,
+    description: options.description,
+    isTrueEnd: options.isTrueEnd ?? false,
   };
 }
 
@@ -57,9 +61,9 @@ describe("spatial skeleton edit tab render state", () => {
     expect(state.rows.map((row) => row.node.nodeId)).toEqual([4]);
   });
 
-  it("does not match segment ids or labels in the search filter", () => {
+  it("does not match segment ids or true-end state in the search filter", () => {
     const graph = buildSpatiallyIndexedSkeletonNavigationGraph([
-      makeNode(101, undefined, ["target-label"]),
+      makeNode(101, undefined, { isTrueEnd: true }),
       makeNode(102, 101),
     ]);
 
@@ -71,8 +75,8 @@ describe("spatial skeleton edit tab render state", () => {
         return undefined;
       },
     });
-    const byLabel = buildSpatialSkeletonSegmentRenderState(20380, graph, {
-      filterText: "target-label",
+    const byTrueEndText = buildSpatialSkeletonSegmentRenderState(20380, graph, {
+      filterText: "true end",
       nodeFilterType: SpatialSkeletonNodeFilterType.NONE,
       collapseRegularNodes: false,
       getNodeDescription() {
@@ -82,8 +86,8 @@ describe("spatial skeleton edit tab render state", () => {
 
     expect(bySegmentId.matchedNodeCount).toBe(0);
     expect(bySegmentId.displayedNodeCount).toBe(0);
-    expect(byLabel.matchedNodeCount).toBe(0);
-    expect(byLabel.displayedNodeCount).toBe(0);
+    expect(byTrueEndText.matchedNodeCount).toBe(0);
+    expect(byTrueEndText.displayedNodeCount).toBe(0);
   });
 
   it("counts hidden regular nodes in the ratio while omitting them from collapsed rows", () => {

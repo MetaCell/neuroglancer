@@ -26,7 +26,6 @@ import type { CredentialsProvider } from "#src/credentials_provider/index.js";
 import type { CatmaidToken } from "#src/datasource/catmaid/api.js";
 import {
   CatmaidClient,
-  CATMAID_CONFIDENCE_VALUES,
   credentialsKey,
 } from "#src/datasource/catmaid/api.js";
 import {
@@ -48,13 +47,14 @@ import type {
   EditableSpatiallyIndexedSkeletonSource,
   SpatiallyIndexedSkeletonAddNodeResult,
   SpatiallyIndexedSkeletonDeleteNodeResult,
-  SpatiallyIndexedSkeletonDescriptionUpdateOptions,
+  SpatiallyIndexedSkeletonDescriptionUpdateResult,
   SpatiallyIndexedSkeletonEditContext,
   SpatiallyIndexedSkeletonInsertNodeResult,
   SpatiallyIndexedSkeletonMergeResult,
+  SpatiallyIndexedSkeletonMetadata,
   SpatiallyIndexedSkeletonNode,
   SpatiallyIndexedSkeletonNodeRevisionResult,
-  SpatiallyIndexedSkeletonPropertyEditingOptions,
+  SpatiallyIndexedSkeletonNodeBase,
   SpatiallyIndexedSkeletonSplitResult,
 } from "#src/skeleton/api.js";
 import {
@@ -72,13 +72,6 @@ import { mat4, vec3 } from "#src/util/geom.js";
 import "#src/datasource/catmaid/register_credentials_provider.js";
 
 const METERS_PER_NANOMETER = 1e-9;
-
-const CATMAID_SPATIALLY_INDEXED_SKELETON_PROPERTY_EDITING_OPTIONS: SpatiallyIndexedSkeletonPropertyEditingOptions =
-  {
-    confidence: {
-      values: CATMAID_CONFIDENCE_VALUES,
-    },
-  };
 
 export class CatmaidSpatiallyIndexedSkeletonSource
   extends WithParameters(
@@ -112,10 +105,6 @@ export class CatmaidSpatiallyIndexedSkeletonSource
     return super.encodeOptions(options);
   }
 
-  getPropertyEditingOptions(): SpatiallyIndexedSkeletonPropertyEditingOptions {
-    return CATMAID_SPATIALLY_INDEXED_SKELETON_PROPERTY_EDITING_OPTIONS;
-  }
-
   listSkeletons(): Promise<number[]> {
     return this.client.listSkeletons();
   }
@@ -127,16 +116,8 @@ export class CatmaidSpatiallyIndexedSkeletonSource
     return this.client.getSkeleton(skeletonId, options);
   }
 
-  getDimensions() {
-    return this.client.getDimensions();
-  }
-
-  getResolution() {
-    return this.client.getResolution();
-  }
-
-  getGridCellSizes() {
-    return this.client.getGridCellSizes();
+  getSpatialIndexMetadata(): Promise<SpatiallyIndexedSkeletonMetadata | null> {
+    return this.client.getSpatialIndexMetadata();
   }
 
   fetchNodes(
@@ -149,7 +130,7 @@ export class CatmaidSpatiallyIndexedSkeletonSource
       cacheProvider?: string;
       signal?: AbortSignal;
     },
-  ): Promise<SpatiallyIndexedSkeletonNode[]> {
+  ): Promise<SpatiallyIndexedSkeletonNodeBase[]> {
     return this.client.fetchNodes(boundingBox, lod, options);
   }
 
@@ -207,20 +188,15 @@ export class CatmaidSpatiallyIndexedSkeletonSource
   rerootSkeleton(
     nodeId: number,
     editContext?: SpatiallyIndexedSkeletonEditContext,
-  ): Promise<void> {
+  ) {
     return this.client.rerootSkeleton(nodeId, editContext);
-  }
-
-  getNodeRevisionUpdates(nodeIds: readonly number[]) {
-    return this.client.getNodeRevisionUpdates(nodeIds);
   }
 
   updateDescription(
     nodeId: number,
     description: string,
-    options: SpatiallyIndexedSkeletonDescriptionUpdateOptions,
-  ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult> {
-    return this.client.updateDescription(nodeId, description, options);
+  ): Promise<SpatiallyIndexedSkeletonDescriptionUpdateResult> {
+    return this.client.updateDescription(nodeId, description);
   }
 
   setTrueEnd(
@@ -447,28 +423,13 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
     );
 
     // Fetch metadata-derived values through the generic source interface.
-    const [
-      projectBounds,
-      resolution,
-      gridCellSizes,
-      cacheProvider,
-      skeletonIds,
-    ] = await Promise.all([
-      options.registry.chunkManager.memoize.getAsync(
-        { type: "catmaid:dimensions", baseUrl, projectId },
-        options,
-        () => client.getDimensions(),
-      ),
-      options.registry.chunkManager.memoize.getAsync(
-        { type: "catmaid:resolution", baseUrl, projectId },
-        options,
-        () => client.getResolution(),
-      ),
-      options.registry.chunkManager.memoize.getAsync(
-        { type: "catmaid:grid-cell-sizes", baseUrl, projectId },
-        options,
-        () => client.getGridCellSizes(),
-      ),
+    const [spatialIndexMetadata, cacheProvider, skeletonIds] = await Promise.all(
+      [
+        options.registry.chunkManager.memoize.getAsync(
+          { type: "catmaid:spatial-index-metadata", baseUrl, projectId },
+          options,
+          () => client.getSpatialIndexMetadata(),
+        ),
       options.registry.chunkManager.memoize.getAsync(
         { type: "catmaid:cache-provider", baseUrl, projectId },
         options,
@@ -479,14 +440,14 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
         options,
         () => client.listSkeletons(),
       ),
-    ]);
+    ],
+    );
 
-    if (!projectBounds) {
-      throw new Error("Failed to fetch CATMAID stack dimensions");
+    if (spatialIndexMetadata === null) {
+      throw new Error("Failed to fetch CATMAID spatial index metadata");
     }
-    if (!resolution) {
-      throw new Error("Failed to fetch CATMAID stack resolution");
-    }
+
+    const { bounds: projectBounds, gridCellSizes } = spatialIndexMetadata;
 
     // The model-space coordinates we emit are in nanometers, converted to meters for Neuroglancer.
     const coordinateScaleFactors = Float64Array.from([

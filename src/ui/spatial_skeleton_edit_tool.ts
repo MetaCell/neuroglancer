@@ -34,6 +34,7 @@ import {
   getVisibleSegments,
   removeSegmentFromVisibleSets,
 } from "#src/segmentation_display_state/base.js";
+import { SpatialSkeletonActions } from "#src/skeleton/actions.js";
 import { setSpatialSkeletonModesToLinesAndPoints } from "#src/skeleton/edit_mode_rendering.js";
 import type { SpatiallyIndexedSkeletonLayer } from "#src/skeleton/frontend.js";
 import {
@@ -41,8 +42,6 @@ import {
   SliceViewPanelSpatiallyIndexedSkeletonLayer,
   SliceViewSpatiallyIndexedSkeletonLayer,
 } from "#src/skeleton/frontend.js";
-import { hasSpatialSkeletonTrueEndLabel } from "#src/skeleton/node_types.js";
-import type { SpatiallyIndexedSkeletonSourceCapability } from "#src/skeleton/state.js";
 import { StatusMessage } from "#src/status.js";
 import type { SpatialSkeletonToolPointInfo } from "#src/ui/spatial_skeleton_tool_messages.js";
 import {
@@ -476,16 +475,14 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
 
   protected registerAutoCancelOnDisabled(
     activation: ToolActivation<this>,
-    requiredCapabilities:
-      | SpatiallyIndexedSkeletonSourceCapability
-      | readonly SpatiallyIndexedSkeletonSourceCapability[],
+    requiredActions: Parameters<
+      SegmentationUserLayer["getSpatialSkeletonActionsDisabledReason"]
+    >[0],
     onReady?: () => void,
   ) {
     const handleStateChanged = () => {
       const disabledReason =
-        this.layer.getSpatialSkeletonActionsDisabledReason(
-          requiredCapabilities,
-        );
+        this.layer.getSpatialSkeletonActionsDisabledReason(requiredActions);
       if (disabledReason === undefined) {
         onReady?.();
         return;
@@ -494,12 +491,7 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
       activation.cancel();
     };
     activation.registerDisposer(
-      this.layer.spatialSkeletonActionsAllowed.changed.add(handleStateChanged),
-    );
-    activation.registerDisposer(
-      this.layer.spatialSkeletonSourceCapabilities.changed.add(
-        handleStateChanged,
-      ),
+      this.layer.layersChanged.add(handleStateChanged),
     );
   }
 }
@@ -591,9 +583,9 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
     );
     if (
       selectedParentNode !== undefined &&
-      hasSpatialSkeletonTrueEndLabel(selectedParentNode.labels)
+      selectedParentNode.isTrueEnd
     ) {
-      return `Node ${parentNodeId} is marked as a true end. Remove the true end label before appending a child node.`;
+      return `Node ${parentNodeId} is marked as a true end. Clear the true end state before appending a child node.`;
     }
     return undefined;
   }
@@ -657,12 +649,18 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
       queueMicrotask(() => activation.cancel());
     };
 
-    const getEditCapabilityDisabledReason = () =>
-      layer.getSpatialSkeletonActionsDisabledReason(["addNodes", "moveNodes"], {
-        requireVisibleChunks: false,
-      });
+    const getEditSupportDisabledReason = () =>
+      layer.getSpatialSkeletonActionsDisabledReason(
+        [SpatialSkeletonActions.addNodes, SpatialSkeletonActions.moveNodes],
+        {
+          requireVisibleChunks: false,
+        },
+      );
     const getEditMutationDisabledReason = () =>
-      layer.getSpatialSkeletonActionsDisabledReason(["addNodes", "moveNodes"]);
+      layer.getSpatialSkeletonActionsDisabledReason([
+        SpatialSkeletonActions.addNodes,
+        SpatialSkeletonActions.moveNodes,
+      ]);
     const updateInteractionStatus = () => {
       const reason = getEditMutationDisabledReason();
       if (reason === undefined) {
@@ -674,7 +672,7 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
       return reason;
     };
 
-    const disabledReason = getEditCapabilityDisabledReason();
+    const disabledReason = getEditSupportDisabledReason();
     if (disabledReason !== undefined) {
       disableWithMessage(disabledReason);
       return;
@@ -709,28 +707,10 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
       layer.manager.root.selectionState.changed.add(renderStatus),
     );
     activation.registerDisposer(
-      layer.spatialSkeletonActionsAllowed.changed.add(() => {
-        if (!layer.spatialSkeletonActionsAllowed.value) {
-          const capabilityReason = getEditCapabilityDisabledReason();
-          if (capabilityReason !== undefined) {
-            StatusMessage.showTemporaryMessage(capabilityReason);
-            activation.cancel();
-            return;
-          }
-          const reason = updateInteractionStatus();
-          if (reason !== undefined) {
-            StatusMessage.showTemporaryMessage(reason);
-            return;
-          }
-        }
-        setReadyStatus();
-      }),
-    );
-    activation.registerDisposer(
-      layer.spatialSkeletonSourceCapabilities.changed.add(() => {
-        const capabilityReason = getEditCapabilityDisabledReason();
-        if (capabilityReason !== undefined) {
-          StatusMessage.showTemporaryMessage(capabilityReason);
+      layer.layersChanged.add(() => {
+        const supportReason = getEditSupportDisabledReason();
+        if (supportReason !== undefined) {
+          StatusMessage.showTemporaryMessage(supportReason);
           activation.cancel();
           return;
         }
@@ -758,7 +738,9 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
         event.stopPropagation();
         event.detail.preventDefault();
         const disabledReason =
-          layer.getSpatialSkeletonActionsDisabledReason("addNodes");
+          layer.getSpatialSkeletonActionsDisabledReason(
+            SpatialSkeletonActions.addNodes,
+          );
         if (disabledReason !== undefined) {
           StatusMessage.showTemporaryMessage(disabledReason);
           return;
@@ -857,7 +839,9 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
         event.stopPropagation();
         event.detail.preventDefault();
         const disabledReason =
-          layer.getSpatialSkeletonActionsDisabledReason("moveNodes");
+          layer.getSpatialSkeletonActionsDisabledReason(
+            SpatialSkeletonActions.moveNodes,
+          );
         if (disabledReason !== undefined) {
           StatusMessage.showTemporaryMessage(disabledReason);
           return;
@@ -997,7 +981,9 @@ class SpatialSkeletonMergeModeTool extends SpatialSkeletonToolBase {
   activate(activation: ToolActivation<this>) {
     const rawInputEventMapBinder = activation.inputEventMapBinder;
     const reason =
-      this.layer.getSpatialSkeletonActionsDisabledReason("mergeSkeletons");
+      this.layer.getSpatialSkeletonActionsDisabledReason(
+        SpatialSkeletonActions.mergeSkeletons,
+      );
     if (reason !== undefined) {
       StatusMessage.showTemporaryMessage(reason);
       queueMicrotask(() => activation.cancel());
@@ -1061,7 +1047,7 @@ class SpatialSkeletonMergeModeTool extends SpatialSkeletonToolBase {
     this.bindVisibilityToggleAction(activation);
     this.registerAutoCancelOnDisabled(
       activation,
-      "mergeSkeletons",
+      SpatialSkeletonActions.mergeSkeletons,
       setReadyStatus,
     );
     activation.registerDisposer(
@@ -1083,7 +1069,9 @@ class SpatialSkeletonMergeModeTool extends SpatialSkeletonToolBase {
         }
         if (pending) return;
         const disabledReason =
-          this.layer.getSpatialSkeletonActionsDisabledReason("mergeSkeletons");
+          this.layer.getSpatialSkeletonActionsDisabledReason(
+            SpatialSkeletonActions.mergeSkeletons,
+          );
         if (disabledReason !== undefined) {
           StatusMessage.showTemporaryMessage(disabledReason);
           return;
@@ -1190,7 +1178,9 @@ class SpatialSkeletonSplitModeTool extends SpatialSkeletonToolBase {
   activate(activation: ToolActivation<this>) {
     const rawInputEventMapBinder = activation.inputEventMapBinder;
     const reason =
-      this.layer.getSpatialSkeletonActionsDisabledReason("splitSkeletons");
+      this.layer.getSpatialSkeletonActionsDisabledReason(
+        SpatialSkeletonActions.splitSkeletons,
+      );
     if (reason !== undefined) {
       StatusMessage.showTemporaryMessage(reason);
       queueMicrotask(() => activation.cancel());
@@ -1239,7 +1229,7 @@ class SpatialSkeletonSplitModeTool extends SpatialSkeletonToolBase {
     this.bindVisibilityToggleAction(activation);
     this.registerAutoCancelOnDisabled(
       activation,
-      "splitSkeletons",
+      SpatialSkeletonActions.splitSkeletons,
       setReadyStatus,
     );
     activation.bindAction(
@@ -1256,7 +1246,9 @@ class SpatialSkeletonSplitModeTool extends SpatialSkeletonToolBase {
         }
         if (pending) return;
         const disabledReason =
-          this.layer.getSpatialSkeletonActionsDisabledReason("splitSkeletons");
+          this.layer.getSpatialSkeletonActionsDisabledReason(
+            SpatialSkeletonActions.splitSkeletons,
+          );
         if (disabledReason !== undefined) {
           StatusMessage.showTemporaryMessage(disabledReason);
           return;

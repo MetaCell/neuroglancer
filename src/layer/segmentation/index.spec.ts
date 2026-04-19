@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { RenderLayerTransform } from "#src/render_coordinate_transform.js";
+import { SpatialSkeletonActions } from "#src/skeleton/actions.js";
 import { WatchableValue } from "#src/trackable_value.js";
 
 if (!("WebGL2RenderingContext" in globalThis)) {
@@ -30,6 +32,44 @@ const {
 const { SegmentSelectionState } = await import(
   "#src/segmentation_display_state/frontend.js"
 );
+
+function makeEditableSpatialSkeletonSource(options: {
+  rerootSkeleton?: (() => Promise<void>) | undefined;
+} = {}) {
+  return {
+    listSkeletons: async () => [],
+    getSkeleton: async () => [],
+    fetchNodes: async () => [],
+    getSpatialIndexMetadata: async () => null,
+    addNode: async () => ({ treenodeId: 1, skeletonId: 1 }),
+    insertNode: async () => ({ treenodeId: 1, skeletonId: 1 }),
+    moveNode: async () => ({}),
+    deleteNode: async () => ({}),
+    updateDescription: async () => ({}),
+    setTrueEnd: async () => ({}),
+    removeTrueEnd: async () => ({}),
+    updateRadius: async () => ({}),
+    updateConfidence: async () => ({}),
+    mergeSkeletons: async () => ({
+      resultSkeletonId: 1,
+      deletedSkeletonId: 2,
+      stableAnnotationSwap: false,
+    }),
+    splitSkeleton: async () => ({
+      existingSkeletonId: 1,
+      newSkeletonId: 2,
+    }),
+    ...(options.rerootSkeleton === undefined
+      ? {}
+      : { rerootSkeleton: options.rerootSkeleton }),
+  };
+}
+
+function makeSpatialSkeletonLayerWithSource(source: unknown) {
+  return {
+    source,
+  };
+}
 
 describe("layer/segmentation spatial skeleton chunk stats", () => {
   it("tracks combined chunk load state from the loading render layers only", () => {
@@ -109,18 +149,12 @@ describe("layer/segmentation spatial skeleton action gating", () => {
     const layer = Object.assign(
       Object.create(SegmentationUserLayer.prototype),
       {
-        spatialSkeletonSourceCapabilities: new WatchableValue({
-          inspectSkeletons: true,
-          addNodes: true,
-          moveNodes: true,
-          deleteNodes: true,
-          rerootSkeletons: true,
-          editNodeLabels: true,
-          editNodeProperties: true,
-          mergeSkeletons: true,
-          splitSkeletons: true,
-        }),
-        spatialSkeletonEditModeAllowed: new WatchableValue(false),
+        getSpatiallyIndexedSkeletonLayer: () =>
+          makeSpatialSkeletonLayerWithSource(
+            makeEditableSpatialSkeletonSource({
+              rerootSkeleton: async () => {},
+            }),
+          ),
         spatialSkeletonVisibleChunksLoaded: new WatchableValue(true),
         spatialSkeletonVisibleChunksNeeded: new WatchableValue(0),
         spatialSkeletonVisibleChunksAvailable: new WatchableValue(0),
@@ -128,15 +162,23 @@ describe("layer/segmentation spatial skeleton action gating", () => {
     );
 
     expect(
-      layer.getSpatialSkeletonActionsDisabledReason("mergeSkeletons"),
+      layer.getSpatialSkeletonActionsDisabledReason(
+        SpatialSkeletonActions.mergeSkeletons,
+      ),
     ).toBeUndefined();
     expect(
-      layer.getSpatialSkeletonActionsDisabledReason("rerootSkeletons", {
-        requireVisibleChunks: false,
-      }),
+      layer.getSpatialSkeletonActionsDisabledReason(
+        SpatialSkeletonActions.reroot,
+        {
+          requireVisibleChunks: false,
+        },
+      ),
     ).toBeUndefined();
     expect(
-      layer.getSpatialSkeletonActionsDisabledReason(["addNodes", "moveNodes"]),
+      layer.getSpatialSkeletonActionsDisabledReason([
+        SpatialSkeletonActions.addNodes,
+        SpatialSkeletonActions.moveNodes,
+      ]),
     ).toBeUndefined();
   });
 
@@ -144,17 +186,8 @@ describe("layer/segmentation spatial skeleton action gating", () => {
     const layer = Object.assign(
       Object.create(SegmentationUserLayer.prototype),
       {
-        spatialSkeletonSourceCapabilities: new WatchableValue({
-          inspectSkeletons: true,
-          addNodes: false,
-          moveNodes: false,
-          deleteNodes: false,
-          rerootSkeletons: false,
-          editNodeLabels: false,
-          editNodeProperties: false,
-          mergeSkeletons: false,
-          splitSkeletons: true,
-        }),
+        getSpatiallyIndexedSkeletonLayer: () =>
+          makeSpatialSkeletonLayerWithSource(makeEditableSpatialSkeletonSource()),
         spatialSkeletonVisibleChunksLoaded: new WatchableValue(false),
         spatialSkeletonVisibleChunksNeeded: new WatchableValue(3),
         spatialSkeletonVisibleChunksAvailable: new WatchableValue(1),
@@ -162,9 +195,12 @@ describe("layer/segmentation spatial skeleton action gating", () => {
     );
 
     expect(
-      layer.getSpatialSkeletonActionsDisabledReason("splitSkeletons", {
-        requireVisibleChunks: true,
-      }),
+      layer.getSpatialSkeletonActionsDisabledReason(
+        SpatialSkeletonActions.splitSkeletons,
+        {
+          requireVisibleChunks: true,
+        },
+      ),
     ).toBe("Wait for visible skeleton chunks to load (1/3).");
   });
 
@@ -172,17 +208,8 @@ describe("layer/segmentation spatial skeleton action gating", () => {
     const layer = Object.assign(
       Object.create(SegmentationUserLayer.prototype),
       {
-        spatialSkeletonSourceCapabilities: new WatchableValue({
-          inspectSkeletons: true,
-          addNodes: true,
-          moveNodes: true,
-          deleteNodes: true,
-          rerootSkeletons: false,
-          editNodeLabels: true,
-          editNodeProperties: true,
-          mergeSkeletons: true,
-          splitSkeletons: true,
-        }),
+        getSpatiallyIndexedSkeletonLayer: () =>
+          makeSpatialSkeletonLayerWithSource(makeEditableSpatialSkeletonSource()),
         spatialSkeletonVisibleChunksLoaded: new WatchableValue(true),
         spatialSkeletonVisibleChunksNeeded: new WatchableValue(0),
         spatialSkeletonVisibleChunksAvailable: new WatchableValue(0),
@@ -190,9 +217,12 @@ describe("layer/segmentation spatial skeleton action gating", () => {
     );
 
     expect(
-      layer.getSpatialSkeletonActionsDisabledReason("rerootSkeletons", {
-        requireVisibleChunks: false,
-      }),
+      layer.getSpatialSkeletonActionsDisabledReason(
+        SpatialSkeletonActions.reroot,
+        {
+          requireVisibleChunks: false,
+        },
+      ),
     ).toBe(
       "The active spatial skeleton source does not support skeleton rerooting.",
     );
@@ -236,6 +266,69 @@ describe("layer/segmentation spatial skeleton selection serialization", () => {
 });
 
 describe("layer/segmentation spatial skeleton node navigation helpers", () => {
+  it("maps model-space node positions through non-identity transforms before updating view state", () => {
+    const dispatchGlobalPositionChanged = vi.fn();
+    const dispatchLocalPositionChanged = vi.fn();
+    const transform: RenderLayerTransform = {
+      rank: 3,
+      unpaddedRank: 3,
+      localToRenderLayerDimensions: [1, -1, 2],
+      globalToRenderLayerDimensions: [2, 0, 1, -1],
+      channelToRenderLayerDimensions: [],
+      channelToModelDimensions: [],
+      channelSpaceShape: new Uint32Array(0),
+      modelToRenderLayerTransform: new Float32Array([
+        2, 0, 0, 0,
+        0, 0, 1, 0,
+        0, 3, 0, 0,
+        10, -5, 1, 1,
+      ]),
+      modelDimensionNames: ["x", "y", "z"],
+      layerDimensionNames: ["a", "b", "c"],
+    };
+    const layer = Object.create(SegmentationUserLayer.prototype);
+    Object.assign(layer, {
+      getSpatiallyIndexedSkeletonLayer: () => ({
+        displayState: {
+          transform: {
+            value: transform,
+          },
+        },
+      }),
+    });
+    Object.defineProperty(layer, "manager", {
+      value: {
+        root: {
+          globalPosition: {
+            value: new Float32Array([100, 101, 102, 103]),
+            changed: {
+              dispatch: dispatchGlobalPositionChanged,
+            },
+          },
+        },
+      },
+      configurable: true,
+    });
+    Object.defineProperty(layer, "localPosition", {
+      value: {
+        value: new Float32Array([200, 201, 202]),
+        changed: {
+          dispatch: dispatchLocalPositionChanged,
+        },
+      },
+      configurable: true,
+    });
+
+    layer.moveViewToSpatialSkeletonNodePosition([4, 5, 6]);
+
+    expect(Array.from(layer.manager.root.globalPosition.value)).toEqual([
+      6, 18, 13, 103,
+    ]);
+    expect(Array.from(layer.localPosition.value)).toEqual([13, 201, 6]);
+    expect(dispatchLocalPositionChanged).toHaveBeenCalledTimes(1);
+    expect(dispatchGlobalPositionChanged).toHaveBeenCalledTimes(1);
+  });
+
   it("selects and moves to the provided node, or clears selection when absent", () => {
     const selectSpatialSkeletonNode = vi.fn();
     const moveViewToSpatialSkeletonNodePosition = vi.fn();

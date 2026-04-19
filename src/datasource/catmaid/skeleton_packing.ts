@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
+import type { SpatiallyIndexedSkeletonNodeBase } from "#src/skeleton/api.js";
 
 export interface PackedCatmaidSkeletonData {
   vertexPositions: Float32Array;
@@ -24,7 +24,7 @@ export interface PackedCatmaidSkeletonData {
 }
 
 export function packCatmaidSkeletonNodes(
-  nodes: readonly SpatiallyIndexedSkeletonNode[],
+  nodes: readonly SpatiallyIndexedSkeletonNodeBase[],
 ): PackedCatmaidSkeletonData {
   const numVertices = nodes.length;
   const vertexPositions = new Float32Array(numVertices * 3);
@@ -34,17 +34,17 @@ export function packCatmaidSkeletonNodes(
 
   for (let i = 0; i < numVertices; ++i) {
     const node = nodes[i];
-    nodeMap.set(node.id, i);
-    vertexPositions[i * 3] = node.x;
-    vertexPositions[i * 3 + 1] = node.y;
-    vertexPositions[i * 3 + 2] = node.z;
-    segmentIds[i] = node.skeleton_id;
+    nodeMap.set(node.nodeId, i);
+    vertexPositions[i * 3] = node.position[0];
+    vertexPositions[i * 3 + 1] = node.position[1];
+    vertexPositions[i * 3 + 2] = node.position[2];
+    segmentIds[i] = node.segmentId;
   }
 
   for (let i = 0; i < numVertices; ++i) {
     const node = nodes[i];
-    if (node.parent_id === null) continue;
-    const parentIndex = nodeMap.get(node.parent_id);
+    if (node.parentNodeId === undefined) continue;
+    const parentIndex = nodeMap.get(node.parentNodeId);
     if (parentIndex !== undefined) {
       indices.push(i, parentIndex);
     }

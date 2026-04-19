@@ -6,30 +6,31 @@ import {
   undoSpatialSkeletonCommand,
 } from "#src/layer/segmentation/spatial_skeleton_commands.js";
 import { SpatialSkeletonCommandHistory } from "#src/skeleton/command_history.js";
-import type { SpatiallyIndexedSkeletonNodeInfo } from "#src/skeleton/frontend.js";
+import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
 import { StatusMessage } from "#src/status.js";
 
 function cloneNode(
-  node: SpatiallyIndexedSkeletonNodeInfo,
-): SpatiallyIndexedSkeletonNodeInfo {
+  node: SpatiallyIndexedSkeletonNode,
+): SpatiallyIndexedSkeletonNode {
   return {
     ...node,
     position: new Float32Array(node.position),
-    labels: node.labels === undefined ? undefined : [...node.labels],
+    description: node.description,
+    isTrueEnd: node.isTrueEnd,
   };
 }
 
 function cloneNodes(
-  nodes: readonly SpatiallyIndexedSkeletonNodeInfo[] | undefined,
-): SpatiallyIndexedSkeletonNodeInfo[] {
+  nodes: readonly SpatiallyIndexedSkeletonNode[] | undefined,
+): SpatiallyIndexedSkeletonNode[] {
   return (nodes ?? []).map((node) => cloneNode(node));
 }
 
 function setSegmentNodes(
-  cacheBySegment: Map<number, SpatiallyIndexedSkeletonNodeInfo[]>,
-  cacheByNode: Map<number, SpatiallyIndexedSkeletonNodeInfo>,
+  cacheBySegment: Map<number, SpatiallyIndexedSkeletonNode[]>,
+  cacheByNode: Map<number, SpatiallyIndexedSkeletonNode>,
   segmentId: number,
-  nodes: readonly SpatiallyIndexedSkeletonNodeInfo[],
+  nodes: readonly SpatiallyIndexedSkeletonNode[],
 ) {
   if (nodes.length === 0) {
     cacheBySegment.delete(segmentId);
@@ -42,6 +43,28 @@ function setSegmentNodes(
       cacheByNode.set(node.nodeId, node);
     }
   }
+}
+
+function makeEditableSkeletonSource(overrides: Record<string, unknown> = {}) {
+  return {
+    listSkeletons: vi.fn(),
+    getSkeleton: vi.fn(),
+    fetchNodes: vi.fn(),
+    getSpatialIndexMetadata: vi.fn(),
+    addNode: vi.fn(),
+    insertNode: vi.fn(),
+    moveNode: vi.fn(),
+    deleteNode: vi.fn(),
+    rerootSkeleton: vi.fn(),
+    updateDescription: vi.fn(),
+    setTrueEnd: vi.fn(),
+    removeTrueEnd: vi.fn(),
+    updateRadius: vi.fn(),
+    updateConfidence: vi.fn(),
+    mergeSkeletons: vi.fn(),
+    splitSkeleton: vi.fn(),
+    ...overrides,
+  };
 }
 
 function suppressStatusMessages() {
@@ -61,10 +84,11 @@ describe("spatial_skeleton_commands", () => {
   it("commits move-node commands using model-space positions", async () => {
     suppressStatusMessages();
 
-    const node: SpatiallyIndexedSkeletonNodeInfo = {
+    const node: SpatiallyIndexedSkeletonNode = {
       nodeId: 17,
       segmentId: 23,
       position: new Float32Array([1, 2, 3]),
+      isTrueEnd: false,
       revisionToken: "before",
     };
     const nextPositionInModelSpace = new Float32Array([7, 8, 9]);
@@ -72,21 +96,7 @@ describe("spatial_skeleton_commands", () => {
       revisionToken: "after",
     });
     const skeletonLayer = {
-      source: {
-        getSkeleton: vi.fn(),
-        addNode: vi.fn(),
-        insertNode: vi.fn(),
-        moveNode,
-        deleteNode: vi.fn(),
-        rerootSkeleton: vi.fn(),
-        updateDescription: vi.fn(),
-        setTrueEnd: vi.fn(),
-        removeTrueEnd: vi.fn(),
-        updateRadius: vi.fn(),
-        updateConfidence: vi.fn(),
-        mergeSkeletons: vi.fn(),
-        splitSkeleton: vi.fn(),
-      },
+      source: makeEditableSkeletonSource({ moveNode }),
       getNode: vi.fn((nodeId: number) => (nodeId === node.nodeId ? node : undefined)),
       retainOverlaySegment: vi.fn(),
       invalidateSourceCaches: vi.fn(),
@@ -138,39 +148,41 @@ describe("spatial_skeleton_commands", () => {
 
     const originalSegmentId = 2973964;
     const splitSegmentId = 2973946;
-    const formerParentNode: SpatiallyIndexedSkeletonNodeInfo = {
+    const formerParentNode: SpatiallyIndexedSkeletonNode = {
       nodeId: 21893039,
       segmentId: originalSegmentId,
       position: new Float32Array([10, 20, 30]),
+      isTrueEnd: false,
       revisionToken: "parent-before",
     };
-    const splitNodeBefore: SpatiallyIndexedSkeletonNodeInfo = {
+    const splitNodeBefore: SpatiallyIndexedSkeletonNode = {
       nodeId: 21893038,
       segmentId: originalSegmentId,
       parentNodeId: formerParentNode.nodeId,
       position: new Float32Array([11, 21, 31]),
+      isTrueEnd: false,
       revisionToken: "split-before",
     };
-    const splitNodeAfter: SpatiallyIndexedSkeletonNodeInfo = {
+    const splitNodeAfter: SpatiallyIndexedSkeletonNode = {
       ...splitNodeBefore,
       segmentId: splitSegmentId,
       parentNodeId: undefined,
       revisionToken: "split-after",
     };
-    const splitNodeMergedBack: SpatiallyIndexedSkeletonNodeInfo = {
+    const splitNodeMergedBack: SpatiallyIndexedSkeletonNode = {
       ...splitNodeBefore,
       revisionToken: "split-merged-back",
     };
 
     const serverSegments = new Map<
       number,
-      SpatiallyIndexedSkeletonNodeInfo[]
+      SpatiallyIndexedSkeletonNode[]
     >();
     const cacheBySegment = new Map<
       number,
-      SpatiallyIndexedSkeletonNodeInfo[]
+      SpatiallyIndexedSkeletonNode[]
     >();
-    const cacheByNode = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
+    const cacheByNode = new Map<number, SpatiallyIndexedSkeletonNode>();
 
     const syncCacheFromServer = (segmentId: number) => {
       setSegmentNodes(
@@ -188,18 +200,7 @@ describe("spatial_skeleton_commands", () => {
     ]);
     syncCacheFromServer(originalSegmentId);
 
-    const skeletonSource = {
-      getSkeleton: vi.fn(),
-      addNode: vi.fn(),
-      insertNode: vi.fn(),
-      moveNode: vi.fn(),
-      deleteNode: vi.fn(),
-      rerootSkeleton: vi.fn(),
-      updateDescription: vi.fn(),
-      setTrueEnd: vi.fn(),
-      removeTrueEnd: vi.fn(),
-      updateRadius: vi.fn(),
-      updateConfidence: vi.fn(),
+    const skeletonSource = makeEditableSkeletonSource({
       splitSkeleton: vi.fn(async () => {
         serverSegments.set(originalSegmentId, [cloneNode(formerParentNode)]);
         serverSegments.set(splitSegmentId, [cloneNode(splitNodeAfter)]);
@@ -220,7 +221,7 @@ describe("spatial_skeleton_commands", () => {
           stableAnnotationSwap: false,
         };
       }),
-    };
+    });
 
     const deleteSegmentColor = vi.fn();
     const invalidateCachedSegments = vi.fn((segmentIds: Iterable<number>) => {
@@ -337,33 +338,36 @@ describe("spatial_skeleton_commands", () => {
 
     const originalSegmentId = 2973964;
     const splitSegmentId = 2973946;
-    const originalRootNode: SpatiallyIndexedSkeletonNodeInfo = {
+    const originalRootNode: SpatiallyIndexedSkeletonNode = {
       nodeId: 21893001,
       segmentId: originalSegmentId,
       position: new Float32Array([1, 2, 3]),
+      isTrueEnd: false,
       revisionToken: "root-before",
     };
-    const formerParentNode: SpatiallyIndexedSkeletonNodeInfo = {
+    const formerParentNode: SpatiallyIndexedSkeletonNode = {
       nodeId: 21893039,
       segmentId: originalSegmentId,
       parentNodeId: originalRootNode.nodeId,
       position: new Float32Array([10, 20, 30]),
+      isTrueEnd: false,
       revisionToken: "parent-before",
     };
-    const splitNodeBefore: SpatiallyIndexedSkeletonNodeInfo = {
+    const splitNodeBefore: SpatiallyIndexedSkeletonNode = {
       nodeId: 21893038,
       segmentId: originalSegmentId,
       parentNodeId: formerParentNode.nodeId,
       position: new Float32Array([11, 21, 31]),
+      isTrueEnd: false,
       revisionToken: "split-before",
     };
-    const splitNodeAfter: SpatiallyIndexedSkeletonNodeInfo = {
+    const splitNodeAfter: SpatiallyIndexedSkeletonNode = {
       ...splitNodeBefore,
       segmentId: splitSegmentId,
       parentNodeId: undefined,
       revisionToken: "split-after",
     };
-    const restoredNodes: SpatiallyIndexedSkeletonNodeInfo[] = [
+    const restoredNodes: SpatiallyIndexedSkeletonNode[] = [
       {
         ...originalRootNode,
         parentNodeId: undefined,
@@ -384,13 +388,13 @@ describe("spatial_skeleton_commands", () => {
 
     const serverSegments = new Map<
       number,
-      SpatiallyIndexedSkeletonNodeInfo[]
+      SpatiallyIndexedSkeletonNode[]
     >();
     const cacheBySegment = new Map<
       number,
-      SpatiallyIndexedSkeletonNodeInfo[]
+      SpatiallyIndexedSkeletonNode[]
     >();
-    const cacheByNode = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
+    const cacheByNode = new Map<number, SpatiallyIndexedSkeletonNode>();
 
     const syncCacheFromServer = (segmentId: number) => {
       setSegmentNodes(
@@ -409,18 +413,7 @@ describe("spatial_skeleton_commands", () => {
     ]);
     syncCacheFromServer(originalSegmentId);
 
-    const skeletonSource = {
-      getSkeleton: vi.fn(),
-      addNode: vi.fn(),
-      insertNode: vi.fn(),
-      moveNode: vi.fn(),
-      deleteNode: vi.fn(),
-      rerootSkeleton: vi.fn(),
-      updateDescription: vi.fn(),
-      setTrueEnd: vi.fn(),
-      removeTrueEnd: vi.fn(),
-      updateRadius: vi.fn(),
-      updateConfidence: vi.fn(),
+    const skeletonSource = makeEditableSkeletonSource({
       splitSkeleton: vi.fn(async () => {
         serverSegments.set(originalSegmentId, [
           cloneNode(originalRootNode),
@@ -441,7 +434,7 @@ describe("spatial_skeleton_commands", () => {
           stableAnnotationSwap: false,
         };
       }),
-    };
+    });
 
     const invalidateCachedSegments = vi.fn((segmentIds: Iterable<number>) => {
       for (const segmentId of segmentIds) {

@@ -68,6 +68,7 @@ import {
 } from "#src/segmentation_display_state/frontend.js";
 import { SharedWatchableValue } from "#src/shared_watchable_value.js";
 import type { VertexAttributeInfo } from "#src/skeleton/base.js";
+import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
 import {
   SKELETON_LAYER_RPC_ID,
   SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_RPC_ID,
@@ -91,10 +92,6 @@ import {
   type SpatiallyIndexedSkeletonView,
 } from "#src/skeleton/source_selection.js";
 import { spatiallyIndexedSkeletonTextureAttributeSpecs } from "#src/skeleton/spatial_attribute_layout.js";
-import {
-  getSpatiallyIndexedSkeletonSourceCapabilities,
-  type SpatiallyIndexedSkeletonSourceCapabilities,
-} from "#src/skeleton/state.js";
 import {
   forEachPlaneIntersectingVolumetricChunk,
   getNormalizedChunkLayout,
@@ -1480,11 +1477,11 @@ export class SkeletonChunk extends Chunk implements SkeletonChunkInterface {
   declare source: SkeletonSource;
   vertexAttributes: Uint8Array;
   indices: Uint32Array;
-  indexBuffer: GLBuffer;
+  indexBuffer!: GLBuffer;
   numIndices: number;
   numVertices: number;
   vertexAttributeOffsets: Uint32Array;
-  vertexAttributeTextures: (WebGLTexture | null)[];
+  vertexAttributeTextures: (WebGLTexture | null)[] = [];
 
   constructor(source: SkeletonSource, x: any) {
     super(source);
@@ -1533,7 +1530,7 @@ export class SpatiallyIndexedSkeletonChunk
   declare source: SpatiallyIndexedSkeletonSource;
   vertexAttributes: Uint8Array;
   indices: Uint32Array;
-  indexBuffer: GLBuffer;
+  indexBuffer!: GLBuffer;
   numIndices: number;
   numVertices: number;
   vertexAttributeOffsets: Uint32Array;
@@ -1836,20 +1833,9 @@ interface SpatiallyIndexedSkeletonLayerOptions {
   getPendingNodePosition?: (nodeId: number) => ArrayLike<number> | undefined;
   getCachedNode?: (
     nodeId: number,
-  ) => SpatiallyIndexedSkeletonNodeInfo | undefined;
+  ) => SpatiallyIndexedSkeletonNode | undefined;
   inspectionState?: SpatiallyIndexedSkeletonInspectionState;
   maxRetainedOverlaySegments?: number;
-}
-
-export interface SpatiallyIndexedSkeletonNodeInfo {
-  nodeId: number;
-  segmentId: number;
-  position: Float32Array;
-  parentNodeId?: number;
-  radius?: number;
-  confidence?: number;
-  labels?: readonly string[];
-  revisionToken?: string | number;
 }
 
 interface SpatiallyIndexedSkeletonInspectionState {
@@ -1857,11 +1843,11 @@ interface SpatiallyIndexedSkeletonInspectionState {
   readonly pendingNodePositionVersion: WatchableValueInterface<number>;
   getCachedSegmentNodes(
     segmentId: number,
-  ): readonly SpatiallyIndexedSkeletonNodeInfo[] | undefined;
+  ): readonly SpatiallyIndexedSkeletonNode[] | undefined;
   getFullSegmentNodes(
     skeletonLayer: SpatiallyIndexedSkeletonLayer,
     segmentId: number,
-  ): Promise<readonly SpatiallyIndexedSkeletonNodeInfo[]>;
+  ): Promise<readonly SpatiallyIndexedSkeletonNode[]>;
   evictInactiveSegmentNodes(activeSegmentIds: Iterable<number>): void;
 }
 
@@ -2124,7 +2110,7 @@ export class SpatiallyIndexedSkeletonLayer
     | ((nodeId: number) => ArrayLike<number> | undefined)
     | undefined;
   private getCachedNodeInfo:
-    | ((nodeId: number) => SpatiallyIndexedSkeletonNodeInfo | undefined)
+    | ((nodeId: number) => SpatiallyIndexedSkeletonNode | undefined)
     | undefined;
   private inspectionState: SpatiallyIndexedSkeletonInspectionState | undefined;
   private overlayChunk: SpatiallyIndexedSkeletonOverlayChunk | undefined;
@@ -2319,7 +2305,7 @@ export class SpatiallyIndexedSkeletonLayer
       return undefined;
     }
     this.inspectionState.evictInactiveSegmentNodes(overlaySegmentIds);
-    const segmentNodeSets: SpatiallyIndexedSkeletonNodeInfo[][] = [];
+    const segmentNodeSets: SpatiallyIndexedSkeletonNode[][] = [];
     const loadedSegmentIds: number[] = [];
     for (const segmentId of overlaySegmentIds) {
       const segmentNodes =
@@ -2683,10 +2669,6 @@ export class SpatiallyIndexedSkeletonLayer
     return view === "2d" ? this.sources2d : this.sources;
   }
 
-  getSourceCapabilities(): SpatiallyIndexedSkeletonSourceCapabilities {
-    return getSpatiallyIndexedSkeletonSourceCapabilities(this.source);
-  }
-
   private selectSourcesForViewAndGrid(
     view: SpatiallyIndexedSkeletonView,
     gridLevel: number | undefined,
@@ -3011,7 +2993,7 @@ export class SpatiallyIndexedSkeletonLayer
     options: {
       lod?: number;
     } = {},
-  ): SpatiallyIndexedSkeletonNodeInfo | undefined {
+  ): SpatiallyIndexedSkeletonNode | undefined {
     void options;
     if (!Number.isSafeInteger(nodeId) || nodeId <= 0) return undefined;
     return this.getCachedNodeSnapshot(nodeId);
@@ -3022,7 +3004,7 @@ export class SpatiallyIndexedSkeletonLayer
       segmentId?: bigint;
       lod?: number;
     } = {},
-  ): SpatiallyIndexedSkeletonNodeInfo[] {
+  ): SpatiallyIndexedSkeletonNode[] {
     void options.lod;
     const normalizedSegmentFilter =
       options.segmentId === undefined
@@ -3035,7 +3017,7 @@ export class SpatiallyIndexedSkeletonLayer
       normalizedSegmentFilter === undefined
         ? this.getActiveEditableSegmentIds()
         : [normalizedSegmentFilter];
-    const nodes = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
+    const nodes = new Map<number, SpatiallyIndexedSkeletonNode>();
     for (const segmentId of segmentIds) {
       const segmentNodes =
         this.inspectionState?.getCachedSegmentNodes(segmentId) ?? [];

@@ -120,6 +120,14 @@ export class SpatialSkeletonCommandMappings {
     return findStableIdentifier(this.segmentIdMappings, segmentId);
   }
 
+  getStableOrCurrentNodeId(nodeId: number | undefined) {
+    return this.getStableNodeId(nodeId) ?? normalizeIdentifier(nodeId);
+  }
+
+  getStableOrCurrentSegmentId(segmentId: number | undefined) {
+    return this.getStableSegmentId(segmentId) ?? normalizeIdentifier(segmentId);
+  }
+
   remapNodeId(originalNodeId: number | undefined, currentNodeId: number) {
     const normalizedOriginalNodeId = normalizeIdentifier(originalNodeId);
     const normalizedCurrentNodeId = normalizeIdentifier(currentNodeId);
@@ -187,7 +195,7 @@ export class SpatialSkeletonCommandHistory extends RefCounted {
   private redoEntries: SpatialSkeletonCommandHistoryEntry[] = [];
   private operationQueue = Promise.resolve();
   private pendingOperations = 0;
-  private dataSourceIdentity: unknown;
+  private source: unknown;
   private readonly maxEntries = SPATIAL_SKELETON_COMMAND_HISTORY_MAX_ENTRIES;
 
   private updateState() {
@@ -249,11 +257,11 @@ export class SpatialSkeletonCommandHistory extends RefCounted {
     this.updateState();
   }
 
-  setDataSourceIdentity(dataSourceIdentity: unknown) {
-    if (this.dataSourceIdentity === dataSourceIdentity) {
+  setSource(source: unknown) {
+    if (this.source === source) {
       return false;
     }
-    this.dataSourceIdentity = dataSourceIdentity;
+    this.source = source;
     this.clear();
     return true;
   }

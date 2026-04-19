@@ -6,7 +6,7 @@ import {
 } from "#src/layer/segmentation/spatial_skeleton_commands.js";
 import { SpatialSkeletonCommandHistory } from "#src/skeleton/command_history.js";
 import { setSpatialSkeletonModesToLinesAndPoints } from "#src/skeleton/edit_mode_rendering.js";
-import type { SpatiallyIndexedSkeletonNodeInfo } from "#src/skeleton/frontend.js";
+import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
 import { SkeletonRenderMode } from "#src/skeleton/render_mode.js";
 import { StatusMessage } from "#src/status.js";
 
@@ -42,7 +42,10 @@ function makeVisibleSegmentsState(initialVisibleSegments: bigint[] = []) {
 
 function makeEditableSkeletonSource(overrides: Record<string, unknown> = {}) {
   return {
+    listSkeletons: vi.fn(),
     getSkeleton: vi.fn(),
+    fetchNodes: vi.fn(),
+    getSpatialIndexMetadata: vi.fn(),
     addNode: vi.fn(),
     insertNode: vi.fn(),
     moveNode: vi.fn(),
@@ -102,10 +105,11 @@ describe("spatial_skeleton_edit_tool", () => {
     const markSpatialSkeletonNodeDataChanged = vi.fn();
     const moveViewToSpatialSkeletonNodePosition = vi.fn();
     const getFullSegmentNodes = vi.fn();
-    const parentNode: SpatiallyIndexedSkeletonNodeInfo = {
+    const parentNode: SpatiallyIndexedSkeletonNode = {
       nodeId: 5,
       segmentId: 11,
       position: new Float32Array([8, 9, 10]),
+      isTrueEnd: false,
       revisionToken: "parent-before",
     };
     const addNode = vi.fn().mockResolvedValue({
@@ -178,6 +182,7 @@ describe("spatial_skeleton_edit_tool", () => {
         segmentId: 11,
         position: new Float32Array([1, 2, 3]),
         parentNodeId: 5,
+        isTrueEnd: false,
         revisionToken: "node-after",
       },
       { allowUncachedSegment: false },
@@ -266,6 +271,7 @@ describe("spatial_skeleton_edit_tool", () => {
         segmentId: 13,
         position: new Float32Array([4, 5, 6]),
         parentNodeId: undefined,
+        isTrueEnd: false,
         revisionToken: "root-after",
       },
       { allowUncachedSegment: true },
@@ -302,7 +308,7 @@ describe("spatial_skeleton_edit_tool", () => {
             nodeId: 17,
             segmentId: 11,
             position: new Float32Array([1, 2, 3]),
-            labels: ["ends"],
+            isTrueEnd: true,
           }
         : undefined,
     );
@@ -319,7 +325,7 @@ describe("spatial_skeleton_edit_tool", () => {
     };
 
     expect(getAddNodeBlockedReason.call(tool, { getNode }, 17)).toBe(
-      "Node 17 is marked as a true end. Remove the true end label before appending a child node.",
+      "Node 17 is marked as a true end. Clear the true end state before appending a child node.",
     );
     expect(getAddNodeBlockedReason.call(tool, { getNode }, 18)).toBe(undefined);
     expect(getAddNodeBlockedReason.call(tool, { getNode }, undefined)).toBe(
@@ -331,16 +337,18 @@ describe("spatial_skeleton_edit_tool", () => {
 
   it("suppresses the deleted merge segment while keeping the surviving result selected", async () => {
     suppressStatusMessages();
-    const firstNode: SpatiallyIndexedSkeletonNodeInfo = {
+    const firstNode: SpatiallyIndexedSkeletonNode = {
       nodeId: 101,
       segmentId: 11,
       position: new Float32Array([1, 2, 3]),
+      isTrueEnd: false,
       revisionToken: "first-before",
     };
-    const secondNode: SpatiallyIndexedSkeletonNodeInfo = {
+    const secondNode: SpatiallyIndexedSkeletonNode = {
       nodeId: 202,
       segmentId: 17,
       position: new Float32Array([4, 5, 6]),
+      isTrueEnd: false,
       revisionToken: "second-before",
     };
     const mergeSkeletons = vi.fn().mockResolvedValue({

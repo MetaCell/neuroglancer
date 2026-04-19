@@ -16,19 +16,16 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { SpatiallyIndexedSkeletonNodeInfo } from "#src/skeleton/frontend.js";
+import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
 import {
   buildSpatiallyIndexedSkeletonNavigationGraph,
   getBranchEnd,
   getBranchStart,
   getChildNode,
   getFlatListNodeIds,
-  getCurrentBranchContext,
   getNextCollapsedLevelNode,
-  getNextBranchOrEnd,
   getOpenLeaves,
   getParentNode,
-  getPreviousBranchOrRoot,
   getSkeletonRootNode,
 } from "#src/skeleton/navigation.js";
 
@@ -36,15 +33,17 @@ function makeNode(
   nodeId: number,
   parentNodeId: number | undefined,
   options: {
-    labels?: readonly string[];
+    description?: string;
+    isTrueEnd?: boolean;
   } = {},
-): SpatiallyIndexedSkeletonNodeInfo {
+): SpatiallyIndexedSkeletonNode {
   return {
     nodeId,
     segmentId: 42,
     position: new Float32Array([nodeId, nodeId + 0.5, nodeId + 1]),
     parentNodeId,
-    labels: options.labels,
+    description: options.description,
+    isTrueEnd: options.isTrueEnd ?? false,
   };
 }
 
@@ -54,38 +53,21 @@ describe("skeleton/navigation", () => {
     makeNode(2, 1),
     makeNode(3, 2),
     makeNode(4, 3),
-    makeNode(5, 4, { labels: ["checkpoint"] }),
+    makeNode(5, 4, { description: "checkpoint" }),
     makeNode(6, 5),
     makeNode(7, 3),
     makeNode(8, 3),
     makeNode(9, 8),
-    makeNode(10, 9, { labels: ["ends"] }),
+    makeNode(10, 9, { isTrueEnd: true }),
     makeNode(11, 9),
   ]);
 
-  it("finds the skeleton root and upstream branch boundaries", () => {
+  it("finds the skeleton root and branch starts", () => {
     expect(getSkeletonRootNode(graph).nodeId).toBe(1);
-    expect(getPreviousBranchOrRoot(graph, 6).nodeId).toBe(3);
-    expect(getPreviousBranchOrRoot(graph, 3).nodeId).toBe(1);
-    expect(getPreviousBranchOrRoot(graph, 6, { alt: true }).nodeId).toBe(5);
     expect(getBranchStart(graph, 6).nodeId).toBe(3);
     expect(getBranchStart(graph, 3).nodeId).toBe(3);
     expect(getBranchStart(graph, 2).nodeId).toBe(2);
     expect(getBranchStart(graph, 1).nodeId).toBe(1);
-  });
-
-  it("returns downstream branches in flat-list sibling order", () => {
-    expect(
-      getNextBranchOrEnd(graph, 3).map((branch) => [
-        branch.child.nodeId,
-        branch.branchStartOrEnd.nodeId,
-        branch.branchEnd.nodeId,
-      ]),
-    ).toEqual([
-      [7, 7, 7],
-      [4, 5, 6],
-      [8, 9, 9],
-    ]);
   });
 
   it("prefers a downstream branch over a leaf for branch-end navigation", () => {
@@ -112,7 +94,7 @@ describe("skeleton/navigation", () => {
       makeNode(5, 2),
       makeNode(6, 4),
       makeNode(7, 4),
-      makeNode(8, 1, { labels: ["ends"] }),
+      makeNode(8, 1, { isTrueEnd: true }),
       makeNode(9, 8),
     ]);
 
@@ -153,29 +135,6 @@ describe("skeleton/navigation", () => {
         collapseRegularNodesForOrdering: true,
       }),
     ).toEqual([1, 2, 4, 5, 3, 6, 7]);
-  });
-
-  it("tracks the active sibling branch from the selected node or anchor", () => {
-    expect(getCurrentBranchContext(graph, 6)).toMatchObject({
-      branchNode: { nodeId: 3 },
-      currentBranchIndex: 1,
-    });
-    expect(getCurrentBranchContext(graph, 3)).toMatchObject({
-      branchNode: { nodeId: 3 },
-      currentBranchIndex: 0,
-    });
-    expect(
-      getCurrentBranchContext(graph, 3, { anchorNodeId: 11 }),
-    ).toMatchObject({
-      branchNode: { nodeId: 3 },
-      currentBranchIndex: 2,
-    });
-    expect(
-      getCurrentBranchContext(graph, 3, { anchorNodeId: 10 }),
-    ).toMatchObject({
-      branchNode: { nodeId: 3 },
-      currentBranchIndex: 2,
-    });
   });
 
   it("returns deterministic direct parent and child navigation targets", () => {

@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-import { CATMAID_TRUE_END_LABEL } from "#src/datasource/catmaid/api.js";
-import type { SpatiallyIndexedSkeletonNodeInfo } from "#src/skeleton/frontend.js";
+import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
 
 export type SpatialSkeletonDisplayNodeType =
   | "root"
@@ -31,46 +30,8 @@ export enum SpatialSkeletonNodeFilterType {
   HAS_DESCRIPTION,
 }
 
-const CLOSED_END_LABEL_PATTERNS = [
-  /^uncertain continuation$/i,
-  /^not a branch$/i,
-  /^soma$/i,
-  /^(really|uncertain|anterior|posterior)?\s?ends?$/i,
-];
-
-export function hasSpatialSkeletonTrueEndLabel(
-  labels: readonly string[] | undefined,
-) {
-  return (
-    labels?.some(
-      (label) => label.trim().toLowerCase() === CATMAID_TRUE_END_LABEL,
-    ) ?? false
-  );
-}
-
-export function updateSpatialSkeletonTrueEndLabels(
-  labels: readonly string[] | undefined,
-  present: boolean,
-) {
-  const nextLabels = (labels ?? []).filter(
-    (label) => label.trim().toLowerCase() !== CATMAID_TRUE_END_LABEL,
-  );
-  if (present) {
-    nextLabels.push(CATMAID_TRUE_END_LABEL);
-  }
-  return nextLabels.length > 0 ? nextLabels : undefined;
-}
-
-export function isSpatialSkeletonClosedEndLabel(label: string) {
-  const normalized = label.trim();
-  return (
-    normalized.length > 0 &&
-    CLOSED_END_LABEL_PATTERNS.some((pattern) => pattern.test(normalized))
-  );
-}
-
 export function classifySpatialSkeletonDisplayNodeType(
-  node: Pick<SpatiallyIndexedSkeletonNodeInfo, "parentNodeId">,
+  node: SpatiallyIndexedSkeletonNode,
   childCount: number | undefined,
   parentInTree = true,
 ): SpatialSkeletonDisplayNodeType {

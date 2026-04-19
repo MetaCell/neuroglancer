@@ -16,77 +16,18 @@
 
 import type {
   EditableSpatiallyIndexedSkeletonSource,
-  SpatiallyIndexedSkeletonEditContext,
-  SpatiallyIndexedSkeletonPropertyEditingOptions,
   SpatiallyIndexedSkeletonNode,
   SpatiallyIndexedSkeletonNodeRevisionUpdate,
-  SpatiallyIndexedSkeletonRevisionToken,
+  SpatiallyIndexedSkeletonSource,
 } from "#src/skeleton/api.js";
 import { SpatialSkeletonCommandHistory } from "#src/skeleton/command_history.js";
-import type {
-  SpatiallyIndexedSkeletonLayer,
-  SpatiallyIndexedSkeletonNodeInfo,
-} from "#src/skeleton/frontend.js";
+import type { SpatiallyIndexedSkeletonLayer } from "#src/skeleton/frontend.js";
 import { WatchableValue } from "#src/trackable_value.js";
 import { RefCounted } from "#src/util/disposable.js";
 
 interface SpatialSkeletonSourceAccess {
   source: unknown;
 }
-
-export interface SpatiallyIndexedSkeletonSourceCapabilities {
-  inspectSkeletons: boolean;
-  addNodes: boolean;
-  insertNodes: boolean;
-  moveNodes: boolean;
-  deleteNodes: boolean;
-  rerootSkeletons: boolean;
-  editNodeLabels: boolean;
-  editNodeProperties: boolean;
-  mergeSkeletons: boolean;
-  splitSkeletons: boolean;
-}
-
-export type SpatiallyIndexedSkeletonSourceCapability =
-  keyof SpatiallyIndexedSkeletonSourceCapabilities;
-
-export interface SpatiallyIndexedSkeletonInspectionSource {
-  getSkeleton(
-    skeletonId: number,
-    options?: { signal?: AbortSignal },
-  ): Promise<readonly SpatiallyIndexedSkeletonNode[]>;
-}
-
-export interface SpatiallyIndexedSkeletonRerootSource {
-  rerootSkeleton(
-    nodeId: number,
-    editContext?: SpatiallyIndexedSkeletonEditContext,
-  ): Promise<void>;
-}
-
-export interface SpatiallyIndexedSkeletonNodeRevisionLookupSource {
-  getNodeRevisionUpdates(
-    nodeIds: readonly number[],
-  ): Promise<readonly SpatiallyIndexedSkeletonNodeRevisionUpdate[]>;
-}
-
-export interface SpatiallyIndexedSkeletonPropertyEditingOptionsSource {
-  getPropertyEditingOptions(): SpatiallyIndexedSkeletonPropertyEditingOptions;
-}
-
-export const NO_SPATIALLY_INDEXED_SKELETON_SOURCE_CAPABILITIES: SpatiallyIndexedSkeletonSourceCapabilities =
-  {
-    inspectSkeletons: false,
-    addNodes: false,
-    insertNodes: false,
-    moveNodes: false,
-    deleteNodes: false,
-    rerootSkeletons: false,
-    editNodeLabels: false,
-    editNodeProperties: false,
-    mergeSkeletons: false,
-    splitSkeletons: false,
-  };
 
 function hasFunction<T extends string>(
   value: unknown,
@@ -99,21 +40,43 @@ function hasFunction<T extends string>(
   );
 }
 
+export function isSpatiallyIndexedSkeletonSource(
+  value: unknown,
+): value is SpatiallyIndexedSkeletonSource {
+  return (
+    hasFunction(value, "listSkeletons") &&
+    hasFunction(value, "getSkeleton") &&
+    hasFunction(value, "getSpatialIndexMetadata") &&
+    hasFunction(value, "fetchNodes")
+  );
+}
+
 export function isEditableSpatiallyIndexedSkeletonSource(
   value: unknown,
 ): value is EditableSpatiallyIndexedSkeletonSource {
-  const capabilities = getSpatiallyIndexedSkeletonSourceCapabilities(value);
   return (
-    capabilities.inspectSkeletons &&
-    capabilities.addNodes &&
-    capabilities.insertNodes &&
-    capabilities.moveNodes &&
-    capabilities.deleteNodes &&
-    capabilities.editNodeLabels &&
-    capabilities.editNodeProperties &&
-    capabilities.mergeSkeletons &&
-    capabilities.splitSkeletons
+    isSpatiallyIndexedSkeletonSource(value) &&
+    hasFunction(value, "addNode") &&
+    hasFunction(value, "insertNode") &&
+    hasFunction(value, "moveNode") &&
+    hasFunction(value, "deleteNode") &&
+    hasFunction(value, "updateDescription") &&
+    hasFunction(value, "setTrueEnd") &&
+    hasFunction(value, "removeTrueEnd") &&
+    hasFunction(value, "updateRadius") &&
+    hasFunction(value, "updateConfidence") &&
+    hasFunction(value, "mergeSkeletons") &&
+    hasFunction(value, "splitSkeleton")
   );
+}
+
+export function getSpatiallyIndexedSkeletonSource(
+  value: SpatialSkeletonSourceAccess | undefined,
+): SpatiallyIndexedSkeletonSource | undefined {
+  if (value === undefined) return undefined;
+  return isSpatiallyIndexedSkeletonSource(value.source)
+    ? value.source
+    : undefined;
 }
 
 export function getEditableSpatiallyIndexedSkeletonSource(
@@ -125,118 +88,15 @@ export function getEditableSpatiallyIndexedSkeletonSource(
     : undefined;
 }
 
-export function getSpatiallyIndexedSkeletonInspectionSource(
-  value: SpatialSkeletonSourceAccess | undefined,
-): SpatiallyIndexedSkeletonInspectionSource | undefined {
-  if (value === undefined) return undefined;
-  return hasFunction(value.source, "getSkeleton")
-    ? (value.source as SpatiallyIndexedSkeletonInspectionSource)
-    : undefined;
-}
-
-export function getSpatiallyIndexedSkeletonRerootSource(
-  value: SpatialSkeletonSourceAccess | undefined,
-): SpatiallyIndexedSkeletonRerootSource | undefined {
-  if (value === undefined) return undefined;
-  return hasFunction(value.source, "rerootSkeleton")
-    ? (value.source as SpatiallyIndexedSkeletonRerootSource)
-    : undefined;
-}
-
-export function getSpatiallyIndexedSkeletonNodeRevisionLookupSource(
-  value: SpatialSkeletonSourceAccess | undefined,
-): SpatiallyIndexedSkeletonNodeRevisionLookupSource | undefined {
-  if (value === undefined) return undefined;
-  return hasFunction(value.source, "getNodeRevisionUpdates")
-    ? (value.source as SpatiallyIndexedSkeletonNodeRevisionLookupSource)
-    : undefined;
-}
-
-export function getSpatiallyIndexedSkeletonPropertyEditingOptions(
-  value: SpatialSkeletonSourceAccess | undefined,
-): SpatiallyIndexedSkeletonPropertyEditingOptions | undefined {
-  if (
-    value === undefined ||
-    !hasFunction(value.source, "getPropertyEditingOptions")
-  ) {
-    return undefined;
-  }
-  return (
-    value.source as SpatiallyIndexedSkeletonPropertyEditingOptionsSource
-  ).getPropertyEditingOptions();
-}
-
-export function getSpatiallyIndexedSkeletonSourceCapabilities(
-  value: unknown,
-): SpatiallyIndexedSkeletonSourceCapabilities {
-  return {
-    inspectSkeletons: hasFunction(value, "getSkeleton"),
-    addNodes: hasFunction(value, "addNode"),
-    insertNodes: hasFunction(value, "insertNode"),
-    moveNodes: hasFunction(value, "moveNode"),
-    deleteNodes: hasFunction(value, "deleteNode"),
-    rerootSkeletons: hasFunction(value, "rerootSkeleton"),
-    editNodeLabels:
-      hasFunction(value, "updateDescription") &&
-      hasFunction(value, "setTrueEnd") &&
-      hasFunction(value, "removeTrueEnd"),
-    editNodeProperties:
-      hasFunction(value, "updateRadius") &&
-      hasFunction(value, "updateConfidence"),
-    mergeSkeletons: hasFunction(value, "mergeSkeletons"),
-    splitSkeletons: hasFunction(value, "splitSkeleton"),
-  };
-}
-
-export function hasSpatiallyIndexedSkeletonSourceCapability(
-  capabilities: SpatiallyIndexedSkeletonSourceCapabilities,
-  capability: SpatiallyIndexedSkeletonSourceCapability,
-) {
-  return capabilities[capability];
-}
-
-export function hasAnySpatiallyIndexedSkeletonEditingCapability(
-  capabilities: SpatiallyIndexedSkeletonSourceCapabilities,
-) {
-  return (
-    capabilities.addNodes ||
-    capabilities.moveNodes ||
-    capabilities.deleteNodes ||
-    capabilities.rerootSkeletons ||
-    capabilities.editNodeLabels ||
-    capabilities.editNodeProperties ||
-    capabilities.mergeSkeletons ||
-    capabilities.splitSkeletons
-  );
-}
-
-function spatiallyIndexedSkeletonSourceCapabilitiesEqual(
-  a: SpatiallyIndexedSkeletonSourceCapabilities,
-  b: SpatiallyIndexedSkeletonSourceCapabilities,
-) {
-  return (
-    a.inspectSkeletons === b.inspectSkeletons &&
-    a.addNodes === b.addNodes &&
-    a.insertNodes === b.insertNodes &&
-    a.moveNodes === b.moveNodes &&
-    a.deleteNodes === b.deleteNodes &&
-    a.rerootSkeletons === b.rerootSkeletons &&
-    a.editNodeLabels === b.editNodeLabels &&
-    a.editNodeProperties === b.editNodeProperties &&
-    a.mergeSkeletons === b.mergeSkeletons &&
-    a.splitSkeletons === b.splitSkeletons
-  );
-}
-
-export function mapSpatiallyIndexedSkeletonNodeToNodeInfo(
+export function normalizeSpatiallyIndexedSkeletonNode(
   node: SpatiallyIndexedSkeletonNode,
   fallbackSegmentId: number,
-): SpatiallyIndexedSkeletonNodeInfo | undefined {
-  const nodeId = Number(node.id);
-  const segmentIdValue = Number(node.skeleton_id);
-  const x = Number(node.x);
-  const y = Number(node.y);
-  const z = Number(node.z);
+): SpatiallyIndexedSkeletonNode | undefined {
+  const nodeId = Number(node.nodeId);
+  const segmentIdValue = Number(node.segmentId);
+  const x = Number(node.position[0]);
+  const y = Number(node.position[1]);
+  const z = Number(node.position[2]);
   if (
     !Number.isFinite(nodeId) ||
     !Number.isFinite(segmentIdValue) ||
@@ -247,47 +107,52 @@ export function mapSpatiallyIndexedSkeletonNodeToNodeInfo(
     return undefined;
   }
   const parentNodeId =
-    node.parent_id === undefined ||
-    node.parent_id === null ||
-    !Number.isFinite(Number(node.parent_id))
+    node.parentNodeId === undefined ||
+    !Number.isFinite(Number(node.parentNodeId))
       ? undefined
-      : Math.round(Number(node.parent_id));
+      : Math.round(Number(node.parentNodeId));
   return {
+    ...node,
     nodeId: Math.round(nodeId),
     segmentId: Math.round(
       Number.isFinite(segmentIdValue) ? segmentIdValue : fallbackSegmentId,
     ),
     position: new Float32Array([x, y, z]),
     parentNodeId,
-    radius:
-      node.radius === undefined || !Number.isFinite(Number(node.radius))
-        ? undefined
-        : Number(node.radius),
-    confidence:
-      node.confidence === undefined || !Number.isFinite(Number(node.confidence))
-        ? undefined
-        : Number(node.confidence),
-    labels: node.labels,
+    description:
+      typeof node.description === "string" && node.description.length > 0
+        ? node.description
+        : undefined,
+    isTrueEnd: node.isTrueEnd,
+    ...((node.radius !== undefined && Number.isFinite(Number(node.radius))) ||
+    (node.confidence !== undefined &&
+      Number.isFinite(Number(node.confidence)))
+      ? {
+          ...(node.radius !== undefined && Number.isFinite(Number(node.radius))
+            ? { radius: Number(node.radius) }
+            : {}),
+          ...(node.confidence !== undefined &&
+          Number.isFinite(Number(node.confidence))
+            ? { confidence: Number(node.confidence) }
+            : {}),
+        }
+      : {}),
     ...(node.revisionToken === undefined
       ? {}
       : { revisionToken: node.revisionToken }),
   };
 }
 
-function cloneSpatiallyIndexedSkeletonNodeInfo(
-  node: SpatiallyIndexedSkeletonNodeInfo,
-): SpatiallyIndexedSkeletonNodeInfo {
+function cloneSpatiallyIndexedSkeletonNode(
+  node: SpatiallyIndexedSkeletonNode,
+): SpatiallyIndexedSkeletonNode {
   return {
     ...node,
     position: new Float32Array(node.position),
-    labels: node.labels === undefined ? undefined : [...node.labels],
   };
 }
 
 export class SpatialSkeletonState extends RefCounted {
-  readonly sourceCapabilities = new WatchableValue(
-    NO_SPATIALLY_INDEXED_SKELETON_SOURCE_CAPABILITIES,
-  );
   readonly commandHistory = this.registerDisposer(
     new SpatialSkeletonCommandHistory(),
   );
@@ -304,16 +169,16 @@ export class SpatialSkeletonState extends RefCounted {
   private fullSkeletonCacheGeneration = 0;
   private fullSegmentNodeCache = new Map<
     number,
-    SpatiallyIndexedSkeletonNodeInfo[]
+    SpatiallyIndexedSkeletonNode[]
   >();
   private pendingFullSegmentNodeFetches = new Map<
     number,
     {
-      promise: Promise<SpatiallyIndexedSkeletonNodeInfo[]>;
+      promise: Promise<SpatiallyIndexedSkeletonNode[]>;
       abortController: AbortController;
     }
   >();
-  private cachedNodesById = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
+  private cachedNodesById = new Map<number, SpatiallyIndexedSkeletonNode>();
 
   setNodeProperties(
     nodeId: number,
@@ -425,22 +290,8 @@ export class SpatialSkeletonState extends RefCounted {
     return true;
   }
 
-  updateSourceCapabilities(
-    capabilities: SpatiallyIndexedSkeletonSourceCapabilities,
-  ) {
-    if (
-      spatiallyIndexedSkeletonSourceCapabilitiesEqual(
-        this.sourceCapabilities.value,
-        capabilities,
-      )
-    ) {
-      return;
-    }
-    this.sourceCapabilities.value = capabilities;
-  }
-
-  updateCommandHistoryDataSourceIdentity(dataSourceIdentity: unknown) {
-    return this.commandHistory.setDataSourceIdentity(dataSourceIdentity);
+  updateCommandHistorySource(source: unknown) {
+    return this.commandHistory.setSource(source);
   }
 
   clearInspectedSkeletonCache() {
@@ -474,7 +325,7 @@ export class SpatialSkeletonState extends RefCounted {
 
   private replaceCachedSegmentNodes(
     segmentId: number,
-    nextSegmentNodes: readonly SpatiallyIndexedSkeletonNodeInfo[],
+    nextSegmentNodes: readonly SpatiallyIndexedSkeletonNode[],
   ) {
     const previousSegmentNodes = this.fullSegmentNodeCache.get(segmentId);
     if (previousSegmentNodes !== undefined) {
@@ -515,7 +366,7 @@ export class SpatialSkeletonState extends RefCounted {
 
   setCachedNodeRevision(
     nodeId: number,
-    revisionToken: SpatiallyIndexedSkeletonRevisionToken | undefined,
+    revisionToken: string | undefined,
   ) {
     if (revisionToken === undefined) {
       return false;
@@ -555,8 +406,8 @@ export class SpatialSkeletonState extends RefCounted {
     segmentId: number,
     nodeId: number,
     update: (
-      node: SpatiallyIndexedSkeletonNodeInfo,
-    ) => SpatiallyIndexedSkeletonNodeInfo,
+      node: SpatiallyIndexedSkeletonNode,
+    ) => SpatiallyIndexedSkeletonNode,
   ) {
     const segmentNodes = this.fullSegmentNodeCache.get(segmentId);
     if (segmentNodes === undefined) {
@@ -578,7 +429,7 @@ export class SpatialSkeletonState extends RefCounted {
 
   private upsertCachedNodeInSegment(
     segmentId: number,
-    node: SpatiallyIndexedSkeletonNodeInfo,
+    node: SpatiallyIndexedSkeletonNode,
   ) {
     const segmentNodes = this.fullSegmentNodeCache.get(segmentId);
     if (segmentNodes === undefined) {
@@ -609,8 +460,8 @@ export class SpatialSkeletonState extends RefCounted {
   updateCachedNode(
     nodeId: number,
     update: (
-      node: SpatiallyIndexedSkeletonNodeInfo,
-    ) => SpatiallyIndexedSkeletonNodeInfo,
+      node: SpatiallyIndexedSkeletonNode,
+    ) => SpatiallyIndexedSkeletonNode,
   ) {
     const segmentId = this.getCachedSegmentIdForNode(nodeId);
     if (segmentId === undefined) {
@@ -620,10 +471,10 @@ export class SpatialSkeletonState extends RefCounted {
   }
 
   upsertCachedNode(
-    node: SpatiallyIndexedSkeletonNodeInfo,
+    node: SpatiallyIndexedSkeletonNode,
     options: { allowUncachedSegment?: boolean } = {},
   ) {
-    const normalizedNode = cloneSpatiallyIndexedSkeletonNodeInfo(node);
+    const normalizedNode = cloneSpatiallyIndexedSkeletonNode(node);
     const targetSegmentCached = this.fullSegmentNodeCache.has(
       normalizedNode.segmentId,
     );
@@ -726,7 +577,7 @@ export class SpatialSkeletonState extends RefCounted {
       return false;
     }
     let segmentChanged = false;
-    const nextSegmentNodes: SpatiallyIndexedSkeletonNodeInfo[] = [];
+    const nextSegmentNodes: SpatiallyIndexedSkeletonNode[] = [];
     for (const candidate of segmentNodes) {
       if (candidate.nodeId === normalizedNodeId) {
         segmentChanged = true;
@@ -775,7 +626,7 @@ export class SpatialSkeletonState extends RefCounted {
       return undefined;
     }
 
-    const nodeById = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
+    const nodeById = new Map<number, SpatiallyIndexedSkeletonNode>();
     for (const node of segmentNodes) {
       nodeById.set(node.nodeId, node);
     }
@@ -789,7 +640,7 @@ export class SpatialSkeletonState extends RefCounted {
 
     const pathNodeIds: number[] = [];
     const seen = new Set<number>();
-    let currentNode: SpatiallyIndexedSkeletonNodeInfo | undefined = startNode;
+    let currentNode: SpatiallyIndexedSkeletonNode | undefined = startNode;
     while (currentNode !== undefined) {
       if (seen.has(currentNode.nodeId)) {
         return undefined;
@@ -889,7 +740,7 @@ export class SpatialSkeletonState extends RefCounted {
   async getFullSegmentNodes(
     skeletonLayer: SpatiallyIndexedSkeletonLayer,
     segmentId: number,
-  ): Promise<SpatiallyIndexedSkeletonNodeInfo[]> {
+  ): Promise<SpatiallyIndexedSkeletonNode[]> {
     const cached = this.fullSegmentNodeCache.get(segmentId);
     if (cached !== undefined) {
       return cached;
@@ -898,8 +749,7 @@ export class SpatialSkeletonState extends RefCounted {
     if (pendingEntry !== undefined) {
       return pendingEntry.promise;
     }
-    const skeletonSource =
-      getSpatiallyIndexedSkeletonInspectionSource(skeletonLayer);
+    const skeletonSource = getSpatiallyIndexedSkeletonSource(skeletonLayer);
     if (skeletonSource === undefined) {
       throw new Error(
         "The active spatial skeleton source does not expose full skeleton inspection.",
@@ -908,15 +758,15 @@ export class SpatialSkeletonState extends RefCounted {
     const fetchVersion = this.fullSkeletonCacheGeneration;
     const abortController = new AbortController();
     const pendingFetch: {
-      promise?: Promise<SpatiallyIndexedSkeletonNodeInfo[]>;
+      promise?: Promise<SpatiallyIndexedSkeletonNode[]>;
     } = {};
     const fetchPromise = (async () => {
       const fetchedNodes = await skeletonSource.getSkeleton(segmentId, {
         signal: abortController.signal,
       });
-      const dedupedNodes = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
+      const dedupedNodes = new Map<number, SpatiallyIndexedSkeletonNode>();
       for (const fetchedNode of fetchedNodes) {
-        const mappedNode = mapSpatiallyIndexedSkeletonNodeToNodeInfo(
+        const mappedNode = normalizeSpatiallyIndexedSkeletonNode(
           fetchedNode,
           segmentId,
         );

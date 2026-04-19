@@ -14,24 +14,16 @@
  * limitations under the License.
  */
 
-import { CATMAID_TRUE_END_LABEL } from "#src/datasource/catmaid/api.js";
 import type {
-  SpatiallyIndexedSkeletonBranchNavigationTarget,
   SpatiallyIndexedSkeletonNavigationTarget,
+  SpatiallyIndexedSkeletonNode,
   SpatiallyIndexedSkeletonOpenLeaf,
 } from "#src/skeleton/api.js";
-import type { SpatiallyIndexedSkeletonNodeInfo } from "#src/skeleton/frontend.js";
 
 export interface SpatiallyIndexedSkeletonNavigationGraph {
-  nodeById: Map<number, SpatiallyIndexedSkeletonNodeInfo>;
+  nodeById: Map<number, SpatiallyIndexedSkeletonNode>;
   childrenByParent: Map<number, number[]>;
   rootNodeIds: number[];
-}
-
-export interface SpatiallyIndexedSkeletonBranchContext {
-  branchNode: SpatiallyIndexedSkeletonNavigationTarget;
-  branches: SpatiallyIndexedSkeletonBranchNavigationTarget[];
-  currentBranchIndex: number | undefined;
 }
 
 interface CollapsedChildPath {
@@ -62,13 +54,6 @@ const navigationGraphDerivedState = new WeakMap<
   NavigationGraphDerivedState
 >();
 
-const CLOSED_END_LABEL_PATTERNS = [
-  /^uncertain continuation$/i,
-  /^not a branch$/i,
-  /^soma$/i,
-  /^(really|uncertain|anterior|posterior)?\s?ends?$/i,
-];
-
 function buildNavigationGraphDerivedState(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
 ): NavigationGraphDerivedState {
@@ -78,7 +63,7 @@ function buildNavigationGraphDerivedState(
     const parentNodeId = node.parentNodeId;
     const parentInTree =
       parentNodeId !== undefined && graph.nodeById.has(parentNodeId);
-    const sortPriority = hasTrueEndLabel(node)
+    const sortPriority = node.isTrueEnd
       ? 0
       : childCount === 0
         ? 0
@@ -109,9 +94,9 @@ function getNavigationGraphDerivedState(
 }
 
 export function buildSpatiallyIndexedSkeletonNavigationGraph(
-  nodes: readonly SpatiallyIndexedSkeletonNodeInfo[],
+  nodes: readonly SpatiallyIndexedSkeletonNode[],
 ): SpatiallyIndexedSkeletonNavigationGraph {
-  const nodeById = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
+  const nodeById = new Map<number, SpatiallyIndexedSkeletonNode>();
   for (const node of nodes) {
     if (!nodeById.has(node.nodeId)) {
       nodeById.set(node.nodeId, node);
@@ -155,14 +140,6 @@ export function buildSpatiallyIndexedSkeletonNavigationGraph(
     buildNavigationGraphDerivedState(graph),
   );
   return graph;
-}
-
-function hasTrueEndLabel(node: SpatiallyIndexedSkeletonNodeInfo) {
-  return (
-    node.labels?.some(
-      (label) => label.trim().toLowerCase() === CATMAID_TRUE_END_LABEL,
-    ) ?? false
-  );
 }
 
 function getFlatListNodeSortPriority(
@@ -289,22 +266,6 @@ function getParentNodeId(
   return parentNodeId;
 }
 
-function getFirstInterestingNodeId(
-  graph: SpatiallyIndexedSkeletonNavigationGraph,
-  sequence: readonly number[],
-) {
-  if (sequence.length === 0) {
-    throw new Error("No nodes are available for navigation.");
-  }
-  for (const nodeId of sequence) {
-    const labels = graph.nodeById.get(nodeId)?.labels;
-    if ((labels?.length ?? 0) > 0) {
-      return nodeId;
-    }
-  }
-  return sequence[sequence.length - 1];
-}
-
 function getFlatListOrderedChildNodeIds(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
   nodeId: number,
@@ -385,7 +346,7 @@ function isCollapsedRegularNode(
   return (
     getParentNodeId(graph, nodeId) !== undefined &&
     getChildNodeIds(graph, nodeId).length === 1 &&
-    !hasTrueEndLabel(node)
+    !node.isTrueEnd
   );
 }
 
@@ -408,8 +369,10 @@ function getCollapsedOrderedFlatListNodeIds(
   const orderedNodeIds: number[] = [];
   const visited = new Set<number>();
 
-  const appendLeafFirstPreOrder = (startPaths: readonly number[][]) => {
-    const stack = [...startPaths].reverse();
+  const appendLeafFirstPreOrder = (
+    startPaths: readonly (readonly number[])[],
+  ) => {
+    const stack = [...startPaths].map((path) => [...path]).reverse();
     while (stack.length > 0) {
       const path = stack.pop()!;
       const representativeNodeId = path[path.length - 1];
@@ -435,7 +398,7 @@ function getCollapsedOrderedFlatListNodeIds(
         const childPath = childPaths[childPathIndex];
         const firstNodeId = childPath.path[0];
         if (firstNodeId !== undefined && !visited.has(firstNodeId)) {
-          stack.push(childPath.path);
+          stack.push([...childPath.path]);
         }
       }
     }
@@ -452,7 +415,7 @@ function getCollapsedOrderedFlatListNodeIds(
   );
   for (const nodeId of remainingNodeIds) {
     if (!visited.has(nodeId)) {
-      appendLeafFirstPreOrder([getCollapsedBranchPath(graph, nodeId)]);
+      appendLeafFirstPreOrder([[...getCollapsedBranchPath(graph, nodeId)]]);
     }
   }
 
@@ -495,63 +458,13 @@ function getCollapsedLevelContext(
   return context;
 }
 
-function getPreviousBranchOrRootNodeId(
-  graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
-  options: { alt?: boolean } = {},
-) {
-  getNodeOrThrow(graph, nodeId);
-  const sequence: number[] = [];
-  let currentNodeId = nodeId;
-  const visited = new Set<number>([currentNodeId]);
-  while (true) {
-    const parentNodeId = getParentNodeId(graph, currentNodeId);
-    if (parentNodeId === undefined || visited.has(parentNodeId)) {
-      break;
-    }
-    currentNodeId = parentNodeId;
-    visited.add(currentNodeId);
-    sequence.push(currentNodeId);
-    if (getChildNodeIds(graph, currentNodeId).length !== 1) {
-      break;
-    }
-  }
-  if ((options.alt ?? false) && sequence.length > 0) {
-    return getFirstInterestingNodeId(graph, sequence);
-  }
-  return currentNodeId;
-}
-
-function getDirectChildOnPath(
-  graph: SpatiallyIndexedSkeletonNavigationGraph,
-  ancestorNodeId: number,
-  descendantNodeId: number,
-) {
-  if (ancestorNodeId === descendantNodeId) return undefined;
-  let currentNodeId = descendantNodeId;
-  const visited = new Set<number>();
-  while (!visited.has(currentNodeId)) {
-    visited.add(currentNodeId);
-    const parentNodeId = getParentNodeId(graph, currentNodeId);
-    if (parentNodeId === undefined) {
-      return undefined;
-    }
-    if (parentNodeId === ancestorNodeId) {
-      return currentNodeId;
-    }
-    currentNodeId = parentNodeId;
-  }
-  return undefined;
-}
-
-function getNextBranchTargets(
+function getBranchEndNodeIds(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
   nodeId: number,
 ) {
   getNodeOrThrow(graph, nodeId);
   const childNodeIds = getFlatListOrderedChildNodeIds(graph, nodeId);
   return childNodeIds.map((childNodeId) => {
-    const sequence = [childNodeId];
     let branchEndNodeId = childNodeId;
     while (true) {
       const branchChildNodeIds = getChildNodeIds(graph, branchEndNodeId);
@@ -559,25 +472,9 @@ function getNextBranchTargets(
         break;
       }
       branchEndNodeId = branchChildNodeIds[0];
-      sequence.push(branchEndNodeId);
     }
-    return {
-      child: getNodeTarget(graph, childNodeId),
-      branchStartOrEnd: getNodeTarget(
-        graph,
-        getFirstInterestingNodeId(graph, sequence),
-      ),
-      branchEnd: getNodeTarget(graph, branchEndNodeId),
-    };
+    return branchEndNodeId;
   });
-}
-
-function hasClosedEndLabel(node: SpatiallyIndexedSkeletonNodeInfo) {
-  return (
-    node.labels?.some((label) =>
-      CLOSED_END_LABEL_PATTERNS.some((pattern) => pattern.test(label.trim())),
-    ) ?? false
-  );
 }
 
 export function getSkeletonRootNode(
@@ -588,17 +485,6 @@ export function getSkeletonRootNode(
     throw new Error("The loaded skeleton does not contain a root node.");
   }
   return getNodeTarget(graph, rootNodeId);
-}
-
-export function getPreviousBranchOrRoot(
-  graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
-  options: { alt?: boolean } = {},
-) {
-  return getNodeTarget(
-    graph,
-    getPreviousBranchOrRootNodeId(graph, nodeId, options),
-  );
 }
 
 export function getBranchStart(
@@ -621,27 +507,20 @@ export function getBranchStart(
   }
 }
 
-export function getNextBranchOrEnd(
-  graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
-): SpatiallyIndexedSkeletonBranchNavigationTarget[] {
-  return getNextBranchTargets(graph, nodeId);
-}
-
 export function getBranchEnd(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
   nodeId: number,
 ) {
   getNodeOrThrow(graph, nodeId);
-  const branchTargets = getNextBranchTargets(graph, nodeId);
-  if (branchTargets.length === 0) {
+  const branchEndNodeIds = getBranchEndNodeIds(graph, nodeId);
+  if (branchEndNodeIds.length === 0) {
     return getNodeTarget(graph, nodeId);
   }
-  const preferredTarget =
-    branchTargets.find(
-      (target) => getChildNodeIds(graph, target.branchEnd.nodeId).length > 1,
-    ) ?? branchTargets[0];
-  return preferredTarget.branchEnd;
+  const preferredBranchEndNodeId =
+    branchEndNodeIds.find(
+      (branchEndNodeId) => getChildNodeIds(graph, branchEndNodeId).length > 1,
+    ) ?? branchEndNodeIds[0];
+  return getNodeTarget(graph, preferredBranchEndNodeId);
 }
 
 export function getParentNode(
@@ -756,7 +635,7 @@ export function getOpenLeaves(
   for (const candidateNodeId of queue) {
     if (getChildNodeIds(graph, candidateNodeId).length !== 0) continue;
     const candidateNode = getNodeOrThrow(graph, candidateNodeId);
-    if (hasClosedEndLabel(candidateNode)) continue;
+    if (candidateNode.isTrueEnd) continue;
     leaves.push({
       ...getNodeTarget(graph, candidateNodeId),
       distance: distances.get(candidateNodeId) ?? 0,
@@ -767,49 +646,4 @@ export function getOpenLeaves(
     a.distance === b.distance ? a.nodeId - b.nodeId : a.distance - b.distance,
   );
   return leaves;
-}
-
-export function getCurrentBranchContext(
-  graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
-  options: { anchorNodeId?: number } = {},
-): SpatiallyIndexedSkeletonBranchContext {
-  const branchNodeId =
-    getChildNodeIds(graph, nodeId).length > 1
-      ? nodeId
-      : getPreviousBranchOrRootNodeId(graph, nodeId);
-  const branches = getNextBranchTargets(graph, branchNodeId);
-  let currentChildNodeId = getDirectChildOnPath(graph, branchNodeId, nodeId);
-
-  const anchorNodeId = options.anchorNodeId;
-  if (
-    currentChildNodeId === undefined &&
-    anchorNodeId !== undefined &&
-    graph.nodeById.has(anchorNodeId)
-  ) {
-    currentChildNodeId = getDirectChildOnPath(
-      graph,
-      branchNodeId,
-      anchorNodeId,
-    );
-  }
-
-  let currentBranchIndex =
-    currentChildNodeId === undefined
-      ? undefined
-      : branches.findIndex(
-          (branch) => branch.child.nodeId === currentChildNodeId,
-        );
-  if (currentBranchIndex !== undefined && currentBranchIndex < 0) {
-    currentBranchIndex = undefined;
-  }
-  if (currentBranchIndex === undefined && branches.length > 0) {
-    currentBranchIndex = 0;
-  }
-
-  return {
-    branchNode: getNodeTarget(graph, branchNodeId),
-    branches,
-    currentBranchIndex,
-  };
 }

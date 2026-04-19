@@ -34,7 +34,7 @@ import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import { getSpatialSkeletonNodeIdFromViewerHover } from "#src/layer/segmentation/selection.js";
 import {
   executeSpatialSkeletonDeleteNode,
-  executeSpatialSkeletonNodeLabelUpdate,
+  executeSpatialSkeletonNodeTrueEndUpdate,
   redoSpatialSkeletonCommand,
   undoSpatialSkeletonCommand,
 } from "#src/layer/segmentation/spatial_skeleton_commands.js";
@@ -46,9 +46,13 @@ import {
 import { getBaseObjectColor } from "#src/segmentation_display_state/frontend.js";
 import type {
   SpatiallyIndexedSkeletonNavigationTarget,
+  SpatiallyIndexedSkeletonNode,
   SpatiallyIndexedSkeletonOpenLeaf,
 } from "#src/skeleton/api.js";
-import type { SpatiallyIndexedSkeletonNodeInfo } from "#src/skeleton/frontend.js";
+import {
+  SpatialSkeletonActions,
+  type SpatialSkeletonAction,
+} from "#src/skeleton/actions.js";
 import {
   buildSpatiallyIndexedSkeletonNavigationGraph,
   getBranchEnd as getBranchEndFromGraph,
@@ -63,10 +67,8 @@ import {
 import {
   getSpatialSkeletonNodeFilterLabel,
   getSpatialSkeletonNodeIconFilterType,
-  hasSpatialSkeletonTrueEndLabel,
   SpatialSkeletonNodeFilterType,
   type SpatialSkeletonDisplayNodeType as SkeletonNodeType,
-  updateSpatialSkeletonTrueEndLabels,
 } from "#src/skeleton/node_types.js";
 import { StatusMessage } from "#src/status.js";
 import { observeWatchable, registerNested } from "#src/trackable_value.js";
@@ -146,10 +148,6 @@ const NODE_TYPE_LABELS: Record<SkeletonNodeType, string> = {
   regular: "regular",
   virtualEnd: "virtual end",
 };
-
-function hasTrueEndLabel(node: SpatiallyIndexedSkeletonNodeInfo) {
-  return hasSpatialSkeletonTrueEndLabel(node.labels);
-}
 
 function formatNodeCoordinates(position: ArrayLike<number>) {
   const x = Number(position[0]);
@@ -301,15 +299,15 @@ export class SpatialSkeletonEditTab extends Tab {
     nodesSection.appendChild(nodesList);
     element.appendChild(nodesSection);
 
-    let allNodes: SpatiallyIndexedSkeletonNodeInfo[] = [];
+    let allNodes: SpatiallyIndexedSkeletonNode[] = [];
     let activeSegmentIds: number[] = [];
-    let nodesBySegment = new Map<number, SpatiallyIndexedSkeletonNodeInfo[]>();
+    let nodesBySegment = new Map<number, SpatiallyIndexedSkeletonNode[]>();
     const shownSegmentIds = new Set<number>();
     let filterText = "";
     let nodeFilterType = SpatialSkeletonNodeFilterType.NONE;
     let inspectionAllowed = false;
     let navigationAllowed = false;
-    let labelEditingAllowed = false;
+    let trueEndEditingAllowed = false;
     let nodeDeletionAllowed = false;
     let nodeRerootAllowed = false;
     let listCollapsed = true;
@@ -327,7 +325,7 @@ export class SpatialSkeletonEditTab extends Tab {
     const navigationGraphCache = new Map<
       number,
       {
-        nodes: readonly SpatiallyIndexedSkeletonNodeInfo[];
+        nodes: readonly SpatiallyIndexedSkeletonNode[];
         graph: SpatiallyIndexedSkeletonNavigationGraph;
       }
     >();
@@ -355,23 +353,15 @@ export class SpatialSkeletonEditTab extends Tab {
     };
 
     const ensureActionsAllowed = (
-      requiredCapabilities:
-        | "inspectSkeletons"
-        | "editNodeLabels"
-        | "deleteNodes"
-        | "rerootSkeletons"
-        | readonly (
-            | "inspectSkeletons"
-            | "editNodeLabels"
-            | "deleteNodes"
-            | "rerootSkeletons"
-          )[],
+      requiredActions:
+        | SpatialSkeletonAction
+        | readonly SpatialSkeletonAction[],
       options: {
         requireVisibleChunks?: boolean;
       } = {},
     ) => {
       const reason = layer.getSpatialSkeletonActionsDisabledReason(
-        requiredCapabilities,
+        requiredActions,
         options,
       );
       if (reason !== undefined) {
@@ -382,7 +372,7 @@ export class SpatialSkeletonEditTab extends Tab {
     };
 
     const selectNode = (
-      node: SpatiallyIndexedSkeletonNodeInfo | undefined,
+      node: SpatiallyIndexedSkeletonNode | undefined,
       options: {
         moveView?: boolean;
         pin?: boolean;
@@ -482,7 +472,7 @@ export class SpatialSkeletonEditTab extends Tab {
       "Ctrl+right-click to pin selection\n" +
       "Ctrl+shift+right-click to unpin";
 
-    const getNodeDescriptionText = (node: SpatiallyIndexedSkeletonNodeInfo) =>
+    const getNodeDescriptionText = (node: SpatiallyIndexedSkeletonNode) =>
       layer.getSpatialSkeletonNodeDisplayDescription(node);
 
     const getHoveredNodeIdFromViewer = () => {
@@ -612,7 +602,7 @@ export class SpatialSkeletonEditTab extends Tab {
 
     const getSelectedNavigationContext = () => {
       if (
-        !ensureActionsAllowed("inspectSkeletons", {
+        !ensureActionsAllowed(SpatialSkeletonActions.inspect, {
           requireVisibleChunks: false,
         })
       ) {
@@ -636,10 +626,10 @@ export class SpatialSkeletonEditTab extends Tab {
     };
 
     const updateTrueEndLabel = (
-      node: SpatiallyIndexedSkeletonNodeInfo,
+      node: SpatiallyIndexedSkeletonNode,
       present: boolean,
     ) => {
-      if (!ensureActionsAllowed("editNodeLabels")) return;
+      if (!ensureActionsAllowed(SpatialSkeletonActions.editNodeTrueEnd)) return;
       if (pendingTrueEndNodes.has(node.nodeId)) return;
       pendingTrueEndNodes.add(node.nodeId);
       updateDisplay();
@@ -651,18 +641,15 @@ export class SpatialSkeletonEditTab extends Tab {
               `Node ${node.nodeId} is missing from the inspected skeleton cache.`,
             );
           }
-          await executeSpatialSkeletonNodeLabelUpdate(layer, {
+          await executeSpatialSkeletonNodeTrueEndUpdate(layer, {
             node: currentNode,
-            nextLabels: updateSpatialSkeletonTrueEndLabels(
-              currentNode.labels,
-              present,
-            ),
+            nextIsTrueEnd: present,
           });
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);
           StatusMessage.showTemporaryMessage(
-            `Failed to update true end label: ${message}`,
+            `Failed to update true end state: ${message}`,
           );
         } finally {
           pendingTrueEndNodes.delete(node.nodeId);
@@ -703,8 +690,8 @@ export class SpatialSkeletonEditTab extends Tab {
       })();
     };
 
-    const deleteNode = (node: SpatiallyIndexedSkeletonNodeInfo) => {
-      if (!ensureActionsAllowed("deleteNodes")) return;
+    const deleteNode = (node: SpatiallyIndexedSkeletonNode) => {
+      if (!ensureActionsAllowed(SpatialSkeletonActions.deleteNodes)) return;
       if (pendingDeleteNodes.has(node.nodeId)) {
         return;
       }
@@ -734,9 +721,9 @@ export class SpatialSkeletonEditTab extends Tab {
       })();
     };
 
-    const rerootNode = (node: SpatiallyIndexedSkeletonNodeInfo) => {
+    const rerootNode = (node: SpatiallyIndexedSkeletonNode) => {
       if (
-        !ensureActionsAllowed("rerootSkeletons", {
+        !ensureActionsAllowed(SpatialSkeletonActions.reroot, {
           requireVisibleChunks: false,
         })
       ) {
@@ -1169,7 +1156,7 @@ export class SpatialSkeletonEditTab extends Tab {
                 return;
               }
               if (
-                !ensureActionsAllowed("inspectSkeletons", {
+                !ensureActionsAllowed(SpatialSkeletonActions.inspect, {
                   requireVisibleChunks: false,
                 })
               ) {
@@ -1189,7 +1176,7 @@ export class SpatialSkeletonEditTab extends Tab {
               }
               event.preventDefault();
               if (
-                !ensureActionsAllowed("inspectSkeletons", {
+                !ensureActionsAllowed(SpatialSkeletonActions.inspect, {
                   requireVisibleChunks: false,
                 })
               ) {
@@ -1205,7 +1192,7 @@ export class SpatialSkeletonEditTab extends Tab {
               if (event.key !== "Enter" && event.key !== " ") return;
               event.preventDefault();
               if (
-                !ensureActionsAllowed("inspectSkeletons", {
+                !ensureActionsAllowed(SpatialSkeletonActions.inspect, {
                   requireVisibleChunks: false,
                 })
               ) {
@@ -1217,7 +1204,7 @@ export class SpatialSkeletonEditTab extends Tab {
             row.setAttribute("aria-disabled", "true");
           }
 
-          const nodeIsTrueEnd = hasTrueEndLabel(node);
+          const nodeIsTrueEnd = node.isTrueEnd;
           const iconFilterType = getSpatialSkeletonNodeIconFilterType({
             nodeIsTrueEnd,
             nodeType: type,
@@ -1249,7 +1236,7 @@ export class SpatialSkeletonEditTab extends Tab {
           typeIcon.title = typeButtonTitle;
           if (typeIcon instanceof HTMLButtonElement) {
             typeIcon.type = "button";
-            typeIcon.disabled = !labelEditingAllowed || typeButtonPending;
+            typeIcon.disabled = !trueEndEditingAllowed || typeButtonPending;
             typeIcon.setAttribute("aria-pressed", String(nodeIsTrueEnd));
             typeIcon.addEventListener("click", (event: MouseEvent) => {
               event.stopPropagation();
@@ -1390,13 +1377,13 @@ export class SpatialSkeletonEditTab extends Tab {
     };
 
     const applyNodesBySegment = (
-      nextNodesBySegment: Map<number, SpatiallyIndexedSkeletonNodeInfo[]>,
+      nextNodesBySegment: Map<number, SpatiallyIndexedSkeletonNode[]>,
       summarySuffix = "",
     ) => {
       loadedNodeSummarySuffix = summarySuffix;
       navigationGraphCache.clear();
       nodesBySegment = nextNodesBySegment;
-      const allNodesById = new Map<number, SpatiallyIndexedSkeletonNodeInfo>();
+      const allNodesById = new Map<number, SpatiallyIndexedSkeletonNode>();
       for (const segmentNodes of nextNodesBySegment.values()) {
         for (const node of segmentNodes) {
           if (!allNodesById.has(node.nodeId)) {
@@ -1479,7 +1466,7 @@ export class SpatialSkeletonEditTab extends Tab {
           }
           const nextNodesBySegment = new Map<
             number,
-            SpatiallyIndexedSkeletonNodeInfo[]
+            SpatiallyIndexedSkeletonNode[]
           >(fetchedSegments);
           applyNodesBySegment(
             nextNodesBySegment,
@@ -1511,30 +1498,40 @@ export class SpatialSkeletonEditTab extends Tab {
 
     const updateGateStatus = () => {
       const nextInspectionAllowed =
-        layer.getSpatialSkeletonActionsDisabledReason("inspectSkeletons", {
-          requireVisibleChunks: false,
-        }) === undefined;
+        layer.getSpatialSkeletonActionsDisabledReason(
+          SpatialSkeletonActions.inspect,
+          {
+            requireVisibleChunks: false,
+          },
+        ) === undefined;
       const nextNavigationAllowed = nextInspectionAllowed;
-      const nextLabelEditingAllowed =
-        layer.getSpatialSkeletonActionsDisabledReason("editNodeLabels") ===
+      const nextTrueEndEditingAllowed =
+        layer.getSpatialSkeletonActionsDisabledReason(
+          SpatialSkeletonActions.editNodeTrueEnd,
+        ) ===
         undefined;
       const nextNodeDeletionAllowed =
-        layer.getSpatialSkeletonActionsDisabledReason("deleteNodes") ===
+        layer.getSpatialSkeletonActionsDisabledReason(
+          SpatialSkeletonActions.deleteNodes,
+        ) ===
         undefined;
       const nextNodeRerootAllowed =
-        layer.getSpatialSkeletonActionsDisabledReason("rerootSkeletons", {
-          requireVisibleChunks: false,
-        }) === undefined;
+        layer.getSpatialSkeletonActionsDisabledReason(
+          SpatialSkeletonActions.reroot,
+          {
+            requireVisibleChunks: false,
+          },
+        ) === undefined;
       const gateStateChanged =
         inspectionAllowed !== nextInspectionAllowed ||
         navigationAllowed !== nextNavigationAllowed ||
-        labelEditingAllowed !== nextLabelEditingAllowed ||
+        trueEndEditingAllowed !== nextTrueEndEditingAllowed ||
         nodeDeletionAllowed !== nextNodeDeletionAllowed ||
         nodeRerootAllowed !== nextNodeRerootAllowed;
 
       inspectionAllowed = nextInspectionAllowed;
       navigationAllowed = nextNavigationAllowed;
-      labelEditingAllowed = nextLabelEditingAllowed;
+      trueEndEditingAllowed = nextTrueEndEditingAllowed;
       nodeDeletionAllowed = nextNodeDeletionAllowed;
       nodeRerootAllowed = nextNodeRerootAllowed;
 
@@ -1611,12 +1608,7 @@ export class SpatialSkeletonEditTab extends Tab {
       }),
     );
     this.registerDisposer(
-      layer.spatialSkeletonActionsAllowed.changed.add(() => {
-        updateGateStatus();
-      }),
-    );
-    this.registerDisposer(
-      layer.spatialSkeletonSourceCapabilities.changed.add(() => {
+      layer.layersChanged.add(() => {
         updateGateStatus();
       }),
     );

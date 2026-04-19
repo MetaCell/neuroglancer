@@ -2,31 +2,30 @@ import type {
   SpatiallyIndexedSkeletonEditContext,
   SpatiallyIndexedSkeletonEditNodeContext,
   SpatiallyIndexedSkeletonEditParentContext,
-  SpatiallyIndexedSkeletonRevisionToken,
+  SpatiallyIndexedSkeletonNode,
 } from "#src/skeleton/api.js";
-import type { SpatiallyIndexedSkeletonNodeInfo } from "#src/skeleton/frontend.js";
 
 function requireRevisionToken(
-  node: SpatiallyIndexedSkeletonNodeInfo,
+  node: SpatiallyIndexedSkeletonNode,
   role: string,
-): SpatiallyIndexedSkeletonRevisionToken {
+): string {
   if (node.revisionToken === undefined) {
     throw new Error(
-      `Inspected CATMAID ${role} node ${node.nodeId} is missing revision metadata.`,
+      `Inspected spatial skeleton ${role} node ${node.nodeId} is missing revision metadata.`,
     );
   }
   return node.revisionToken;
 }
 
-export function findSpatiallyIndexedSkeletonNodeInfo(
-  segmentNodes: readonly SpatiallyIndexedSkeletonNodeInfo[],
+export function findSpatiallyIndexedSkeletonNode(
+  segmentNodes: readonly SpatiallyIndexedSkeletonNode[],
   nodeId: number,
 ) {
   return segmentNodes.find((node) => node.nodeId === nodeId);
 }
 
 export function getSpatiallyIndexedSkeletonDirectChildren(
-  segmentNodes: readonly SpatiallyIndexedSkeletonNodeInfo[],
+  segmentNodes: readonly SpatiallyIndexedSkeletonNode[],
   nodeId: number,
 ) {
   return segmentNodes
@@ -35,17 +34,17 @@ export function getSpatiallyIndexedSkeletonDirectChildren(
 }
 
 export function getSpatiallyIndexedSkeletonNodeParent(
-  segmentNodes: readonly SpatiallyIndexedSkeletonNodeInfo[],
-  node: Pick<SpatiallyIndexedSkeletonNodeInfo, "parentNodeId">,
+  segmentNodes: readonly SpatiallyIndexedSkeletonNode[],
+  node: SpatiallyIndexedSkeletonNode,
 ) {
   if (node.parentNodeId === undefined) {
     return undefined;
   }
-  return findSpatiallyIndexedSkeletonNodeInfo(segmentNodes, node.parentNodeId);
+  return findSpatiallyIndexedSkeletonNode(segmentNodes, node.parentNodeId);
 }
 
 export function toSpatiallyIndexedSkeletonEditNodeContext(
-  node: SpatiallyIndexedSkeletonNodeInfo,
+  node: SpatiallyIndexedSkeletonNode,
 ): SpatiallyIndexedSkeletonEditNodeContext {
   return {
     nodeId: node.nodeId,
@@ -55,7 +54,7 @@ export function toSpatiallyIndexedSkeletonEditNodeContext(
 }
 
 export function toSpatiallyIndexedSkeletonEditParentContext(
-  node: SpatiallyIndexedSkeletonNodeInfo,
+  node: SpatiallyIndexedSkeletonNode,
 ): SpatiallyIndexedSkeletonEditParentContext {
   return {
     nodeId: node.nodeId,
@@ -64,7 +63,7 @@ export function toSpatiallyIndexedSkeletonEditParentContext(
 }
 
 export function buildSpatiallyIndexedSkeletonNodeEditContext(
-  node: SpatiallyIndexedSkeletonNodeInfo,
+  node: SpatiallyIndexedSkeletonNode,
 ): SpatiallyIndexedSkeletonEditContext {
   return {
     node: toSpatiallyIndexedSkeletonEditNodeContext(node),
@@ -72,8 +71,8 @@ export function buildSpatiallyIndexedSkeletonNodeEditContext(
 }
 
 export function buildSpatiallyIndexedSkeletonNeighborhoodEditContext(
-  node: SpatiallyIndexedSkeletonNodeInfo,
-  segmentNodes: readonly SpatiallyIndexedSkeletonNodeInfo[],
+  node: SpatiallyIndexedSkeletonNode,
+  segmentNodes: readonly SpatiallyIndexedSkeletonNode[],
 ): SpatiallyIndexedSkeletonEditContext {
   // This intentionally derives parent/child state from the cached inspected
   // segment on demand. If large inspected segments make edit preparation
@@ -93,8 +92,41 @@ export function buildSpatiallyIndexedSkeletonNeighborhoodEditContext(
   };
 }
 
+export function getSpatiallyIndexedSkeletonPathToRoot(
+  segmentNodes: readonly SpatiallyIndexedSkeletonNode[],
+  node: SpatiallyIndexedSkeletonNode,
+) {
+  const path = [node];
+  const visited = new Set<number>([node.nodeId]);
+  let currentNode = node;
+  while (true) {
+    const parentNode = getSpatiallyIndexedSkeletonNodeParent(
+      segmentNodes,
+      currentNode,
+    );
+    if (parentNode === undefined || visited.has(parentNode.nodeId)) {
+      return path;
+    }
+    path.push(parentNode);
+    visited.add(parentNode.nodeId);
+    currentNode = parentNode;
+  }
+}
+
+export function buildSpatiallyIndexedSkeletonRerootEditContext(
+  node: SpatiallyIndexedSkeletonNode,
+  segmentNodes: readonly SpatiallyIndexedSkeletonNode[],
+): SpatiallyIndexedSkeletonEditContext {
+  return {
+    ...buildSpatiallyIndexedSkeletonNeighborhoodEditContext(node, segmentNodes),
+    nodes: getSpatiallyIndexedSkeletonPathToRoot(segmentNodes, node).map(
+      toSpatiallyIndexedSkeletonEditParentContext,
+    ),
+  };
+}
+
 export function buildSpatiallyIndexedSkeletonMultiNodeEditContext(
-  ...nodes: SpatiallyIndexedSkeletonNodeInfo[]
+  ...nodes: SpatiallyIndexedSkeletonNode[]
 ): SpatiallyIndexedSkeletonEditContext {
   return {
     nodes: nodes.map(toSpatiallyIndexedSkeletonEditParentContext),

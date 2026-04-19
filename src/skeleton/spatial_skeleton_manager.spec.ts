@@ -22,15 +22,17 @@ import {
   getSkeletonRootNode,
 } from "#src/skeleton/navigation.js";
 import {
-  getSpatiallyIndexedSkeletonSourceCapabilities,
   isEditableSpatiallyIndexedSkeletonSource,
   SpatialSkeletonState,
-} from "#src/skeleton/state.js";
+} from "#src/skeleton/spatial_skeleton_manager.js";
 
-describe("skeleton/state", () => {
-  it("detects reroot capability without making it required for editable sources", () => {
+describe("skeleton/spatial_skeleton_manager", () => {
+  it("does not require reroot support for editable sources", () => {
     const editableSource = {
+      listSkeletons: async () => [],
       getSkeleton: async () => [],
+      fetchNodes: async () => [],
+      getSpatialIndexMetadata: async () => null,
       addNode: async () => ({ treenodeId: 1, skeletonId: 1 }),
       insertNode: async () => ({ treenodeId: 1, skeletonId: 1 }),
       moveNode: async () => {},
@@ -53,14 +55,10 @@ describe("skeleton/state", () => {
 
     expect(isEditableSpatiallyIndexedSkeletonSource(editableSource)).toBe(true);
     expect(
-      getSpatiallyIndexedSkeletonSourceCapabilities(editableSource)
-        .rerootSkeletons,
-    ).toBe(false);
-    expect(
-      getSpatiallyIndexedSkeletonSourceCapabilities({
+      isEditableSpatiallyIndexedSkeletonSource({
         ...editableSource,
         rerootSkeleton: async () => {},
-      }).rerootSkeletons,
+      }),
     ).toBe(true);
   });
 
@@ -122,6 +120,7 @@ describe("skeleton/state", () => {
         segmentId: 11,
         position: new Float32Array([1, 2, 3]),
         parentNodeId: undefined,
+        isTrueEnd: false,
       },
       { allowUncachedSegment: true },
     );
@@ -133,7 +132,8 @@ describe("skeleton/state", () => {
         segmentId: 11,
         position: new Float32Array([1, 2, 3]),
         parentNodeId: undefined,
-        labels: undefined,
+        description: undefined,
+        isTrueEnd: false,
       },
     ]);
     expect(state.getCachedNode(5)).toEqual({
@@ -141,7 +141,8 @@ describe("skeleton/state", () => {
       segmentId: 11,
       position: new Float32Array([1, 2, 3]),
       parentNodeId: undefined,
-      labels: undefined,
+      description: undefined,
+      isTrueEnd: false,
     });
   });
 
@@ -153,6 +154,7 @@ describe("skeleton/state", () => {
         segmentId: 11,
         position: new Float32Array([1, 2, 3]),
         parentNodeId: undefined,
+        isTrueEnd: false,
       },
     ]);
     (state as any).replaceCachedSegmentNodes(13, [
@@ -161,6 +163,7 @@ describe("skeleton/state", () => {
         segmentId: 13,
         position: new Float32Array([4, 5, 6]),
         parentNodeId: undefined,
+        isTrueEnd: false,
       },
     ]);
 
@@ -170,6 +173,7 @@ describe("skeleton/state", () => {
         segmentId: 13,
         position: new Float32Array([7, 8, 9]),
         parentNodeId: undefined,
+        isTrueEnd: false,
       }),
     ).toBe(true);
 
@@ -182,7 +186,8 @@ describe("skeleton/state", () => {
       segmentId: 13,
       position: new Float32Array([7, 8, 9]),
       parentNodeId: undefined,
-      labels: undefined,
+      description: undefined,
+      isTrueEnd: false,
     });
   });
 
@@ -194,6 +199,7 @@ describe("skeleton/state", () => {
         segmentId: 11,
         position: new Float32Array([1, 2, 3]),
         parentNodeId: undefined,
+        isTrueEnd: false,
       },
     ]);
 
@@ -203,6 +209,7 @@ describe("skeleton/state", () => {
         segmentId: 13,
         position: new Float32Array([7, 8, 9]),
         parentNodeId: undefined,
+        isTrueEnd: false,
       }),
     ).toBe(false);
 
@@ -212,7 +219,8 @@ describe("skeleton/state", () => {
         segmentId: 11,
         position: new Float32Array([1, 2, 3]),
         parentNodeId: undefined,
-        labels: undefined,
+        description: undefined,
+        isTrueEnd: false,
       },
     ]);
     expect(state.getCachedSegmentNodes(13)).toBeUndefined();
@@ -221,7 +229,8 @@ describe("skeleton/state", () => {
       segmentId: 11,
       position: new Float32Array([1, 2, 3]),
       parentNodeId: undefined,
-      labels: undefined,
+      description: undefined,
+      isTrueEnd: false,
     });
   });
 
@@ -230,12 +239,11 @@ describe("skeleton/state", () => {
     let resolveFetch:
       | ((
           value: Array<{
-            id: number;
-            parent_id: null;
-            x: number;
-            y: number;
-            z: number;
-            skeleton_id: number;
+            nodeId: number;
+            parentNodeId?: number;
+            position: Float32Array;
+            segmentId: number;
+            isTrueEnd: boolean;
           }>,
         ) => void)
       | undefined;
@@ -243,19 +251,23 @@ describe("skeleton/state", () => {
       () =>
         new Promise<
           Array<{
-            id: number;
-            parent_id: null;
-            x: number;
-            y: number;
-            z: number;
-            skeleton_id: number;
+            nodeId: number;
+            parentNodeId?: number;
+            position: Float32Array;
+            segmentId: number;
+            isTrueEnd: boolean;
           }>
         >((resolve) => {
-          resolveFetch = resolve;
+          resolveFetch = resolve as typeof resolveFetch;
         }),
     );
     const skeletonLayer = {
-      source: { getSkeleton },
+      source: {
+        listSkeletons: async () => [],
+        getSkeleton,
+        fetchNodes: async () => [],
+        getSpatialIndexMetadata: async () => null,
+      },
     } as any;
 
     const pending = state.getFullSegmentNodes(skeletonLayer, 11);
@@ -263,12 +275,11 @@ describe("skeleton/state", () => {
     state.evictInactiveSegmentNodes([]);
     resolveFetch?.([
       {
-        id: 5,
-        parent_id: null,
-        x: 1,
-        y: 2,
-        z: 3,
-        skeleton_id: 11,
+        nodeId: 5,
+        parentNodeId: undefined,
+        position: new Float32Array([1, 2, 3]),
+        segmentId: 11,
+        isTrueEnd: false,
       },
     ]);
 
@@ -278,7 +289,8 @@ describe("skeleton/state", () => {
         segmentId: 11,
         position: new Float32Array([1, 2, 3]),
         parentNodeId: undefined,
-        labels: undefined,
+        description: undefined,
+        isTrueEnd: false,
       },
     ]);
     expect(state.getCachedSegmentNodes(11)).toBeUndefined();
@@ -301,7 +313,14 @@ describe("skeleton/state", () => {
     );
 
     const pending = state.getFullSegmentNodes(
-      { source: { getSkeleton } } as any,
+      {
+        source: {
+          listSkeletons: async () => [],
+          getSkeleton,
+          fetchNodes: async () => [],
+          getSpatialIndexMetadata: async () => null,
+        },
+      } as any,
       11,
     );
 
@@ -329,7 +348,14 @@ describe("skeleton/state", () => {
     );
 
     const pending = state.getFullSegmentNodes(
-      { source: { getSkeleton } } as any,
+      {
+        source: {
+          listSkeletons: async () => [],
+          getSkeleton,
+          fetchNodes: async () => [],
+          getSpatialIndexMetadata: async () => null,
+        },
+      } as any,
       11,
     );
 
@@ -357,7 +383,14 @@ describe("skeleton/state", () => {
     );
 
     const pending = state.getFullSegmentNodes(
-      { source: { getSkeleton } } as any,
+      {
+        source: {
+          listSkeletons: async () => [],
+          getSkeleton,
+          fetchNodes: async () => [],
+          getSpatialIndexMetadata: async () => null,
+        },
+      } as any,
       11,
     );
 
@@ -373,16 +406,20 @@ describe("skeleton/state", () => {
     const state = new SpatialSkeletonState();
     const getSkeleton = vi.fn(async () => [
       {
-        id: 5,
-        parent_id: null,
-        x: 1,
-        y: 2,
-        z: 3,
-        skeleton_id: 11,
+        nodeId: 5,
+        parentNodeId: undefined,
+        position: new Float32Array([1, 2, 3]),
+        segmentId: 11,
+        isTrueEnd: false,
       },
     ]);
     const skeletonLayer = {
-      source: { getSkeleton },
+      source: {
+        listSkeletons: async () => [],
+        getSkeleton,
+        fetchNodes: async () => [],
+        getSpatialIndexMetadata: async () => null,
+      },
     } as any;
     let notifications = 0;
     state.nodeDataVersion.changed.add(() => {
@@ -396,7 +433,8 @@ describe("skeleton/state", () => {
           segmentId: 11,
           position: new Float32Array([1, 2, 3]),
           parentNodeId: undefined,
-          labels: undefined,
+          description: undefined,
+          isTrueEnd: false,
         },
       ],
     );
@@ -407,7 +445,8 @@ describe("skeleton/state", () => {
       segmentId: 11,
       position: new Float32Array([1, 2, 3]),
       parentNodeId: undefined,
-      labels: undefined,
+      description: undefined,
+      isTrueEnd: false,
     });
   });
 
@@ -415,25 +454,35 @@ describe("skeleton/state", () => {
     const state = new SpatialSkeletonState();
     const getSkeleton = vi.fn(async () => [
       {
-        id: 5,
-        parent_id: null,
-        x: 1,
-        y: 2,
-        z: 3,
-        skeleton_id: 11,
+        nodeId: 5,
+        parentNodeId: undefined,
+        position: new Float32Array([1, 2, 3]),
+        segmentId: 11,
+        isTrueEnd: false,
         revisionToken: "2026-03-29T12:30:00Z",
       },
     ]);
 
     await expect(
-      state.getFullSegmentNodes({ source: { getSkeleton } } as any, 11),
+      state.getFullSegmentNodes(
+        {
+          source: {
+            listSkeletons: async () => [],
+            getSkeleton,
+            fetchNodes: async () => [],
+            getSpatialIndexMetadata: async () => null,
+          },
+        } as any,
+        11,
+      ),
     ).resolves.toEqual([
       {
         nodeId: 5,
         segmentId: 11,
         position: new Float32Array([1, 2, 3]),
         parentNodeId: undefined,
-        labels: undefined,
+        description: undefined,
+        isTrueEnd: false,
         revisionToken: "2026-03-29T12:30:00Z",
       },
     ]);
@@ -444,7 +493,8 @@ describe("skeleton/state", () => {
       segmentId: 11,
       position: new Float32Array([1, 2, 3]),
       parentNodeId: undefined,
-      labels: undefined,
+      description: undefined,
+      isTrueEnd: false,
       revisionToken: "2026-03-29T12:30:00Z",
     });
   });
@@ -489,18 +539,21 @@ describe("skeleton/state", () => {
         segmentId: 11,
         position: new Float32Array([1, 1, 1]),
         parentNodeId: undefined,
+        isTrueEnd: false,
       },
       {
         nodeId: 2,
         segmentId: 11,
         position: new Float32Array([2, 2, 2]),
         parentNodeId: 1,
+        isTrueEnd: false,
       },
       {
         nodeId: 3,
         segmentId: 11,
         position: new Float32Array([3, 3, 3]),
         parentNodeId: 1,
+        isTrueEnd: false,
       },
     ]);
     (state as any).replaceCachedSegmentNodes(12, [
@@ -509,6 +562,7 @@ describe("skeleton/state", () => {
         segmentId: 12,
         position: new Float32Array([4, 4, 4]),
         parentNodeId: undefined,
+        isTrueEnd: false,
       },
     ]);
 
@@ -525,14 +579,16 @@ describe("skeleton/state", () => {
         segmentId: 11,
         position: new Float32Array([2, 2, 2]),
         parentNodeId: undefined,
-        labels: undefined,
+        description: undefined,
+        isTrueEnd: false,
       },
       {
         nodeId: 3,
         segmentId: 11,
         position: new Float32Array([3, 3, 3]),
         parentNodeId: undefined,
-        labels: undefined,
+        description: undefined,
+        isTrueEnd: false,
       },
     ]);
     expect(state.getCachedSegmentNodes(12)).toEqual([
@@ -541,7 +597,8 @@ describe("skeleton/state", () => {
         segmentId: 12,
         position: new Float32Array([4, 4, 4]),
         parentNodeId: undefined,
-        labels: undefined,
+        description: undefined,
+        isTrueEnd: false,
       },
     ]);
   });

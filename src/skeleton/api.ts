@@ -1,16 +1,17 @@
-export type SpatiallyIndexedSkeletonRevisionToken = string | number;
+export interface SpatiallyIndexedSkeletonNodeBase {
+  nodeId: number;
+  segmentId: number;
+  position: Float32Array;
+  parentNodeId?: number;
+}
 
-export interface SpatiallyIndexedSkeletonNode {
-  id: number;
-  parent_id: number | null;
-  x: number;
-  y: number;
-  z: number;
-  skeleton_id: number;
+export interface SpatiallyIndexedSkeletonNode
+  extends SpatiallyIndexedSkeletonNodeBase {
   radius?: number;
   confidence?: number;
-  labels?: string[];
-  revisionToken?: SpatiallyIndexedSkeletonRevisionToken;
+  description?: string;
+  isTrueEnd: boolean;
+  revisionToken?: string;
 }
 
 export interface SpatiallyIndexedSkeletonOpenLeaf {
@@ -29,46 +30,51 @@ export interface SpatiallyIndexedSkeletonNavigationTarget {
   z: number;
 }
 
-export interface SpatiallyIndexedSkeletonBranchNavigationTarget {
-  child: SpatiallyIndexedSkeletonNavigationTarget;
-  branchStartOrEnd: SpatiallyIndexedSkeletonNavigationTarget;
-  branchEnd: SpatiallyIndexedSkeletonNavigationTarget;
-}
-
-export interface SpatiallyIndexedSkeletonAddNodeResult {
-  treenodeId: number;
-  skeletonId: number;
-  revisionToken?: SpatiallyIndexedSkeletonRevisionToken;
-  parentRevisionToken?: SpatiallyIndexedSkeletonRevisionToken;
-}
-
 export interface SpatiallyIndexedSkeletonNodeRevisionUpdate {
   nodeId: number;
-  revisionToken: SpatiallyIndexedSkeletonRevisionToken;
+  revisionToken: string;
+}
+
+export interface SpatiallyIndexedSkeletonEditResult {
+  nodeRevisionUpdates?: readonly SpatiallyIndexedSkeletonNodeRevisionUpdate[];
+}
+
+export interface SpatiallyIndexedSkeletonAddNodeResult
+  extends SpatiallyIndexedSkeletonEditResult {
+  treenodeId: number;
+  skeletonId: number;
+  revisionToken?: string;
+  parentRevisionToken?: string;
 }
 
 export interface SpatiallyIndexedSkeletonInsertNodeResult
-  extends SpatiallyIndexedSkeletonAddNodeResult {
-  childRevisionUpdates?: readonly SpatiallyIndexedSkeletonNodeRevisionUpdate[];
+  extends SpatiallyIndexedSkeletonAddNodeResult {}
+
+export interface SpatiallyIndexedSkeletonNodeRevisionResult
+  extends SpatiallyIndexedSkeletonEditResult {
+  revisionToken?: string;
 }
 
-export interface SpatiallyIndexedSkeletonNodeRevisionResult {
-  revisionToken?: SpatiallyIndexedSkeletonRevisionToken;
+export interface SpatiallyIndexedSkeletonDescriptionUpdateResult
+  extends SpatiallyIndexedSkeletonNodeRevisionResult {
+  description?: string;
 }
 
-export interface SpatiallyIndexedSkeletonDeleteNodeResult {
-  childRevisionUpdates?: readonly SpatiallyIndexedSkeletonNodeRevisionUpdate[];
-}
+export interface SpatiallyIndexedSkeletonDeleteNodeResult
+  extends SpatiallyIndexedSkeletonEditResult {}
+
+export interface SpatiallyIndexedSkeletonRerootResult
+  extends SpatiallyIndexedSkeletonEditResult {}
 
 export interface SpatiallyIndexedSkeletonEditNodeContext {
   nodeId: number;
   parentNodeId?: number;
-  revisionToken: SpatiallyIndexedSkeletonRevisionToken;
+  revisionToken: string;
 }
 
 export interface SpatiallyIndexedSkeletonEditParentContext {
   nodeId: number;
-  revisionToken: SpatiallyIndexedSkeletonRevisionToken;
+  revisionToken: string;
 }
 
 export interface SpatiallyIndexedSkeletonEditContext {
@@ -78,28 +84,35 @@ export interface SpatiallyIndexedSkeletonEditContext {
   nodes?: readonly SpatiallyIndexedSkeletonEditParentContext[];
 }
 
-export interface SpatiallyIndexedSkeletonMergeResult {
+export interface SpatiallyIndexedSkeletonMergeResult
+  extends SpatiallyIndexedSkeletonEditResult {
   resultSkeletonId: number | undefined;
   deletedSkeletonId: number | undefined;
   stableAnnotationSwap: boolean;
 }
 
-export interface SpatiallyIndexedSkeletonSplitResult {
+export interface SpatiallyIndexedSkeletonSplitResult
+  extends SpatiallyIndexedSkeletonEditResult {
   existingSkeletonId: number | undefined;
   newSkeletonId: number | undefined;
 }
 
-export interface SpatiallyIndexedSkeletonDescriptionUpdateOptions {
-  trueEnd: boolean;
+export interface SpatiallyIndexedSkeletonMetadata {
+  bounds: {
+    min: { x: number; y: number; z: number };
+    max: { x: number; y: number; z: number };
+  };
+  resolution: { x: number; y: number; z: number };
+  gridCellSizes: Array<{ x: number; y: number; z: number }>;
 }
 
-export interface SpatiallyIndexedSkeletonConfidencePropertyEditingOptions {
-  values: readonly number[];
-}
-
-export interface SpatiallyIndexedSkeletonPropertyEditingOptions {
-  confidence?: SpatiallyIndexedSkeletonConfidencePropertyEditingOptions;
-}
+export const SPATIALLY_INDEXED_SKELETON_CONFIDENCE_VALUES = [
+  0,
+  25,
+  50,
+  75,
+  100,
+] as const;
 
 export interface SpatiallyIndexedSkeletonSource {
   listSkeletons(): Promise<number[]>;
@@ -107,12 +120,7 @@ export interface SpatiallyIndexedSkeletonSource {
     skeletonId: number,
     options?: { signal?: AbortSignal },
   ): Promise<SpatiallyIndexedSkeletonNode[]>;
-  getDimensions(): Promise<{
-    min: { x: number; y: number; z: number };
-    max: { x: number; y: number; z: number };
-  } | null>;
-  getResolution(): Promise<{ x: number; y: number; z: number } | null>;
-  getGridCellSizes(): Promise<Array<{ x: number; y: number; z: number }>>;
+  getSpatialIndexMetadata(): Promise<SpatiallyIndexedSkeletonMetadata | null>;
   fetchNodes(
     boundingBox: {
       min: { x: number; y: number; z: number };
@@ -123,12 +131,11 @@ export interface SpatiallyIndexedSkeletonSource {
       cacheProvider?: string;
       signal?: AbortSignal;
     },
-  ): Promise<SpatiallyIndexedSkeletonNode[]>;
+  ): Promise<SpatiallyIndexedSkeletonNodeBase[]>;
 }
 
 export interface EditableSpatiallyIndexedSkeletonSource
   extends SpatiallyIndexedSkeletonSource {
-  getPropertyEditingOptions?(): SpatiallyIndexedSkeletonPropertyEditingOptions;
   addNode(
     skeletonId: number,
     x: number,
@@ -163,12 +170,11 @@ export interface EditableSpatiallyIndexedSkeletonSource
   rerootSkeleton?(
     nodeId: number,
     editContext?: SpatiallyIndexedSkeletonEditContext,
-  ): Promise<void>;
+  ): Promise<SpatiallyIndexedSkeletonRerootResult>;
   updateDescription(
     nodeId: number,
     description: string,
-    options: SpatiallyIndexedSkeletonDescriptionUpdateOptions,
-  ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult>;
+  ): Promise<SpatiallyIndexedSkeletonDescriptionUpdateResult>;
   setTrueEnd(
     nodeId: number,
   ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult>;

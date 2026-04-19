@@ -4,52 +4,47 @@ import {
   classifySpatialSkeletonDisplayNodeType,
   getSpatialSkeletonNodeFilterLabel,
   getSpatialSkeletonNodeIconFilterType,
-  hasSpatialSkeletonTrueEndLabel,
-  isSpatialSkeletonClosedEndLabel,
   matchesSpatialSkeletonNodeFilter,
   SpatialSkeletonNodeFilterType,
-  updateSpatialSkeletonTrueEndLabels,
 } from "#src/skeleton/node_types.js";
+import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
+
+function makeNode(
+  overrides: Partial<SpatiallyIndexedSkeletonNode> = {},
+): SpatiallyIndexedSkeletonNode {
+  return {
+    nodeId: 1,
+    segmentId: 1,
+    position: new Float32Array([0, 0, 0]),
+    isTrueEnd: false,
+    ...overrides,
+  };
+}
 
 describe("skeleton node types", () => {
   it("classifies display node types for roots, branches, regular nodes, and virtual ends", () => {
     expect(
-      classifySpatialSkeletonDisplayNodeType({ parentNodeId: undefined }, 0),
+      classifySpatialSkeletonDisplayNodeType(
+        makeNode({ parentNodeId: undefined }),
+        0,
+      ),
     ).toBe("root");
-    expect(classifySpatialSkeletonDisplayNodeType({ parentNodeId: 1 }, 2)).toBe(
-      "branchStart",
-    );
-    expect(classifySpatialSkeletonDisplayNodeType({ parentNodeId: 1 }, 1)).toBe(
-      "regular",
-    );
-    expect(classifySpatialSkeletonDisplayNodeType({ parentNodeId: 1 }, 0)).toBe(
-      "virtualEnd",
-    );
     expect(
-      classifySpatialSkeletonDisplayNodeType({ parentNodeId: 1 }, 0, false),
+      classifySpatialSkeletonDisplayNodeType(makeNode({ parentNodeId: 1 }), 2),
+    ).toBe("branchStart");
+    expect(
+      classifySpatialSkeletonDisplayNodeType(makeNode({ parentNodeId: 1 }), 1),
+    ).toBe("regular");
+    expect(
+      classifySpatialSkeletonDisplayNodeType(makeNode({ parentNodeId: 1 }), 0),
+    ).toBe("virtualEnd");
+    expect(
+      classifySpatialSkeletonDisplayNodeType(
+        makeNode({ parentNodeId: 1 }),
+        0,
+        false,
+      ),
     ).toBe("root");
-  });
-
-  it("detects true-end and closed-end labels case-insensitively", () => {
-    expect(hasSpatialSkeletonTrueEndLabel(["ENDS"])).toBe(true);
-    expect(hasSpatialSkeletonTrueEndLabel(["leaf"])).toBe(false);
-    expect(isSpatialSkeletonClosedEndLabel("uncertain continuation")).toBe(
-      true,
-    );
-    expect(isSpatialSkeletonClosedEndLabel("posterior end")).toBe(true);
-    expect(isSpatialSkeletonClosedEndLabel("axon branch")).toBe(false);
-  });
-
-  it("adds or removes the true-end label without disturbing other labels", () => {
-    expect(
-      updateSpatialSkeletonTrueEndLabels(["posterior end", "ends"], false),
-    ).toEqual(["posterior end"]);
-    expect(updateSpatialSkeletonTrueEndLabels(["posterior end"], true)).toEqual(
-      ["posterior end", "ends"],
-    );
-    expect(
-      updateSpatialSkeletonTrueEndLabels(undefined, false),
-    ).toBeUndefined();
   });
 
   it("matches the dropdown filter semantics", () => {
