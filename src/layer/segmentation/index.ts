@@ -110,21 +110,21 @@ import { SegmentationGraphSourceTab } from "#src/segmentation_graph/source.js";
 import { SharedDisjointUint64Sets } from "#src/shared_disjoint_sets.js";
 import { SharedWatchableValue } from "#src/shared_watchable_value.js";
 import {
-  buildSpatiallyIndexedSkeletonNeighborhoodEditContext,
-  findSpatiallyIndexedSkeletonNode,
-  getSpatiallyIndexedSkeletonDirectChildren,
-  getSpatiallyIndexedSkeletonNodeParent,
-} from "#src/skeleton/edit_state.js";
-import {
-  SPATIALLY_INDEXED_SKELETON_CONFIDENCE_VALUES,
-  type SpatiallyIndexedSkeletonNode,
-} from "#src/skeleton/api.js";
-import {
   DEFAULT_SPATIAL_SKELETON_EDIT_ACTIONS,
   getSpatialSkeletonActionSupportLabel,
   SpatialSkeletonActions,
   type SpatialSkeletonAction,
 } from "#src/skeleton/actions.js";
+import {
+  SPATIALLY_INDEXED_SKELETON_CONFIDENCE_VALUES,
+  type SpatiallyIndexedSkeletonNode,
+} from "#src/skeleton/api.js";
+import {
+  buildSpatiallyIndexedSkeletonNeighborhoodEditContext,
+  findSpatiallyIndexedSkeletonNode,
+  getSpatiallyIndexedSkeletonDirectChildren,
+  getSpatiallyIndexedSkeletonNodeParent,
+} from "#src/skeleton/edit_state.js";
 import {
   PerspectiveViewSkeletonLayer,
   SkeletonLayer,
@@ -183,7 +183,6 @@ import { Uint64OrderedSet } from "#src/uint64_ordered_set.js";
 import { Uint64Set } from "#src/uint64_set.js";
 import { isAbortError } from "#src/util/abort.js";
 import { gatherUpdate } from "#src/util/array.js";
-import * as matrix from "#src/util/matrix.js";
 import {
   packColor,
   parseRGBColorSpecification,
@@ -203,6 +202,7 @@ import {
   verifyOptionalObjectProperty,
   verifyString,
 } from "#src/util/json.js";
+import * as matrix from "#src/util/matrix.js";
 import { Signal } from "#src/util/signal.js";
 import { makeWatchableShaderError } from "#src/webgl/dynamic_shader.js";
 import { makeDeleteButton } from "#src/widget/delete_button.js";

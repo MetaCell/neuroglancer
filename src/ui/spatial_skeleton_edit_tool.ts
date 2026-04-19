@@ -28,6 +28,7 @@ import {
   executeSpatialSkeletonSplit,
 } from "#src/layer/segmentation/spatial_skeleton_commands.js";
 import { showSpatialSkeletonActionError } from "#src/layer/segmentation/spatial_skeleton_errors.js";
+import { getChunkPositionFromCombinedGlobalLocalPositions } from "#src/render_coordinate_transform.js";
 import { RenderedDataPanel } from "#src/rendered_data_panel.js";
 import {
   addSegmentToVisibleSets,
@@ -50,7 +51,6 @@ import {
   getSpatialSkeletonMergeBannerMessage,
   getSpatialSkeletonToolPointStatusFields,
 } from "#src/ui/spatial_skeleton_tool_messages.js";
-import { getChunkPositionFromCombinedGlobalLocalPositions } from "#src/render_coordinate_transform.js";
 import type { ToolActivation } from "#src/ui/tool.js";
 import {
   LayerTool,

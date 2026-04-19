@@ -44,15 +44,15 @@ import {
   getVisibleSegments,
 } from "#src/segmentation_display_state/base.js";
 import { getBaseObjectColor } from "#src/segmentation_display_state/frontend.js";
+import {
+  SpatialSkeletonActions,
+  type SpatialSkeletonAction,
+} from "#src/skeleton/actions.js";
 import type {
   SpatiallyIndexedSkeletonNavigationTarget,
   SpatiallyIndexedSkeletonNode,
   SpatiallyIndexedSkeletonOpenLeaf,
 } from "#src/skeleton/api.js";
-import {
-  SpatialSkeletonActions,
-  type SpatialSkeletonAction,
-} from "#src/skeleton/actions.js";
 import {
   buildSpatiallyIndexedSkeletonNavigationGraph,
   getBranchEnd as getBranchEndFromGraph,

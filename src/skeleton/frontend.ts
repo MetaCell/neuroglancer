@@ -35,13 +35,13 @@ import type {
   PerspectiveViewRenderContext,
 } from "#src/perspective_view/render_layer.js";
 import { PerspectiveViewRenderLayer } from "#src/perspective_view/render_layer.js";
-import { RENDERED_VIEW_ADD_LAYER_RPC_ID } from "#src/render_layer_common.js";
 import type {
   ChunkTransformParameters,
   RenderLayerTransform,
 } from "#src/render_coordinate_transform.js";
 import { getChunkTransformParameters } from "#src/render_coordinate_transform.js";
-import { RenderScaleHistogram } from "#src/render_scale_statistics.js";
+import { RENDERED_VIEW_ADD_LAYER_RPC_ID } from "#src/render_layer_common.js";
+import type { RenderScaleHistogram } from "#src/render_scale_statistics.js";
 import type {
   RenderLayer,
   ThreeDimensionalRenderLayerAttachmentState,
@@ -51,7 +51,6 @@ import {
   SegmentColorShaderManager,
   SegmentStatedColorShaderManager,
 } from "#src/segment_color.js";
-import { Uint64Set } from "#src/uint64_set.js";
 import {
   forEachVisibleSegment,
   getVisibleSegments,
@@ -67,8 +66,8 @@ import {
   SegmentationLayerSharedObject,
 } from "#src/segmentation_display_state/frontend.js";
 import { SharedWatchableValue } from "#src/shared_watchable_value.js";
-import type { VertexAttributeInfo } from "#src/skeleton/base.js";
 import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
+import type { VertexAttributeInfo } from "#src/skeleton/base.js";
 import {
   SKELETON_LAYER_RPC_ID,
   SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_RPC_ID,
@@ -126,14 +125,15 @@ import {
   WatchableValue,
   registerNested,
 } from "#src/trackable_value.js";
-import type { ValueOrError } from "#src/util/error.js";
-import { makeValueOrError, valueOrThrow } from "#src/util/error.js";
+import { Uint64Set } from "#src/uint64_set.js";
 import { gatherUpdate } from "#src/util/array.js";
 import { DATA_TYPE_SIGNED, DataType } from "#src/util/data_type.js";
 import { RefCounted } from "#src/util/disposable.js";
+import type { ValueOrError } from "#src/util/error.js";
+import { makeValueOrError, valueOrThrow } from "#src/util/error.js";
 import { mat4 } from "#src/util/geom.js";
-import * as matrix from "#src/util/matrix.js";
 import { verifyFinitePositiveFloat } from "#src/util/json.js";
+import * as matrix from "#src/util/matrix.js";
 import { getObjectId } from "#src/util/object_id.js";
 import { NullarySignal } from "#src/util/signal.js";
 import type { Trackable } from "#src/util/trackable.js";

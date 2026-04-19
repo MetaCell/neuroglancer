@@ -17,9 +17,6 @@
 import { Unpackr } from "msgpackr";
 import { fetchOkWithCredentials } from "#src/credentials_provider/http_request.js";
 import type { CredentialsProvider } from "#src/credentials_provider/index.js";
-import {
-  SPATIALLY_INDEXED_SKELETON_CONFIDENCE_VALUES,
-} from "#src/skeleton/api.js";
 import type {
   EditableSpatiallyIndexedSkeletonSource,
   SpatiallyIndexedSkeletonAddNodeResult,
@@ -35,6 +32,9 @@ import type {
   SpatiallyIndexedSkeletonNodeBase,
   SpatiallyIndexedSkeletonRerootResult,
   SpatiallyIndexedSkeletonSplitResult,
+} from "#src/skeleton/api.js";
+import {
+  SPATIALLY_INDEXED_SKELETON_CONFIDENCE_VALUES,
 } from "#src/skeleton/api.js";
 import { HttpError } from "#src/util/http_request.js";
 
