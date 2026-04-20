@@ -450,10 +450,20 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
               layer === this.layer && hasSpatialSkeletonNodeSelection(state),
           ) ??
             false);
-        if (hasSpatialSkeletonSelection) {
+        const hasMergeAnchor =
+          this.layer.spatialSkeletonState.mergeAnchorNodeId.value !==
+          undefined;
+        if (hasSpatialSkeletonSelection || hasMergeAnchor) {
           this.layer.clearSpatialSkeletonNodeSelection("force-unpin");
+          if (hasMergeAnchor) {
+            this.layer.clearSpatialSkeletonMergeAnchor();
+          }
           StatusMessage.showTemporaryMessage(
-            "Spatial skeleton node selection cleared.",
+            hasMergeAnchor
+              ? hasSpatialSkeletonSelection
+                ? "Spatial skeleton selection and merge anchor cleared."
+                : "Spatial skeleton merge anchor cleared."
+              : "Spatial skeleton node selection cleared.",
           );
           return;
         }
