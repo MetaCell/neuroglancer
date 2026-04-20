@@ -38,7 +38,6 @@ import type {
   DataSourceProvider,
   GetDataSourceOptions,
 } from "#src/datasource/index.js";
-import type { InlineSegmentPropertyMap } from "#src/segmentation_display_state/property_map.js";
 import {
   SegmentPropertyMap,
   normalizeInlineSegmentPropertyMap,
@@ -511,26 +510,15 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
 
     // Create SegmentPropertyMap
     const ids = new BigUint64Array(skeletonIds.length);
-    const labels = new Array<string>(skeletonIds.length);
     for (let i = 0; i < skeletonIds.length; ++i) {
       ids[i] = BigInt(skeletonIds[i]);
-      labels[i] = skeletonIds[i].toString();
     }
 
-    const inlineProperties: InlineSegmentPropertyMap =
-      normalizeInlineSegmentPropertyMap({
-        ids,
-        properties: [
-          {
-            id: "label",
-            type: "label",
-            values: labels,
-          },
-        ],
-      });
-
     const propertyMap = new SegmentPropertyMap({
-      inlineProperties,
+      inlineProperties: normalizeInlineSegmentPropertyMap({
+        ids,
+        properties: [],
+      }),
     });
 
     const subsources = [
