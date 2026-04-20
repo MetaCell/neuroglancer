@@ -239,14 +239,18 @@ function getSpatialSkeletonNodeTypeLabel(
   }
 }
 
-function formatSpatialSkeletonPosition(position: ArrayLike<number>) {
-  const x = Math.round(Number(position[0]));
-  const y = Math.round(Number(position[1]));
-  const z = Math.round(Number(position[2]));
+function formatSpatialSkeletonPosition(
+  modelPosition: ArrayLike<number>,
+  names?: readonly string[],
+) {
+  const x = Math.round(Number(modelPosition[0]));
+  const y = Math.round(Number(modelPosition[1]));
+  const z = Math.round(Number(modelPosition[2]));
+  const n = names ?? ["x", "y", "z"];
   return {
     copyText: `${x}, ${y}, ${z}`,
     displayText: `${x} ${y} ${z}`,
-    fullText: `x ${x} y ${y} z ${z}`,
+    fullText: `${n[0]}: ${x} ${n[1]}: ${y} ${n[2]}: ${z}`,
     x,
     y,
     z,
@@ -1396,10 +1400,7 @@ export class SegmentationUserLayer extends Base {
 
   selectAndMoveToSpatialSkeletonNode(
     node:
-      | Pick<
-          SpatiallyIndexedSkeletonNode,
-          "nodeId" | "segmentId" | "position"
-        >
+      | Pick<SpatiallyIndexedSkeletonNode, "nodeId" | "segmentId" | "position">
       | undefined,
     pin: boolean | "toggle" = this.manager.root.selectionState.pin.value,
   ) {
@@ -1854,9 +1855,8 @@ export class SegmentationUserLayer extends Base {
     if (action === SpatialSkeletonActions.inspect) {
       return getSpatiallyIndexedSkeletonSource(skeletonLayer) !== undefined;
     }
-    const editableSource = getEditableSpatiallyIndexedSkeletonSource(
-      skeletonLayer,
-    );
+    const editableSource =
+      getEditableSpatiallyIndexedSkeletonSource(skeletonLayer);
     if (editableSource === undefined) {
       return false;
     }
@@ -1883,8 +1883,9 @@ export class SegmentationUserLayer extends Base {
   }
 
   getSpatialSkeletonActionsDisabledReason(
-    requiredActions: SpatialSkeletonAction | readonly SpatialSkeletonAction[] =
-      DEFAULT_SPATIAL_SKELETON_EDIT_ACTIONS,
+    requiredActions:
+      | SpatialSkeletonAction
+      | readonly SpatialSkeletonAction[] = DEFAULT_SPATIAL_SKELETON_EDIT_ACTIONS,
     options: {
       requireVisibleChunks?: boolean;
     } = {},
@@ -1972,9 +1973,7 @@ export class SegmentationUserLayer extends Base {
     };
   }
 
-  getSpatialSkeletonNodeDisplayDescription(
-    node: SpatiallyIndexedSkeletonNode,
-  ) {
+  getSpatialSkeletonNodeDisplayDescription(node: SpatiallyIndexedSkeletonNode) {
     return node.description?.length ? node.description : undefined;
   }
 
@@ -2936,7 +2935,34 @@ export class SegmentationUserLayer extends Base {
     );
     summaryRow.appendChild(icon);
 
-    const position = formatSpatialSkeletonPosition(nodeInfo.position);
+    const skeletonDisplayTransform =
+      skeletonLayer?.displayState.transform.value;
+    let displayPosition: ArrayLike<number> = nodeInfo.position;
+    let displayNames: readonly string[] | undefined;
+    if (
+      skeletonDisplayTransform !== undefined &&
+      skeletonDisplayTransform.error === undefined
+    ) {
+      const rank = skeletonDisplayTransform.rank;
+      const modelPos = new Float32Array(rank);
+      for (let i = 0; i < Math.min(nodeInfo.position.length, rank); i++) {
+        modelPos[i] = Number(nodeInfo.position[i]);
+      }
+      const layerPos = new Float32Array(rank);
+      matrix.transformPoint(
+        layerPos,
+        skeletonDisplayTransform.modelToRenderLayerTransform,
+        rank + 1,
+        modelPos,
+        rank,
+      );
+      displayPosition = layerPos;
+      displayNames = skeletonDisplayTransform.layerDimensionNames;
+    }
+    const position = formatSpatialSkeletonPosition(
+      displayPosition,
+      displayNames,
+    );
     const summaryCoordinates = document.createElement("span");
     summaryCoordinates.className =
       "neuroglancer-spatial-skeleton-selection-summary-coordinates";
@@ -3281,12 +3307,13 @@ export class SegmentationUserLayer extends Base {
     radiusInput.addEventListener("change", commitProperties);
     confidenceControl.addEventListener("change", commitProperties);
     updatePropertyEditorState();
-    const descriptionText = cachedNodeInfo?.description ?? nodeInfo.description ?? "";
+    const descriptionText =
+      cachedNodeInfo?.description ?? nodeInfo.description ?? "";
     const descriptionEditingDisabledReason =
       skeletonSource === undefined
         ? "Unable to resolve editable skeleton source for the active layer."
-      : cachedNodeInfo === undefined
-        ? "Load the active skeleton in the Skeleton tab before editing description."
+        : cachedNodeInfo === undefined
+          ? "Load the active skeleton in the Skeleton tab before editing description."
           : this.getSpatialSkeletonActionsDisabledReason(
               SpatialSkeletonActions.editNodeDescription,
             );

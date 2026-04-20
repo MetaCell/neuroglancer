@@ -547,9 +547,20 @@
 
 .neuroglancer-spatial-skeleton-node-coordinates {
   overflow: hidden;
+  color: #d7d7d7;
+}
+
+.neuroglancer-spatial-skeleton-coordinates-flex {
+  display: flex;
+  flex-direction: row;
+}
+
+.neuroglancer-spatial-skeleton-coord-dim {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #d7d7d7;
 }
 
 .neuroglancer-spatial-skeleton-node-description {
