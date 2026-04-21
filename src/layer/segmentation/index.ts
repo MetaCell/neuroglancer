@@ -2496,11 +2496,10 @@ export class SegmentationUserLayer extends Base {
     ) {
       return;
     }
-    // Viewer hover should not mutate global selection for spatial skeleton
-    // nodes; the skeleton tab reads mouse hover directly for row highlighting.
+    // The skeleton tab reads mouse hover directly for row highlighting; do not
+    // propagate the node/segment ID into the persistent selection state.
     state.spatialSkeletonNodeId = undefined;
     state.spatialSkeletonSegmentId = undefined;
-    state.value = undefined;
   }
 
   handleAction(action: string, context: SegmentationActionContext) {
