@@ -2486,21 +2486,6 @@ export class SegmentationUserLayer extends Base {
     return maybeAugmentSegmentId(this.displayState, value);
   }
 
-  captureSelectionState(
-    state: this["selectionState"],
-    mouseState: MouseSelectionState,
-  ) {
-    super.captureSelectionState(state, mouseState);
-    if (
-      getSpatialSkeletonNodeIdFromViewerHover(mouseState, this) === undefined
-    ) {
-      return;
-    }
-    // The skeleton tab reads mouse hover directly for row highlighting; do not
-    // propagate the node/segment ID into the persistent selection state.
-    state.spatialSkeletonNodeId = undefined;
-    state.spatialSkeletonSegmentId = undefined;
-  }
 
   handleAction(action: string, context: SegmentationActionContext) {
     switch (action) {
