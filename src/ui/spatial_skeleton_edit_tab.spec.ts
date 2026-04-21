@@ -61,12 +61,20 @@ describe("spatial skeleton edit tab render state", () => {
     expect(state.rows.map((row) => row.node.nodeId)).toEqual([4]);
   });
 
-  it("does not match segment ids or true-end state in the search filter", () => {
+  it("does not match coordinates, segment ids, or true-end state in the search filter", () => {
     const graph = buildSpatiallyIndexedSkeletonNavigationGraph([
       makeNode(101, undefined, { isTrueEnd: true }),
       makeNode(102, 101),
     ]);
 
+    const byCoordinates = buildSpatialSkeletonSegmentRenderState(20380, graph, {
+      filterText: "101 102 103",
+      nodeFilterType: SpatialSkeletonNodeFilterType.NONE,
+      collapseRegularNodes: false,
+      getNodeDescription() {
+        return undefined;
+      },
+    });
     const bySegmentId = buildSpatialSkeletonSegmentRenderState(20380, graph, {
       filterText: "20380",
       nodeFilterType: SpatialSkeletonNodeFilterType.NONE,
@@ -84,6 +92,8 @@ describe("spatial skeleton edit tab render state", () => {
       },
     });
 
+    expect(byCoordinates.matchedNodeCount).toBe(0);
+    expect(byCoordinates.displayedNodeCount).toBe(0);
     expect(bySegmentId.matchedNodeCount).toBe(0);
     expect(bySegmentId.displayedNodeCount).toBe(0);
     expect(byTrueEndText.matchedNodeCount).toBe(0);
