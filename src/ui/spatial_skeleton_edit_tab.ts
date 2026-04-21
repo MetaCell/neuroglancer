@@ -83,6 +83,8 @@ import {
 } from "#src/ui/spatial_skeleton_edit_tool.js";
 import { makeToolButton } from "#src/ui/tool.js";
 import { isAbortError } from "#src/util/abort.js";
+import * as matrix from "#src/util/matrix.js";
+import { formatScaleWithUnitAsString } from "#src/util/si_units.js";
 import { TrackableEnum } from "#src/util/trackable_enum.js";
 import { EnumSelectWidget } from "#src/widget/enum_widget.js";
 import { makeIcon } from "#src/widget/icon.js";
@@ -148,13 +150,6 @@ const NODE_TYPE_LABELS: Record<SkeletonNodeType, string> = {
   regular: "regular",
   virtualEnd: "virtual end",
 };
-
-function formatNodeCoordinates(position: ArrayLike<number>) {
-  const x = Number(position[0]);
-  const y = Number(position[1]);
-  const z = Number(position[2]);
-  return `${Math.round(x)} ${Math.round(y)} ${Math.round(z)}`;
-}
 
 export class SpatialSkeletonEditTab extends Tab {
   constructor(public layer: SegmentationUserLayer) {
@@ -237,7 +232,7 @@ export class SpatialSkeletonEditTab extends Tab {
     collapseButton.type = "button";
     const filterInput = document.createElement("input");
     filterInput.type = "text";
-    filterInput.placeholder = "Enter node ID, coordinates or description";
+    filterInput.placeholder = "Enter node ID or description";
     filterInput.className = "neuroglancer-spatial-skeleton-filter";
     const nodeFilterTypeModel = new TrackableEnum(
       SpatialSkeletonNodeFilterType,
@@ -331,6 +326,65 @@ export class SpatialSkeletonEditTab extends Tab {
     >();
     const segmentColorScratch = new Float32Array(4);
 
+    const getSkeletonTransform = () => {
+      const transform =
+        layer.getSpatiallyIndexedSkeletonLayer()?.displayState.transform.value;
+      return transform !== undefined && transform.error === undefined
+        ? transform
+        : undefined;
+    };
+
+    const getCoordinateDimensionHeaders = (): string[] => {
+      const transform = getSkeletonTransform();
+      if (transform === undefined) return ["x", "y", "z"];
+      const globalCoordSpace = layer.manager.root.coordinateSpace.value;
+      const localCoordSpace = layer.localCoordinateSpace.value;
+      return transform.layerDimensionNames.map((name, renderDim) => {
+        for (
+          let g = 0;
+          g < transform.globalToRenderLayerDimensions.length;
+          g++
+        ) {
+          if (transform.globalToRenderLayerDimensions[g] === renderDim) {
+            return `${name} (${formatScaleWithUnitAsString(globalCoordSpace.scales[g], globalCoordSpace.units[g], { precision: 2 })})`;
+          }
+        }
+        for (
+          let l = 0;
+          l < transform.localToRenderLayerDimensions.length;
+          l++
+        ) {
+          if (transform.localToRenderLayerDimensions[l] === renderDim) {
+            return `${name} (${formatScaleWithUnitAsString(localCoordSpace.scales[l], localCoordSpace.units[l], { precision: 2 })})`;
+          }
+        }
+        return name;
+      });
+    };
+
+    const formatNodeCoordinates = (position: ArrayLike<number>): string[] => {
+      const transform = getSkeletonTransform();
+      if (transform !== undefined) {
+        const rank = transform.rank;
+        const modelPos = new Float32Array(rank);
+        for (let i = 0; i < Math.min(position.length, rank); i++) {
+          modelPos[i] = Number(position[i]);
+        }
+        const layerPos = new Float32Array(rank);
+        matrix.transformPoint(
+          layerPos,
+          transform.modelToRenderLayerTransform,
+          rank + 1,
+          modelPos,
+          rank,
+        );
+        return Array.from({ length: rank }, (_, i) =>
+          String(Math.round(layerPos[i])),
+        );
+      }
+      return [0, 1, 2].map((i) => String(Math.round(Number(position[i]))));
+    };
+
     const getSelectedNode = () => {
       const selectedId = layer.selectedSpatialSkeletonNodeId.value;
       if (selectedId === undefined) return undefined;
@@ -353,9 +407,7 @@ export class SpatialSkeletonEditTab extends Tab {
     };
 
     const ensureActionsAllowed = (
-      requiredActions:
-        | SpatialSkeletonAction
-        | readonly SpatialSkeletonAction[],
+      requiredActions: SpatialSkeletonAction | readonly SpatialSkeletonAction[],
       options: {
         requireVisibleChunks?: boolean;
       } = {},
@@ -1068,8 +1120,13 @@ export class SpatialSkeletonEditTab extends Tab {
         headerId.textContent = "id";
         const headerCoordinates = document.createElement("span");
         headerCoordinates.className =
-          "neuroglancer-spatial-skeleton-list-header-cell";
-        headerCoordinates.textContent = "coordinates";
+          "neuroglancer-spatial-skeleton-list-header-cell neuroglancer-spatial-skeleton-coordinates-flex";
+        for (const dimLabel of getCoordinateDimensionHeaders()) {
+          const dimSpan = document.createElement("span");
+          dimSpan.className = "neuroglancer-spatial-skeleton-coord-dim";
+          dimSpan.textContent = dimLabel;
+          headerCoordinates.appendChild(dimSpan);
+        }
         listHeader.appendChild(headerActionsSpacer);
         listHeader.appendChild(headerTypeSpacer);
         listHeader.appendChild(headerId);
@@ -1260,8 +1317,13 @@ export class SpatialSkeletonEditTab extends Tab {
             "neuroglancer-spatial-skeleton-node-coordinate-cell";
           const coordinatesLine = document.createElement("div");
           coordinatesLine.className =
-            "neuroglancer-spatial-skeleton-node-coordinates";
-          coordinatesLine.textContent = formatNodeCoordinates(node.position);
+            "neuroglancer-spatial-skeleton-node-coordinates neuroglancer-spatial-skeleton-coordinates-flex";
+          for (const val of formatNodeCoordinates(node.position)) {
+            const valSpan = document.createElement("span");
+            valSpan.className = "neuroglancer-spatial-skeleton-coord-dim";
+            valSpan.textContent = val;
+            coordinatesLine.appendChild(valSpan);
+          }
           coordinatesCell.appendChild(coordinatesLine);
           const description = getNodeDescriptionText(node);
           if (description !== undefined) {
@@ -1508,13 +1570,11 @@ export class SpatialSkeletonEditTab extends Tab {
       const nextTrueEndEditingAllowed =
         layer.getSpatialSkeletonActionsDisabledReason(
           SpatialSkeletonActions.editNodeTrueEnd,
-        ) ===
-        undefined;
+        ) === undefined;
       const nextNodeDeletionAllowed =
         layer.getSpatialSkeletonActionsDisabledReason(
           SpatialSkeletonActions.deleteNodes,
-        ) ===
-        undefined;
+        ) === undefined;
       const nextNodeRerootAllowed =
         layer.getSpatialSkeletonActionsDisabledReason(
           SpatialSkeletonActions.reroot,
@@ -1680,6 +1740,16 @@ export class SpatialSkeletonEditTab extends Tab {
     this.registerDisposer(
       layer.spatialSkeletonNodeDataVersion.changed.add(() => {
         refreshNodes();
+      }),
+    );
+    this.registerDisposer(
+      layer.manager.root.coordinateSpace.changed.add(() => {
+        updateDisplay();
+      }),
+    );
+    this.registerDisposer(
+      layer.localCoordinateSpace.changed.add(() => {
+        updateDisplay();
       }),
     );
     updateCollapseButton();

@@ -33,11 +33,6 @@ function nodeMatchesFilter(
 ) {
   if (filterText.length === 0) return true;
   if (String(node.nodeId).includes(filterText)) return true;
-  const x = Math.round(Number(node.position[0]));
-  const y = Math.round(Number(node.position[1]));
-  const z = Math.round(Number(node.position[2]));
-  if (`${x} ${y} ${z}`.includes(filterText)) return true;
-  if (`x ${x} y ${y} z ${z}`.includes(filterText)) return true;
   return description?.toLowerCase().includes(filterText) ?? false;
 }
 
