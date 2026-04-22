@@ -70,6 +70,9 @@ function suppressStatusMessages() {
   vi.spyOn(StatusMessage, "showTemporaryMessage").mockImplementation(
     (_message: string, _closeAfter?: number) => fakeStatusMessage,
   );
+  vi.spyOn(StatusMessage, "showMessage").mockImplementation(
+    (_message: string) => fakeStatusMessage,
+  );
 }
 
 describe("spatial_skeleton_edit_tool", () => {

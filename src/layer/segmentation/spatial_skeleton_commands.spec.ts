@@ -76,6 +76,9 @@ function suppressStatusMessages() {
   vi.spyOn(StatusMessage, "showTemporaryMessage").mockImplementation(
     (_message: string, _closeAfter?: number) => fakeStatusMessage,
   );
+  vi.spyOn(StatusMessage, "showMessage").mockImplementation(
+    (_message: string) => fakeStatusMessage,
+  );
 }
 
 describe("spatial_skeleton_commands", () => {
@@ -1176,5 +1179,129 @@ describe("spatial_skeleton_commands", () => {
       secondAttachNode.nodeId,
       expect.any(Object),
     );
+  });
+
+  it("shows and clears a pending status while a merge is in flight", async () => {
+    const pendingStatus = {
+      dispose: vi.fn(),
+    } as unknown as StatusMessage;
+    const showMessage = vi
+      .spyOn(StatusMessage, "showMessage")
+      .mockReturnValue(pendingStatus);
+    vi.spyOn(StatusMessage, "showTemporaryMessage").mockImplementation(
+      () => ({ dispose() {} }) as unknown as StatusMessage,
+    );
+
+    let resolveMerge:
+      | ((value: {
+          resultSkeletonId: number;
+          deletedSkeletonId: number;
+          stableAnnotationSwap: boolean;
+        }) => void)
+      | undefined;
+    const mergeSkeletons = vi.fn(
+      () =>
+        new Promise<{
+          resultSkeletonId: number;
+          deletedSkeletonId: number;
+          stableAnnotationSwap: boolean;
+        }>((resolve) => {
+          resolveMerge = resolve;
+        }),
+    );
+    const firstNode: SpatiallyIndexedSkeletonNode = {
+      nodeId: 101,
+      segmentId: 11,
+      position: new Float32Array([1, 2, 3]),
+      isTrueEnd: false,
+      revisionToken: "first-before",
+    };
+    const secondNode: SpatiallyIndexedSkeletonNode = {
+      nodeId: 202,
+      segmentId: 17,
+      position: new Float32Array([4, 5, 6]),
+      isTrueEnd: false,
+      revisionToken: "second-before",
+    };
+    const skeletonLayer = {
+      source: makeEditableSkeletonSource({ mergeSkeletons }),
+      getNode: vi.fn((nodeId: number) => {
+        if (nodeId === firstNode.nodeId) return firstNode;
+        if (nodeId === secondNode.nodeId) return secondNode;
+        return undefined;
+      }),
+      suppressBrowseSegment: vi.fn(),
+      invalidateSourceCaches: vi.fn(),
+    };
+    const layer = {
+      displayState: {
+        segmentationGroupState: {
+          value: {
+            visibleSegments: new Set<bigint>([11n, 17n]),
+            selectedSegments: new Set<bigint>(),
+            segmentEquivalences: {},
+            temporaryVisibleSegments: new Set<bigint>(),
+            temporarySegmentEquivalences: {},
+            useTemporaryVisibleSegments: { value: false },
+            useTemporarySegmentEquivalences: { value: false },
+          },
+        },
+        segmentStatedColors: {
+          value: {
+            delete: vi.fn(),
+          },
+        },
+      },
+      spatialSkeletonState: {
+        commandHistory: new SpatialSkeletonCommandHistory(),
+        getCachedNode: vi.fn((nodeId: number) => {
+          if (nodeId === firstNode.nodeId) return firstNode;
+          if (nodeId === secondNode.nodeId) return secondNode;
+          return undefined;
+        }),
+        getCachedSegmentNodes: vi.fn((segmentId: number) => {
+          if (segmentId === firstNode.segmentId) return [firstNode];
+          if (segmentId === secondNode.segmentId) return [secondNode];
+          return undefined;
+        }),
+        getFullSegmentNodes: vi.fn(async () => []),
+        invalidateCachedSegments: vi.fn(),
+      },
+      getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
+      selectSegment: vi.fn(),
+      selectSpatialSkeletonNode: vi.fn(),
+      markSpatialSkeletonNodeDataChanged: vi.fn(),
+      clearSpatialSkeletonMergeAnchor: vi.fn(),
+      manager: {
+        root: {
+          selectionState: {
+            pin: {
+              value: true,
+            },
+          },
+        },
+      },
+    };
+
+    const mergePromise = executeSpatialSkeletonMerge(
+      layer as any,
+      { nodeId: firstNode.nodeId, segmentId: firstNode.segmentId },
+      { nodeId: secondNode.nodeId, segmentId: secondNode.segmentId },
+    );
+
+    expect(showMessage).toHaveBeenCalledWith("Merging skeletons...");
+    expect(pendingStatus.dispose).not.toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(mergeSkeletons).toHaveBeenCalledTimes(1);
+    });
+
+    resolveMerge?.({
+      resultSkeletonId: firstNode.segmentId,
+      deletedSkeletonId: secondNode.segmentId,
+      stableAnnotationSwap: false,
+    });
+    await mergePromise;
+
+    expect(pendingStatus.dispose).toHaveBeenCalledTimes(1);
   });
 });

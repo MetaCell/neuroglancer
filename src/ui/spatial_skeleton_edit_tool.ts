@@ -114,6 +114,16 @@ const SPATIAL_SKELETON_PICK_AUX_INPUT_EVENT_MAP = EventActionMap.fromObject({
 
 const DRAG_START_DISTANCE_PX = 4;
 
+function waitForNextAnimationFrame() {
+  return new Promise<void>((resolve) => {
+    if (typeof requestAnimationFrame !== "function") {
+      window.setTimeout(resolve, 0);
+      return;
+    }
+    requestAnimationFrame(() => resolve());
+  });
+}
+
 function renderSpatialSkeletonToolStatus(
   body: HTMLElement,
   options: {
@@ -1233,10 +1243,15 @@ class SpatialSkeletonMergeModeTool extends SpatialSkeletonToolBase {
           return;
         }
         this.pinSegmentByNumber(pickedNode.segmentId);
+        this.layer.selectSpatialSkeletonNode(pickedNode.nodeId, true, {
+          segmentId: pickedNode.segmentId,
+          position: pickedNode.position,
+        });
         pending = true;
         setStatus("Merging selected nodes.");
         void (async () => {
           try {
+            await waitForNextAnimationFrame();
             await executeSpatialSkeletonMerge(
               this.layer,
               {

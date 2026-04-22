@@ -1578,7 +1578,10 @@ export function executeSpatialSkeletonAddNode(
       options.skeletonId,
     new Float32Array(options.positionInModelSpace),
   );
-  return layer.spatialSkeletonState.commandHistory.execute(command);
+  return executeSpatialSkeletonCommandWithPendingMessage(
+    layer.spatialSkeletonState.commandHistory.execute(command),
+    "Creating node...",
+  );
 }
 
 export function executeSpatialSkeletonMoveNode(
@@ -1621,7 +1624,10 @@ export function executeSpatialSkeletonDeleteNode(
     refreshedNode.nodeId,
   );
   const command = new DeleteNodeCommand(layer, refreshedNode, childNodes);
-  return layer.spatialSkeletonState.commandHistory.execute(command);
+  return executeSpatialSkeletonCommandWithPendingMessage(
+    layer.spatialSkeletonState.commandHistory.execute(command),
+    "Deleting node...",
+  );
 }
 
 export function executeSpatialSkeletonNodeDescriptionUpdate(
@@ -1731,13 +1737,24 @@ export function executeSpatialSkeletonSplit(
     commandMappings.getStableOrCurrentSegmentId(splitNode.segmentId),
     commandMappings.getStableOrCurrentNodeId(splitNode.parentNodeId),
   );
-  return layer.spatialSkeletonState.commandHistory.execute(command);
+  return executeSpatialSkeletonCommandWithPendingMessage(
+    layer.spatialSkeletonState.commandHistory.execute(command),
+    "Splitting skeleton...",
+  );
 }
 
 interface SpatialSkeletonMergeEndpoint {
   nodeId: number;
   segmentId: number;
   revisionToken?: string;
+}
+
+function executeSpatialSkeletonCommandWithPendingMessage<T>(
+  promise: Promise<T>,
+  message: string,
+) {
+  const status = StatusMessage.showMessage(message);
+  return promise.finally(() => status.dispose());
 }
 
 export function executeSpatialSkeletonMerge(
@@ -1754,7 +1771,10 @@ export function executeSpatialSkeletonMerge(
     commandMappings.getStableOrCurrentSegmentId(secondNode.segmentId),
     secondNode.revisionToken,
   );
-  return layer.spatialSkeletonState.commandHistory.execute(command);
+  return executeSpatialSkeletonCommandWithPendingMessage(
+    layer.spatialSkeletonState.commandHistory.execute(command),
+    "Merging skeletons...",
+  );
 }
 
 export async function undoSpatialSkeletonCommand(layer: SegmentationUserLayer) {
