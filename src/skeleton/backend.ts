@@ -302,7 +302,8 @@ export class SpatiallyIndexedSkeletonChunk
   lod: number = 0;
   requestGeneration = -1;
   requestOwners = SpatiallyIndexedSkeletonChunkRequestOwner.NONE;
-  nodeMap: Map<number, number> = new Map(); // Maps node ID to vertex index
+  nodeIds: Int32Array | undefined;
+  nodeRevisionTokens: Array<string | undefined> | undefined;
 
   freeSystemMemory() {
     freeSkeletonChunkSystemMemory(this);

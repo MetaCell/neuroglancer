@@ -65,6 +65,7 @@ export function isEditableSpatiallyIndexedSkeletonSource(
     hasFunction(value, "removeTrueEnd") &&
     hasFunction(value, "updateRadius") &&
     hasFunction(value, "updateConfidence") &&
+    hasFunction(value, "getSkeletonRootNode") &&
     hasFunction(value, "mergeSkeletons") &&
     hasFunction(value, "splitSkeleton")
   );

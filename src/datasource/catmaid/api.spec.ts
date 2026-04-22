@@ -254,6 +254,66 @@ describe("CatmaidClient skeleton editing methods", () => {
     );
   });
 
+  it("parses browse node/list rows with revision tokens", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const fetchMock = vi.fn().mockResolvedValue([
+      [
+        [101, null, 1, 2, 3, 5, 2000, 11, "2026-03-29T11:50:00Z", 2],
+        [102, 101, 4, 5, 6, 5, 2000, 17, "2026-03-29T11:51:00Z", 2],
+      ],
+      [],
+      {},
+      false,
+      [],
+      [],
+    ]);
+    (client as any).fetch = fetchMock;
+
+    await expect(
+      client.fetchNodes({
+        min: { x: 0, y: 0, z: 0 },
+        max: { x: 10, y: 10, z: 10 },
+      }),
+    ).resolves.toEqual([
+      {
+        nodeId: 101,
+        parentNodeId: undefined,
+        position: new Float32Array([1, 2, 3]),
+        segmentId: 11,
+        revisionToken: "2026-03-29T11:50:00Z",
+      },
+      {
+        nodeId: 102,
+        parentNodeId: 101,
+        position: new Float32Array([4, 5, 6]),
+        segmentId: 17,
+        revisionToken: "2026-03-29T11:51:00Z",
+      },
+    ]);
+
+    expect(getFetchPath(fetchMock)).toMatch(/^node\/list\?/);
+  });
+
+  it("fetches skeleton root targets", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const fetchMock = vi.fn().mockResolvedValue({
+      root_id: 303,
+      x: 1,
+      y: 2,
+      z: 3,
+    });
+    (client as any).fetch = fetchMock;
+
+    await expect(client.getSkeletonRootNode(17)).resolves.toEqual({
+      nodeId: 303,
+      x: 1,
+      y: 2,
+      z: 3,
+    });
+
+    expect(getFetchPath(fetchMock)).toBe("skeletons/17/root");
+  });
+
   it("rejects merge state when the provided node ids do not match the request", async () => {
     const client = new CatmaidClient("https://example.invalid", 1);
     const fetchMock = vi.fn();

@@ -20,7 +20,8 @@ interface PackedCatmaidSkeletonData {
   vertexPositions: Float32Array;
   segmentIds: Uint32Array;
   indices: Uint32Array;
-  nodeMap: Map<number, number>;
+  nodeIds: Int32Array;
+  revisionTokens: Array<string | undefined>;
 }
 
 export function packCatmaidSkeletonNodes(
@@ -29,16 +30,20 @@ export function packCatmaidSkeletonNodes(
   const numVertices = nodes.length;
   const vertexPositions = new Float32Array(numVertices * 3);
   const segmentIds = new Uint32Array(numVertices);
+  const nodeIds = new Int32Array(numVertices);
+  const revisionTokens = new Array<string | undefined>(numVertices);
   const indices: number[] = [];
   const nodeMap = new Map<number, number>();
 
   for (let i = 0; i < numVertices; ++i) {
     const node = nodes[i];
     nodeMap.set(node.nodeId, i);
+    nodeIds[i] = node.nodeId;
     vertexPositions[i * 3] = node.position[0];
     vertexPositions[i * 3 + 1] = node.position[1];
     vertexPositions[i * 3 + 2] = node.position[2];
     segmentIds[i] = node.segmentId;
+    revisionTokens[i] = node.revisionToken;
   }
 
   for (let i = 0; i < numVertices; ++i) {
@@ -54,6 +59,7 @@ export function packCatmaidSkeletonNodes(
     vertexPositions,
     segmentIds,
     indices: new Uint32Array(indices),
-    nodeMap,
+    nodeIds,
+    revisionTokens,
   };
 }

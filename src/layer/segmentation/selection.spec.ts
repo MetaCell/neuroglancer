@@ -145,7 +145,7 @@ describe("layer/segmentation/selection", () => {
         {
           active: true,
           pickedRenderLayer: renderLayerA,
-          pickedSpatialSkeletonNodeId: 31,
+          pickedSpatialSkeleton: { nodeId: 31 },
         },
         layer,
       ),
@@ -155,7 +155,7 @@ describe("layer/segmentation/selection", () => {
         {
           active: true,
           pickedRenderLayer: renderLayerB,
-          pickedSpatialSkeletonNodeId: 31,
+          pickedSpatialSkeleton: { nodeId: 31 },
         },
         layer,
       ),
@@ -165,7 +165,7 @@ describe("layer/segmentation/selection", () => {
         {
           active: false,
           pickedRenderLayer: renderLayerA,
-          pickedSpatialSkeletonNodeId: 31,
+          pickedSpatialSkeleton: { nodeId: 31 },
         },
         layer,
       ),
@@ -175,7 +175,7 @@ describe("layer/segmentation/selection", () => {
         {
           active: true,
           pickedRenderLayer: renderLayerA,
-          pickedSpatialSkeletonNodeId: -1,
+          pickedSpatialSkeleton: { nodeId: -1 },
         },
         layer,
       ),

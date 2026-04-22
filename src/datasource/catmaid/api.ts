@@ -26,6 +26,7 @@ import type {
   SpatiallyIndexedSkeletonInsertNodeResult,
   SpatiallyIndexedSkeletonMergeResult,
   SpatiallyIndexedSkeletonMetadata,
+  SpatiallyIndexedSkeletonNavigationTarget,
   SpatiallyIndexedSkeletonNode,
   SpatiallyIndexedSkeletonNodeRevisionResult,
   SpatiallyIndexedSkeletonNodeRevisionUpdate,
@@ -445,6 +446,57 @@ function getCatmaidHistoryRevisionToken(
   row: readonly unknown[],
 ): string | undefined {
   return normalizeCatmaidRevisionToken(row[8]);
+}
+
+function parseCatmaidSkeletonRootTarget(
+  response: any,
+): SpatiallyIndexedSkeletonNavigationTarget {
+  if (Array.isArray(response) && response.length >= 4) {
+    const nodeId = Number(response[0]);
+    const x = Number(response[1]);
+    const y = Number(response[2]);
+    const z = Number(response[3]);
+    if (
+      Number.isSafeInteger(Math.round(nodeId)) &&
+      Math.round(nodeId) > 0 &&
+      Number.isFinite(x) &&
+      Number.isFinite(y) &&
+      Number.isFinite(z)
+    ) {
+      return {
+        nodeId: Math.round(nodeId),
+        x,
+        y,
+        z,
+      };
+    }
+  }
+  const nodeId = Number(
+    response?.root_id ??
+      response?.node_id ??
+      response?.treenode_id ??
+      response?.id,
+  );
+  const x = Number(response?.x ?? response?.location_x);
+  const y = Number(response?.y ?? response?.location_y);
+  const z = Number(response?.z ?? response?.location_z);
+  if (
+    Number.isSafeInteger(Math.round(nodeId)) &&
+    Math.round(nodeId) > 0 &&
+    Number.isFinite(x) &&
+    Number.isFinite(y) &&
+    Number.isFinite(z)
+  ) {
+    return {
+      nodeId: Math.round(nodeId),
+      x,
+      y,
+      z,
+    };
+  }
+  throw new Error(
+    "CATMAID skeleton root endpoint returned an unexpected response format.",
+  );
 }
 
 function requireCatmaidRevisionToken(
@@ -1106,6 +1158,7 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
         parentNodeId: n[1] ?? undefined,
         position: new Float32Array([n[2], n[3], n[4]]),
         segmentId: n[7],
+        revisionToken: normalizeCatmaidRevisionToken(n[8]),
       }),
     );
 
@@ -1126,6 +1179,7 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
               parentNodeId: n[1] ?? undefined,
               position: new Float32Array([n[2], n[3], n[4]]),
               segmentId: n[7],
+              revisionToken: normalizeCatmaidRevisionToken(n[8]),
             });
           }
         }
@@ -1156,6 +1210,13 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
     return getCatmaidSingleNodeRevisionResult(
       parseCatmaidMoveRevisionToken(response, nodeId),
     );
+  }
+
+  async getSkeletonRootNode(
+    skeletonId: number,
+  ): Promise<SpatiallyIndexedSkeletonNavigationTarget> {
+    const response = await this.fetch(`skeletons/${skeletonId}/root`);
+    return parseCatmaidSkeletonRootTarget(response);
   }
 
   async rerootSkeleton(

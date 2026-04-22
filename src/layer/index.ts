@@ -76,6 +76,7 @@ import {
   SELECTED_LAYER_SIDE_PANEL_DEFAULT_LOCATION,
   UserLayerSidePanelsState,
 } from "#src/ui/layer_side_panel_state.js";
+import { formatErrorMessage } from "#src/util/error.js";
 import {
   DEFAULT_SIDE_PANEL_LOCATION,
   TrackableSidePanelLocation,
@@ -209,7 +210,7 @@ export class UserLayer extends RefCounted {
 
   pick = new TrackableBoolean(true, true);
 
-  selectionState: UserLayerSelectionState;
+  selectionState!: UserLayerSelectionState;
 
   messages = new MessageList();
 
@@ -1158,12 +1159,18 @@ export class LayerManager extends RefCounted {
   }
 }
 
+export interface PickedSpatialSkeletonState {
+  nodeId?: number;
+  segmentId?: number;
+  position?: Float32Array;
+  revisionToken?: string;
+}
+
 export interface PickState {
   pickedRenderLayer: RenderLayer | null;
   pickedValue: bigint;
   pickedOffset: number;
-  pickedSpatialSkeletonNodeId: number | undefined;
-  pickedSpatialSkeletonSegmentId: number | undefined;
+  pickedSpatialSkeleton: PickedSpatialSkeletonState | undefined;
   pickedAnnotationLayer: AnnotationLayerState | undefined;
   pickedAnnotationId: string | undefined;
   pickedAnnotationBuffer: ArrayBuffer | undefined;
@@ -1185,8 +1192,7 @@ export class MouseSelectionState implements PickState {
   pickedRenderLayer: RenderLayer | null = null;
   pickedValue = 0n;
   pickedOffset = 0;
-  pickedSpatialSkeletonNodeId: number | undefined = undefined;
-  pickedSpatialSkeletonSegmentId: number | undefined = undefined;
+  pickedSpatialSkeleton: PickedSpatialSkeletonState | undefined = undefined;
   pickedAnnotationLayer: AnnotationLayerState | undefined = undefined;
   pickedAnnotationId: string | undefined = undefined;
   pickedAnnotationBuffer: ArrayBuffer | undefined = undefined;
@@ -2267,10 +2273,7 @@ export class TopLevelLayerListSpecification extends LayerListSpecification {
         managedLayer.dispose();
         const msg = new StatusMessage();
         msg.setErrorMessage(
-          `Error creating layer ${JSON.stringify(name)}: ` +
-            (e instanceof Error)
-            ? e.message
-            : "" + e,
+          `Error creating layer ${JSON.stringify(name)}: ${formatErrorMessage(e)}`,
         );
       }
     }
@@ -2280,10 +2283,7 @@ export class TopLevelLayerListSpecification extends LayerListSpecification {
       } catch (e) {
         const msg = new StatusMessage();
         msg.setErrorMessage(
-          `Error creating layer ${JSON.stringify(name)}: ` +
-            (e instanceof Error)
-            ? e.message
-            : "" + e,
+          `Error creating layer ${JSON.stringify(name)}: ${formatErrorMessage(e)}`,
         );
       }
     }

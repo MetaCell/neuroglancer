@@ -511,7 +511,8 @@ export abstract class RenderedDataPanel extends RenderedPanel {
       if (!mouseState.updateUnconditionally()) {
         return undefined;
       }
-      const pickedNodeId = mouseState.pickedSpatialSkeletonNodeId;
+      const pickedSpatialSkeleton = mouseState.pickedSpatialSkeleton;
+      const pickedNodeId = pickedSpatialSkeleton?.nodeId;
       if (
         typeof pickedNodeId !== "number" ||
         !Number.isSafeInteger(pickedNodeId) ||
@@ -523,7 +524,7 @@ export abstract class RenderedDataPanel extends RenderedPanel {
       if (!isSpatialSkeletonSelectableLayer(pickedLayer)) {
         return undefined;
       }
-      const pickedSegmentId = mouseState.pickedSpatialSkeletonSegmentId;
+      const pickedSegmentId = pickedSpatialSkeleton?.segmentId;
       return {
         layer: pickedLayer,
         nodeId: pickedNodeId,
