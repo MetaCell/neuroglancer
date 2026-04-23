@@ -444,49 +444,28 @@ function getCatmaidHistoryRevisionToken(
 function parseCatmaidSkeletonRootTarget(
   response: any,
 ): SpatiallyIndexedSkeletonNavigationTarget {
-  if (Array.isArray(response) && response.length >= 4) {
-    const nodeId = Number(response[0]);
-    const x = Number(response[1]);
-    const y = Number(response[2]);
-    const z = Number(response[3]);
-    if (
-      Number.isSafeInteger(Math.round(nodeId)) &&
-      Math.round(nodeId) > 0 &&
-      Number.isFinite(x) &&
-      Number.isFinite(y) &&
-      Number.isFinite(z)
-    ) {
-      return {
-        nodeId: Math.round(nodeId),
-        x,
-        y,
-        z,
-      };
-    }
+  if (!response || typeof response !== "object" || Array.isArray(response)) {
+    throw new Error(
+      "CATMAID skeleton root endpoint returned an unexpected response format.",
+    );
   }
-  const nodeId = Number(
-    response?.root_id ??
-      response?.node_id ??
-      response?.treenode_id ??
-      response?.id,
-  );
-  const x = Number(response?.x ?? response?.location_x);
-  const y = Number(response?.y ?? response?.location_y);
-  const z = Number(response?.z ?? response?.location_z);
+
+  const { root_id, x, y, z } = response as Record<string, unknown>;
+  const nodeId = Number(root_id);
+  const px = Number(x);
+  const py = Number(y);
+  const pz = Number(z);
+
   if (
-    Number.isSafeInteger(Math.round(nodeId)) &&
-    Math.round(nodeId) > 0 &&
-    Number.isFinite(x) &&
-    Number.isFinite(y) &&
-    Number.isFinite(z)
+    Number.isSafeInteger(nodeId) &&
+    nodeId > 0 &&
+    Number.isFinite(px) &&
+    Number.isFinite(py) &&
+    Number.isFinite(pz)
   ) {
-    return {
-      nodeId: Math.round(nodeId),
-      x,
-      y,
-      z,
-    };
+    return { nodeId, x: px, y: py, z: pz };
   }
+
   throw new Error(
     "CATMAID skeleton root endpoint returned an unexpected response format.",
   );
