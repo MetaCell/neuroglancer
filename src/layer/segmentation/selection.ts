@@ -24,7 +24,11 @@ interface SpatialSkeletonSelectionStateLike {
 interface SpatialSkeletonViewerHoverMouseStateLike<TRenderLayer> {
   active: boolean;
   pickedRenderLayer: TRenderLayer | null | undefined;
-  pickedSpatialSkeletonNodeId?: unknown;
+  pickedSpatialSkeleton?:
+    | {
+        nodeId?: unknown;
+      }
+    | undefined;
 }
 
 interface SpatialSkeletonViewerHoverLayerLike<TRenderLayer> {
@@ -174,6 +178,6 @@ export function getSpatialSkeletonNodeIdFromViewerHover<TRenderLayer>(
   }
   // TODO (SKM): I think we can inline this function
   return normalizeSpatialSkeletonViewerHoverNodeId(
-    mouseState.pickedSpatialSkeletonNodeId,
+    mouseState.pickedSpatialSkeleton?.nodeId,
   );
 }

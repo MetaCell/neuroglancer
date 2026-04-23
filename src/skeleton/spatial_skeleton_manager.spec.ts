@@ -33,6 +33,7 @@ describe("skeleton/spatial_skeleton_manager", () => {
       getSkeleton: async () => [],
       fetchNodes: async () => [],
       getSpatialIndexMetadata: async () => null,
+      getSkeletonRootNode: async () => ({ nodeId: 1, x: 1, y: 2, z: 3 }),
       addNode: async () => ({ treenodeId: 1, skeletonId: 1 }),
       insertNode: async () => ({ treenodeId: 1, skeletonId: 1 }),
       moveNode: async () => {},

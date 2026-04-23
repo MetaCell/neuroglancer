@@ -4,7 +4,7 @@ import { packCatmaidSkeletonNodes } from "#src/datasource/catmaid/skeleton_packi
 import type { SpatiallyIndexedSkeletonNodeBase } from "#src/skeleton/api.js";
 
 describe("datasource/catmaid/skeleton_packing", () => {
-  it("packs vertex, segment, index, and node-map data", () => {
+  it("packs vertex, segment, index, and pick-node data", () => {
     const nodes: SpatiallyIndexedSkeletonNodeBase[] = [
       {
         nodeId: 1,
@@ -33,11 +33,7 @@ describe("datasource/catmaid/skeleton_packing", () => {
     );
     expect(packed.segmentIds).toEqual(Uint32Array.of(10, 10, 11));
     expect(packed.indices).toEqual(Uint32Array.of(1, 0));
-    expect(Array.from(packed.nodeMap.entries())).toEqual([
-      [1, 0],
-      [2, 1],
-      [3, 2],
-    ]);
+    expect(packed.nodeIds).toEqual(Int32Array.of(1, 2, 3));
   });
 
   it("preserves large segment ids exactly", () => {
