@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  getDefaultSpatiallyIndexedSkeletonChunkSize,
-} from "#src/skeleton/spatial_chunk_sizing.js";
+import { getDefaultSpatiallyIndexedSkeletonChunkSize } from "#src/skeleton/spatial_chunk_sizing.js";
 
 describe("skeleton/spatial_chunk_sizing", () => {
   it("derives an isotropic chunk size that stays within the default chunk budget", () => {

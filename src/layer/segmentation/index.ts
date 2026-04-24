@@ -31,7 +31,6 @@ import {
 import type {
   LayerActionContext,
   ManagedUserLayer,
-  MouseSelectionState,
   UserLayerSelectionState,
 } from "#src/layer/index.js";
 import {
@@ -48,7 +47,6 @@ import { registerLayerControls } from "#src/layer/segmentation/layer_controls.js
 import {
   getSpatialSkeletonMissingSelectionDisplayState,
   getSpatialSkeletonNodeIdFromLayerSelectionState,
-  getSpatialSkeletonNodeIdFromViewerHover,
   getSpatialSkeletonSegmentIdFromLayerSelectionState,
   getSpatialSkeletonSelectionRecoveryKey,
   SpatialSkeletonSelectionRecoveryStatus,
@@ -2484,7 +2482,6 @@ export class SegmentationUserLayer extends Base {
     }
     return maybeAugmentSegmentId(this.displayState, value);
   }
-
 
   handleAction(action: string, context: SegmentationActionContext) {
     switch (action) {

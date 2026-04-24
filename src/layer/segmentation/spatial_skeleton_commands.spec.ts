@@ -102,7 +102,9 @@ describe("spatial_skeleton_commands", () => {
     });
     const skeletonLayer = {
       source: makeEditableSkeletonSource({ moveNode }),
-      getNode: vi.fn((nodeId: number) => (nodeId === node.nodeId ? node : undefined)),
+      getNode: vi.fn((nodeId: number) =>
+        nodeId === node.nodeId ? node : undefined,
+      ),
       retainOverlaySegment: vi.fn(),
       invalidateSourceCaches: vi.fn(),
     };
@@ -113,7 +115,9 @@ describe("spatial_skeleton_commands", () => {
     const layer = {
       spatialSkeletonState: {
         commandHistory,
-        getCachedNode: vi.fn((nodeId: number) => (nodeId === node.nodeId ? node : undefined)),
+        getCachedNode: vi.fn((nodeId: number) =>
+          nodeId === node.nodeId ? node : undefined,
+        ),
         getCachedSegmentNodes: vi.fn((segmentId: number) =>
           segmentId === node.segmentId ? [node] : undefined,
         ),
@@ -179,14 +183,8 @@ describe("spatial_skeleton_commands", () => {
       revisionToken: "split-merged-back",
     };
 
-    const serverSegments = new Map<
-      number,
-      SpatiallyIndexedSkeletonNode[]
-    >();
-    const cacheBySegment = new Map<
-      number,
-      SpatiallyIndexedSkeletonNode[]
-    >();
+    const serverSegments = new Map<number, SpatiallyIndexedSkeletonNode[]>();
+    const cacheBySegment = new Map<number, SpatiallyIndexedSkeletonNode[]>();
     const cacheByNode = new Map<number, SpatiallyIndexedSkeletonNode>();
 
     const syncCacheFromServer = (segmentId: number) => {
@@ -391,14 +389,8 @@ describe("spatial_skeleton_commands", () => {
       },
     ];
 
-    const serverSegments = new Map<
-      number,
-      SpatiallyIndexedSkeletonNode[]
-    >();
-    const cacheBySegment = new Map<
-      number,
-      SpatiallyIndexedSkeletonNode[]
-    >();
+    const serverSegments = new Map<number, SpatiallyIndexedSkeletonNode[]>();
+    const cacheBySegment = new Map<number, SpatiallyIndexedSkeletonNode[]>();
     const cacheByNode = new Map<number, SpatiallyIndexedSkeletonNode>();
 
     const syncCacheFromServer = (segmentId: number) => {
@@ -665,7 +657,10 @@ describe("spatial_skeleton_commands", () => {
           cloneNode(visibleRootNode),
           cloneNode(visibleAnchorNode),
         ]);
-        serverSegments.set(hiddenSegmentId, splitOnlyRestoredNodes.map(cloneNode));
+        serverSegments.set(
+          hiddenSegmentId,
+          splitOnlyRestoredNodes.map(cloneNode),
+        );
         return {
           existingSkeletonId: visibleSegmentId,
           newSkeletonId: hiddenSegmentId,
@@ -682,7 +677,6 @@ describe("spatial_skeleton_commands", () => {
         setSegmentNodes(cacheBySegment, cacheByNode, segmentId, []);
       }
     });
-    let layer: any;
     const getFullSegmentNodes = vi.fn(
       async (_skeletonLayer: unknown, segmentId: number) => {
         if (segmentId === hiddenSegmentId) {
@@ -701,7 +695,7 @@ describe("spatial_skeleton_commands", () => {
       invalidateSourceCaches: vi.fn(),
       suppressBrowseSegment: vi.fn(),
     };
-    layer = {
+    const layer = {
       displayState: {
         segmentationGroupState: {
           value: {
@@ -766,9 +760,9 @@ describe("spatial_skeleton_commands", () => {
       expect.any(Object),
     );
     expect(getFullSegmentNodes).toHaveBeenCalledTimes(2);
-    expect(skeletonSource.mergeSkeletons.mock.invocationCallOrder[0]).toBeLessThan(
-      getFullSegmentNodes.mock.invocationCallOrder[0],
-    );
+    expect(
+      skeletonSource.mergeSkeletons.mock.invocationCallOrder[0],
+    ).toBeLessThan(getFullSegmentNodes.mock.invocationCallOrder[0]);
 
     skeletonSource.rerootSkeleton.mockClear();
     hiddenSegmentVisibleDuringFetches.length = 0;
@@ -916,7 +910,10 @@ describe("spatial_skeleton_commands", () => {
           cloneNode(visibleRootNode),
           cloneNode(visibleAnchorNode),
         ]);
-        serverSegments.set(hiddenSegmentId, splitOnlyRestoredNodes.map(cloneNode));
+        serverSegments.set(
+          hiddenSegmentId,
+          splitOnlyRestoredNodes.map(cloneNode),
+        );
         return {
           existingSkeletonId: visibleSegmentId,
           newSkeletonId: hiddenSegmentId,

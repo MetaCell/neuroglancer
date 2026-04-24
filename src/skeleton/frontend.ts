@@ -1029,7 +1029,7 @@ function setMouseStatePositionFromSpatialSkeletonNode(
   gatherUpdate(
     mouseState.position,
     layerPosition,
-    transform.globalToRenderLayerDimensions
+    transform.globalToRenderLayerDimensions,
   );
 }
 
@@ -1842,9 +1842,7 @@ interface SpatiallyIndexedSkeletonLayerOptions {
   selectedNodeId?: WatchableValueInterface<number | undefined>;
   pendingNodePositionVersion?: WatchableValueInterface<number>;
   getPendingNodePosition?: (nodeId: number) => ArrayLike<number> | undefined;
-  getCachedNode?: (
-    nodeId: number,
-  ) => SpatiallyIndexedSkeletonNode | undefined;
+  getCachedNode?: (nodeId: number) => SpatiallyIndexedSkeletonNode | undefined;
   inspectionState?: SpatiallyIndexedSkeletonInspectionState;
   maxRetainedOverlaySegments?: number;
 }
@@ -2058,11 +2056,9 @@ function collectPlaneIntersectingSpatialChunkKeysBySource(
         }
         seenChunkKeys!.add(chunkKey);
         visibleChunkKeys.totalChunkKeys.add(chunkKey);
-        const chunk = (tsource.source as SpatiallyIndexedSkeletonSource).chunks.get(
-          chunkKey,
-        ) as
-          | SpatiallyIndexedSkeletonChunk
-          | undefined;
+        const chunk = (
+          tsource.source as SpatiallyIndexedSkeletonSource
+        ).chunks.get(chunkKey) as SpatiallyIndexedSkeletonChunk | undefined;
         if (chunk?.state === ChunkState.GPU_MEMORY) {
           visibleChunkKeys.presentChunkKeys.add(chunkKey);
         }
@@ -3589,7 +3585,11 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
       };
       const transform = this.base.displayState.transform.value;
       if (transform.error === undefined) {
-        setMouseStatePositionFromSpatialSkeletonNode(mouseState, nodePosition, transform);
+        setMouseStatePositionFromSpatialSkeletonNode(
+          mouseState,
+          nodePosition,
+          transform,
+        );
       }
       return;
     }
@@ -3913,7 +3913,11 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
       };
       const transform = this.base.displayState.transform.value;
       if (transform.error === undefined) {
-        setMouseStatePositionFromSpatialSkeletonNode(mouseState, nodePosition, transform);
+        setMouseStatePositionFromSpatialSkeletonNode(
+          mouseState,
+          nodePosition,
+          transform,
+        );
       }
       return;
     }
