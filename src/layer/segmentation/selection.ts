@@ -15,10 +15,10 @@
  */
 
 import type { LayerSelectedValues } from "#src/layer/index.js";
+import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import { RefCounted } from "#src/util/disposable.js";
 import { parseUint64 } from "#src/util/json.js";
 import { NullarySignal } from "#src/util/signal.js";
-import { SegmentationUserLayer } from ".";
 
 interface SpatialSkeletonSelectionStateLike {
   spatialSkeletonNodeId?: unknown;
