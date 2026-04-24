@@ -16,14 +16,16 @@
 
 import { describe, expect, it } from "vitest";
 
+import type { LayerSelectedValues } from "#src/layer/index.js";
+import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import {
   getSpatialSkeletonMissingSelectionDisplayState,
   getSpatialSkeletonSegmentIdFromLayerSelectionState,
   getSpatialSkeletonNodeIdFromLayerSelectionState,
-  getSpatialSkeletonNodeIdFromViewerHover,
   getSpatialSkeletonSelectionRecoveryKey,
   getSpatialSkeletonNodeIdFromViewerSelection,
   hasSpatialSkeletonNodeSelection,
+  SpatialSkeletonHoverState,
   SpatialSkeletonSelectionRecoveryStatus,
 } from "#src/layer/segmentation/selection.js";
 
@@ -135,51 +137,71 @@ describe("layer/segmentation/selection", () => {
   });
 
   it("extracts the hovered node id only for matching render layers", () => {
+    // Create mock state, layers, and signal handlers
     const renderLayerA = {};
     const renderLayerB = {};
-    const layer = {
-      renderLayers: [renderLayerA],
+    const layer = { renderLayers: [renderLayerA] };
+    let mouseState: {
+      active: boolean;
+      pickedRenderLayer: unknown;
+      pickedSpatialSkeletonNodeId: unknown;
+    } = {
+      active: false,
+      pickedRenderLayer: null,
+      pickedSpatialSkeletonNodeId: undefined,
     };
-    expect(
-      getSpatialSkeletonNodeIdFromViewerHover(
-        {
-          active: true,
-          pickedRenderLayer: renderLayerA,
-          pickedSpatialSkeleton: { nodeId: 31 },
+    const handlers: Array<() => void> = [];
+    const layerSelectedValues = {
+      changed: {
+        add: (cb: () => void) => {
+          handlers.push(cb);
+          return () => true as boolean;
         },
-        layer,
-      ),
-    ).toBe(31);
-    expect(
-      getSpatialSkeletonNodeIdFromViewerHover(
-        {
-          active: true,
-          pickedRenderLayer: renderLayerB,
-          pickedSpatialSkeleton: { nodeId: 31 },
-        },
-        layer,
-      ),
-    ).toBeUndefined();
-    expect(
-      getSpatialSkeletonNodeIdFromViewerHover(
-        {
-          active: false,
-          pickedRenderLayer: renderLayerA,
-          pickedSpatialSkeleton: { nodeId: 31 },
-        },
-        layer,
-      ),
-    ).toBeUndefined();
-    expect(
-      getSpatialSkeletonNodeIdFromViewerHover(
-        {
-          active: true,
-          pickedRenderLayer: renderLayerA,
-          pickedSpatialSkeleton: { nodeId: -1 },
-        },
-        layer,
-      ),
-    ).toBeUndefined();
+      },
+      get mouseState() {
+        return mouseState;
+      },
+    };
+    const hoverState = new SpatialSkeletonHoverState();
+    hoverState.bindTo(
+      layerSelectedValues as LayerSelectedValues,
+      layer as SegmentationUserLayer,
+    );
+    const trigger = () => handlers.forEach((h) => h());
+
+    mouseState = {
+      active: true,
+      pickedRenderLayer: renderLayerA,
+      pickedSpatialSkeletonNodeId: 31,
+    };
+    trigger();
+    expect(hoverState.value).toBe(31);
+
+    mouseState = {
+      active: true,
+      pickedRenderLayer: renderLayerB,
+      pickedSpatialSkeletonNodeId: 31,
+    };
+    trigger();
+    expect(hoverState.value).toBeUndefined();
+
+    mouseState = {
+      active: false,
+      pickedRenderLayer: renderLayerA,
+      pickedSpatialSkeletonNodeId: 31,
+    };
+    trigger();
+    expect(hoverState.value).toBeUndefined();
+
+    mouseState = {
+      active: true,
+      pickedRenderLayer: renderLayerA,
+      pickedSpatialSkeletonNodeId: -1,
+    };
+    trigger();
+    expect(hoverState.value).toBeUndefined();
+
+    hoverState.dispose();
   });
 
   it("requests selection recovery only when a full-segment fetch can help", () => {

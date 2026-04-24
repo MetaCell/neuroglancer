@@ -14,7 +14,11 @@
  * limitations under the License.
  */
 
+import type { LayerSelectedValues } from "#src/layer/index.js";
+import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
+import { RefCounted } from "#src/util/disposable.js";
 import { parseUint64 } from "#src/util/json.js";
+import { NullarySignal } from "#src/util/signal.js";
 
 interface SpatialSkeletonSelectionStateLike {
   spatialSkeletonNodeId?: unknown;
@@ -162,7 +166,7 @@ export function getSpatialSkeletonNodeIdFromViewerSelection<TLayer>(
   );
 }
 
-export function getSpatialSkeletonNodeIdFromViewerHover<TRenderLayer>(
+function getSpatialSkeletonNodeIdFromViewerHover<TRenderLayer>(
   mouseState: SpatialSkeletonViewerHoverMouseStateLike<TRenderLayer>,
   layer: SpatialSkeletonViewerHoverLayerLike<TRenderLayer>,
 ) {
@@ -180,4 +184,32 @@ export function getSpatialSkeletonNodeIdFromViewerHover<TRenderLayer>(
   return normalizeSpatialSkeletonViewerHoverNodeId(
     mouseState.pickedSpatialSkeleton?.nodeId,
   );
+}
+
+export class SpatialSkeletonHoverState extends RefCounted {
+  value: number | undefined = undefined;
+  readonly changed = new NullarySignal();
+
+  setValue(value: number | undefined) {
+    if (this.value !== value) {
+      this.value = value;
+      this.changed.dispatch();
+    }
+  }
+
+  bindTo(
+    layerSelectedValues: LayerSelectedValues,
+    layer: SegmentationUserLayer,
+  ) {
+    this.registerDisposer(
+      layerSelectedValues.changed.add(() => {
+        this.setValue(
+          getSpatialSkeletonNodeIdFromViewerHover(
+            layerSelectedValues.mouseState,
+            layer,
+          ),
+        );
+      }),
+    );
+  }
 }

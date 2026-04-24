@@ -49,6 +49,7 @@ import {
   getSpatialSkeletonNodeIdFromLayerSelectionState,
   getSpatialSkeletonSegmentIdFromLayerSelectionState,
   getSpatialSkeletonSelectionRecoveryKey,
+  SpatialSkeletonHoverState,
   SpatialSkeletonSelectionRecoveryStatus,
 } from "#src/layer/segmentation/selection.js";
 import {
@@ -1253,6 +1254,9 @@ export class SegmentationUserLayer extends Base {
   readonly selectedSpatialSkeletonNodeId = new WatchableValue<
     number | undefined
   >(undefined);
+  readonly hoveredSpatialSkeletonNodeId = this.registerDisposer(
+    new SpatialSkeletonHoverState(),
+  );
   readonly spatialSkeletonVisibleChunksNeeded = new WatchableValue(0);
   readonly spatialSkeletonVisibleChunksAvailable = new WatchableValue(0);
   readonly spatialSkeletonVisibleChunksLoaded = new WatchableValue(false);
@@ -1567,6 +1571,10 @@ export class SegmentationUserLayer extends Base {
       ),
     );
     syncSelectedSpatialSkeletonNodeIdFromGlobalSelection();
+    this.hoveredSpatialSkeletonNodeId.bindTo(
+      this.manager.layerSelectedValues,
+      this,
+    );
     this.displayState.selectedAlpha.changed.add(
       this.specificationChanged.dispatch,
     );
