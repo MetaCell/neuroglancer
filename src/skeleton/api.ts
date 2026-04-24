@@ -19,6 +19,7 @@ export interface SpatiallyIndexedSkeletonNodeBase {
   segmentId: number;
   position: Float32Array;
   parentNodeId?: number;
+  revisionToken?: string;
 }
 
 export interface SpatiallyIndexedSkeletonNode
@@ -27,7 +28,6 @@ export interface SpatiallyIndexedSkeletonNode
   confidence?: number;
   description?: string;
   isTrueEnd: boolean;
-  revisionToken?: string;
 }
 
 export interface SpatiallyIndexedSkeletonOpenLeaf {
@@ -148,6 +148,9 @@ export interface SpatiallyIndexedSkeletonSource {
 
 export interface EditableSpatiallyIndexedSkeletonSource
   extends SpatiallyIndexedSkeletonSource {
+  getSkeletonRootNode(
+    skeletonId: number,
+  ): Promise<SpatiallyIndexedSkeletonNavigationTarget>;
   addNode(
     skeletonId: number,
     x: number,

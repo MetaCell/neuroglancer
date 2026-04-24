@@ -69,12 +69,42 @@ describe("CatmaidClient skeleton editing methods", () => {
         max: { x: 25, y: 66, z: 127 },
       },
       resolution: { x: 2, y: 3, z: 4 },
-      gridCellSizes: [{ x: 25000, y: 25000, z: 40 }],
+      gridCellSizes: [{ x: 15, y: 15, z: 15 }],
     });
 
     expect((client as any).listStacks).toHaveBeenCalledTimes(2);
     expect((client as any).getStackInfo).toHaveBeenCalledTimes(1);
     warnSpy.mockRestore();
+  });
+
+  it("reads spatial skeleton chunk sizes from stack metadata", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    (client as any).listStacks = vi.fn().mockResolvedValue([{ id: 7 }]);
+    (client as any).getStackInfo = vi.fn().mockResolvedValue({
+      dimension: { x: 10, y: 20, z: 30 },
+      resolution: { x: 2, y: 3, z: 4 },
+      translation: { x: 5, y: 6, z: 7 },
+      metadata: {
+        spatial_skeleton_chunk_sizes: [
+          [120, 120, 120],
+          [60, 60, 60],
+          [30, 30, 30],
+        ],
+      },
+    });
+
+    await expect(client.getSpatialIndexMetadata()).resolves.toEqual({
+      bounds: {
+        min: { x: 5, y: 6, z: 7 },
+        max: { x: 25, y: 66, z: 127 },
+      },
+      resolution: { x: 2, y: 3, z: 4 },
+      gridCellSizes: [
+        { x: 120, y: 120, z: 120 },
+        { x: 60, y: 60, z: 60 },
+        { x: 30, y: 30, z: 30 },
+      ],
+    });
   });
 
   it("parses live compact-detail history rows and label maps", async () => {
@@ -252,6 +282,66 @@ describe("CatmaidClient skeleton editing methods", () => {
         [202, "2026-03-29T11:51:00Z"],
       ]),
     );
+  });
+
+  it("parses browse node/list rows with revision tokens", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const fetchMock = vi.fn().mockResolvedValue([
+      [
+        [101, null, 1, 2, 3, 5, 2000, 11, "2026-03-29T11:50:00Z", 2],
+        [102, 101, 4, 5, 6, 5, 2000, 17, "2026-03-29T11:51:00Z", 2],
+      ],
+      [],
+      {},
+      false,
+      [],
+      [],
+    ]);
+    (client as any).fetch = fetchMock;
+
+    await expect(
+      client.fetchNodes({
+        min: { x: 0, y: 0, z: 0 },
+        max: { x: 10, y: 10, z: 10 },
+      }),
+    ).resolves.toEqual([
+      {
+        nodeId: 101,
+        parentNodeId: undefined,
+        position: new Float32Array([1, 2, 3]),
+        segmentId: 11,
+        revisionToken: "2026-03-29T11:50:00Z",
+      },
+      {
+        nodeId: 102,
+        parentNodeId: 101,
+        position: new Float32Array([4, 5, 6]),
+        segmentId: 17,
+        revisionToken: "2026-03-29T11:51:00Z",
+      },
+    ]);
+
+    expect(getFetchPath(fetchMock)).toMatch(/^node\/list\?/);
+  });
+
+  it("fetches skeleton root targets", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const fetchMock = vi.fn().mockResolvedValue({
+      root_id: 303,
+      x: 1,
+      y: 2,
+      z: 3,
+    });
+    (client as any).fetch = fetchMock;
+
+    await expect(client.getSkeletonRootNode(17)).resolves.toEqual({
+      nodeId: 303,
+      x: 1,
+      y: 2,
+      z: 3,
+    });
+
+    expect(getFetchPath(fetchMock)).toBe("skeletons/17/root");
   });
 
   it("rejects merge state when the provided node ids do not match the request", async () => {

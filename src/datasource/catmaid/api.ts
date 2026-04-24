@@ -26,6 +26,7 @@ import type {
   SpatiallyIndexedSkeletonInsertNodeResult,
   SpatiallyIndexedSkeletonMergeResult,
   SpatiallyIndexedSkeletonMetadata,
+  SpatiallyIndexedSkeletonNavigationTarget,
   SpatiallyIndexedSkeletonNode,
   SpatiallyIndexedSkeletonNodeRevisionResult,
   SpatiallyIndexedSkeletonNodeRevisionUpdate,
@@ -34,14 +35,8 @@ import type {
   SpatiallyIndexedSkeletonSplitResult,
 } from "#src/skeleton/api.js";
 import { SPATIALLY_INDEXED_SKELETON_CONFIDENCE_VALUES } from "#src/skeleton/api.js";
+import { getDefaultSpatiallyIndexedSkeletonChunkSize } from "#src/skeleton/spatial_chunk_sizing.js";
 import { HttpError } from "#src/util/http_request.js";
-
-interface CatmaidCacheConfiguration {
-  cache_type: string;
-  cell_width: number;
-  cell_height: number;
-  cell_depth: number;
-}
 
 interface CatmaidStackInfo {
   dimension: { x: number; y: number; z: number };
@@ -49,7 +44,7 @@ interface CatmaidStackInfo {
   translation: { x: number; y: number; z: number };
   metadata?: {
     cache_provider?: string;
-    cache_configurations?: CatmaidCacheConfiguration[];
+    spatial_skeleton_chunk_sizes?: Array<readonly [number, number, number]>;
   };
 }
 
@@ -58,9 +53,6 @@ export interface CatmaidToken {
 }
 
 export const credentialsKey = "CATMAID";
-const DEFAULT_CACHE_GRID_CELL_WIDTH = 25000;
-const DEFAULT_CACHE_GRID_CELL_HEIGHT = 25000;
-const DEFAULT_CACHE_GRID_CELL_DEPTH = 40;
 const CATMAID_NO_MATCHING_NODE_PROVIDER_ERROR =
   "Could not find matching node provider for request";
 const CATMAID_STATE_MATCHING_ERROR_TYPE = "StateMatchingError";
@@ -441,6 +433,36 @@ function getCatmaidHistoryRevisionToken(
   row: readonly unknown[],
 ): string | undefined {
   return normalizeCatmaidRevisionToken(row[8]);
+}
+
+function parseCatmaidSkeletonRootTarget(
+  response: any,
+): SpatiallyIndexedSkeletonNavigationTarget {
+  if (!response || typeof response !== "object" || Array.isArray(response)) {
+    throw new Error(
+      "CATMAID skeleton root endpoint returned an unexpected response format.",
+    );
+  }
+
+  const { root_id, x, y, z } = response as Record<string, unknown>;
+  const nodeId = Number(root_id);
+  const px = Number(x);
+  const py = Number(y);
+  const pz = Number(z);
+
+  if (
+    Number.isSafeInteger(nodeId) &&
+    nodeId > 0 &&
+    Number.isFinite(px) &&
+    Number.isFinite(py) &&
+    Number.isFinite(pz)
+  ) {
+    return { nodeId, x: px, y: py, z: pz };
+  }
+
+  throw new Error(
+    "CATMAID skeleton root endpoint returned an unexpected response format.",
+  );
 }
 
 function requireCatmaidRevisionToken(
@@ -929,30 +951,32 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
   }
 
   private getGridCellSizesFromMetadataInfo(
-    info: CatmaidStackInfo | null,
+    info: CatmaidStackInfo,
+    bounds = getCatmaidProjectSpaceBounds(info),
   ): Array<{ x: number; y: number; z: number }> {
     const gridSizes: Array<{ x: number; y: number; z: number }> = [];
 
-    // Try to get all grid cell sizes from metadata
-    if (info?.metadata?.cache_configurations) {
-      for (const config of info.metadata.cache_configurations) {
-        if (config.cache_type === "grid") {
+    // Try to get all allowed spatial skeleton chunk sizes from metadata.
+    if (info.metadata?.spatial_skeleton_chunk_sizes) {
+      for (const chunkSize of info.metadata.spatial_skeleton_chunk_sizes) {
+        if (
+          chunkSize.length === 3 &&
+          Number.isFinite(chunkSize[0]) &&
+          Number.isFinite(chunkSize[1]) &&
+          Number.isFinite(chunkSize[2])
+        ) {
           gridSizes.push({
-            x: config.cell_width,
-            y: config.cell_height,
-            z: config.cell_depth,
+            x: chunkSize[0],
+            y: chunkSize[1],
+            z: chunkSize[2],
           });
         }
       }
     }
 
-    // If no grid configs found, use default
+    // If no chunk sizes are specified, use the bounds-derived default.
     if (gridSizes.length === 0) {
-      gridSizes.push({
-        x: DEFAULT_CACHE_GRID_CELL_WIDTH,
-        y: DEFAULT_CACHE_GRID_CELL_HEIGHT,
-        z: DEFAULT_CACHE_GRID_CELL_DEPTH,
-      });
+      gridSizes.push(getDefaultSpatiallyIndexedSkeletonChunkSize(bounds));
     }
 
     return gridSizes;
@@ -963,10 +987,11 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
     if (info === null) {
       return null;
     }
+    const bounds = getCatmaidProjectSpaceBounds(info);
     return {
-      bounds: getCatmaidProjectSpaceBounds(info),
+      bounds,
       resolution: info.resolution,
-      gridCellSizes: this.getGridCellSizesFromMetadataInfo(info),
+      gridCellSizes: this.getGridCellSizesFromMetadataInfo(info, bounds),
     };
   }
 
@@ -1094,6 +1119,7 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
         parentNodeId: n[1] ?? undefined,
         position: new Float32Array([n[2], n[3], n[4]]),
         segmentId: n[7],
+        revisionToken: normalizeCatmaidRevisionToken(n[8]),
       }),
     );
 
@@ -1114,6 +1140,7 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
               parentNodeId: n[1] ?? undefined,
               position: new Float32Array([n[2], n[3], n[4]]),
               segmentId: n[7],
+              revisionToken: normalizeCatmaidRevisionToken(n[8]),
             });
           }
         }
@@ -1144,6 +1171,13 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
     return getCatmaidSingleNodeRevisionResult(
       parseCatmaidMoveRevisionToken(response, nodeId),
     );
+  }
+
+  async getSkeletonRootNode(
+    skeletonId: number,
+  ): Promise<SpatiallyIndexedSkeletonNavigationTarget> {
+    const response = await this.fetch(`skeletons/${skeletonId}/root`);
+    return parseCatmaidSkeletonRootTarget(response);
   }
 
   async rerootSkeleton(

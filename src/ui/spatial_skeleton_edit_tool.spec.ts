@@ -46,6 +46,7 @@ function makeEditableSkeletonSource(overrides: Record<string, unknown> = {}) {
     getSkeleton: vi.fn(),
     fetchNodes: vi.fn(),
     getSpatialIndexMetadata: vi.fn(),
+    getSkeletonRootNode: vi.fn(),
     addNode: vi.fn(),
     insertNode: vi.fn(),
     moveNode: vi.fn(),
@@ -68,6 +69,9 @@ function suppressStatusMessages() {
   } as unknown as StatusMessage;
   vi.spyOn(StatusMessage, "showTemporaryMessage").mockImplementation(
     (_message: string, _closeAfter?: number) => fakeStatusMessage,
+  );
+  vi.spyOn(StatusMessage, "showMessage").mockImplementation(
+    (_message: string) => fakeStatusMessage,
   );
 }
 
@@ -444,5 +448,60 @@ describe("spatial_skeleton_edit_tool", () => {
     expect(visibleSegmentsState.visibleSegments.has(11n)).toBe(false);
     expect(skeletonLayer.invalidateSourceCaches).toHaveBeenCalledTimes(1);
     expect(clearSpatialSkeletonMergeAnchor).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the merge anchor when the clear-selection action runs in merge mode", () => {
+    suppressStatusMessages();
+    const bindClearSelectionAction = (
+      SpatialSkeletonEditModeTool.prototype as any
+    ).bindClearSelectionAction as (this: any, activation: any) => void;
+    const clearSpatialSkeletonNodeSelection = vi.fn();
+    const clearSpatialSkeletonMergeAnchor = vi.fn();
+    const unpin = vi.fn();
+    let clearSelectionHandler: ((event: any) => void) | undefined;
+    const activation = {
+      bindAction: vi.fn((action: string, handler: (event: any) => void) => {
+        if (action === "spatial-skeleton-clear-node-selection") {
+          clearSelectionHandler = handler;
+        }
+      }),
+    };
+    const tool = {
+      layer: {
+        selectedSpatialSkeletonNodeId: { value: undefined },
+        spatialSkeletonState: {
+          mergeAnchorNodeId: { value: 101 },
+        },
+        clearSpatialSkeletonNodeSelection,
+        clearSpatialSkeletonMergeAnchor,
+        manager: {
+          root: {
+            selectionState: {
+              value: undefined,
+              unpin,
+            },
+          },
+        },
+      },
+    };
+
+    bindClearSelectionAction.call(tool, activation);
+
+    expect(clearSelectionHandler).toBeDefined();
+    clearSelectionHandler?.({
+      stopPropagation: vi.fn(),
+      detail: {
+        button: 2,
+        ctrlKey: true,
+        shiftKey: true,
+        preventDefault: vi.fn(),
+      },
+    });
+
+    expect(clearSpatialSkeletonNodeSelection).toHaveBeenCalledWith(
+      "force-unpin",
+    );
+    expect(clearSpatialSkeletonMergeAnchor).toHaveBeenCalledTimes(1);
+    expect(unpin).not.toHaveBeenCalled();
   });
 });

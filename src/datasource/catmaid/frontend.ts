@@ -122,6 +122,10 @@ export class CatmaidSpatiallyIndexedSkeletonSource
     return this.client.fetchNodes(boundingBox, lod, options);
   }
 
+  getSkeletonRootNode(skeletonId: number) {
+    return this.client.getSkeletonRootNode(skeletonId);
+  }
+
   addNode(
     skeletonId: number,
     x: number,

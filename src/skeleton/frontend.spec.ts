@@ -69,6 +69,34 @@ describe("resolveSpatiallyIndexedSkeletonSegmentPick", () => {
   });
 });
 
+describe("SpatiallyIndexedSkeletonLayer browse node picks", () => {
+  it("resolves browse node picks with node id and revision token", () => {
+    const positions = new Float32Array([1, 2, 3, 4, 5, 6]);
+    const segmentIds = new Uint32Array([11, 17]);
+    const vertexBytes = new Uint8Array(
+      positions.byteLength + segmentIds.byteLength,
+    );
+    vertexBytes.set(new Uint8Array(positions.buffer), 0);
+    vertexBytes.set(new Uint8Array(segmentIds.buffer), positions.byteLength);
+    const chunk = {
+      vertexAttributes: vertexBytes,
+      vertexAttributeOffsets: new Uint32Array([0, positions.byteLength]),
+      numVertices: 2,
+      indices: new Uint32Array([0, 1]),
+      nodeIds: new Int32Array([101, 202]),
+      nodeRevisionTokens: ["2026-03-29T11:50:00Z", "2026-03-29T11:51:00Z"],
+    };
+    const layer = Object.create(SpatiallyIndexedSkeletonLayer.prototype);
+
+    expect((layer as any).resolveNodePickFromChunk(chunk, 1)).toEqual({
+      nodeId: 202,
+      segmentId: 17,
+      position: new Float32Array([4, 5, 6]),
+      revisionToken: "2026-03-29T11:51:00Z",
+    });
+  });
+});
+
 describe("spatiallyIndexedSkeletonTextureAttributeSpecs", () => {
   it("keeps the browse path upload layout to position plus segment", () => {
     expect(spatiallyIndexedSkeletonTextureAttributeSpecs).toEqual([
