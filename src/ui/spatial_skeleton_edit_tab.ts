@@ -31,7 +31,6 @@ import svg_retweet from "ikonate/icons/retweet.svg?raw";
 import svg_share_android from "ikonate/icons/share-android.svg?raw";
 import svg_undo from "ikonate/icons/undo.svg?raw";
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
-import { getSpatialSkeletonNodeIdFromViewerHover } from "#src/layer/segmentation/selection.js";
 import {
   executeSpatialSkeletonDeleteNode,
   executeSpatialSkeletonNodeTrueEndUpdate,
@@ -316,7 +315,6 @@ export class SpatialSkeletonEditTab extends Tab {
     const renderedRowsByNodeId = new Map<number, HTMLDivElement>();
     const renderedEntriesByNodeId = new Map<number, HTMLDivElement>();
     const skeletonState = layer.spatialSkeletonState;
-    const mouseState = layer.manager.root.layerSelectedValues.mouseState;
     const navigationGraphCache = new Map<
       number,
       {
@@ -528,7 +526,7 @@ export class SpatialSkeletonEditTab extends Tab {
       layer.getSpatialSkeletonNodeDisplayDescription(node);
 
     const getHoveredNodeIdFromViewer = () => {
-      return getSpatialSkeletonNodeIdFromViewerHover(mouseState, layer);
+      return layer.hoveredSpatialSkeletonNodeId.value;
     };
 
     const applyRowInteractionState = (
@@ -1742,7 +1740,7 @@ export class SpatialSkeletonEditTab extends Tab {
       }),
     );
     this.registerDisposer(
-      mouseState.changed.add(() => {
+      layer.hoveredSpatialSkeletonNodeId.changed.add(() => {
         updateHoveredViewerNode();
       }),
     );

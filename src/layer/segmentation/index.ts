@@ -31,7 +31,6 @@ import {
 import type {
   LayerActionContext,
   ManagedUserLayer,
-  MouseSelectionState,
   UserLayerSelectionState,
 } from "#src/layer/index.js";
 import {
@@ -1255,6 +1254,9 @@ export class SegmentationUserLayer extends Base {
   readonly selectedSpatialSkeletonNodeId = new WatchableValue<
     number | undefined
   >(undefined);
+  readonly hoveredSpatialSkeletonNodeId = new WatchableValue<
+    number | undefined
+  >(undefined);
   readonly spatialSkeletonVisibleChunksNeeded = new WatchableValue(0);
   readonly spatialSkeletonVisibleChunksAvailable = new WatchableValue(0);
   readonly spatialSkeletonVisibleChunksLoaded = new WatchableValue(false);
@@ -1569,6 +1571,18 @@ export class SegmentationUserLayer extends Base {
       ),
     );
     syncSelectedSpatialSkeletonNodeIdFromGlobalSelection();
+    const syncHoveredSpatialSkeletonNodeId = () => {
+      this.hoveredSpatialSkeletonNodeId.value =
+        getSpatialSkeletonNodeIdFromViewerHover(
+          this.manager.layerSelectedValues.mouseState,
+          this,
+        );
+    };
+    this.registerDisposer(
+      this.manager.layerSelectedValues.changed.add(
+        syncHoveredSpatialSkeletonNodeId,
+      ),
+    );
     this.displayState.selectedAlpha.changed.add(
       this.specificationChanged.dispatch,
     );
