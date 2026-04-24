@@ -19,6 +19,7 @@ export interface SpatiallyIndexedSkeletonNodeBase {
   segmentId: number;
   position: Float32Array;
   parentNodeId?: number;
+  revisionToken?: string;
 }
 
 export interface SpatiallyIndexedSkeletonNode
@@ -27,7 +28,6 @@ export interface SpatiallyIndexedSkeletonNode
   confidence?: number;
   description?: string;
   isTrueEnd: boolean;
-  revisionToken?: string;
 }
 
 export interface SpatiallyIndexedSkeletonOpenLeaf {
@@ -63,8 +63,8 @@ export interface SpatiallyIndexedSkeletonAddNodeResult
   parentRevisionToken?: string;
 }
 
-export interface SpatiallyIndexedSkeletonInsertNodeResult
-  extends SpatiallyIndexedSkeletonAddNodeResult {}
+export type SpatiallyIndexedSkeletonInsertNodeResult =
+  SpatiallyIndexedSkeletonAddNodeResult;
 
 export interface SpatiallyIndexedSkeletonNodeRevisionResult
   extends SpatiallyIndexedSkeletonEditResult {
@@ -76,11 +76,11 @@ export interface SpatiallyIndexedSkeletonDescriptionUpdateResult
   description?: string;
 }
 
-export interface SpatiallyIndexedSkeletonDeleteNodeResult
-  extends SpatiallyIndexedSkeletonEditResult {}
+export type SpatiallyIndexedSkeletonDeleteNodeResult =
+  SpatiallyIndexedSkeletonEditResult;
 
-export interface SpatiallyIndexedSkeletonRerootResult
-  extends SpatiallyIndexedSkeletonEditResult {}
+export type SpatiallyIndexedSkeletonRerootResult =
+  SpatiallyIndexedSkeletonEditResult;
 
 export interface SpatiallyIndexedSkeletonEditNodeContext {
   nodeId: number;
@@ -123,11 +123,7 @@ export interface SpatiallyIndexedSkeletonMetadata {
 }
 
 export const SPATIALLY_INDEXED_SKELETON_CONFIDENCE_VALUES = [
-  0,
-  25,
-  50,
-  75,
-  100,
+  0, 25, 50, 75, 100,
 ] as const;
 
 export interface SpatiallyIndexedSkeletonSource {
@@ -152,6 +148,9 @@ export interface SpatiallyIndexedSkeletonSource {
 
 export interface EditableSpatiallyIndexedSkeletonSource
   extends SpatiallyIndexedSkeletonSource {
+  getSkeletonRootNode(
+    skeletonId: number,
+  ): Promise<SpatiallyIndexedSkeletonNavigationTarget>;
   addNode(
     skeletonId: number,
     x: number,

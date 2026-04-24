@@ -33,9 +33,11 @@ const { SegmentSelectionState } = await import(
   "#src/segmentation_display_state/frontend.js"
 );
 
-function makeEditableSpatialSkeletonSource(options: {
-  rerootSkeleton?: (() => Promise<void>) | undefined;
-} = {}) {
+function makeEditableSpatialSkeletonSource(
+  options: {
+    rerootSkeleton?: (() => Promise<void>) | undefined;
+  } = {},
+) {
   return {
     listSkeletons: async () => [],
     getSkeleton: async () => [],
@@ -187,7 +189,9 @@ describe("layer/segmentation spatial skeleton action gating", () => {
       Object.create(SegmentationUserLayer.prototype),
       {
         getSpatiallyIndexedSkeletonLayer: () =>
-          makeSpatialSkeletonLayerWithSource(makeEditableSpatialSkeletonSource()),
+          makeSpatialSkeletonLayerWithSource(
+            makeEditableSpatialSkeletonSource(),
+          ),
         spatialSkeletonVisibleChunksLoaded: new WatchableValue(false),
         spatialSkeletonVisibleChunksNeeded: new WatchableValue(3),
         spatialSkeletonVisibleChunksAvailable: new WatchableValue(1),
@@ -209,7 +213,9 @@ describe("layer/segmentation spatial skeleton action gating", () => {
       Object.create(SegmentationUserLayer.prototype),
       {
         getSpatiallyIndexedSkeletonLayer: () =>
-          makeSpatialSkeletonLayerWithSource(makeEditableSpatialSkeletonSource()),
+          makeSpatialSkeletonLayerWithSource(
+            makeEditableSpatialSkeletonSource(),
+          ),
         spatialSkeletonVisibleChunksLoaded: new WatchableValue(true),
         spatialSkeletonVisibleChunksNeeded: new WatchableValue(0),
         spatialSkeletonVisibleChunksAvailable: new WatchableValue(0),
@@ -278,10 +284,7 @@ describe("layer/segmentation spatial skeleton node navigation helpers", () => {
       channelToModelDimensions: [],
       channelSpaceShape: new Uint32Array(0),
       modelToRenderLayerTransform: new Float32Array([
-        2, 0, 0, 0,
-        0, 0, 1, 0,
-        0, 3, 0, 0,
-        10, -5, 1, 1,
+        2, 0, 0, 0, 0, 0, 1, 0, 0, 3, 0, 0, 10, -5, 1, 1,
       ]),
       modelDimensionNames: ["x", "y", "z"],
       layerDimensionNames: ["a", "b", "c"],

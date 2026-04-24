@@ -2491,7 +2491,6 @@ export class SegmentationUserLayer extends Base {
     return maybeAugmentSegmentId(this.displayState, value);
   }
 
-
   handleAction(action: string, context: SegmentationActionContext) {
     switch (action) {
       case "recolor": {
