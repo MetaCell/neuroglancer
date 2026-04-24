@@ -1,13 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  executeSpatialSkeletonDeleteNode,
   executeSpatialSkeletonMerge,
   executeSpatialSkeletonMoveNode,
   executeSpatialSkeletonSplit,
   undoSpatialSkeletonCommand,
 } from "#src/layer/segmentation/spatial_skeleton_commands.js";
 import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
+import {
+  buildSpatiallyIndexedSkeletonNeighborhoodEditContext,
+  findSpatiallyIndexedSkeletonNode,
+  getSpatiallyIndexedSkeletonDirectChildren,
+  getSpatiallyIndexedSkeletonNodeParent,
+} from "#src/skeleton/edit_state.js";
 import { SpatialSkeletonCommandHistory } from "#src/skeleton/command_history.js";
+import { SpatialSkeletonState } from "#src/skeleton/spatial_skeleton_manager.js";
 import { StatusMessage } from "#src/status.js";
 
 function cloneNode(
@@ -146,6 +154,218 @@ describe("spatial_skeleton_commands", () => {
       invalidateFullSkeletonCache: false,
     });
     expect(skeletonLayer.invalidateSourceCaches).not.toHaveBeenCalled();
+  });
+
+  it("restores internal-node delete undo as an insertion in the local cache", async () => {
+    suppressStatusMessages();
+
+    const segmentId = 23;
+    const rootNode: SpatiallyIndexedSkeletonNode = {
+      nodeId: 1,
+      segmentId,
+      position: new Float32Array([1, 2, 3]),
+      isTrueEnd: false,
+      revisionToken: "root-before-delete",
+    };
+    const deletedNode: SpatiallyIndexedSkeletonNode = {
+      nodeId: 2,
+      segmentId,
+      parentNodeId: rootNode.nodeId,
+      position: new Float32Array([4, 5, 6]),
+      isTrueEnd: false,
+      revisionToken: "deleted-before-delete",
+    };
+    const firstChildNode: SpatiallyIndexedSkeletonNode = {
+      nodeId: 3,
+      segmentId,
+      parentNodeId: deletedNode.nodeId,
+      position: new Float32Array([7, 8, 9]),
+      isTrueEnd: false,
+      revisionToken: "first-child-before-delete",
+    };
+    const secondChildNode: SpatiallyIndexedSkeletonNode = {
+      nodeId: 4,
+      segmentId,
+      parentNodeId: deletedNode.nodeId,
+      position: new Float32Array([10, 11, 12]),
+      isTrueEnd: false,
+      revisionToken: "second-child-before-delete",
+    };
+
+    const deleteNode = vi.fn().mockResolvedValue({
+      nodeRevisionUpdates: [
+        {
+          nodeId: rootNode.nodeId,
+          revisionToken: "root-after-delete",
+        },
+        {
+          nodeId: firstChildNode.nodeId,
+          revisionToken: "first-child-after-delete",
+        },
+        {
+          nodeId: secondChildNode.nodeId,
+          revisionToken: "second-child-after-delete",
+        },
+      ],
+    });
+    const insertNode = vi.fn().mockResolvedValue({
+      treenodeId: 20,
+      skeletonId: segmentId,
+      revisionToken: "restored-after-undo",
+      parentRevisionToken: "root-after-undo",
+      nodeRevisionUpdates: [
+        {
+          nodeId: firstChildNode.nodeId,
+          revisionToken: "first-child-after-undo",
+        },
+        {
+          nodeId: secondChildNode.nodeId,
+          revisionToken: "second-child-after-undo",
+        },
+      ],
+    });
+    const skeletonSource = makeEditableSkeletonSource({
+      deleteNode,
+      insertNode,
+    });
+    const skeletonLayer = {
+      source: skeletonSource,
+      getNode: vi.fn(),
+      invalidateSourceCaches: vi.fn(),
+      retainOverlaySegment: vi.fn(),
+    };
+    const spatialSkeletonState = new SpatialSkeletonState();
+    spatialSkeletonState.upsertCachedNode(rootNode, {
+      allowUncachedSegment: true,
+    });
+    spatialSkeletonState.upsertCachedNode(deletedNode);
+    spatialSkeletonState.upsertCachedNode(firstChildNode);
+    spatialSkeletonState.upsertCachedNode(secondChildNode);
+    skeletonLayer.getNode.mockImplementation((nodeId: number) =>
+      spatialSkeletonState.getCachedNode(nodeId),
+    );
+
+    const layer = {
+      displayState: {
+        segmentationGroupState: {
+          value: {
+            visibleSegments: new Set<bigint>([BigInt(segmentId)]),
+            selectedSegments: new Set<bigint>(),
+            segmentEquivalences: {},
+            temporaryVisibleSegments: new Set<bigint>(),
+            temporarySegmentEquivalences: {},
+            useTemporaryVisibleSegments: { value: false },
+            useTemporarySegmentEquivalences: { value: false },
+          },
+        },
+      },
+      manager: {
+        root: {
+          selectionState: {
+            pin: {
+              value: true,
+            },
+          },
+        },
+      },
+      spatialSkeletonState,
+      getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
+      getCachedSpatialSkeletonSegmentNodesForEdit: (requestedSegmentId: number) =>
+        spatialSkeletonState.getCachedSegmentNodes(requestedSegmentId) ?? [],
+      async getSpatialSkeletonDeleteOperationContext(
+        node: SpatiallyIndexedSkeletonNode,
+      ) {
+        const segmentNodes =
+          spatialSkeletonState.getCachedSegmentNodes(node.segmentId) ?? [];
+        const currentNode = findSpatiallyIndexedSkeletonNode(
+          segmentNodes,
+          node.nodeId,
+        );
+        if (currentNode === undefined) {
+          throw new Error(`Unable to resolve cached node ${node.nodeId}.`);
+        }
+        const childNodes = getSpatiallyIndexedSkeletonDirectChildren(
+          segmentNodes,
+          currentNode.nodeId,
+        );
+        return {
+          node: currentNode,
+          parentNode: getSpatiallyIndexedSkeletonNodeParent(
+            segmentNodes,
+            currentNode,
+          ),
+          childNodes,
+          editContext: buildSpatiallyIndexedSkeletonNeighborhoodEditContext(
+            currentNode,
+            segmentNodes,
+          ),
+        };
+      },
+      selectAndMoveToSpatialSkeletonNode: vi.fn(),
+      selectSpatialSkeletonNode: vi.fn(),
+      clearSpatialSkeletonNodeSelection: vi.fn(),
+      markSpatialSkeletonNodeDataChanged: vi.fn(),
+    };
+
+    await executeSpatialSkeletonDeleteNode(layer as any, deletedNode);
+
+    expect(spatialSkeletonState.getCachedNode(deletedNode.nodeId)).toBeUndefined();
+    expect(spatialSkeletonState.getCachedNode(firstChildNode.nodeId)?.parentNodeId).toBe(
+      rootNode.nodeId,
+    );
+    expect(
+      spatialSkeletonState.getCachedNode(secondChildNode.nodeId)?.parentNodeId,
+    ).toBe(rootNode.nodeId);
+
+    await undoSpatialSkeletonCommand(layer as any);
+
+    expect(skeletonSource.addNode).not.toHaveBeenCalled();
+    expect(insertNode).toHaveBeenCalledWith(
+      segmentId,
+      4,
+      5,
+      6,
+      rootNode.nodeId,
+      [firstChildNode.nodeId, secondChildNode.nodeId],
+      {
+        node: {
+          nodeId: rootNode.nodeId,
+          parentNodeId: undefined,
+          revisionToken: "root-after-delete",
+        },
+        children: [
+          {
+            nodeId: firstChildNode.nodeId,
+            revisionToken: "first-child-after-delete",
+          },
+          {
+            nodeId: secondChildNode.nodeId,
+            revisionToken: "second-child-after-delete",
+          },
+        ],
+      },
+    );
+
+    const restoredNode = spatialSkeletonState.getCachedNode(20);
+    expect(restoredNode).toMatchObject({
+      nodeId: 20,
+      parentNodeId: rootNode.nodeId,
+      segmentId,
+    });
+    expect(spatialSkeletonState.getCachedNode(firstChildNode.nodeId)?.parentNodeId).toBe(
+      restoredNode?.nodeId,
+    );
+    expect(
+      spatialSkeletonState.getCachedNode(secondChildNode.nodeId)?.parentNodeId,
+    ).toBe(restoredNode?.nodeId);
+    const restoredEditContext = buildSpatiallyIndexedSkeletonNeighborhoodEditContext(
+      restoredNode!,
+      spatialSkeletonState.getCachedSegmentNodes(segmentId)!,
+    );
+    expect(restoredEditContext.children?.map((child) => child.nodeId)).toEqual([
+      firstChildNode.nodeId,
+      secondChildNode.nodeId,
+    ]);
   });
 
   it("suppresses and clears the deleted segment when undoing a split", async () => {
