@@ -31,6 +31,7 @@ import {
 import type {
   LayerActionContext,
   ManagedUserLayer,
+  MouseSelectionState,
   UserLayerSelectionState,
 } from "#src/layer/index.js";
 import {
@@ -1494,6 +1495,20 @@ export class SegmentationUserLayer extends Base {
       return true;
     }, pin);
   };
+
+  captureSelectionState(
+    state: this["selectionState"],
+    mouseState: MouseSelectionState,
+  ) {
+    super.captureSelectionState(state, mouseState);
+    const nodeId = getSpatialSkeletonNodeIdFromViewerHover(mouseState, this);
+    if (nodeId === undefined) return;
+    state.spatialSkeletonNodeId = String(nodeId);
+    const segmentId = mouseState.pickedSpatialSkeletonSegmentId;
+    if (segmentId !== undefined && Number.isSafeInteger(segmentId) && segmentId > 0) {
+      state.spatialSkeletonSegmentId = String(segmentId);
+    }
+  }
 
   filterBySegmentLabel = (id: bigint) => {
     const augmented = augmentSegmentId(this.displayState, id);

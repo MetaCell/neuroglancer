@@ -2865,6 +2865,16 @@ export class SpatiallyIndexedSkeletonLayer
     );
   }
 
+  resolveNodePickFromChunk(
+    chunk: SpatiallyIndexedSkeletonChunk,
+    pickedOffset: number,
+  ): number | undefined {
+    for (const [nodeId, vertexIndex] of chunk.nodeMap) {
+      if (vertexIndex === pickedOffset) return nodeId;
+    }
+    return undefined;
+  }
+
   updateVisibleChunksForView(
     view: SpatiallyIndexedSkeletonView,
     transformedSources: readonly TransformedSource[][],
@@ -3560,6 +3570,15 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
       if (segmentId !== undefined) {
         mouseState.pickedSpatialSkeletonSegmentId = segmentId;
       }
+      if (pickData.kind === "segment-node") {
+        const nodeId = this.base.resolveNodePickFromChunk(
+          pickData.chunk,
+          pickedOffset,
+        );
+        if (nodeId !== undefined) {
+          mouseState.pickedSpatialSkeletonNodeId = nodeId;
+        }
+      }
     }
   }
 
@@ -3864,6 +3883,15 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
       );
       if (segmentId !== undefined) {
         mouseState.pickedSpatialSkeletonSegmentId = segmentId;
+      }
+      if (pickData.kind === "segment-node") {
+        const nodeId = this.base.resolveNodePickFromChunk(
+          pickData.chunk,
+          pickedOffset,
+        );
+        if (nodeId !== undefined) {
+          mouseState.pickedSpatialSkeletonNodeId = nodeId;
+        }
       }
     }
   }
