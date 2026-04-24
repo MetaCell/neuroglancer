@@ -14,9 +14,6 @@
  * limitations under the License.
  */
 
-import type { Uint64Set } from "#src/uint64_set.js";
-import { uploadVertexAttributesToGPU } from "#src/skeleton/gpu_upload_utils.js";
-
 import { ChunkState, LayerChunkProgressInfo } from "#src/chunk_manager/base.js";
 import type { ChunkManager } from "#src/chunk_manager/frontend.js";
 import {
@@ -24,30 +21,52 @@ import {
   ChunkRenderLayerFrontend,
   ChunkSource,
 } from "#src/chunk_manager/frontend.js";
-import type { LayerView, UserLayer, VisibleLayerInfo } from "#src/layer/index.js";
+import { GPUHashTable, HashSetShaderManager } from "#src/gpu_hash/shader.js";
+import type {
+  LayerView,
+  MouseSelectionState,
+  PickState,
+  UserLayer,
+  VisibleLayerInfo,
+} from "#src/layer/index.js";
 import type { PerspectivePanel } from "#src/perspective_view/panel.js";
-import type { PerspectiveViewRenderContext } from "#src/perspective_view/render_layer.js";
+import type {
+  PerspectiveViewReadyRenderContext,
+  PerspectiveViewRenderContext,
+} from "#src/perspective_view/render_layer.js";
 import { PerspectiveViewRenderLayer } from "#src/perspective_view/render_layer.js";
+import type {
+  ChunkTransformParameters,
+  RenderLayerTransform,
+} from "#src/render_coordinate_transform.js";
+import { getChunkTransformParameters } from "#src/render_coordinate_transform.js";
+import { RENDERED_VIEW_ADD_LAYER_RPC_ID } from "#src/render_layer_common.js";
+import type { RenderScaleHistogram } from "#src/render_scale_statistics.js";
 import type {
   RenderLayer,
   ThreeDimensionalRenderLayerAttachmentState,
 } from "#src/renderlayer.js";
 import { update3dRenderLayerAttachment } from "#src/renderlayer.js";
 import {
-  RenderScaleHistogram,
-} from "#src/render_scale_statistics.js";
+  SegmentColorShaderManager,
+  SegmentStatedColorShaderManager,
+} from "#src/segment_color.js";
 import {
   forEachVisibleSegment,
-  getObjectKey,
   getVisibleSegments,
+  getObjectKey,
 } from "#src/segmentation_display_state/base.js";
-import type { SegmentationDisplayState3D, SegmentationDisplayState } from "#src/segmentation_display_state/frontend.js";
+import type {
+  SegmentationDisplayState3D,
+  SegmentationDisplayState,
+} from "#src/segmentation_display_state/frontend.js";
 import {
   forEachVisibleSegmentToDraw,
-  getBaseObjectColor,
   registerRedrawWhenSegmentationDisplayState3DChanged,
   SegmentationLayerSharedObject,
 } from "#src/segmentation_display_state/frontend.js";
+import { SharedWatchableValue } from "#src/shared_watchable_value.js";
+import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
 import type { VertexAttributeInfo } from "#src/skeleton/base.js";
 import {
   SKELETON_LAYER_RPC_ID,
@@ -55,43 +74,66 @@ import {
   SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_UPDATE_SOURCES_RPC_ID,
   SPATIALLY_INDEXED_SKELETON_SLICEVIEW_RENDER_LAYER_RPC_ID,
 } from "#src/skeleton/base.js";
-import { RENDERED_VIEW_ADD_LAYER_RPC_ID } from "#src/render_layer_common.js";
-import type { SliceViewPanel } from "#src/sliceview/panel.js";
-import { SharedWatchableValue } from "#src/shared_watchable_value.js";
-import type { RPC } from "#src/worker_rpc.js";
+import { uploadVertexAttributesToGPU } from "#src/skeleton/gpu_upload_utils.js";
+import { buildSpatiallyIndexedSkeletonOverlayGeometry } from "#src/skeleton/overlay_geometry.js";
 import {
-  getVolumetricTransformedSources,
-  serializeAllTransformedSources,
-  SliceViewSingleResolutionSource,
-} from "#src/sliceview/frontend.js";
+  DEFAULT_MAX_RETAINED_OVERLAY_SEGMENTS,
+  mergeSpatiallyIndexedSkeletonOverlaySegmentIds,
+  retainSpatiallyIndexedSkeletonOverlaySegment,
+} from "#src/skeleton/overlay_segment_retention.js";
+import { resolveSpatiallyIndexedSkeletonSegmentPick } from "#src/skeleton/picking.js";
+import { SkeletonRenderMode } from "#src/skeleton/render_mode.js";
 import {
-  SliceViewPanelRenderLayer,
-  SliceViewPanelRenderContext,
-  SliceViewRenderLayer,
-  SliceViewRenderContext,
-} from "#src/sliceview/renderlayer.js";
+  getSpatiallyIndexedSkeletonGridIndex,
+  getSpatiallyIndexedSkeletonSourceView,
+  selectSpatiallyIndexedSkeletonEntriesByGrid,
+  selectSpatiallyIndexedSkeletonEntriesForView,
+  type SpatiallyIndexedSkeletonView,
+} from "#src/skeleton/source_selection.js";
+import { spatiallyIndexedSkeletonTextureAttributeSpecs } from "#src/skeleton/spatial_attribute_layout.js";
 import {
-  SliceViewChunk,
-  SliceViewChunkSource,
-  MultiscaleSliceViewChunkSource,
-} from "#src/sliceview/frontend.js";
-import {
+  forEachPlaneIntersectingVolumetricChunk,
+  getNormalizedChunkLayout,
   forEachVisibleVolumetricChunk,
   type SliceViewBase,
   type SliceViewChunkSpecification,
   type TransformedSource,
 } from "#src/sliceview/base.js";
-import { ChunkLayout } from "#src/sliceview/chunk_layout.js";
+import type { ChunkLayout } from "#src/sliceview/chunk_layout.js";
+import type { SliceViewSingleResolutionSource } from "#src/sliceview/frontend.js";
 import {
+  getVolumetricTransformedSources,
+  serializeAllTransformedSources,
+  SliceViewChunk,
+  SliceViewChunkSource,
+  MultiscaleSliceViewChunkSource,
+} from "#src/sliceview/frontend.js";
+import type { SliceViewPanel } from "#src/sliceview/panel.js";
+import type {
+  SliceViewPanelRenderContext,
+  SliceViewRenderContext,
+  SliceViewPanelReadyRenderContext,
+} from "#src/sliceview/renderlayer.js";
+import {
+  SliceViewPanelRenderLayer,
+  SliceViewRenderLayer,
+} from "#src/sliceview/renderlayer.js";
+import type { WatchableValueInterface } from "#src/trackable_value.js";
+import {
+  makeCachedLazyDerivedWatchableValue,
   TrackableValue,
   WatchableValue,
-  WatchableValueInterface,
   registerNested,
 } from "#src/trackable_value.js";
-import { DataType } from "#src/util/data_type.js";
+import { Uint64Set } from "#src/uint64_set.js";
+import { gatherUpdate } from "#src/util/array.js";
+import { DATA_TYPE_SIGNED, DataType } from "#src/util/data_type.js";
 import { RefCounted } from "#src/util/disposable.js";
+import type { ValueOrError } from "#src/util/error.js";
+import { makeValueOrError, valueOrThrow } from "#src/util/error.js";
 import { mat4 } from "#src/util/geom.js";
 import { verifyFinitePositiveFloat } from "#src/util/json.js";
+import * as matrix from "#src/util/matrix.js";
 import { getObjectId } from "#src/util/object_id.js";
 import { NullarySignal } from "#src/util/signal.js";
 import type { Trackable } from "#src/util/trackable.js";
@@ -121,6 +163,10 @@ import type {
   ShaderProgram,
   ShaderSamplerType,
 } from "#src/webgl/shader.js";
+import {
+  dataTypeShaderDefinition,
+  getShaderType,
+} from "#src/webgl/shader_lib.js";
 import type { ShaderControlsBuilderState } from "#src/webgl/shader_ui_controls.js";
 import {
   addControlsToBuilder,
@@ -136,14 +182,19 @@ import {
   TextureFormat,
 } from "#src/webgl/texture_access.js";
 import { defineVertexId, VertexIdHelper } from "#src/webgl/vertex_id.js";
-
+import type { RPC } from "#src/worker_rpc.js";
 
 const tempMat2 = mat4.create();
-
 const DEFAULT_FRAGMENT_MAIN = `void main() {
   emitDefault();
 }
 `;
+
+const SELECTED_NODE_OUTLINE_COLOR_RGB = "1.0, 0.95, 0.35";
+const SELECTED_NODE_OUTLINE_MIN_WIDTH_2D = "1.75";
+const SELECTED_NODE_OUTLINE_MAX_WIDTH_2D = "3.0";
+const SELECTED_NODE_OUTLINE_MIN_WIDTH_3D = "1.5";
+const SELECTED_NODE_OUTLINE_MAX_WIDTH_3D = "2.5";
 
 interface VertexAttributeRenderInfo extends VertexAttributeInfo {
   name: string;
@@ -160,18 +211,19 @@ const vertexPositionTextureFormat = computeTextureFormat(
 );
 const segmentTextureFormat = computeTextureFormat(
   new TextureFormat(),
-  DataType.FLOAT32,
+  DataType.UINT32,
   1,
 );
-const segmentColorTextureFormat = computeTextureFormat(
+const selectedNodeTextureFormat = computeTextureFormat(
   new TextureFormat(),
   DataType.FLOAT32,
-  4,
+  1,
 );
 
 interface SkeletonLayerInterface {
   vertexAttributes: VertexAttributeRenderInfo[];
   segmentColorAttributeIndex?: number;
+  dynamicSegmentAppearance?: boolean;
   gl: GL;
   fallbackShaderParameters: WatchableValue<ShaderControlsBuilderState>;
   displayState: SkeletonLayerDisplayState;
@@ -182,6 +234,10 @@ interface SkeletonChunkInterface {
   indexBuffer: GLBuffer;
   numIndices: number;
   numVertices: number;
+  pickNodeIds?: Int32Array;
+  pickNodePositions?: Float32Array;
+  pickSegmentIds?: Uint32Array;
+  pickEdgeSegmentIds?: Uint32Array;
 }
 
 interface SkeletonChunkData {
@@ -191,12 +247,49 @@ interface SkeletonChunkData {
   vertexAttributeOffsets: Uint32Array;
 }
 
+type SpatiallyIndexedSkeletonPickData =
+  | {
+      kind: "node";
+      nodeIds: Int32Array;
+      nodePositions: Float32Array;
+      segmentIds: Uint32Array;
+    }
+  | {
+      kind: "edge";
+      segmentIds: Uint32Array;
+    }
+  | {
+      kind: "segment-node";
+      chunk: SpatiallyIndexedSkeletonChunk;
+    }
+  | {
+      kind: "segment-edge";
+      chunk: SpatiallyIndexedSkeletonChunk;
+    };
+
 class RenderHelper extends RefCounted {
   private textureAccessHelper = new OneDimensionalTextureAccessHelper(
     "vertexData",
   );
   private vertexIdHelper;
+  private dynamicSegmentAppearance: boolean;
+  private segmentAttributeIndex: number | undefined;
   private segmentColorAttributeIndex: number | undefined;
+  private selectedNodeAttributeIndex: number | undefined;
+  private visibleSegmentsShaderManager = new HashSetShaderManager(
+    "visibleSegments",
+  );
+  private excludedSegmentsShaderManager = new HashSetShaderManager(
+    "excludedSegments",
+  );
+  private segmentColorShaderManager = new SegmentColorShaderManager(
+    "segmentColorHash",
+  );
+  private segmentStatedColorShaderManager = new SegmentStatedColorShaderManager(
+    "segmentStatedColor",
+  );
+  private gpuSegmentStatedColorHashTable: GPUHashTable<any> | undefined;
+  private emptySegmentSet = new Uint64Set();
   get vertexAttributes(): VertexAttributeRenderInfo[] {
     return this.base.vertexAttributes;
   }
@@ -223,19 +316,178 @@ class RenderHelper extends RefCounted {
     return this.base.gl;
   }
 
+  disposed() {
+    this.gpuSegmentStatedColorHashTable?.dispose();
+    super.disposed();
+  }
+
+  private defineDynamicSegmentAppearance(builder: ShaderBuilder) {
+    this.visibleSegmentsShaderManager.defineShader(builder);
+    this.excludedSegmentsShaderManager.defineShader(builder);
+    this.segmentColorShaderManager.defineShader(builder);
+    this.segmentStatedColorShaderManager.defineShader(builder);
+    builder.addUniform("highp float", "uVisibleAlpha");
+    builder.addUniform("highp float", "uHiddenAlpha");
+    builder.addUniform("highp vec3", "uSegmentDefaultColor");
+    builder.addUniform("highp uint", "uSkipVisibleSegments");
+    builder.addUniform("highp uint", "uUseSegmentDefaultColor");
+    builder.addUniform("highp uint", "uUseSegmentStatedColors");
+    builder.addFragmentCode(`
+uint64_t getSegmentAppearanceId(highp uint segmentValue) {
+  return uint64_t(uvec2(segmentValue, 0u));
+}
+vec3 getSegmentLookupColor(uint64_t segmentId) {
+  vec4 statedColor;
+  if (
+    uUseSegmentStatedColors != 0u &&
+    ${this.segmentStatedColorShaderManager.getFunctionName}(segmentId, statedColor)
+  ) {
+    return statedColor.rgb;
+  }
+  if (uUseSegmentDefaultColor != 0u) {
+    return uSegmentDefaultColor;
+  }
+  return ${this.segmentColorShaderManager.prefix}(segmentId);
+}
+float getSegmentLookupAlpha(uint64_t segmentId) {
+  if (${this.excludedSegmentsShaderManager.hasFunctionName}(segmentId)) {
+    return 0.0;
+  }
+  bool isVisible = ${this.visibleSegmentsShaderManager.hasFunctionName}(segmentId);
+  if (uSkipVisibleSegments != 0u && isVisible) {
+    return 0.0;
+  }
+  return isVisible ? uVisibleAlpha : uHiddenAlpha;
+}
+vec4 getSegmentAppearance(highp uint segmentValue) {
+  uint64_t segmentId = getSegmentAppearanceId(segmentValue);
+  return vec4(getSegmentLookupColor(segmentId), getSegmentLookupAlpha(segmentId));
+}
+`);
+  }
+
+  enableDynamicSegmentAppearance(
+    gl: GL,
+    shader: ShaderProgram,
+    skipVisibleSegments: boolean,
+    excludedSegments?: Uint64Set,
+  ) {
+    if (!this.dynamicSegmentAppearance) return;
+    const segmentationGroupState =
+      this.base.displayState.segmentationGroupState.value;
+    const visibleSegments = segmentationGroupState.useTemporaryVisibleSegments
+      .value
+      ? segmentationGroupState.temporaryVisibleSegments
+      : segmentationGroupState.visibleSegments;
+    this.visibleSegmentsShaderManager.enable(
+      gl,
+      shader,
+      GPUHashTable.get(gl, visibleSegments.hashTable),
+    );
+    this.excludedSegmentsShaderManager.enable(
+      gl,
+      shader,
+      GPUHashTable.get(
+        gl,
+        (excludedSegments ?? this.emptySegmentSet).hashTable,
+      ),
+    );
+    gl.uniform1f(
+      shader.uniform("uVisibleAlpha"),
+      this.base.displayState.objectAlpha.value,
+    );
+    gl.uniform1f(
+      shader.uniform("uHiddenAlpha"),
+      this.base.displayState.hiddenObjectAlpha?.value ?? 0,
+    );
+    gl.uniform1ui(
+      shader.uniform("uSkipVisibleSegments"),
+      skipVisibleSegments ? 1 : 0,
+    );
+
+    const colorGroupState =
+      this.base.displayState.segmentationColorGroupState.value;
+    this.segmentColorShaderManager.enable(
+      gl,
+      shader,
+      colorGroupState.segmentColorHash.value,
+    );
+    const segmentDefaultColor = colorGroupState.segmentDefaultColor.value;
+    if (segmentDefaultColor === undefined) {
+      gl.uniform1ui(shader.uniform("uUseSegmentDefaultColor"), 0);
+    } else {
+      gl.uniform1ui(shader.uniform("uUseSegmentDefaultColor"), 1);
+      gl.uniform3f(
+        shader.uniform("uSegmentDefaultColor"),
+        segmentDefaultColor[0],
+        segmentDefaultColor[1],
+        segmentDefaultColor[2],
+      );
+    }
+
+    const segmentStatedColors = colorGroupState.segmentStatedColors;
+    if (segmentStatedColors.size === 0) {
+      gl.uniform1ui(shader.uniform("uUseSegmentStatedColors"), 0);
+      this.segmentStatedColorShaderManager.disable(gl, shader);
+      return;
+    }
+    gl.uniform1ui(shader.uniform("uUseSegmentStatedColors"), 1);
+    let { gpuSegmentStatedColorHashTable } = this;
+    if (
+      gpuSegmentStatedColorHashTable === undefined ||
+      gpuSegmentStatedColorHashTable.hashTable !== segmentStatedColors.hashTable
+    ) {
+      gpuSegmentStatedColorHashTable?.dispose();
+      this.gpuSegmentStatedColorHashTable = gpuSegmentStatedColorHashTable =
+        GPUHashTable.get(gl, segmentStatedColors.hashTable);
+    }
+    this.segmentStatedColorShaderManager.enable(
+      gl,
+      shader,
+      gpuSegmentStatedColorHashTable,
+    );
+  }
+
+  disableDynamicSegmentAppearance(gl: GL, shader: ShaderProgram) {
+    if (!this.dynamicSegmentAppearance) return;
+    this.visibleSegmentsShaderManager.disable(gl, shader);
+    this.excludedSegmentsShaderManager.disable(gl, shader);
+    this.segmentStatedColorShaderManager.disable(gl, shader);
+  }
+
   constructor(
     public base: SkeletonLayerInterface,
     public targetIsSliceView: boolean,
   ) {
     super();
     this.vertexIdHelper = this.registerDisposer(VertexIdHelper.get(this.gl));
+    const { maxTextureImageUnits } = this.gl;
+    if (this.vertexAttributes.length > maxTextureImageUnits) {
+      console.warn(
+        `Skeleton has ${this.vertexAttributes.length} vertex attributes but device only supports ${maxTextureImageUnits} shader texture units`,
+      );
+    }
+    const segmentAttrIndex = this.vertexAttributes.findIndex(
+      (x) => x.name === segmentAttribute.name,
+    );
+    this.segmentAttributeIndex =
+      segmentAttrIndex >= 0 ? segmentAttrIndex : undefined;
+    this.dynamicSegmentAppearance =
+      base.dynamicSegmentAppearance === true &&
+      this.segmentAttributeIndex !== undefined;
     this.segmentColorAttributeIndex = base.segmentColorAttributeIndex;
+    const selectedNodeAttrIndex = this.vertexAttributes.findIndex(
+      (x) => x.name === selectedNodeAttribute.name,
+    );
+    this.selectedNodeAttributeIndex =
+      selectedNodeAttrIndex >= 0 ? selectedNodeAttrIndex : undefined;
     this.edgeShaderGetter = parameterizedEmitterDependentShaderGetter(
       this,
       this.gl,
       {
         memoizeKey: {
           type: "skeleton/SkeletonShaderManager/edge",
+          dynamicSegmentAppearance: this.dynamicSegmentAppearance,
           vertexAttributes: this.vertexAttributes,
         },
         fallbackParameters: this.base.fallbackShaderParameters,
@@ -252,23 +504,57 @@ class RenderHelper extends RefCounted {
           }
           this.defineCommonShader(builder);
           this.defineAttributeAccess(builder);
+          if (this.dynamicSegmentAppearance) {
+            this.defineDynamicSegmentAppearance(builder);
+          }
           defineLineShader(builder);
           builder.addAttribute("highp uvec2", "aVertexIndex");
           builder.addUniform("highp float", "uLineWidth");
+          builder.addUniform("highp uint", "uPickInstanceStride");
+          builder.addVarying("highp uint", "vPickID", "flat");
+          if (this.dynamicSegmentAppearance) {
+            builder.addVarying("highp uint", "vSegmentValue", "flat");
+          }
           let vertexMain = `
+highp uint pickOffset = uint(gl_InstanceID) * uPickInstanceStride;
+vPickID = uPickID + pickOffset;
 highp vec3 vertexA = readAttribute0(aVertexIndex.x);
 highp vec3 vertexB = readAttribute0(aVertexIndex.y);
 emitLine(uProjection, vertexA, vertexB, uLineWidth);
 highp uint lineEndpointIndex = getLineEndpointIndex();
 highp uint vertexIndex = aVertexIndex.x * (1u - lineEndpointIndex) + aVertexIndex.y * lineEndpointIndex;
 `;
+          if (
+            this.dynamicSegmentAppearance &&
+            this.segmentAttributeIndex !== undefined
+          ) {
+            vertexMain += `vSegmentValue = toRaw(readAttribute${this.segmentAttributeIndex}(aVertexIndex.x));\n`;
+          }
 
           const segmentColorExpression = this.getSegmentColorExpression();
           const segmentAlphaExpression =
             this.segmentColorAttributeIndex === undefined
               ? "uColor.a"
               : `${segmentColorExpression}.a`;
-          if (this.segmentColorAttributeIndex === undefined) {
+          if (this.dynamicSegmentAppearance) {
+            builder.addFragmentCode(`
+vec4 segmentColor() {
+  return getSegmentAppearance(vSegmentValue);
+}
+void emitRGB(vec3 color) {
+  vec4 baseColor = segmentColor();
+  highp float alpha = baseColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()};
+  if (alpha <= 0.0) discard;
+  emit(vec4(color * alpha, alpha), vPickID);
+}
+void emitDefault() {
+  vec4 baseColor = segmentColor();
+  highp float alpha = baseColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()};
+  if (alpha <= 0.0) discard;
+  emit(vec4(baseColor.rgb * alpha, alpha), vPickID);
+}
+`);
+          } else if (this.segmentColorAttributeIndex === undefined) {
             // Preserve legacy skeleton behavior where `uColor` is already
             // premultiplied by `objectAlpha` in `getObjectColor`.
             builder.addFragmentCode(`
@@ -276,10 +562,10 @@ vec4 segmentColor() {
   return ${segmentColorExpression};
 }
 void emitRGB(vec3 color) {
-  emit(vec4(color * uColor.a, uColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()}), uPickID);
+  emit(vec4(color * uColor.a, uColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()}), vPickID);
 }
 void emitDefault() {
-  emit(vec4(uColor.rgb, uColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()}), uPickID);
+  emit(vec4(uColor.rgb, uColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()}), vPickID);
 }
 `);
           } else {
@@ -289,12 +575,12 @@ vec4 segmentColor() {
 }
 void emitRGB(vec3 color) {
   highp float alpha = ${segmentAlphaExpression} * getLineAlpha() * ${this.getCrossSectionFadeFactor()};
-  emit(vec4(color * alpha, alpha), uPickID);
+  emit(vec4(color * alpha, alpha), vPickID);
 }
 void emitDefault() {
   vec4 baseColor = segmentColor();
   highp float alpha = baseColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()};
-  emit(vec4(baseColor.rgb * alpha, alpha), uPickID);
+  emit(vec4(baseColor.rgb * alpha, alpha), vPickID);
 }
 `);
           }
@@ -303,16 +589,44 @@ void emitDefault() {
           const numAttributes = vertexAttributes.length;
           for (let i = 1; i < numAttributes; ++i) {
             const info = vertexAttributes[i];
-            builder.addVarying(`highp ${info.glslDataType}`, `vCustom${i}`);
-            vertexMain += `vCustom${i} = readAttribute${i}(vertexIndex);\n`;
-            builder.addFragmentCode(`#define ${info.name} vCustom${i}\n`);
+            if (
+              this.dynamicSegmentAppearance &&
+              i === this.segmentAttributeIndex
+            ) {
+              builder.addFragmentCode(dataTypeShaderDefinition[info.dataType]);
+              builder.addFragmentCode(
+                `#define ${info.name} ${info.glslDataType}(vSegmentValue)\n`,
+              );
+              builder.addFragmentCode(
+                `#define prop_${info.name}() ${info.glslDataType}(vSegmentValue)\n`,
+              );
+              continue;
+            }
+            builder.addVarying(
+              `highp ${getVertexAttributeVaryingType(info)}`,
+              `vCustom${i}`,
+              getVertexAttributeInterpolationMode(info.dataType),
+            );
+            vertexMain += `vCustom${i} = ${getVertexAttributeReadExpression(i, "vertexIndex", info)};\n`;
+            if (info.dataType !== DataType.FLOAT32) {
+              builder.addFragmentCode(dataTypeShaderDefinition[info.dataType]);
+            }
+            const fragmentExpression = getVertexAttributeFragmentExpression(
+              `vCustom${i}`,
+              info,
+            );
             builder.addFragmentCode(
-              `#define prop_${info.name}() vCustom${i}\n`,
+              `#define ${info.name} ${fragmentExpression}\n`,
+            );
+            builder.addFragmentCode(
+              `#define prop_${info.name}() ${fragmentExpression}\n`,
             );
           }
           builder.setVertexMain(vertexMain);
           addControlsToBuilder(shaderBuilderState, builder);
-          const edgeFragmentCode = shaderCodeWithLineDirective(shaderBuilderState.parseResult.code);
+          const edgeFragmentCode = shaderCodeWithLineDirective(
+            shaderBuilderState.parseResult.code,
+          );
           builder.setFragmentMainFunction(edgeFragmentCode);
         },
       },
@@ -324,6 +638,7 @@ void emitDefault() {
       {
         memoizeKey: {
           type: "skeleton/SkeletonShaderManager/node",
+          dynamicSegmentAppearance: this.dynamicSegmentAppearance,
           vertexAttributes: this.vertexAttributes,
         },
         fallbackParameters: this.base.fallbackShaderParameters,
@@ -340,19 +655,92 @@ void emitDefault() {
           }
           this.defineCommonShader(builder);
           this.defineAttributeAccess(builder);
+          if (this.dynamicSegmentAppearance) {
+            this.defineDynamicSegmentAppearance(builder);
+          }
           defineCircleShader(
             builder,
             /*crossSectionFade=*/ this.targetIsSliceView,
           );
           builder.addUniform("highp float", "uNodeDiameter");
+          builder.addUniform("highp uint", "uPickInstanceStride");
+          builder.addVarying("highp uint", "vPickID", "flat");
+          if (this.dynamicSegmentAppearance) {
+            builder.addVarying("highp uint", "vSegmentValue", "flat");
+          }
+          const selectedOutlineMinWidth = this.targetIsSliceView
+            ? SELECTED_NODE_OUTLINE_MIN_WIDTH_2D
+            : SELECTED_NODE_OUTLINE_MIN_WIDTH_3D;
+          const selectedOutlineMaxWidth = this.targetIsSliceView
+            ? SELECTED_NODE_OUTLINE_MAX_WIDTH_2D
+            : SELECTED_NODE_OUTLINE_MAX_WIDTH_3D;
+          const selectedNodeAttributeReadExpression =
+            this.selectedNodeAttributeIndex === undefined
+              ? "0.0"
+              : `readAttribute${this.selectedNodeAttributeIndex}(vertexIndex)`;
+          const selectedOutlineWidthExpression =
+            this.selectedNodeAttributeIndex === undefined
+              ? "0.0"
+              : `((${selectedNodeAttributeReadExpression} > 0.5) ? clamp(0.25 * uNodeDiameter, ${selectedOutlineMinWidth}, ${selectedOutlineMaxWidth}) : 0.0)`;
           let vertexMain = `
 highp uint vertexIndex = uint(gl_InstanceID);
+highp uint pickOffset = vertexIndex * uPickInstanceStride;
+vPickID = uPickID + pickOffset;
 highp vec3 vertexPosition = readAttribute0(vertexIndex);
-emitCircle(uProjection * vec4(vertexPosition, 1.0), uNodeDiameter, 0.0);
+emitCircle(
+  uProjection * vec4(vertexPosition, 1.0),
+  uNodeDiameter,
+  ${selectedOutlineWidthExpression}
+);
 `;
+          if (
+            this.dynamicSegmentAppearance &&
+            this.segmentAttributeIndex !== undefined
+          ) {
+            vertexMain += `vSegmentValue = toRaw(readAttribute${this.segmentAttributeIndex}(vertexIndex));\n`;
+          }
 
           const segmentColorExpression = this.getSegmentColorExpression();
-          if (this.segmentColorAttributeIndex === undefined) {
+          if (
+            this.dynamicSegmentAppearance &&
+            this.segmentAttributeIndex !== undefined
+          ) {
+            const segmentExpression = `vSegmentValue`;
+            const selectedNodeExpression =
+              this.selectedNodeAttributeIndex === undefined
+                ? undefined
+                : `vCustom${this.selectedNodeAttributeIndex}`;
+            const borderColorExpression =
+              selectedNodeExpression === undefined
+                ? "renderColor"
+                : `((${selectedNodeExpression} > 0.5) ? vec4(${SELECTED_NODE_OUTLINE_COLOR_RGB}, renderColor.a) : renderColor)`;
+            builder.addFragmentCode(`
+vec4 segmentColor() {
+  return getSegmentAppearance(${segmentExpression});
+}
+void emitRGBA(vec4 color) {
+  vec4 baseColor = segmentColor();
+  highp float alpha = color.a * baseColor.a;
+  if (alpha <= 0.0) discard;
+  vec4 renderColor = vec4(color.rgb, alpha);
+  vec4 borderColor = ${borderColorExpression};
+  vec4 circleColor = getCircleColor(renderColor, borderColor);
+  emit(vec4(circleColor.rgb * circleColor.a, circleColor.a), vPickID);
+}
+void emitRGB(vec3 color) {
+  emitRGBA(vec4(color, 1.0));
+}
+void emitDefault() {
+  vec4 baseColor = segmentColor();
+  highp float alpha = baseColor.a;
+  if (alpha <= 0.0) discard;
+  vec4 renderColor = vec4(baseColor.rgb, alpha);
+  vec4 borderColor = ${borderColorExpression};
+  vec4 circleColor = getCircleColor(renderColor, borderColor);
+  emit(vec4(circleColor.rgb * circleColor.a, circleColor.a), vPickID);
+}
+`);
+          } else if (this.segmentColorAttributeIndex === undefined) {
             // Preserve legacy skeleton behavior for non-spatial skeletons.
             builder.addFragmentCode(`
 vec4 segmentColor() {
@@ -360,7 +748,7 @@ vec4 segmentColor() {
 }
 void emitRGBA(vec4 color) {
   vec4 borderColor = color;
-  emit(getCircleColor(color, borderColor), uPickID);
+  emit(getCircleColor(color, borderColor), vPickID);
 }
 void emitRGB(vec3 color) {
   emitRGBA(vec4(color, 1.0));
@@ -370,14 +758,23 @@ void emitDefault() {
 }
 `);
           } else {
+            const selectedNodeExpression =
+              this.selectedNodeAttributeIndex === undefined
+                ? undefined
+                : `vCustom${this.selectedNodeAttributeIndex}`;
+            const borderColorExpression =
+              selectedNodeExpression === undefined
+                ? "renderColor"
+                : `((${selectedNodeExpression} > 0.5) ? vec4(${SELECTED_NODE_OUTLINE_COLOR_RGB}, renderColor.a) : renderColor)`;
             builder.addFragmentCode(`
 vec4 segmentColor() {
   return ${segmentColorExpression};
 }
 void emitRGBA(vec4 color) {
-  vec4 borderColor = color;
-  vec4 circleColor = getCircleColor(color, borderColor);
-  emit(vec4(circleColor.rgb * circleColor.a, circleColor.a), uPickID);
+  vec4 renderColor = color;
+  vec4 borderColor = ${borderColorExpression};
+  vec4 circleColor = getCircleColor(renderColor, borderColor);
+  emit(vec4(circleColor.rgb * circleColor.a, circleColor.a), vPickID);
 }
 void emitRGB(vec3 color) {
   emitRGBA(vec4(color, 1.0));
@@ -392,11 +789,37 @@ void emitDefault() {
           const numAttributes = vertexAttributes.length;
           for (let i = 1; i < numAttributes; ++i) {
             const info = vertexAttributes[i];
-            builder.addVarying(`highp ${info.glslDataType}`, `vCustom${i}`);
-            vertexMain += `vCustom${i} = readAttribute${i}(vertexIndex);\n`;
-            builder.addFragmentCode(`#define ${info.name} vCustom${i}\n`);
+            if (
+              this.dynamicSegmentAppearance &&
+              i === this.segmentAttributeIndex
+            ) {
+              builder.addFragmentCode(dataTypeShaderDefinition[info.dataType]);
+              builder.addFragmentCode(
+                `#define ${info.name} ${info.glslDataType}(vSegmentValue)\n`,
+              );
+              builder.addFragmentCode(
+                `#define prop_${info.name}() ${info.glslDataType}(vSegmentValue)\n`,
+              );
+              continue;
+            }
+            builder.addVarying(
+              `highp ${getVertexAttributeVaryingType(info)}`,
+              `vCustom${i}`,
+              getVertexAttributeInterpolationMode(info.dataType),
+            );
+            vertexMain += `vCustom${i} = ${getVertexAttributeReadExpression(i, "vertexIndex", info)};\n`;
+            if (info.dataType !== DataType.FLOAT32) {
+              builder.addFragmentCode(dataTypeShaderDefinition[info.dataType]);
+            }
+            const fragmentExpression = getVertexAttributeFragmentExpression(
+              `vCustom${i}`,
+              info,
+            );
             builder.addFragmentCode(
-              `#define prop_${info.name}() vCustom${i}\n`,
+              `#define ${info.name} ${fragmentExpression}\n`,
+            );
+            builder.addFragmentCode(
+              `#define prop_${info.name}() ${fragmentExpression}\n`,
             );
           }
           builder.setVertexMain(vertexMain);
@@ -457,9 +880,10 @@ void emitDefault() {
   }
 
   setColor(gl: GL, shader: ShaderProgram, color: Float32Array | number[]) {
-    const a = (color as Float32Array).length >= 4
-      ? (color as Float32Array)[3]
-      : this.base.displayState.objectAlpha.value;
+    const a =
+      (color as Float32Array).length >= 4
+        ? (color as Float32Array)[3]
+        : this.base.displayState.objectAlpha.value;
     gl.uniform4f(
       shader.uniform("uColor"),
       (color as Float32Array)[0],
@@ -473,6 +897,14 @@ void emitDefault() {
     gl.uniform1ui(shader.uniform("uPickID"), pickID);
   }
 
+  setEdgePickInstanceStride(gl: GL, shader: ShaderProgram, stride: number) {
+    gl.uniform1ui(shader.uniform("uPickInstanceStride"), stride);
+  }
+
+  setNodePickInstanceStride(gl: GL, shader: ShaderProgram, stride: number) {
+    gl.uniform1ui(shader.uniform("uPickInstanceStride"), stride);
+  }
+
   drawSkeleton(
     gl: GL,
     edgeShader: ShaderProgram,
@@ -480,9 +912,13 @@ void emitDefault() {
     skeletonChunk: SkeletonChunkInterface,
     projectionParameters: { width: number; height: number },
   ) {
+    // Bind vertex attribute textures to be used across edge and node shaders
+    // The edge shader and node shader share the same texture unit for each attribute
+    // so we only bind once. However, if this ever changes, we
+    // instead must bind for the edge shader, draw, then bind for node shader
     const { vertexAttributes } = this;
-    const numAttributes = vertexAttributes.length;
     const { vertexAttributeTextures } = skeletonChunk;
+    const numAttributes = vertexAttributes.length;
     for (let i = 0; i < numAttributes; ++i) {
       const textureUnit =
         WebGL2RenderingContext.TEXTURE0 +
@@ -514,6 +950,7 @@ void emitDefault() {
       gl.disableVertexAttribArray(aVertexIndex);
     }
 
+    // Draw nodes if in line and node mode
     if (nodeShader !== null) {
       nodeShader.bind();
       initializeCircleShader(nodeShader, projectionParameters, {
@@ -523,24 +960,27 @@ void emitDefault() {
     }
   }
 
-  endLayer(gl: GL, shader: ShaderProgram) {
+  endLayer(gl: GL, ...shaders: Array<ShaderProgram | null>) {
     const { vertexAttributes } = this;
     const numAttributes = vertexAttributes.length;
-    for (let i = 0; i < numAttributes; ++i) {
-      const curTextureUnit =
-        shader.textureUnit(vertexAttributeSamplerSymbols[i]) +
-        WebGL2RenderingContext.TEXTURE0;
-      gl.activeTexture(curTextureUnit);
-      gl.bindTexture(gl.TEXTURE_2D, null);
+    const clearedTextureUnits = new Set<number>();
+    for (const shader of shaders) {
+      if (shader === null) continue;
+      for (let i = 0; i < numAttributes; ++i) {
+        const curTextureUnit =
+          shader.textureUnit(vertexAttributeSamplerSymbols[i]) +
+          WebGL2RenderingContext.TEXTURE0;
+        if (clearedTextureUnits.has(curTextureUnit)) continue;
+        clearedTextureUnits.add(curTextureUnit);
+        gl.activeTexture(curTextureUnit);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+      }
     }
     this.vertexIdHelper.disable();
   }
 }
 
-export enum SkeletonRenderMode {
-  LINES = 0,
-  LINES_AND_POINTS = 1,
-}
+export { SkeletonRenderMode } from "#src/skeleton/render_mode.js";
 
 export class TrackableSkeletonRenderMode extends TrackableEnum<SkeletonRenderMode> {
   constructor(
@@ -555,6 +995,43 @@ export class TrackableSkeletonLineWidth extends TrackableValue<number> {
   constructor(value: number, defaultValue: number = value) {
     super(value, verifyFinitePositiveFloat, defaultValue);
   }
+}
+
+function getSkeletonNodeDiameter(
+  renderMode: SkeletonRenderMode,
+  lineWidth: number,
+) {
+  if (renderMode === SkeletonRenderMode.LINES_AND_POINTS) {
+    return Math.max(5, lineWidth * 2);
+  }
+  return lineWidth;
+}
+
+function setMouseStatePositionFromSpatialSkeletonNode(
+  mouseState: MouseSelectionState,
+  nodePosition: Float32Array,
+  transform: RenderLayerTransform,
+) {
+  const rank = transform.rank;
+  const modelPosition = new Float32Array(rank);
+  for (let i = 0; i < Math.min(nodePosition.length, rank); ++i) {
+    const v = nodePosition[i];
+    if (!Number.isFinite(v)) return;
+    modelPosition[i] = v;
+  }
+  const layerPosition = new Float32Array(rank);
+  matrix.transformPoint(
+    layerPosition,
+    transform.modelToRenderLayerTransform,
+    rank + 1,
+    modelPosition,
+    rank,
+  );
+  gatherUpdate(
+    mouseState.position,
+    layerPosition,
+    transform.globalToRenderLayerDimensions,
+  );
 }
 
 export interface ViewSpecificSkeletonRenderingOptions {
@@ -664,8 +1141,7 @@ export class SkeletonLayer extends RefCounted {
         dataType: info.dataType,
         numComponents: info.numComponents,
         webglDataType: getWebglDataType(info.dataType),
-        glslDataType:
-          info.numComponents > 1 ? `vec${info.numComponents}` : "float",
+        glslDataType: getShaderType(info.dataType, info.numComponents),
       });
     }
   }
@@ -696,12 +1172,10 @@ export class SkeletonLayer extends RefCounted {
       attachment,
     );
     if (modelMatrix === undefined) return;
-    let pointDiameter: number;
-    if (renderOptions.mode.value === SkeletonRenderMode.LINES_AND_POINTS) {
-      pointDiameter = Math.max(5, lineWidth * 2);
-    } else {
-      pointDiameter = lineWidth;
-    }
+    const pointDiameter = getSkeletonNodeDiameter(
+      renderOptions.mode.value,
+      lineWidth,
+    );
 
     const edgeShaderResult = renderHelper.edgeShaderGetter(
       renderContext.emitter,
@@ -722,6 +1196,7 @@ export class SkeletonLayer extends RefCounted {
 
     edgeShader.bind();
     renderHelper.beginLayer(gl, edgeShader, renderContext, modelMatrix);
+    renderHelper.setEdgePickInstanceStride(gl, edgeShader, 0);
     setControlsInShader(
       gl,
       edgeShader,
@@ -733,6 +1208,7 @@ export class SkeletonLayer extends RefCounted {
     nodeShader.bind();
     renderHelper.beginLayer(gl, nodeShader, renderContext, modelMatrix);
     gl.uniform1f(nodeShader.uniform("uNodeDiameter"), pointDiameter);
+    renderHelper.setNodePickInstanceStride(gl, nodeShader, 0);
     setControlsInShader(
       gl,
       nodeShader,
@@ -777,7 +1253,7 @@ export class SkeletonLayer extends RefCounted {
         );
       },
     );
-    renderHelper.endLayer(gl, edgeShader);
+    renderHelper.endLayer(gl, edgeShader, nodeShader);
   }
 
   isReady() {
@@ -910,11 +1386,68 @@ function getWebglDataType(dataType: DataType) {
   switch (dataType) {
     case DataType.FLOAT32:
       return WebGL2RenderingContext.FLOAT;
+    case DataType.INT32:
+      return WebGL2RenderingContext.INT;
+    case DataType.UINT32:
+      return WebGL2RenderingContext.UNSIGNED_INT;
     default:
       throw new Error(
         `Data type not supported by WebGL: ${DataType[dataType]}`,
       );
   }
+}
+
+function getVertexAttributeInterpolationMode(dataType: DataType) {
+  return dataType === DataType.FLOAT32 ? "" : "flat";
+}
+
+// Custom integer wrapper types like `uint32_t` are defined in fragment code,
+// which is emitted after varying declarations. Keep varyings on raw GLSL
+// scalar/vector types and wrap them back into helper structs in fragment code.
+function getVertexAttributeVaryingType(info: VertexAttributeInfo) {
+  const { dataType, numComponents } = info;
+  if (dataType === DataType.FLOAT32) {
+    return getShaderType(dataType, numComponents);
+  }
+  if (dataType === DataType.UINT64) {
+    if (numComponents === 1) return "uvec2";
+    if (numComponents === 2) return "uvec4";
+  }
+  const vectorTypePrefix = DATA_TYPE_SIGNED[dataType] ? "ivec" : "uvec";
+  if (numComponents === 1) {
+    return DATA_TYPE_SIGNED[dataType] ? "int" : "uint";
+  }
+  if (numComponents >= 2 && numComponents <= 4) {
+    return `${vectorTypePrefix}${numComponents}`;
+  }
+  throw new Error(
+    `No varying type for ${DataType[dataType]}[${numComponents}].`,
+  );
+}
+
+function getVertexAttributeReadExpression(
+  attributeIndex: number,
+  indexExpression: string,
+  info: VertexAttributeInfo,
+) {
+  const readExpression = `readAttribute${attributeIndex}(${indexExpression})`;
+  if (info.dataType === DataType.FLOAT32) {
+    return readExpression;
+  }
+  if (info.dataType === DataType.UINT64) {
+    return `${readExpression}.value`;
+  }
+  return `toRaw(${readExpression})`;
+}
+
+function getVertexAttributeFragmentExpression(
+  varyingName: string,
+  info: VertexAttributeRenderInfo,
+) {
+  if (info.dataType === DataType.FLOAT32) {
+    return varyingName;
+  }
+  return `${info.glslDataType}(${varyingName})`;
 }
 
 const vertexPositionAttribute: VertexAttributeRenderInfo = {
@@ -926,30 +1459,30 @@ const vertexPositionAttribute: VertexAttributeRenderInfo = {
 };
 
 const segmentAttribute: VertexAttributeRenderInfo = {
-  dataType: DataType.FLOAT32,
+  dataType: DataType.UINT32,
   numComponents: 1,
   name: "segment",
-  webglDataType: WebGL2RenderingContext.FLOAT,
-  glslDataType: "float",
+  webglDataType: WebGL2RenderingContext.UNSIGNED_INT,
+  glslDataType: getShaderType(DataType.UINT32, 1),
 };
 
-const segmentColorAttribute: VertexAttributeRenderInfo = {
+const selectedNodeAttribute: VertexAttributeRenderInfo = {
   dataType: DataType.FLOAT32,
-  numComponents: 4,
-  name: "segmentColorAttr",
+  numComponents: 1,
+  name: "selectedNodeAttr",
   webglDataType: WebGL2RenderingContext.FLOAT,
-  glslDataType: "vec4",
+  glslDataType: "float",
 };
 
 export class SkeletonChunk extends Chunk implements SkeletonChunkInterface {
   declare source: SkeletonSource;
   vertexAttributes: Uint8Array;
   indices: Uint32Array;
-  indexBuffer: GLBuffer;
+  indexBuffer!: GLBuffer;
   numIndices: number;
   numVertices: number;
   vertexAttributeOffsets: Uint32Array;
-  vertexAttributeTextures: (WebGLTexture | null)[];
+  vertexAttributeTextures: (WebGLTexture | null)[] = [];
 
   constructor(source: SkeletonSource, x: any) {
     super(source);
@@ -991,95 +1524,105 @@ export class SkeletonChunk extends Chunk implements SkeletonChunkInterface {
   }
 }
 
-export class SpatiallyIndexedSkeletonChunk extends SliceViewChunk implements SkeletonChunkInterface {
+export class SpatiallyIndexedSkeletonChunk
+  extends SliceViewChunk
+  implements SkeletonChunkInterface
+{
   declare source: SpatiallyIndexedSkeletonSource;
   vertexAttributes: Uint8Array;
   indices: Uint32Array;
-  indexBuffer: GLBuffer;
+  indexBuffer!: GLBuffer;
   numIndices: number;
   numVertices: number;
   vertexAttributeOffsets: Uint32Array;
-  vertexAttributeTextures: (WebGLTexture | null)[];
-  missingConnections: Array<{ nodeId: number; parentId: number; vertexIndex: number; skeletonId: number }> = [];
-  nodeMap: Map<number, number> = new Map(); // Maps node ID to vertex index
+  vertexAttributeTextures: (WebGLTexture | null)[] = [];
+  nodeIds: Int32Array = new Int32Array(0);
+  nodeRevisionTokens: Array<string | undefined> = [];
   lod: number | undefined;
 
-  // Filtering support
-  filteredIndexBuffer: GLBuffer | undefined;
-  filteredGeneration: number = -1;
-  filteredSkipVisibleSegments = false;
-  filteredMissingConnectionsHash = 0;
-  numFilteredIndices: number = 0;
-  numFilteredVertices: number = 0;
-  filteredVertexAttributeTextures?: (WebGLTexture | null)[];
-
-  constructor(source: SpatiallyIndexedSkeletonSource, chunkData: SkeletonChunkData) {
+  constructor(
+    source: SpatiallyIndexedSkeletonSource,
+    chunkData: SkeletonChunkData,
+  ) {
     super(source, chunkData);
     this.vertexAttributes = chunkData.vertexAttributes;
     const indices = (this.indices = chunkData.indices);
     this.numVertices = chunkData.numVertices;
     this.numIndices = indices.length;
     this.vertexAttributeOffsets = chunkData.vertexAttributeOffsets;
-    this.missingConnections = (chunkData as any).missingConnections || [];
     this.lod = (chunkData as any).lod;
-
-    // Deserialize nodeMap from array format [nodeId, vertexIndex, ...]
-    const nodeMapData = (chunkData as any).nodeMap;
-    if (Array.isArray(nodeMapData) && nodeMapData.length > 0) {
-      this.nodeMap = new Map(nodeMapData);
+    const nodeIdsData = (chunkData as any).nodeIds;
+    if (nodeIdsData instanceof Int32Array) {
+      this.nodeIds = nodeIdsData;
+    } else if (ArrayBuffer.isView(nodeIdsData)) {
+      this.nodeIds = new Int32Array(
+        nodeIdsData.buffer,
+        nodeIdsData.byteOffset,
+        nodeIdsData.byteLength / Int32Array.BYTES_PER_ELEMENT,
+      );
     } else {
-      this.nodeMap = new Map();
+      this.nodeIds = new Int32Array(0);
     }
+    const nodeRevisionTokens = (chunkData as any).nodeRevisionTokens;
+    this.nodeRevisionTokens = Array.isArray(nodeRevisionTokens)
+      ? nodeRevisionTokens.map((value) =>
+          typeof value === "string" ? value : undefined,
+        )
+      : [];
+  }
 
-    const gl = source.gl;
-    this.indexBuffer = GLBuffer.fromData(
-      gl,
-      indices,
-      WebGL2RenderingContext.ARRAY_BUFFER,
-      WebGL2RenderingContext.STATIC_DRAW,
-    );
-
-    const { attributeTextureFormats } = source;
+  copyToGPU(gl: GL) {
+    const wasGpuResident = this.state === ChunkState.GPU_MEMORY;
+    super.copyToGPU(gl);
+    if (wasGpuResident) return;
+    const { attributeTextureFormats } = this.source;
     this.vertexAttributeTextures = uploadVertexAttributesToGPU(
       gl,
       this.vertexAttributes,
       this.vertexAttributeOffsets,
       attributeTextureFormats,
     );
+    this.indexBuffer = GLBuffer.fromData(
+      gl,
+      this.indices,
+      WebGL2RenderingContext.ARRAY_BUFFER,
+      WebGL2RenderingContext.STATIC_DRAW,
+    );
+    this.source.bumpLookupGeneration();
   }
 
   freeGPUMemory(gl: GL) {
+    const wasGpuResident = this.state === ChunkState.GPU_MEMORY;
     super.freeGPUMemory(gl);
+    if (!wasGpuResident) return;
     this.indexBuffer.dispose();
     const { vertexAttributeTextures } = this;
     for (let i = 0, length = vertexAttributeTextures.length; i < length; ++i) {
       gl.deleteTexture(vertexAttributeTextures[i]);
     }
-
-    if (this.filteredIndexBuffer) {
-      this.filteredIndexBuffer.dispose();
-      this.filteredIndexBuffer = undefined;
-    }
-
-    if (this.filteredVertexAttributeTextures) {
-      for (const tex of this.filteredVertexAttributeTextures) {
-        if (tex) gl.deleteTexture(tex);
-      }
-      this.filteredVertexAttributeTextures = undefined;
-    }
+    vertexAttributeTextures.length = 0;
+    this.source.bumpLookupGeneration();
   }
 }
 
-export interface SpatiallyIndexedSkeletonChunkSpecification extends SliceViewChunkSpecification {
+export interface SpatiallyIndexedSkeletonChunkSpecification
+  extends SliceViewChunkSpecification {
   chunkLayout: ChunkLayout;
 }
+
+type SpatiallyIndexedSkeletonChunkListener = (
+  key: string,
+  chunk: SpatiallyIndexedSkeletonChunk,
+) => void;
 
 export class SpatiallyIndexedSkeletonSource extends SliceViewChunkSource<
   SpatiallyIndexedSkeletonChunkSpecification,
   SpatiallyIndexedSkeletonChunk
 > {
   vertexAttributes: VertexAttributeRenderInfo[];
+  lookupGeneration = 0;
   private attributeTextureFormats_?: TextureFormat[];
+  private chunkListeners = new Set<SpatiallyIndexedSkeletonChunkListener>();
 
   constructor(chunkManager: ChunkManager, options: any) {
     super(chunkManager, options);
@@ -1090,11 +1633,9 @@ export class SpatiallyIndexedSkeletonSource extends SliceViewChunkSource<
     let attributeTextureFormats = this.attributeTextureFormats_;
     if (attributeTextureFormats === undefined) {
       attributeTextureFormats = this.attributeTextureFormats_ =
-        getAttributeTextureFormats(
-          new Map([
-            ["", vertexPositionAttribute],
-            ["segment", segmentAttribute],
-          ]),
+        spatiallyIndexedSkeletonTextureAttributeSpecs.map(
+          ({ dataType, numComponents }) =>
+            computeTextureFormat(new TextureFormat(), dataType, numComponents),
         );
     }
     return attributeTextureFormats;
@@ -1105,6 +1646,22 @@ export class SpatiallyIndexedSkeletonSource extends SliceViewChunkSource<
     return { ...base, chunkLayout: spec.chunkLayout.toObject() };
   }
 
+  bumpLookupGeneration() {
+    ++this.lookupGeneration;
+  }
+
+  addChunkListener(listener: SpatiallyIndexedSkeletonChunkListener) {
+    this.chunkListeners.add(listener);
+    return () => this.chunkListeners.delete(listener);
+  }
+
+  addChunk(key: string, chunk: SpatiallyIndexedSkeletonChunk) {
+    super.addChunk(key, chunk);
+    for (const listener of this.chunkListeners) {
+      listener(key, chunk);
+    }
+  }
+
   getChunk(chunkData: SkeletonChunkData) {
     return new SpatiallyIndexedSkeletonChunk(this, chunkData);
   }
@@ -1113,7 +1670,8 @@ export class SpatiallyIndexedSkeletonSource extends SliceViewChunkSource<
 export abstract class MultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleSliceViewChunkSource<SpatiallyIndexedSkeletonSource> {
   getPerspectiveSources(): SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>[] {
     const sources = this.getSources({ view: "3d" } as any);
-    const flattened: SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>[] = [];
+    const flattened: SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>[] =
+      [];
     for (const scale of sources) {
       if (scale.length > 0) {
         flattened.push(scale[0]);
@@ -1126,61 +1684,47 @@ export abstract class MultiscaleSpatiallyIndexedSkeletonSource extends Multiscal
     return this.getPerspectiveSources();
   }
 
-  getSpatialSkeletonGridSizes(): { x: number; y: number; z: number }[] | undefined {
+  getSpatialSkeletonGridSizes():
+    | { x: number; y: number; z: number }[]
+    | undefined {
     return undefined;
   }
 }
 
-export class MultiscaleSliceViewSpatiallyIndexedSkeletonLayer extends SliceViewRenderLayer<
-  SpatiallyIndexedSkeletonSource
-> {
+export class MultiscaleSliceViewSpatiallyIndexedSkeletonLayer extends SliceViewRenderLayer<SpatiallyIndexedSkeletonSource> {
   private renderOptions: ViewSpecificSkeletonRenderingOptions;
+  private visibleChunkKeysBySliceView = new Map<
+    number,
+    VisibleSpatialChunkKeysBySource
+  >();
+  private trackedChunkStatsSliceViews = new Set<number>();
   RPC_TYPE_ID = SPATIALLY_INDEXED_SKELETON_SLICEVIEW_RENDER_LAYER_RPC_ID;
   constructor(
     public chunkManager: ChunkManager,
     public multiscaleSource: MultiscaleSpatiallyIndexedSkeletonSource,
-    public displayState: SegmentationDisplayState
+    public displayState: SegmentationDisplayState,
   ) {
     const renderScaleTarget = (displayState as any)
       .renderScaleTarget as WatchableValueInterface<number>;
     const gridLevel2d = (displayState as any).spatialSkeletonGridLevel2d as
       | WatchableValueInterface<number>
       | undefined;
-    const gridAwareRenderScaleTarget = new WatchableValue(
-      renderScaleTarget.value,
-    );
     super(chunkManager, multiscaleSource, {
       transform: (displayState as any).transform,
       localPosition: (displayState as any).localPosition,
-      renderScaleTarget: gridAwareRenderScaleTarget,
+      renderScaleTarget,
+      visibleSourcesInvalidation:
+        gridLevel2d === undefined ? [] : [gridLevel2d],
     });
-    this.renderOptions = (displayState as any).skeletonRenderingOptions.params2d;
+    this.renderOptions = (
+      displayState as any
+    ).skeletonRenderingOptions.params2d;
     this.registerDisposer(
-      this.renderOptions.mode.changed.add(
-        this.redrawNeeded.dispatch,
-      ),
+      this.renderOptions.mode.changed.add(this.redrawNeeded.dispatch),
     );
     this.registerDisposer(
       this.renderOptions.lineWidth.changed.add(this.redrawNeeded.dispatch),
     );
-    this.registerDisposer(
-      renderScaleTarget.changed.add(() => {
-        gridAwareRenderScaleTarget.value = renderScaleTarget.value;
-      }),
-    );
-    if (gridLevel2d !== undefined) {
-      let gridInvalidationTick = 0;
-      this.registerDisposer(
-        gridLevel2d.changed.add(() => {
-          // Toggle a tiny offset so backend/front-end visible source caches are invalidated
-          // even when only the grid index changes.
-          const baseValue = renderScaleTarget.value;
-          gridInvalidationTick ^= 1;
-          gridAwareRenderScaleTarget.value =
-            baseValue + gridInvalidationTick * 1e-6;
-        }),
-      );
-    }
     const rpc = this.chunkManager.rpc!;
     const lod2d = (displayState as any).spatialSkeletonLod2d;
     if (gridLevel2d !== undefined && lod2d !== undefined) {
@@ -1204,75 +1748,128 @@ export class MultiscaleSliceViewSpatiallyIndexedSkeletonLayer extends SliceViewR
   ): Iterable<TransformedSource> {
     const gridLevel = (this.displayState as any).spatialSkeletonGridLevel2d
       ?.value as number | undefined;
-    if (gridLevel !== undefined && sources.length > 0) {
-      const gridIndexedSources = sources
-        .map((tsource, scaleIndex) => ({
-          tsource,
-          scaleIndex,
-          gridIndex: (tsource.source as any).parameters?.gridIndex as
-            | number
-            | undefined,
-        }))
-        .filter((entry) => entry.gridIndex !== undefined);
-      if (gridIndexedSources.length === sources.length) {
-        let minGridIndex = Number.POSITIVE_INFINITY;
-        let maxGridIndex = Number.NEGATIVE_INFINITY;
-        for (const entry of gridIndexedSources) {
-          const index = entry.gridIndex as number;
-          minGridIndex = Math.min(minGridIndex, index);
-          maxGridIndex = Math.max(maxGridIndex, index);
-        }
-        const clampedGridLevel = Math.min(
-          Math.max(gridLevel, minGridIndex),
-          maxGridIndex,
-        );
-        let selectedEntry =
-          gridIndexedSources.find(
-            (entry) => entry.gridIndex === clampedGridLevel,
-          ) ?? gridIndexedSources[0];
-        if (selectedEntry.gridIndex !== clampedGridLevel) {
-          let bestDistance = Number.POSITIVE_INFINITY;
-          for (const entry of gridIndexedSources) {
-            const distance = Math.abs(
-              (entry.gridIndex as number) - clampedGridLevel,
-            );
-            if (distance < bestDistance) {
-              bestDistance = distance;
-              selectedEntry = entry;
-            }
-          }
-        }
-        return [selectedEntry.tsource];
-      }
+    if (
+      gridLevel === undefined ||
+      sources.length === 0 ||
+      !sources.every(
+        (source) => getSpatiallyIndexedSkeletonGridIndex(source) !== undefined,
+      )
+    ) {
+      return super.filterVisibleSources(sliceView, sources);
     }
-    return super.filterVisibleSources(sliceView, sources);
+    return selectSpatiallyIndexedSkeletonEntriesByGrid(
+      sources,
+      gridLevel,
+      getSpatiallyIndexedSkeletonGridIndex,
+    );
   }
 
-  // Draw is no-op as per SliceViewSpatiallyIndexedSkeletonLayer pattern
+  private updateChunkStatsWatchable() {
+    const { presentCount, totalCount } = mergeVisibleSpatialChunkKeyCounts(
+      this.visibleChunkKeysBySliceView.values(),
+    );
+    updateSpatialSkeletonGridChunkStatsWatchable(
+      (this.displayState as any).spatialSkeletonGridChunkStats2d as
+        | WatchableValue<SpatialSkeletonGridChunkStats>
+        | undefined,
+      presentCount,
+      totalCount,
+    );
+  }
+
+  private setVisibleChunkKeysForSliceView(
+    sliceViewId: number,
+    visibleChunkKeysBySource: VisibleSpatialChunkKeysBySource,
+  ) {
+    this.visibleChunkKeysBySliceView.set(sliceViewId, visibleChunkKeysBySource);
+    this.updateChunkStatsWatchable();
+  }
+
+  private clearVisibleChunkKeysForSliceView(sliceViewId: number) {
+    if (!this.visibleChunkKeysBySliceView.delete(sliceViewId)) {
+      return;
+    }
+    this.updateChunkStatsWatchable();
+  }
+
+  private registerChunkStatsSliceView(
+    sliceView: RefCounted & { rpcId: number },
+  ) {
+    const { rpcId } = sliceView;
+    if (this.trackedChunkStatsSliceViews.has(rpcId)) {
+      return;
+    }
+    this.trackedChunkStatsSliceViews.add(rpcId);
+    sliceView.registerDisposer(() => {
+      this.trackedChunkStatsSliceViews.delete(rpcId);
+      this.clearVisibleChunkKeysForSliceView(rpcId);
+    });
+  }
+
   draw(renderContext: SliceViewRenderContext) {
-    renderContext;
+    const displayState = this.displayState as any;
+    const lodValue = displayState.spatialSkeletonLod2d?.value as
+      | number
+      | undefined;
+    const sliceView = renderContext.sliceView;
+    this.registerChunkStatsSliceView(
+      sliceView as RefCounted & { rpcId: number },
+    );
+    if (displayState.objectAlpha?.value <= 0.0 || lodValue === undefined) {
+      this.clearVisibleChunkKeysForSliceView(sliceView.rpcId);
+      return;
+    }
+    const visibleSources =
+      renderContext.sliceView.visibleLayers.get(this)?.visibleSources ?? [];
+    this.setVisibleChunkKeysForSliceView(
+      sliceView.rpcId,
+      collectPlaneIntersectingSpatialChunkKeysBySource(
+        visibleSources,
+        renderContext.projectionParameters,
+        this.localPosition.value,
+        lodValue,
+      ),
+    );
   }
 }
 
 type SpatiallyIndexedSkeletonSourceEntry =
   SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>;
 
-interface SpatiallyIndexedGlobalNodeLookupEntry {
-  chunk: SpatiallyIndexedSkeletonChunk;
-  vertexIndex: number;
-}
-
 interface SpatiallyIndexedSkeletonLayerOptions {
   gridLevel?: WatchableValueInterface<number>;
   lod?: WatchableValueInterface<number>;
   sources2d?: SpatiallyIndexedSkeletonSourceEntry[];
+  selectedNodeId?: WatchableValueInterface<number | undefined>;
+  pendingNodePositionVersion?: WatchableValueInterface<number>;
+  getPendingNodePosition?: (nodeId: number) => ArrayLike<number> | undefined;
+  getCachedNode?: (nodeId: number) => SpatiallyIndexedSkeletonNode | undefined;
+  inspectionState?: SpatiallyIndexedSkeletonInspectionState;
+  maxRetainedOverlaySegments?: number;
 }
 
-type SpatiallyIndexedSkeletonView = "2d" | "3d";
+interface SpatiallyIndexedSkeletonInspectionState {
+  readonly nodeDataVersion: WatchableValueInterface<number>;
+  readonly pendingNodePositionVersion: WatchableValueInterface<number>;
+  getCachedSegmentNodes(
+    segmentId: number,
+  ): readonly SpatiallyIndexedSkeletonNode[] | undefined;
+  getFullSegmentNodes(
+    skeletonLayer: SpatiallyIndexedSkeletonLayer,
+    segmentId: number,
+  ): Promise<readonly SpatiallyIndexedSkeletonNode[]>;
+  evictInactiveSegmentNodes(activeSegmentIds: Iterable<number>): void;
+}
+
+interface SpatiallyIndexedSkeletonOverlayChunk extends SkeletonChunkInterface {
+  dispose(gl: GL): void;
+}
 
 function getSpatialSkeletonGridSpacing(
   transformedSource: TransformedSource,
-  levels: Array<{ size: { x: number; y: number; z: number } }> | undefined,
+  levels:
+    | Array<{ size: { x: number; y: number; z: number }; lod: number }>
+    | undefined,
   gridIndex: number,
 ) {
   const levelSize = levels?.[gridIndex]?.size;
@@ -1290,7 +1887,9 @@ function updateSpatialSkeletonGridRenderScaleHistogram(
   projectionParameters: any,
   localPosition: Float32Array,
   lod: number | undefined,
-  levels: Array<{ size: { x: number; y: number; z: number } }> | undefined,
+  levels:
+    | Array<{ size: { x: number; y: number; z: number }; lod: number }>
+    | undefined,
   relative: boolean,
   pixelSize: number,
 ) {
@@ -1344,44 +1943,458 @@ function updateSpatialSkeletonGridRenderScaleHistogram(
   }
 }
 
-export class SpatiallyIndexedSkeletonLayer extends RefCounted implements SkeletonLayerInterface {
+type VisibleSpatialChunksBySource = Map<
+  string,
+  readonly SpatiallyIndexedSkeletonChunk[]
+>;
+
+interface VisibleSpatialChunkKeys {
+  presentChunkKeys: Set<string>;
+  totalChunkKeys: Set<string>;
+}
+
+type VisibleSpatialChunkKeysBySource = Map<string, VisibleSpatialChunkKeys>;
+
+interface SpatialSkeletonGridChunkStats {
+  presentCount: number;
+  totalCount: number;
+}
+
+function getOrCreateVisibleSpatialChunkKeys(
+  visibleChunkKeysBySource: VisibleSpatialChunkKeysBySource,
+  sourceId: string,
+) {
+  let visibleChunkKeys = visibleChunkKeysBySource.get(sourceId);
+  if (visibleChunkKeys === undefined) {
+    visibleChunkKeys = {
+      presentChunkKeys: new Set<string>(),
+      totalChunkKeys: new Set<string>(),
+    };
+    visibleChunkKeysBySource.set(sourceId, visibleChunkKeys);
+  }
+  return visibleChunkKeys;
+}
+
+function updateSpatialSkeletonGridChunkStatsWatchable(
+  watchable: WatchableValue<SpatialSkeletonGridChunkStats> | undefined,
+  presentCount: number,
+  totalCount: number,
+) {
+  if (watchable === undefined) return;
+  const prev = watchable.value;
+  if (prev.presentCount === presentCount && prev.totalCount === totalCount) {
+    return;
+  }
+  watchable.value = { presentCount, totalCount };
+}
+
+function mergeVisibleSpatialChunkKeyCounts(
+  visibleChunkKeysByView: Iterable<VisibleSpatialChunkKeysBySource>,
+  selectedSourceIds?: Iterable<string>,
+) {
+  const presentChunkKeys = new Set<string>();
+  const totalChunkKeys = new Set<string>();
+  const selectedSourceIdSet =
+    selectedSourceIds === undefined ? undefined : new Set(selectedSourceIds);
+  for (const visibleChunkKeysBySource of visibleChunkKeysByView) {
+    for (const [sourceId, visibleChunkKeys] of visibleChunkKeysBySource) {
+      if (
+        selectedSourceIdSet !== undefined &&
+        !selectedSourceIdSet.has(sourceId)
+      ) {
+        continue;
+      }
+      for (const chunkKey of visibleChunkKeys.presentChunkKeys) {
+        presentChunkKeys.add(`${sourceId}:${chunkKey}`);
+      }
+      for (const chunkKey of visibleChunkKeys.totalChunkKeys) {
+        totalChunkKeys.add(`${sourceId}:${chunkKey}`);
+      }
+    }
+  }
+  return {
+    presentCount: presentChunkKeys.size,
+    totalCount: totalChunkKeys.size,
+  };
+}
+
+function collectPlaneIntersectingSpatialChunkKeysBySource(
+  transformedSources: readonly TransformedSource[],
+  projectionParameters: any,
+  localPosition: Float32Array,
+  lod: number | undefined,
+) {
+  const visibleChunkKeysBySource: VisibleSpatialChunkKeysBySource = new Map();
+  if (lod === undefined || transformedSources.length === 0) {
+    return visibleChunkKeysBySource;
+  }
+  const lodSuffix = `:${lod}`;
+  const seenChunkKeysBySource = new Map<string, Set<string>>();
+  for (const tsource of transformedSources) {
+    const sourceId = getObjectId(tsource.source);
+    const visibleChunkKeys = getOrCreateVisibleSpatialChunkKeys(
+      visibleChunkKeysBySource,
+      sourceId,
+    );
+    let seenChunkKeys = seenChunkKeysBySource.get(sourceId);
+    if (seenChunkKeys === undefined) {
+      seenChunkKeys = new Set<string>();
+      seenChunkKeysBySource.set(sourceId, seenChunkKeys);
+    }
+    const chunkLayout = getNormalizedChunkLayout(
+      projectionParameters,
+      tsource.chunkLayout,
+    );
+    forEachPlaneIntersectingVolumetricChunk(
+      projectionParameters,
+      localPosition,
+      tsource,
+      chunkLayout,
+      (positionInChunks) => {
+        const chunkKey = `${positionInChunks.join()}${lodSuffix}`;
+        if (seenChunkKeys!.has(chunkKey)) {
+          return;
+        }
+        seenChunkKeys!.add(chunkKey);
+        visibleChunkKeys.totalChunkKeys.add(chunkKey);
+        const chunk = (
+          tsource.source as SpatiallyIndexedSkeletonSource
+        ).chunks.get(chunkKey) as SpatiallyIndexedSkeletonChunk | undefined;
+        if (chunk?.state === ChunkState.GPU_MEMORY) {
+          visibleChunkKeys.presentChunkKeys.add(chunkKey);
+        }
+      },
+    );
+  }
+  return visibleChunkKeysBySource;
+}
+
+export class SpatiallyIndexedSkeletonLayer
+  extends RefCounted
+  implements SkeletonLayerInterface
+{
   layerChunkProgressInfo = new LayerChunkProgressInfo();
   redrawNeeded = new NullarySignal();
+  dynamicSegmentAppearance = true;
   vertexAttributes: VertexAttributeRenderInfo[];
   segmentColorAttributeIndex: number | undefined;
+  selectedNodeAttributeIndex: number | undefined;
+  readonly chunkGeometryRenderLayerInterface: SkeletonLayerInterface;
   fallbackShaderParameters = new WatchableValue(
     getFallbackBuilderState(parseShaderUiControls(DEFAULT_FRAGMENT_MAIN)),
   );
   backend: ChunkRenderLayerFrontend;
   localPosition: WatchableValueInterface<Float32Array>;
+  readonly chunkTransform: WatchableValueInterface<
+    ValueOrError<ChunkTransformParameters>
+  >;
   rpc: RPC | undefined;
 
-  private generation = 0;
-  private filteredAttributeTextureFormats = [
+  private overlayAttributeTextureFormats = [
     vertexPositionTextureFormat,
     segmentTextureFormat,
-    segmentColorTextureFormat,
+    selectedNodeTextureFormat,
   ];
   private regularSkeletonLayerWatchable = new WatchableValue(false);
   private regularSkeletonLayerUserLayer: UserLayer | undefined;
   private removeRegularSkeletonLayerUserLayerListener:
     | (() => boolean)
     | undefined;
-  private cachedGlobalNodeLookupKey: string | undefined;
-  private cachedGlobalNodeLookupChunkSignatures = new Map<
-    SpatiallyIndexedSkeletonChunk,
-    string
+  private visibleChunksByView = new Map<
+    SpatiallyIndexedSkeletonView,
+    VisibleSpatialChunksBySource
   >();
-  private cachedGlobalNodeLookup = new Map<
-    number,
-    SpatiallyIndexedGlobalNodeLookupEntry
+  private visibleChunkKeysByRenderedView = new Map<
+    SpatiallyIndexedSkeletonView,
+    Map<number, VisibleSpatialChunkKeysBySource>
   >();
   gridLevel: WatchableValueInterface<number>;
   lod: WatchableValueInterface<number>;
+  private selectedNodeId:
+    | WatchableValueInterface<number | undefined>
+    | undefined;
+  private pendingNodePositionVersion:
+    | WatchableValueInterface<number>
+    | undefined;
+  private getPendingNodePositionOverride:
+    | ((nodeId: number) => ArrayLike<number> | undefined)
+    | undefined;
+  private getCachedNodeInfo:
+    | ((nodeId: number) => SpatiallyIndexedSkeletonNode | undefined)
+    | undefined;
+  private inspectionState: SpatiallyIndexedSkeletonInspectionState | undefined;
+  private overlayChunk: SpatiallyIndexedSkeletonOverlayChunk | undefined;
+  private overlayChunkKey: string | undefined;
+  private pendingOverlaySegmentLoads = new Set<number>();
+  private browseExcludedSegments = new Uint64Set();
+  private browseExcludedSegmentsKey: string | undefined;
+  private suppressedBrowseSegmentIds = new Set<number>();
+  private retainedOverlaySegmentIds: number[] = [];
+  private maxRetainedOverlaySegments: number;
 
-  private markFilteredDataDirty() {
-    this.generation++;
+  private *iterateUniqueChunkSources() {
+    const seenSourceIds = new Set<string>();
+    for (const sourceEntry of [...this.sources, ...this.sources2d]) {
+      const sourceId = getObjectId(sourceEntry.chunkSource);
+      if (seenSourceIds.has(sourceId)) continue;
+      seenSourceIds.add(sourceId);
+      yield sourceEntry.chunkSource;
+    }
+  }
+
+  private disposeOverlayChunk() {
+    this.overlayChunk?.dispose(this.gl);
+    this.overlayChunk = undefined;
+    this.overlayChunkKey = undefined;
+  }
+
+  private requestOverlaySegmentLoad(segmentId: number) {
+    if (
+      this.inspectionState === undefined ||
+      this.pendingOverlaySegmentLoads.has(segmentId)
+    ) {
+      return;
+    }
+    this.pendingOverlaySegmentLoads.add(segmentId);
+    void this.inspectionState
+      .getFullSegmentNodes(this, segmentId)
+      .catch(() => {})
+      .finally(() => {
+        this.pendingOverlaySegmentLoads.delete(segmentId);
+        this.disposeOverlayChunk();
+        this.redrawNeeded.dispatch();
+      });
+  }
+
+  private getOverlayChunkKey(segmentIds: readonly number[]) {
+    return [
+      segmentIds.join(","),
+      `selected:${this.selectedNodeId?.value ?? ""}`,
+      `pending:${this.pendingNodePositionVersion?.value ?? ""}`,
+      `data:${this.inspectionState?.nodeDataVersion.value ?? ""}`,
+    ].join("|");
+  }
+
+  private getActiveEditableSegmentIds() {
+    const segments = getVisibleSegments(
+      this.displayState.segmentationGroupState.value,
+    );
+    const segmentIds: number[] = [];
+    for (const segmentId of segments.keys()) {
+      const normalizedSegmentId = Number(segmentId);
+      if (
+        !Number.isSafeInteger(normalizedSegmentId) ||
+        normalizedSegmentId <= 0
+      ) {
+        continue;
+      }
+      segmentIds.push(normalizedSegmentId);
+    }
+    segmentIds.sort((a, b) => a - b);
+    return segmentIds;
+  }
+
+  getRetainedOverlaySegmentIds() {
+    return this.retainedOverlaySegmentIds;
+  }
+
+  retainOverlaySegment(segmentId: number) {
+    const nextRetainedOverlaySegmentIds =
+      retainSpatiallyIndexedSkeletonOverlaySegment(
+        this.retainedOverlaySegmentIds,
+        segmentId,
+        { maxRetained: this.maxRetainedOverlaySegments },
+      );
+    if (
+      nextRetainedOverlaySegmentIds.length ===
+        this.retainedOverlaySegmentIds.length &&
+      nextRetainedOverlaySegmentIds.every(
+        (candidateSegmentId, index) =>
+          candidateSegmentId === this.retainedOverlaySegmentIds[index],
+      )
+    ) {
+      return false;
+    }
+    this.retainedOverlaySegmentIds = nextRetainedOverlaySegmentIds;
     this.redrawNeeded.dispatch();
+    return true;
+  }
+
+  suppressBrowseSegment(segmentId: number) {
+    const normalizedSegmentId = Math.round(Number(segmentId));
+    if (
+      !Number.isSafeInteger(normalizedSegmentId) ||
+      normalizedSegmentId <= 0 ||
+      this.suppressedBrowseSegmentIds.has(normalizedSegmentId)
+    ) {
+      return false;
+    }
+    this.suppressedBrowseSegmentIds.add(normalizedSegmentId);
+    this.redrawNeeded.dispatch();
+    return true;
+  }
+
+  private getOverlayRenderSegmentIds() {
+    return mergeSpatiallyIndexedSkeletonOverlaySegmentIds(
+      this.getActiveEditableSegmentIds(),
+      this.retainedOverlaySegmentIds,
+    );
+  }
+
+  private getLoadedOverlaySegmentIds(
+    segmentIds: readonly number[] = this.getOverlayRenderSegmentIds(),
+  ) {
+    if (this.inspectionState === undefined) {
+      return [];
+    }
+    return segmentIds.filter(
+      (segmentId) =>
+        this.inspectionState?.getCachedSegmentNodes(segmentId) !== undefined,
+    );
+  }
+
+  private getNormalizedBrowsePassExcludedSegmentIds() {
+    const segmentIds = new Set<number>();
+    for (const segmentId of this.getLoadedOverlaySegmentIds()) {
+      const normalizedSegmentId = Math.round(Number(segmentId));
+      if (
+        !Number.isSafeInteger(normalizedSegmentId) ||
+        normalizedSegmentId <= 0
+      ) {
+        continue;
+      }
+      segmentIds.add(normalizedSegmentId);
+    }
+    for (const segmentId of this.suppressedBrowseSegmentIds) {
+      const normalizedSegmentId = Math.round(Number(segmentId));
+      if (
+        !Number.isSafeInteger(normalizedSegmentId) ||
+        normalizedSegmentId <= 0
+      ) {
+        continue;
+      }
+      segmentIds.add(normalizedSegmentId);
+    }
+    return [...segmentIds].sort((a, b) => a - b);
+  }
+
+  private getBrowsePassExcludedSegments() {
+    const segmentIds = this.getNormalizedBrowsePassExcludedSegmentIds();
+    if (segmentIds.length === 0) {
+      if (this.browseExcludedSegments.size !== 0) {
+        this.browseExcludedSegments.clear();
+      }
+      this.browseExcludedSegmentsKey = undefined;
+      return undefined;
+    }
+    const excludedSegmentsKey = segmentIds.join(",");
+    if (this.browseExcludedSegmentsKey !== excludedSegmentsKey) {
+      this.browseExcludedSegments.clear();
+      this.browseExcludedSegments.add(
+        segmentIds
+          .filter(
+            (segmentId) => Number.isSafeInteger(segmentId) && segmentId > 0,
+          )
+          .map((segmentId) => BigInt(segmentId)),
+      );
+      this.browseExcludedSegmentsKey = excludedSegmentsKey;
+    }
+    return this.browseExcludedSegments;
+  }
+
+  private resolveSourceBackedOverlayChunk():
+    | SpatiallyIndexedSkeletonOverlayChunk
+    | undefined {
+    if (this.inspectionState === undefined) {
+      this.disposeOverlayChunk();
+      return undefined;
+    }
+    const overlaySegmentIds = this.getOverlayRenderSegmentIds();
+    if (overlaySegmentIds.length === 0) {
+      this.disposeOverlayChunk();
+      return undefined;
+    }
+    this.inspectionState.evictInactiveSegmentNodes(overlaySegmentIds);
+    const segmentNodeSets: SpatiallyIndexedSkeletonNode[][] = [];
+    const loadedSegmentIds: number[] = [];
+    for (const segmentId of overlaySegmentIds) {
+      const segmentNodes =
+        this.inspectionState.getCachedSegmentNodes(segmentId);
+      if (segmentNodes === undefined) {
+        this.requestOverlaySegmentLoad(segmentId);
+        continue;
+      }
+      loadedSegmentIds.push(segmentId);
+      segmentNodeSets.push(segmentNodes.map((node) => node));
+    }
+    if (loadedSegmentIds.length === 0) {
+      this.disposeOverlayChunk();
+      return undefined;
+    }
+    const overlayChunkKey = this.getOverlayChunkKey(loadedSegmentIds);
+    if (
+      this.overlayChunk !== undefined &&
+      this.overlayChunkKey === overlayChunkKey
+    ) {
+      return this.overlayChunk;
+    }
+    this.disposeOverlayChunk();
+    const geometry = buildSpatiallyIndexedSkeletonOverlayGeometry(
+      segmentNodeSets,
+      {
+        selectedNodeId: this.selectedNodeId?.value,
+        getPendingNodePosition: this.getPendingNodePositionOverride,
+      },
+    );
+    const positionBytes = new Uint8Array(geometry.positions.buffer);
+    const segmentBytes = new Uint8Array(geometry.segmentIds.buffer);
+    const selectedBytes = new Uint8Array(geometry.selected.buffer);
+    const vertexBytes = new Uint8Array(
+      positionBytes.byteLength +
+        segmentBytes.byteLength +
+        selectedBytes.byteLength,
+    );
+    vertexBytes.set(positionBytes, 0);
+    vertexBytes.set(segmentBytes, positionBytes.byteLength);
+    vertexBytes.set(
+      selectedBytes,
+      positionBytes.byteLength + segmentBytes.byteLength,
+    );
+    const vertexOffsets = new Uint32Array([
+      0,
+      positionBytes.byteLength,
+      positionBytes.byteLength + segmentBytes.byteLength,
+    ]);
+    const vertexAttributeTextures = uploadVertexAttributesToGPU(
+      this.gl,
+      vertexBytes,
+      vertexOffsets,
+      this.overlayAttributeTextureFormats,
+    );
+    const indexBuffer = GLBuffer.fromData(
+      this.gl,
+      geometry.indices,
+      WebGL2RenderingContext.ARRAY_BUFFER,
+      WebGL2RenderingContext.STATIC_DRAW,
+    );
+    this.overlayChunk = {
+      vertexAttributeTextures,
+      indexBuffer,
+      numIndices: geometry.indices.length,
+      numVertices: geometry.numVertices,
+      pickNodeIds: geometry.nodeIds,
+      pickNodePositions: geometry.nodePositions,
+      pickSegmentIds: geometry.pickSegmentIds,
+      pickEdgeSegmentIds: geometry.pickEdgeSegmentIds,
+      dispose: (gl: GL) => {
+        for (const texture of vertexAttributeTextures) {
+          if (texture) gl.deleteTexture(texture);
+        }
+        indexBuffer.dispose();
+      },
+    };
+    this.overlayChunkKey = overlayChunkKey;
+    return this.overlayChunk;
   }
 
   private computeHasRegularSkeletonLayer(userLayer: UserLayer) {
@@ -1396,7 +2409,9 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     return false;
   }
 
-  private updateHasRegularSkeletonLayerWatchable(userLayer: UserLayer | undefined) {
+  private updateHasRegularSkeletonLayerWatchable(
+    userLayer: UserLayer | undefined,
+  ) {
     if (this.regularSkeletonLayerUserLayer !== userLayer) {
       this.removeRegularSkeletonLayerUserLayerListener?.();
       this.removeRegularSkeletonLayerUserLayerListener = undefined;
@@ -1406,7 +2421,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
           const nextValue = this.computeHasRegularSkeletonLayer(userLayer);
           if (this.regularSkeletonLayerWatchable.value !== nextValue) {
             this.regularSkeletonLayerWatchable.value = nextValue;
-            this.markFilteredDataDirty();
+            this.redrawNeeded.dispatch();
           }
         };
         update();
@@ -1414,100 +2429,20 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
           userLayer.layersChanged.add(update);
       } else if (this.regularSkeletonLayerWatchable.value) {
         this.regularSkeletonLayerWatchable.value = false;
-        this.markFilteredDataDirty();
+        this.redrawNeeded.dispatch();
       }
     }
     return this.regularSkeletonLayerWatchable.value;
   }
 
-  private lodMatches(chunk: SpatiallyIndexedSkeletonChunk, targetLod: number | undefined) {
+  private lodMatches(
+    chunk: SpatiallyIndexedSkeletonChunk,
+    targetLod: number | undefined,
+  ) {
     if (targetLod === undefined || chunk.lod === undefined) {
       return true;
     }
     return Math.abs(chunk.lod - targetLod) < 1e-6;
-  }
-
-  private makeGlobalNodeLookupCacheKey(
-    selectedSources: SpatiallyIndexedSkeletonSourceEntry[],
-    targetLod: number | undefined,
-  ) {
-    const sourceKey = selectedSources
-      .map((entry) => getObjectId(entry.chunkSource))
-      .join(",");
-    const lodKey =
-      targetLod === undefined ? "none" : Math.round(targetLod * 1e6) / 1e6;
-    return `${lodKey}|${sourceKey}`;
-  }
-
-  private computeGlobalNodeLookupChunkSignatures(
-    selectedSources: SpatiallyIndexedSkeletonSourceEntry[],
-    targetLod: number | undefined,
-  ) {
-    const signatures = new Map<SpatiallyIndexedSkeletonChunk, string>();
-    for (const sourceEntry of selectedSources) {
-      const chunks = sourceEntry.chunkSource.chunks;
-      for (const chunk of chunks.values()) {
-        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
-        if (!this.lodMatches(typedChunk, targetLod)) continue;
-        if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
-        const nodeMap = typedChunk.nodeMap;
-        const signature = `${getObjectId(nodeMap)}:${nodeMap.size}`;
-        signatures.set(typedChunk, signature);
-      }
-    }
-    return signatures;
-  }
-
-  private chunkSignaturesEqual(
-    nextSignatures: Map<SpatiallyIndexedSkeletonChunk, string>,
-  ) {
-    const prevSignatures = this.cachedGlobalNodeLookupChunkSignatures;
-    if (prevSignatures.size !== nextSignatures.size) return false;
-    for (const [chunk, signature] of nextSignatures) {
-      if (prevSignatures.get(chunk) !== signature) return false;
-    }
-    return true;
-  }
-
-  private rebuildGlobalNodeLookup(
-    selectedSources: SpatiallyIndexedSkeletonSourceEntry[],
-    targetLod: number | undefined,
-  ) {
-    this.cachedGlobalNodeLookup.clear();
-    for (const sourceEntry of selectedSources) {
-      const chunks = sourceEntry.chunkSource.chunks;
-      for (const chunk of chunks.values()) {
-        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
-        if (!this.lodMatches(typedChunk, targetLod)) continue;
-        if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
-        for (const [nodeId, vertexIndex] of typedChunk.nodeMap.entries()) {
-          this.cachedGlobalNodeLookup.set(nodeId, {
-            chunk: typedChunk,
-            vertexIndex,
-          });
-        }
-      }
-    }
-  }
-
-  private getGlobalNodeLookup(
-    selectedSources: SpatiallyIndexedSkeletonSourceEntry[],
-    targetLod: number | undefined,
-  ) {
-    const key = this.makeGlobalNodeLookupCacheKey(selectedSources, targetLod);
-    const nextSignatures = this.computeGlobalNodeLookupChunkSignatures(
-      selectedSources,
-      targetLod,
-    );
-    const shouldRebuild =
-      this.cachedGlobalNodeLookupKey !== key ||
-      !this.chunkSignaturesEqual(nextSignatures);
-    if (shouldRebuild) {
-      this.cachedGlobalNodeLookupKey = key;
-      this.cachedGlobalNodeLookupChunkSignatures = nextSignatures;
-      this.rebuildGlobalNodeLookup(selectedSources, targetLod);
-    }
-    return this.cachedGlobalNodeLookup;
   }
 
   get visibility() {
@@ -1520,7 +2455,9 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
 
   constructor(
     public chunkManager: ChunkManager,
-    sources: SpatiallyIndexedSkeletonSourceEntry[] | SpatiallyIndexedSkeletonSource,
+    sources:
+      | SpatiallyIndexedSkeletonSourceEntry[]
+      | SpatiallyIndexedSkeletonSource,
     public displayState: SkeletonLayerDisplayState & {
       localPosition: WatchableValueInterface<Float32Array>;
     },
@@ -1531,9 +2468,7 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       this.removeRegularSkeletonLayerUserLayerListener?.();
       this.removeRegularSkeletonLayerUserLayerListener = undefined;
       this.regularSkeletonLayerUserLayer = undefined;
-      this.cachedGlobalNodeLookup.clear();
-      this.cachedGlobalNodeLookupChunkSignatures.clear();
-      this.cachedGlobalNodeLookupKey = undefined;
+      this.disposeOverlayChunk();
     });
     let sources3d: SpatiallyIndexedSkeletonSourceEntry[];
     let sources2d = options.sources2d ?? [];
@@ -1554,18 +2489,41 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
       sources2d = sources3d;
     }
     if (sources3d.length === 0) {
-      throw new Error("SpatiallyIndexedSkeletonLayer requires at least one source.");
+      throw new Error(
+        "SpatiallyIndexedSkeletonLayer requires at least one source.",
+      );
     }
     this.sources = sources3d;
     this.sources2d = sources2d;
     this.source = sources3d[0].chunkSource;
     this.localPosition = displayState.localPosition;
+    this.chunkTransform = this.registerDisposer(
+      makeCachedLazyDerivedWatchableValue(
+        (modelTransform) =>
+          makeValueOrError(() =>
+            getChunkTransformParameters(valueOrThrow(modelTransform)),
+          ),
+        this.displayState.transform,
+      ),
+    );
     this.gridLevel =
       options.gridLevel ??
       (displayState as any).spatialSkeletonGridLevel3d ??
       new WatchableValue(0);
     this.lod =
       options.lod ?? (displayState as any).skeletonLod ?? new WatchableValue(0);
+    this.selectedNodeId = options.selectedNodeId;
+    this.pendingNodePositionVersion = options.pendingNodePositionVersion;
+    this.getPendingNodePositionOverride = options.getPendingNodePosition;
+    this.getCachedNodeInfo = options.getCachedNode;
+    this.inspectionState = options.inspectionState;
+    this.maxRetainedOverlaySegments = Math.max(
+      1,
+      Math.round(
+        options.maxRetainedOverlaySegments ??
+          DEFAULT_MAX_RETAINED_OVERLAY_SEGMENTS,
+      ),
+    );
     registerRedrawWhenSegmentationDisplayState3DChanged(displayState, this);
     this.displayState.shaderError.value = undefined;
     const { skeletonRenderingOptions: renderingOptions } = displayState;
@@ -1578,67 +2536,103 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
 
     this.vertexAttributes = [
       ...this.source.vertexAttributes,
-      segmentColorAttribute,
+      selectedNodeAttribute,
     ];
-    this.segmentColorAttributeIndex = this.vertexAttributes.length - 1;
-    const markDirty = () => this.markFilteredDataDirty();
-    // Monitor visible segment changes to update filtered buffers.
+    this.chunkGeometryRenderLayerInterface = {
+      vertexAttributes: this.source.vertexAttributes,
+      segmentColorAttributeIndex: this.segmentColorAttributeIndex,
+      dynamicSegmentAppearance: this.dynamicSegmentAppearance,
+      gl: this.gl,
+      fallbackShaderParameters: this.fallbackShaderParameters,
+      displayState: this.displayState,
+    };
+    this.segmentColorAttributeIndex = undefined;
+    const selectedNodeIndex = this.vertexAttributes.findIndex(
+      (x) => x.name === selectedNodeAttribute.name,
+    );
+    this.selectedNodeAttributeIndex =
+      selectedNodeIndex >= 0 ? selectedNodeIndex : undefined;
+    const requestRedraw = () => this.redrawNeeded.dispatch();
+    const redrawWatchables = new Set<object>();
+    const registerNumericRedrawWatchable = (
+      watchable: WatchableValueInterface<number> | undefined,
+    ) => {
+      if (watchable === undefined) return;
+      const key = watchable as object;
+      if (redrawWatchables.has(key)) return;
+      redrawWatchables.add(key);
+      this.registerDisposer(watchable.changed.add(requestRedraw));
+    };
     this.registerDisposer(
       registerNested((context, segmentationGroup) => {
         context.registerDisposer(
-          segmentationGroup.visibleSegments.changed.add(() =>
-            markDirty(),
-          ),
+          segmentationGroup.visibleSegments.changed.add(() => requestRedraw()),
         );
         context.registerDisposer(
           segmentationGroup.temporaryVisibleSegments.changed.add(() =>
-            markDirty(),
+            requestRedraw(),
           ),
         );
         context.registerDisposer(
           segmentationGroup.useTemporaryVisibleSegments.changed.add(() =>
-            markDirty(),
+            requestRedraw(),
           ),
         );
       }, this.displayState.segmentationGroupState),
     );
-    // Monitor segment color changes to update filtered buffers.
     this.registerDisposer(
       registerNested((context, colorGroupState) => {
         context.registerDisposer(
-          colorGroupState.segmentColorHash.changed.add(() =>
-            markDirty(),
-          ),
+          colorGroupState.segmentColorHash.changed.add(() => requestRedraw()),
         );
         context.registerDisposer(
           colorGroupState.segmentDefaultColor.changed.add(() =>
-            markDirty(),
+            requestRedraw(),
           ),
         );
         context.registerDisposer(
           colorGroupState.segmentStatedColors.changed.add(() =>
-            markDirty(),
+            requestRedraw(),
           ),
         );
       }, this.displayState.segmentationColorGroupState),
     );
     this.registerDisposer(
-      displayState.objectAlpha.changed.add(() =>
-        markDirty(),
-      ),
+      displayState.objectAlpha.changed.add(() => requestRedraw()),
     );
-    if (this.gridLevel !== undefined) {
+    const selectedNodeWatchable = this.selectedNodeId;
+    if (selectedNodeWatchable?.changed) {
+      this.registerDisposer(selectedNodeWatchable.changed.add(requestRedraw));
+    }
+    const pendingNodePositionVersion = options.pendingNodePositionVersion;
+    if (pendingNodePositionVersion?.changed) {
       this.registerDisposer(
-        this.gridLevel.changed.add(() =>
-          markDirty(),
-        ),
+        pendingNodePositionVersion.changed.add(() => {
+          this.redrawNeeded.dispatch();
+        }),
       );
     }
+    const inspectionState = this.inspectionState;
+    if (inspectionState !== undefined) {
+      this.registerDisposer(
+        inspectionState.nodeDataVersion.changed.add(() => {
+          this.redrawNeeded.dispatch();
+        }),
+      );
+    }
+    registerNumericRedrawWatchable(this.gridLevel);
+    registerNumericRedrawWatchable(
+      (displayState as any).spatialSkeletonGridLevel2d,
+    );
+    registerNumericRedrawWatchable(
+      (displayState as any).spatialSkeletonGridLevel3d,
+    );
+    registerNumericRedrawWatchable(this.lod);
+    registerNumericRedrawWatchable((displayState as any).spatialSkeletonLod2d);
+    registerNumericRedrawWatchable((displayState as any).skeletonLod);
     if (displayState.hiddenObjectAlpha) {
       this.registerDisposer(
-        displayState.hiddenObjectAlpha.changed.add(() =>
-          markDirty(),
-        ),
+        displayState.hiddenObjectAlpha.changed.add(() => requestRedraw()),
       );
     }
 
@@ -1649,29 +2643,26 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     const rpc = chunkManager.rpc!;
     this.rpc = rpc;
     sharedObject.RPC_TYPE_ID = SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_RPC_ID;
-    
+
     const renderScaleTargetWatchable = this.registerDisposer(
-      SharedWatchableValue.makeFromExisting(rpc, displayState.renderScaleTarget),
+      SharedWatchableValue.makeFromExisting(
+        rpc,
+        displayState.renderScaleTarget,
+      ),
     );
-    
+
     const skeletonLodWatchable = this.registerDisposer(
       SharedWatchableValue.makeFromExisting(rpc, this.lod),
     );
 
     const skeletonGridLevelWatchable = this.registerDisposer(
-      SharedWatchableValue.makeFromExisting(
-        rpc,
-        this.gridLevel,
-      ),
+      SharedWatchableValue.makeFromExisting(rpc, this.gridLevel),
     );
-    
+
     sharedObject.initializeCounterpart(rpc, {
       chunkManager: chunkManager.rpcId,
       localPosition: this.registerDisposer(
-        SharedWatchableValue.makeFromExisting(
-          rpc,
-          this.localPosition,
-        ),
+        SharedWatchableValue.makeFromExisting(rpc, this.localPosition),
       ).rpcId,
       renderScaleTarget: renderScaleTargetWatchable.rpcId,
       skeletonLod: skeletonLodWatchable.rpcId,
@@ -1692,94 +2683,420 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     view: SpatiallyIndexedSkeletonView,
     gridLevel: number | undefined,
   ) {
-    const sources = this.getSources(view);
-    if (sources.length === 0) return sources;
-    const viewFiltered = sources.filter((entry) => {
-      const params = (entry.chunkSource as any).parameters;
-      const sourceView = params?.view as string | undefined;
-      return sourceView === undefined || sourceView === view;
-    });
-    if (gridLevel === undefined || viewFiltered.length === 0) {
-      return viewFiltered;
-    }
-    const gridIndexedSources = viewFiltered
-      .map((entry) => ({
-        entry,
-        gridIndex: (entry.chunkSource as any).parameters?.gridIndex as
-          | number
-          | undefined,
-      }))
-      .filter((entry) => entry.gridIndex !== undefined);
-    if (gridIndexedSources.length !== viewFiltered.length) {
-      return viewFiltered;
-    }
-    let minGridIndex = Number.POSITIVE_INFINITY;
-    let maxGridIndex = Number.NEGATIVE_INFINITY;
-    for (const entry of gridIndexedSources) {
-      const index = entry.gridIndex as number;
-      minGridIndex = Math.min(minGridIndex, index);
-      maxGridIndex = Math.max(maxGridIndex, index);
-    }
-    const clampedGridLevel = Math.min(
-      Math.max(gridLevel, minGridIndex),
-      maxGridIndex,
+    return selectSpatiallyIndexedSkeletonEntriesForView(
+      this.getSources(view),
+      view,
+      gridLevel,
+      getSpatiallyIndexedSkeletonSourceView,
+      getSpatiallyIndexedSkeletonGridIndex,
     );
-    let selectedEntry =
-      gridIndexedSources.find(
-        (entry) => entry.gridIndex === clampedGridLevel,
-      ) ?? gridIndexedSources[0];
-    if (selectedEntry.gridIndex !== clampedGridLevel) {
-      let bestDistance = Number.POSITIVE_INFINITY;
-      for (const entry of gridIndexedSources) {
-        const distance = Math.abs(
-          (entry.gridIndex as number) - clampedGridLevel,
+  }
+
+  private getCachedNodeSnapshot(nodeId: number) {
+    const cachedNode = this.getCachedNodeInfo?.(nodeId);
+    if (cachedNode === undefined) {
+      return undefined;
+    }
+    const pendingPosition =
+      this.getPendingNodePositionOverride?.(cachedNode.nodeId) ??
+      cachedNode.position;
+    return {
+      ...cachedNode,
+      position: new Float32Array([
+        Number(pendingPosition[0]),
+        Number(pendingPosition[1]),
+        Number(pendingPosition[2]),
+      ]),
+    };
+  }
+
+  private getVisibleChunksForView(view: SpatiallyIndexedSkeletonView) {
+    return this.visibleChunksByView.get(view);
+  }
+
+  private getGridLevelForView(view: SpatiallyIndexedSkeletonView) {
+    const displayState = this.displayState as any;
+    return (
+      view === "2d"
+        ? displayState.spatialSkeletonGridLevel2d?.value
+        : displayState.spatialSkeletonGridLevel3d?.value
+    ) as number | undefined;
+  }
+
+  private getGridChunkStatsWatchable(view: SpatiallyIndexedSkeletonView) {
+    return (
+      view === "2d"
+        ? (this.displayState as any).spatialSkeletonGridChunkStats2d
+        : (this.displayState as any).spatialSkeletonGridChunkStats3d
+    ) as WatchableValue<SpatialSkeletonGridChunkStats> | undefined;
+  }
+
+  private updateSelectedChunkStatsForView(view: SpatiallyIndexedSkeletonView) {
+    const visibleChunkKeysByRenderedView =
+      this.visibleChunkKeysByRenderedView.get(view);
+    const selectedSourceIds = new Set<string>();
+    for (const sourceEntry of this.selectSourcesForViewAndGrid(
+      view,
+      this.getGridLevelForView(view),
+    )) {
+      selectedSourceIds.add(getObjectId(sourceEntry.chunkSource));
+    }
+    const { presentCount, totalCount } = mergeVisibleSpatialChunkKeyCounts(
+      visibleChunkKeysByRenderedView?.values() ?? [],
+      selectedSourceIds,
+    );
+    updateSpatialSkeletonGridChunkStatsWatchable(
+      this.getGridChunkStatsWatchable(view),
+      presentCount,
+      totalCount,
+    );
+  }
+
+  setVisibleChunkKeysForRenderedView(
+    view: SpatiallyIndexedSkeletonView,
+    renderedViewId: number,
+    visibleChunkKeysBySource: VisibleSpatialChunkKeysBySource,
+  ) {
+    let visibleChunkKeysByRenderedView =
+      this.visibleChunkKeysByRenderedView.get(view);
+    if (visibleChunkKeysByRenderedView === undefined) {
+      visibleChunkKeysByRenderedView = new Map();
+      this.visibleChunkKeysByRenderedView.set(
+        view,
+        visibleChunkKeysByRenderedView,
+      );
+    }
+    visibleChunkKeysByRenderedView.set(
+      renderedViewId,
+      visibleChunkKeysBySource,
+    );
+    this.updateSelectedChunkStatsForView(view);
+  }
+
+  clearVisibleChunkKeysForRenderedView(
+    view: SpatiallyIndexedSkeletonView,
+    renderedViewId: number,
+  ) {
+    const visibleChunkKeysByRenderedView =
+      this.visibleChunkKeysByRenderedView.get(view);
+    if (visibleChunkKeysByRenderedView === undefined) {
+      return;
+    }
+    if (!visibleChunkKeysByRenderedView.delete(renderedViewId)) {
+      return;
+    }
+    if (visibleChunkKeysByRenderedView.size === 0) {
+      this.visibleChunkKeysByRenderedView.delete(view);
+    }
+    this.updateSelectedChunkStatsForView(view);
+  }
+
+  private *iterateCandidateChunks(
+    selectedSources: readonly SpatiallyIndexedSkeletonSourceEntry[],
+    targetLod: number | undefined,
+    options: {
+      view?: SpatiallyIndexedSkeletonView;
+    } = {},
+  ): Iterable<SpatiallyIndexedSkeletonChunk> {
+    const visibleChunksBySource =
+      options.view === undefined
+        ? undefined
+        : this.getVisibleChunksForView(options.view);
+    const useVisibleChunks = visibleChunksBySource !== undefined;
+    for (const sourceEntry of selectedSources) {
+      if (useVisibleChunks) {
+        const visibleChunks = visibleChunksBySource.get(
+          getObjectId(sourceEntry.chunkSource),
         );
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          selectedEntry = entry;
+        if (visibleChunks === undefined) {
+          continue;
+        }
+        for (const chunk of visibleChunks) {
+          if (!this.lodMatches(chunk, targetLod)) continue;
+          if (chunk.state !== ChunkState.GPU_MEMORY) continue;
+          yield chunk;
+        }
+        continue;
+      }
+      for (const chunk of sourceEntry.chunkSource.chunks.values()) {
+        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
+        if (!this.lodMatches(typedChunk, targetLod)) continue;
+        if (typedChunk.state !== ChunkState.GPU_MEMORY) continue;
+        yield typedChunk;
+      }
+    }
+  }
+
+  invalidateSourceCaches() {
+    let invalidated = false;
+    for (const chunkSource of this.iterateUniqueChunkSources()) {
+      chunkSource.invalidateCache();
+      invalidated = true;
+    }
+    if (!invalidated) {
+      return false;
+    }
+    this.redrawNeeded.dispatch();
+    return true;
+  }
+
+  private getChunkPositionAndSegmentArrays(
+    chunk: SpatiallyIndexedSkeletonChunk,
+  ) {
+    const offsets = chunk.vertexAttributeOffsets;
+    if (!offsets || offsets.length < 2) return undefined;
+    const positions = new Float32Array(
+      chunk.vertexAttributes.buffer,
+      chunk.vertexAttributes.byteOffset + offsets[0],
+      chunk.numVertices * 3,
+    );
+    const segmentIds = new Uint32Array(
+      chunk.vertexAttributes.buffer,
+      chunk.vertexAttributes.byteOffset + offsets[1],
+      chunk.numVertices,
+    );
+    return { positions, segmentIds };
+  }
+
+  resolveSegmentPickFromChunk(
+    chunk: SpatiallyIndexedSkeletonChunk,
+    pickedOffset: number,
+    kind: "node" | "edge",
+  ) {
+    const data = this.getChunkPositionAndSegmentArrays(chunk);
+    if (data === undefined) {
+      return undefined;
+    }
+    return resolveSpatiallyIndexedSkeletonSegmentPick(
+      chunk,
+      data.segmentIds,
+      pickedOffset,
+      kind,
+    );
+  }
+
+  resolveNodePickFromChunk(
+    chunk: SpatiallyIndexedSkeletonChunk,
+    pickedOffset: number,
+  ) {
+    const data = this.getChunkPositionAndSegmentArrays(chunk);
+    if (
+      data === undefined ||
+      pickedOffset < 0 ||
+      pickedOffset >= chunk.numVertices ||
+      pickedOffset >= chunk.nodeIds.length
+    ) {
+      return undefined;
+    }
+    const nodeId = chunk.nodeIds[pickedOffset];
+    if (!Number.isSafeInteger(nodeId) || nodeId <= 0) {
+      return undefined;
+    }
+    const segmentId = resolveSpatiallyIndexedSkeletonSegmentPick(
+      chunk,
+      data.segmentIds,
+      pickedOffset,
+      "node",
+    );
+    if (segmentId === undefined) {
+      return undefined;
+    }
+    const baseOffset = pickedOffset * 3;
+    return {
+      nodeId,
+      segmentId,
+      position: data.positions.subarray(baseOffset, baseOffset + 3),
+      revisionToken: chunk.nodeRevisionTokens[pickedOffset],
+    };
+  }
+
+  updateVisibleChunksForView(
+    view: SpatiallyIndexedSkeletonView,
+    transformedSources: readonly TransformedSource[][],
+    projectionParameters: any,
+    lod: number | undefined,
+    renderedViewId?: number,
+  ) {
+    if (lod === undefined) {
+      this.visibleChunksByView.delete(view);
+      if (renderedViewId !== undefined) {
+        this.clearVisibleChunkKeysForRenderedView(view, renderedViewId);
+      }
+      return;
+    }
+    const lodSuffix = `:${lod}`;
+    const chunksBySource: VisibleSpatialChunksBySource = new Map();
+    const visibleChunkKeysBySource: VisibleSpatialChunkKeysBySource = new Map();
+    const seenChunkKeysBySource = new Map<string, Set<string>>();
+    for (const scales of transformedSources) {
+      for (const tsource of scales) {
+        const sourceId = getObjectId(tsource.source);
+        let visibleChunks = chunksBySource.get(sourceId);
+        if (visibleChunks === undefined) {
+          visibleChunks = [];
+          chunksBySource.set(sourceId, visibleChunks);
+        }
+        const visibleChunkKeys = getOrCreateVisibleSpatialChunkKeys(
+          visibleChunkKeysBySource,
+          sourceId,
+        );
+        let seenChunkKeys = seenChunkKeysBySource.get(sourceId);
+        if (seenChunkKeys === undefined) {
+          seenChunkKeys = new Set<string>();
+          seenChunkKeysBySource.set(sourceId, seenChunkKeys);
+        }
+        forEachVisibleVolumetricChunk(
+          projectionParameters,
+          this.localPosition.value,
+          tsource,
+          (positionInChunks) => {
+            const chunkKey = `${positionInChunks.join()}${lodSuffix}`;
+            if (seenChunkKeys!.has(chunkKey)) {
+              return;
+            }
+            seenChunkKeys!.add(chunkKey);
+            visibleChunkKeys.totalChunkKeys.add(chunkKey);
+            const chunkSource =
+              tsource.source as SpatiallyIndexedSkeletonSource;
+            const chunk = chunkSource.chunks.get(chunkKey) as
+              | SpatiallyIndexedSkeletonChunk
+              | undefined;
+            if (chunk?.state !== ChunkState.GPU_MEMORY) {
+              return;
+            }
+            visibleChunkKeys.presentChunkKeys.add(chunkKey);
+            (visibleChunks as SpatiallyIndexedSkeletonChunk[]).push(chunk);
+          },
+        );
+      }
+    }
+    this.visibleChunksByView.set(view, chunksBySource);
+    if (renderedViewId !== undefined) {
+      this.setVisibleChunkKeysForRenderedView(
+        view,
+        renderedViewId,
+        visibleChunkKeysBySource,
+      );
+    }
+  }
+
+  private areVisibleChunksReady(
+    transformedSources: readonly TransformedSource[][],
+    projectionParameters: any,
+    lod: number | undefined,
+  ) {
+    if (this.displayState.objectAlpha.value <= 0.0) {
+      return true;
+    }
+    if (lod === undefined || transformedSources.length === 0) {
+      return false;
+    }
+    const lodSuffix = `:${lod}`;
+    const seenChunkKeysBySource = new Map<string, Set<string>>();
+    let ready = true;
+    for (const scales of transformedSources) {
+      for (const tsource of scales) {
+        const sourceId = getObjectId(tsource.source);
+        let seenChunkKeys = seenChunkKeysBySource.get(sourceId);
+        if (seenChunkKeys === undefined) {
+          seenChunkKeys = new Set<string>();
+          seenChunkKeysBySource.set(sourceId, seenChunkKeys);
+        }
+        forEachVisibleVolumetricChunk(
+          projectionParameters,
+          this.localPosition.value,
+          tsource,
+          (positionInChunks) => {
+            if (!ready) {
+              return;
+            }
+            const chunkKey = `${positionInChunks.join()}${lodSuffix}`;
+            if (seenChunkKeys!.has(chunkKey)) {
+              return;
+            }
+            seenChunkKeys!.add(chunkKey);
+            const chunkSource =
+              tsource.source as SpatiallyIndexedSkeletonSource;
+            const chunk = chunkSource.chunks.get(chunkKey) as
+              | SpatiallyIndexedSkeletonChunk
+              | undefined;
+            if (chunk?.state !== ChunkState.GPU_MEMORY) {
+              ready = false;
+            }
+          },
+        );
+        if (!ready) {
+          return false;
         }
       }
     }
-    return [selectedEntry.entry];
+    return true;
   }
 
-  draw(
-    renderContext: SliceViewPanelRenderContext | PerspectiveViewRenderContext,
-    _layer: RenderLayer,
-    renderHelper: RenderHelper,
-    renderOptions: ViewSpecificSkeletonRenderingOptions,
-    attachment: VisibleLayerInfo<
-      LayerView,
-      ThreeDimensionalRenderLayerAttachmentState
-    >,
-    drawOptions?: {
-      view?: SpatiallyIndexedSkeletonView;
-      gridLevel?: number;
+  getNode(
+    nodeId: number,
+    options: {
       lod?: number;
-    },
-  ) {
-    const lineWidth = renderOptions.lineWidth.value;
-    const { gl, displayState } = this;
-    if (displayState.objectAlpha.value <= 0.0) {
-      return;
-    }
-    const modelMatrix = update3dRenderLayerAttachment(
-      displayState.transform.value,
-      renderContext.projectionParameters.displayDimensionRenderInfo,
-      attachment,
-    );
-    if (modelMatrix === undefined) return;
-    
-    const hasRegularSkeletonLayer = this.updateHasRegularSkeletonLayerWatchable(
-      _layer.userLayer,
-    );
-    let pointDiameter: number;
-    if (renderOptions.mode.value === SkeletonRenderMode.LINES_AND_POINTS) {
-      pointDiameter = Math.max(5, lineWidth * 2);
-    } else {
-      pointDiameter = lineWidth;
-    }
+    } = {},
+  ): SpatiallyIndexedSkeletonNode | undefined {
+    void options;
+    if (!Number.isSafeInteger(nodeId) || nodeId <= 0) return undefined;
+    return this.getCachedNodeSnapshot(nodeId);
+  }
 
+  getNodes(
+    options: {
+      segmentId?: bigint;
+      lod?: number;
+    } = {},
+  ): SpatiallyIndexedSkeletonNode[] {
+    void options.lod;
+    const normalizedSegmentFilter =
+      options.segmentId === undefined
+        ? undefined
+        : Math.round(Number(options.segmentId));
+    const useSegmentFilter =
+      normalizedSegmentFilter !== undefined &&
+      Number.isFinite(normalizedSegmentFilter);
+    const segmentIds =
+      normalizedSegmentFilter === undefined
+        ? this.getActiveEditableSegmentIds()
+        : [normalizedSegmentFilter];
+    const nodes = new Map<number, SpatiallyIndexedSkeletonNode>();
+    for (const segmentId of segmentIds) {
+      const segmentNodes =
+        this.inspectionState?.getCachedSegmentNodes(segmentId) ?? [];
+      for (const node of segmentNodes) {
+        if (nodes.has(node.nodeId)) continue;
+        const cachedNode = this.getCachedNodeSnapshot(node.nodeId);
+        if (cachedNode === undefined) continue;
+        if (
+          useSegmentFilter &&
+          normalizedSegmentFilter !== undefined &&
+          cachedNode.segmentId !== normalizedSegmentFilter
+        ) {
+          continue;
+        }
+        nodes.set(cachedNode.nodeId, cachedNode);
+      }
+    }
+    return [...nodes.values()].sort((a, b) => a.nodeId - b.nodeId);
+  }
+
+  private drawBrowsePass(
+    renderContext: SliceViewPanelRenderContext | PerspectiveViewRenderContext,
+    layer: RenderLayer,
+    renderHelper: RenderHelper,
+    modelMatrix: mat4,
+    lineWidth: number,
+    pointDiameter: number,
+    hasRegularSkeletonLayer: boolean,
+    selectedSources: readonly SpatiallyIndexedSkeletonSourceEntry[],
+    targetLod: number | undefined,
+    view: SpatiallyIndexedSkeletonView,
+  ) {
+    const { gl } = this;
+    const excludedSegments = this.getBrowsePassExcludedSegments();
     const edgeShaderResult = renderHelper.edgeShaderGetter(
       renderContext.emitter,
     );
@@ -1793,399 +3110,328 @@ export class SpatiallyIndexedSkeletonLayer extends RefCounted implements Skeleto
     if (edgeShader === null || nodeShader === null) {
       return;
     }
-
     const { shaderControlState } = this.displayState.skeletonRenderingOptions;
-
     edgeShader.bind();
     renderHelper.beginLayer(gl, edgeShader, renderContext, modelMatrix);
+    renderHelper.setEdgePickInstanceStride(gl, edgeShader, 0);
     setControlsInShader(
       gl,
       edgeShader,
       shaderControlState,
       edgeShaderParameters.parseResult.controls,
     );
-    gl.uniform1f(edgeShader.uniform("uLineWidth"), lineWidth!);
-
+    gl.uniform1f(edgeShader.uniform("uLineWidth"), lineWidth);
     nodeShader.bind();
     renderHelper.beginLayer(gl, nodeShader, renderContext, modelMatrix);
     gl.uniform1f(nodeShader.uniform("uNodeDiameter"), pointDiameter);
+    renderHelper.setNodePickInstanceStride(gl, nodeShader, 0);
     setControlsInShader(
       gl,
       nodeShader,
       shaderControlState,
       nodeShaderParameters.parseResult.controls,
     );
+    const baseColor = new Float32Array([1, 1, 1, 1]);
+    edgeShader.bind();
+    renderHelper.setColor(gl, edgeShader, baseColor);
+    renderHelper.enableDynamicSegmentAppearance(
+      gl,
+      edgeShader,
+      hasRegularSkeletonLayer,
+      excludedSegments,
+    );
+    nodeShader.bind();
+    renderHelper.setColor(gl, nodeShader, baseColor);
+    renderHelper.enableDynamicSegmentAppearance(
+      gl,
+      nodeShader,
+      hasRegularSkeletonLayer,
+      excludedSegments,
+    );
+    if (renderContext.emitPickID) {
+      edgeShader.bind();
+      renderHelper.setPickID(gl, edgeShader, 0);
+      renderHelper.setEdgePickInstanceStride(gl, edgeShader, 0);
+      nodeShader.bind();
+      renderHelper.setPickID(gl, nodeShader, 0);
+      renderHelper.setNodePickInstanceStride(gl, nodeShader, 0);
+    }
+    for (const chunk of this.iterateCandidateChunks(
+      selectedSources,
+      targetLod,
+      {
+        view,
+      },
+    )) {
+      if (renderContext.emitPickID) {
+        let edgePickId = 0;
+        let edgePickStride = 0;
+        let nodePickId = 0;
+        let nodePickStride = 0;
+        if (chunk.numIndices > 0) {
+          edgePickId = renderContext.pickIDs.register(
+            layer,
+            chunk.numIndices / 2,
+            0n,
+            {
+              kind: "segment-edge",
+              chunk,
+            } satisfies SpatiallyIndexedSkeletonPickData,
+          );
+          edgePickStride = 1;
+        }
+        if (chunk.numVertices > 0) {
+          nodePickId = renderContext.pickIDs.register(
+            layer,
+            chunk.numVertices,
+            0n,
+            {
+              kind: "segment-node",
+              chunk,
+            } satisfies SpatiallyIndexedSkeletonPickData,
+          );
+          nodePickStride = 1;
+        }
+        edgeShader.bind();
+        renderHelper.setPickID(gl, edgeShader, edgePickId);
+        renderHelper.setEdgePickInstanceStride(gl, edgeShader, edgePickStride);
+        nodeShader.bind();
+        renderHelper.setPickID(gl, nodeShader, nodePickId);
+        renderHelper.setNodePickInstanceStride(gl, nodeShader, nodePickStride);
+      }
+      renderHelper.drawSkeleton(
+        gl,
+        edgeShader,
+        nodeShader,
+        chunk,
+        renderContext.projectionParameters,
+      );
+    }
+    renderHelper.disableDynamicSegmentAppearance(gl, edgeShader);
+    renderHelper.disableDynamicSegmentAppearance(gl, nodeShader);
+    renderHelper.endLayer(gl, edgeShader, nodeShader);
+  }
 
-    const visibleSegments = getVisibleSegments(
-      displayState.segmentationGroupState.value,
+  private drawInspectionOverlayPass(
+    renderContext: SliceViewPanelRenderContext | PerspectiveViewRenderContext,
+    layer: RenderLayer,
+    renderHelper: RenderHelper,
+    modelMatrix: mat4,
+    lineWidth: number,
+    pointDiameter: number,
+    hasRegularSkeletonLayer: boolean,
+  ) {
+    const overlayChunk = this.resolveSourceBackedOverlayChunk();
+    if (overlayChunk === undefined) {
+      return;
+    }
+    const { gl } = this;
+    const edgeShaderResult = renderHelper.edgeShaderGetter(
+      renderContext.emitter,
+    );
+    const nodeShaderResult = renderHelper.nodeShaderGetter(
+      renderContext.emitter,
+    );
+    const { shader: edgeShader, parameters: edgeShaderParameters } =
+      edgeShaderResult;
+    const { shader: nodeShader, parameters: nodeShaderParameters } =
+      nodeShaderResult;
+    if (edgeShader === null || nodeShader === null) {
+      return;
+    }
+    const { shaderControlState } = this.displayState.skeletonRenderingOptions;
+    edgeShader.bind();
+    renderHelper.beginLayer(gl, edgeShader, renderContext, modelMatrix);
+    renderHelper.setEdgePickInstanceStride(gl, edgeShader, 0);
+    setControlsInShader(
+      gl,
+      edgeShader,
+      shaderControlState,
+      edgeShaderParameters.parseResult.controls,
+    );
+    gl.uniform1f(edgeShader.uniform("uLineWidth"), lineWidth);
+    nodeShader.bind();
+    renderHelper.beginLayer(gl, nodeShader, renderContext, modelMatrix);
+    gl.uniform1f(nodeShader.uniform("uNodeDiameter"), pointDiameter);
+    renderHelper.setNodePickInstanceStride(gl, nodeShader, 0);
+    setControlsInShader(
+      gl,
+      nodeShader,
+      shaderControlState,
+      nodeShaderParameters.parseResult.controls,
     );
     const baseColor = new Float32Array([1, 1, 1, 1]);
     edgeShader.bind();
     renderHelper.setColor(gl, edgeShader, baseColor);
+    renderHelper.enableDynamicSegmentAppearance(
+      gl,
+      edgeShader,
+      hasRegularSkeletonLayer,
+    );
     nodeShader.bind();
     renderHelper.setColor(gl, nodeShader, baseColor);
+    renderHelper.enableDynamicSegmentAppearance(
+      gl,
+      nodeShader,
+      hasRegularSkeletonLayer,
+    );
+    if (renderContext.emitPickID) {
+      const edgePickId =
+        overlayChunk.numIndices > 0 &&
+        overlayChunk.pickEdgeSegmentIds !== undefined &&
+        overlayChunk.pickEdgeSegmentIds.length > 0
+          ? renderContext.pickIDs.register(
+              layer,
+              overlayChunk.pickEdgeSegmentIds.length,
+              0n,
+              {
+                kind: "edge",
+                segmentIds: overlayChunk.pickEdgeSegmentIds,
+              } satisfies SpatiallyIndexedSkeletonPickData,
+            )
+          : 0;
+      edgeShader.bind();
+      renderHelper.setPickID(gl, edgeShader, edgePickId);
+      renderHelper.setEdgePickInstanceStride(
+        gl,
+        edgeShader,
+        edgePickId === 0 ? 0 : 1,
+      );
+      nodeShader.bind();
+      const nodePickId =
+        overlayChunk.numVertices > 0 &&
+        overlayChunk.pickNodeIds !== undefined &&
+        overlayChunk.pickNodePositions !== undefined &&
+        overlayChunk.pickSegmentIds !== undefined
+          ? renderContext.pickIDs.register(
+              layer,
+              overlayChunk.numVertices,
+              0n,
+              {
+                kind: "node",
+                nodeIds: overlayChunk.pickNodeIds,
+                nodePositions: overlayChunk.pickNodePositions,
+                segmentIds: overlayChunk.pickSegmentIds,
+              } satisfies SpatiallyIndexedSkeletonPickData,
+            )
+          : 0;
+      renderHelper.setPickID(gl, nodeShader, nodePickId);
+      renderHelper.setNodePickInstanceStride(
+        gl,
+        nodeShader,
+        nodePickId === 0 ? 0 : 1,
+      );
+    }
+    renderHelper.drawSkeleton(
+      gl,
+      edgeShader,
+      nodeShader,
+      overlayChunk,
+      renderContext.projectionParameters,
+    );
+    renderHelper.disableDynamicSegmentAppearance(gl, edgeShader);
+    renderHelper.disableDynamicSegmentAppearance(gl, nodeShader);
+    renderHelper.endLayer(gl, edgeShader, nodeShader);
+  }
 
+  draw(
+    renderContext: SliceViewPanelRenderContext | PerspectiveViewRenderContext,
+    layer: RenderLayer,
+    renderHelper: RenderHelper,
+    browseRenderHelper: RenderHelper,
+    renderOptions: ViewSpecificSkeletonRenderingOptions,
+    attachment: VisibleLayerInfo<
+      LayerView,
+      ThreeDimensionalRenderLayerAttachmentState
+    >,
+    drawOptions?: {
+      view?: SpatiallyIndexedSkeletonView;
+      gridLevel?: number;
+      lod?: number;
+    },
+  ) {
+    const lineWidth = renderOptions.lineWidth.value;
+    const { displayState } = this;
+    if (displayState.objectAlpha.value <= 0.0) {
+      return;
+    }
+    const modelMatrix = update3dRenderLayerAttachment(
+      displayState.transform.value,
+      renderContext.projectionParameters.displayDimensionRenderInfo,
+      attachment,
+    );
+    if (modelMatrix === undefined) return;
+
+    const hasRegularSkeletonLayer = this.updateHasRegularSkeletonLayerWatchable(
+      layer.userLayer,
+    );
     const targetLod = drawOptions?.lod;
     const view = drawOptions?.view ?? "3d";
+    const pointDiameter = getSkeletonNodeDiameter(
+      renderOptions.mode.value,
+      lineWidth,
+    );
+
     const selectedSources = this.selectSourcesForViewAndGrid(
       view,
       drawOptions?.gridLevel,
     );
-    const globalNodeMap = this.getGlobalNodeLookup(selectedSources, targetLod);
-    for (const sourceEntry of selectedSources) {
-      const chunks = sourceEntry.chunkSource.chunks;
-      for (const chunk of chunks.values()) {
-        const typedChunk = chunk as SpatiallyIndexedSkeletonChunk;
-        if (!this.lodMatches(typedChunk, targetLod)) continue;
-        if (typedChunk.state !== ChunkState.GPU_MEMORY || typedChunk.numIndices === 0) {
-          continue;
-        }
-        const filteredChunk = this.updateChunkFilteredBuffer(
-          typedChunk,
-          visibleSegments,
-          hasRegularSkeletonLayer,
-          globalNodeMap,
-        );
-        if (filteredChunk === null) {
-          continue;
-        }
-        renderHelper.drawSkeleton(
-          gl,
-          edgeShader,
-          nodeShader,
-          filteredChunk,
-          renderContext.projectionParameters,
-        );
-      }
-    }
-
-    renderHelper.endLayer(gl, edgeShader);
+    this.drawBrowsePass(
+      renderContext,
+      layer,
+      browseRenderHelper,
+      modelMatrix,
+      lineWidth,
+      pointDiameter,
+      hasRegularSkeletonLayer,
+      selectedSources,
+      targetLod,
+      view,
+    );
+    this.drawInspectionOverlayPass(
+      renderContext,
+      layer,
+      renderHelper,
+      modelMatrix,
+      lineWidth,
+      pointDiameter,
+      hasRegularSkeletonLayer,
+    );
   }
 
-  updateChunkFilteredBuffer(
-    chunk: SpatiallyIndexedSkeletonChunk,
-    visibleSegments: Uint64Set,
-    skipVisibleSegments: boolean,
-    globalNodeMap?: Map<
-      number,
-      { chunk: SpatiallyIndexedSkeletonChunk; vertexIndex: number }
-    >,
-  ): SkeletonChunkInterface | null {
-    let missingConnectionsHash = 0;
-    if (chunk.missingConnections.length > 0 && globalNodeMap) {
-      for (const conn of chunk.missingConnections) {
-        const parentNode = globalNodeMap.get(conn.parentId);
-        const parentMarker = parentNode ? parentNode.vertexIndex + 1 : 0;
-        missingConnectionsHash =
-          ((missingConnectionsHash * 1664525) ^
-            ((conn.parentId >>> 0) + parentMarker)) >>>
-          0;
-      }
-    }
+  isReady(
+    transformedSources?: readonly TransformedSource[][],
+    projectionParameters?: any,
+    lod?: number | undefined,
+  ) {
     if (
-      chunk.filteredGeneration === this.generation &&
-      chunk.filteredSkipVisibleSegments === skipVisibleSegments &&
-      chunk.filteredMissingConnectionsHash === missingConnectionsHash &&
-      chunk.filteredIndexBuffer &&
-      chunk.filteredVertexAttributeTextures &&
-      chunk.numFilteredIndices > 0 &&
-      chunk.numFilteredVertices > 0
+      transformedSources === undefined ||
+      projectionParameters === undefined
     ) {
-      return {
-        vertexAttributeTextures: chunk.filteredVertexAttributeTextures,
-        indexBuffer: chunk.filteredIndexBuffer,
-        numIndices: chunk.numFilteredIndices,
-        numVertices: chunk.numFilteredVertices,
-      };
+      return this.displayState.objectAlpha.value <= 0.0;
     }
-
-    const gl = this.gl;
-    const disposeFilteredTextures = () => {
-      if (chunk.filteredVertexAttributeTextures) {
-        for (const tex of chunk.filteredVertexAttributeTextures) {
-          if (tex) gl.deleteTexture(tex);
-        }
-        chunk.filteredVertexAttributeTextures = undefined;
-      }
-    };
-    const vertexAttributeOffsets = chunk.vertexAttributeOffsets;
-    if (!vertexAttributeOffsets || vertexAttributeOffsets.length < 2) {
-      disposeFilteredTextures();
-      chunk.filteredGeneration = this.generation;
-      chunk.filteredSkipVisibleSegments = skipVisibleSegments;
-      chunk.filteredMissingConnectionsHash = missingConnectionsHash;
-      chunk.numFilteredIndices = 0;
-      chunk.numFilteredVertices = 0;
-      return null;
-    }
-
-    const posOffset = vertexAttributeOffsets[0];
-    const segmentOffset = vertexAttributeOffsets[1];
-    const positions = new Float32Array(
-      chunk.vertexAttributes.buffer,
-      chunk.vertexAttributes.byteOffset + posOffset,
-      chunk.numVertices * 3,
+    return this.areVisibleChunksReady(
+      transformedSources,
+      projectionParameters,
+      lod,
     );
-    const segmentIds = new Float32Array(
-      chunk.vertexAttributes.buffer,
-      chunk.vertexAttributes.byteOffset + segmentOffset,
-      chunk.numVertices,
-    );
-    const segmentInfo = new Map<
-      number,
-      { include: boolean; color: Float32Array }
-    >();
-
-    const getSegmentInfo = (segmentId: number) => {
-      let info = segmentInfo.get(segmentId);
-      if (info) return info;
-      const segmentBigInt = BigInt(segmentId);
-      const isVisible = visibleSegments.has(segmentBigInt);
-      const alphaForSegment = isVisible
-        ? this.displayState.objectAlpha.value
-        : this.displayState.hiddenObjectAlpha?.value ?? 0;
-      const effectiveAlpha =
-        skipVisibleSegments && isVisible ? 0 : alphaForSegment;
-      const color = new Float32Array(4);
-      getBaseObjectColor(this.displayState, segmentBigInt, color);
-      // Encode effectiveAlpha into the alpha channel; do not pre-scale RGB here.
-      color[3] = effectiveAlpha;
-      const include = effectiveAlpha > 0;
-      info = { include, color };
-      segmentInfo.set(segmentId, info);
-      return info;
-    };
-
-    const oldToNew = new Int32Array(chunk.numVertices);
-    oldToNew.fill(-1);
-    const vertexList: number[] = [];
-    for (let v = 0; v < chunk.numVertices; ++v) {
-      const rawId = segmentIds[v];
-      const segmentId = Math.round(rawId);
-      if (!Number.isFinite(segmentId)) {
-        continue;
-      }
-      const info = getSegmentInfo(segmentId);
-      if (info.include) {
-        oldToNew[v] = vertexList.length;
-        vertexList.push(v);
-      }
-    }
-
-    if (vertexList.length === 0) {
-      disposeFilteredTextures();
-      chunk.filteredGeneration = this.generation;
-      chunk.filteredSkipVisibleSegments = skipVisibleSegments;
-      chunk.filteredMissingConnectionsHash = missingConnectionsHash;
-      chunk.numFilteredIndices = 0;
-      chunk.numFilteredVertices = 0;
-      return null;
-    }
-
-    const filteredIndices: number[] = [];
-    const indices = chunk.indices;
-    for (let i = 0; i < chunk.numIndices; i += 2) {
-      const aOld = indices[i];
-      const bOld = indices[i + 1];
-      const aNew = oldToNew[aOld];
-      const bNew = oldToNew[bOld];
-      if (aNew >= 0 && bNew >= 0) {
-        filteredIndices.push(aNew, bNew);
-      }
-    }
-
-    const interChunkIndices: number[] = [];
-    const extraPositions: number[] = [];
-    const extraSegments: number[] = [];
-    const extraColors: number[] = [];
-    const extraVertexMap = new Map<number, number>();
-    const chunkPositionCache = new Map<
-      SpatiallyIndexedSkeletonChunk,
-      Float32Array
-    >();
-    const getChunkPositions = (targetChunk: SpatiallyIndexedSkeletonChunk) => {
-      const cached = chunkPositionCache.get(targetChunk);
-      if (cached) return cached;
-      const offsets = targetChunk.vertexAttributeOffsets;
-      if (!offsets || offsets.length < 1) {
-        return null;
-      }
-      const positionArray = new Float32Array(
-        targetChunk.vertexAttributes.buffer,
-        targetChunk.vertexAttributes.byteOffset + offsets[0],
-        targetChunk.numVertices * 3,
-      );
-      chunkPositionCache.set(targetChunk, positionArray);
-      return positionArray;
-    };
-
-    if (chunk.missingConnections.length > 0 && globalNodeMap) {
-      for (const conn of chunk.missingConnections) {
-        const segmentId = Math.round(conn.skeletonId);
-        if (!Number.isFinite(segmentId)) {
-          continue;
-        }
-        const info = getSegmentInfo(segmentId);
-        if (!info.include) {
-          continue;
-        }
-        const childNew = oldToNew[conn.vertexIndex];
-        if (childNew < 0) {
-          continue;
-        }
-        const parentNode = globalNodeMap.get(conn.parentId);
-        if (!parentNode) {
-          continue;
-        }
-        let parentNew = -1;
-        if (parentNode.chunk === chunk) {
-          const localParent = oldToNew[parentNode.vertexIndex];
-          if (localParent >= 0) {
-            parentNew = localParent;
-          } else {
-            continue;
-          }
-        } else {
-          const cached = extraVertexMap.get(conn.parentId);
-          if (cached !== undefined) {
-            parentNew = cached;
-          } else {
-            const parentPositions = getChunkPositions(parentNode.chunk);
-            if (!parentPositions) {
-              continue;
-            }
-            const posIndex = parentNode.vertexIndex * 3;
-            const extraIndex = extraPositions.length / 3;
-            parentNew = vertexList.length + extraIndex;
-            extraVertexMap.set(conn.parentId, parentNew);
-            extraPositions.push(
-              parentPositions[posIndex],
-              parentPositions[posIndex + 1],
-              parentPositions[posIndex + 2],
-            );
-            extraSegments.push(segmentId);
-            extraColors.push(
-              info.color[0],
-              info.color[1],
-              info.color[2],
-              info.color[3],
-            );
-          }
-        }
-        if (parentNew >= 0) {
-          interChunkIndices.push(childNew, parentNew);
-        }
-      }
-    }
-
-    if (interChunkIndices.length > 0) {
-      filteredIndices.push(...interChunkIndices);
-    }
-
-    if (filteredIndices.length === 0) {
-      disposeFilteredTextures();
-      chunk.filteredGeneration = this.generation;
-      chunk.filteredSkipVisibleSegments = skipVisibleSegments;
-      chunk.filteredMissingConnectionsHash = missingConnectionsHash;
-      chunk.numFilteredIndices = 0;
-      chunk.numFilteredVertices = 0;
-      return null;
-    }
-
-    const extraVertexCount = extraPositions.length / 3;
-    const totalVertexCount = vertexList.length + extraVertexCount;
-    const filteredPositions = new Float32Array(totalVertexCount * 3);
-    const filteredSegments = new Float32Array(totalVertexCount);
-    const filteredColors = new Float32Array(totalVertexCount * 4);
-    for (let i = 0; i < vertexList.length; ++i) {
-      const oldIndex = vertexList[i];
-      const srcStart = oldIndex * 3;
-      const dstStart = i * 3;
-      filteredPositions[dstStart] = positions[srcStart];
-      filteredPositions[dstStart + 1] = positions[srcStart + 1];
-      filteredPositions[dstStart + 2] = positions[srcStart + 2];
-      const rawId = segmentIds[oldIndex];
-      const segmentId = Math.round(rawId);
-      filteredSegments[i] = rawId;
-      const info = segmentInfo.get(segmentId);
-      if (info) {
-        filteredColors.set(info.color, i * 4);
-      }
-    }
-    for (let i = 0; i < extraVertexCount; ++i) {
-      const dstVertex = vertexList.length + i;
-      const posStart = i * 3;
-      const dstStart = dstVertex * 3;
-      filteredPositions[dstStart] = extraPositions[posStart];
-      filteredPositions[dstStart + 1] = extraPositions[posStart + 1];
-      filteredPositions[dstStart + 2] = extraPositions[posStart + 2];
-      filteredSegments[dstVertex] = extraSegments[i];
-      const colorStart = i * 4;
-      filteredColors[dstVertex * 4] = extraColors[colorStart];
-      filteredColors[dstVertex * 4 + 1] = extraColors[colorStart + 1];
-      filteredColors[dstVertex * 4 + 2] = extraColors[colorStart + 2];
-      filteredColors[dstVertex * 4 + 3] = extraColors[colorStart + 3];
-    }
-
-    const posBytes = new Uint8Array(filteredPositions.buffer);
-    const segBytes = new Uint8Array(filteredSegments.buffer);
-    const colorBytes = new Uint8Array(filteredColors.buffer);
-    const vertexBytes = new Uint8Array(
-      posBytes.byteLength + segBytes.byteLength + colorBytes.byteLength,
-    );
-    vertexBytes.set(posBytes, 0);
-    vertexBytes.set(segBytes, posBytes.byteLength);
-    vertexBytes.set(colorBytes, posBytes.byteLength + segBytes.byteLength);
-    const vertexOffsets = new Uint32Array([
-      0,
-      posBytes.byteLength,
-      posBytes.byteLength + segBytes.byteLength,
-    ]);
-
-    disposeFilteredTextures();
-    chunk.filteredVertexAttributeTextures = uploadVertexAttributesToGPU(
-      gl,
-      vertexBytes,
-      vertexOffsets,
-      this.filteredAttributeTextureFormats,
-    );
-
-    if (!chunk.filteredIndexBuffer) {
-      chunk.filteredIndexBuffer = new GLBuffer(
-        gl,
-        WebGL2RenderingContext.ARRAY_BUFFER,
-      );
-    }
-    chunk.filteredIndexBuffer.setData(new Uint32Array(filteredIndices));
-    chunk.filteredGeneration = this.generation;
-    chunk.filteredSkipVisibleSegments = skipVisibleSegments;
-    chunk.filteredMissingConnectionsHash = missingConnectionsHash;
-    chunk.numFilteredIndices = filteredIndices.length;
-    chunk.numFilteredVertices = totalVertexCount;
-
-    return {
-      vertexAttributeTextures: chunk.filteredVertexAttributeTextures,
-      indexBuffer: chunk.filteredIndexBuffer,
-      numIndices: chunk.numFilteredIndices,
-      numVertices: chunk.numFilteredVertices,
-    };
-  }
-
-  isReady() {
-    return true;
   }
 }
 
 export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveViewRenderLayer {
   private renderHelper: RenderHelper;
+  private browseRenderHelper: RenderHelper;
   private renderOptions: ViewSpecificSkeletonRenderingOptions;
   private transformedSources: TransformedSource[][] = [];
   backend: ChunkRenderLayerFrontend;
-  
+
   constructor(public base: SpatiallyIndexedSkeletonLayer) {
     super();
     this.backend = base.backend;
     this.renderHelper = this.registerDisposer(new RenderHelper(base, false));
+    this.browseRenderHelper = this.registerDisposer(
+      new RenderHelper(base.chunkGeometryRenderLayerInterface, false),
+    );
     this.renderOptions = base.displayState.skeletonRenderingOptions.params3d;
 
     this.layerChunkProgressInfo = base.layerChunkProgressInfo;
@@ -2214,7 +3460,13 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
     >,
   ) {
     super.attach(attachment);
-    
+    attachment.registerDisposer(() =>
+      this.base.clearVisibleChunkKeysForRenderedView(
+        "3d",
+        attachment.view.rpcId,
+      ),
+    );
+
     // Manually add layer to backend
     const backend = this.backend;
     if (backend && backend.rpc) {
@@ -2223,11 +3475,11 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
         view: attachment.view.rpcId,
       });
     }
-    
+
     // Capture references to avoid losing 'this' context in callback
     const baseLayer = this.base;
     const redrawNeeded = this.redrawNeeded;
-    
+
     attachment.registerDisposer(
       registerNested(
         (context, transform, displayDimensionRenderInfo) => {
@@ -2277,6 +3529,108 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
     return this.base.displayState.objectAlpha.value < 1.0;
   }
 
+  getValueAt(position: Float32Array) {
+    position;
+    return undefined;
+  }
+
+  transformPickedValue(pickState: PickState) {
+    const pickedSegmentId = pickState.pickedSpatialSkeleton?.segmentId;
+    if (
+      typeof pickedSegmentId === "number" &&
+      Number.isSafeInteger(pickedSegmentId)
+    ) {
+      return BigInt(pickedSegmentId);
+    }
+    return undefined;
+  }
+
+  updateMouseState(
+    mouseState: MouseSelectionState,
+    _pickedValue: bigint,
+    pickedOffset: number,
+    data: any,
+  ) {
+    const pickData = data as SpatiallyIndexedSkeletonPickData | undefined;
+    if (pickData === undefined) return;
+    if (pickData.kind === "node") {
+      if (
+        pickedOffset < 0 ||
+        pickedOffset >= pickData.nodeIds.length ||
+        pickedOffset >= pickData.segmentIds.length
+      ) {
+        return;
+      }
+      const segmentId = pickData.segmentIds[pickedOffset];
+      if (!Number.isSafeInteger(segmentId) || segmentId <= 0) {
+        return;
+      }
+      mouseState.pickedSpatialSkeleton = { segmentId };
+      if (
+        !getVisibleSegments(
+          this.base.displayState.segmentationGroupState.value,
+        ).has(BigInt(segmentId))
+      ) {
+        return;
+      }
+      const nodeId = pickData.nodeIds[pickedOffset];
+      if (!Number.isSafeInteger(nodeId) || nodeId <= 0) return;
+      const nodePosition = pickData.nodePositions.subarray(
+        pickedOffset * 3,
+        pickedOffset * 3 + 3,
+      );
+      mouseState.pickedSpatialSkeleton = {
+        nodeId,
+        segmentId,
+        position: new Float32Array(nodePosition),
+      };
+      const transform = this.base.displayState.transform.value;
+      if (transform.error === undefined) {
+        setMouseStatePositionFromSpatialSkeletonNode(
+          mouseState,
+          nodePosition,
+          transform,
+        );
+      }
+      return;
+    }
+    if (pickData.kind === "edge") {
+      if (pickedOffset < 0 || pickedOffset >= pickData.segmentIds.length) {
+        return;
+      }
+      const segmentId = pickData.segmentIds[pickedOffset];
+      if (Number.isSafeInteger(segmentId) && segmentId > 0) {
+        mouseState.pickedSpatialSkeleton = { segmentId };
+      }
+      return;
+    }
+    if (pickData.kind === "segment-node" || pickData.kind === "segment-edge") {
+      if (pickData.kind === "segment-node") {
+        const pickedNode = this.base.resolveNodePickFromChunk(
+          pickData.chunk,
+          pickedOffset,
+        );
+        if (pickedNode !== undefined) {
+          mouseState.pickedSpatialSkeleton = {
+            nodeId: pickedNode.nodeId,
+            segmentId: pickedNode.segmentId,
+            position: new Float32Array(pickedNode.position),
+            revisionToken: pickedNode.revisionToken,
+          };
+        }
+        return;
+      }
+      const segmentId = this.base.resolveSegmentPickFromChunk(
+        pickData.chunk,
+        pickedOffset,
+        "edge",
+      );
+      if (segmentId !== undefined) {
+        mouseState.pickedSpatialSkeleton = { segmentId };
+      }
+    }
+  }
+
   draw(
     renderContext: PerspectiveViewRenderContext,
     attachment: VisibleLayerInfo<
@@ -2285,7 +3639,8 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
     >,
   ) {
     const pixelSizeWatchable = (this.base.displayState as any)
-      .spatialSkeletonGridPixelSize3d as WatchableValueInterface<number>
+      .spatialSkeletonGridPixelSize3d as
+      | WatchableValueInterface<number>
       | undefined;
     if (pixelSizeWatchable !== undefined) {
       const voxelPhysicalScales =
@@ -2313,8 +3668,15 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
     }
     const displayState = this.base.displayState as any;
     const lodValue = displayState.skeletonLod?.value as number | undefined;
-    const levels = displayState.spatialSkeletonGridLevels
-      ?.value as Array<{ size: { x: number; y: number; z: number } }>
+    this.base.updateVisibleChunksForView(
+      "3d",
+      this.transformedSources,
+      renderContext.projectionParameters,
+      lodValue,
+      attachment.view.rpcId,
+    );
+    const levels = displayState.spatialSkeletonGridLevels?.value as
+      | Array<{ size: { x: number; y: number; z: number }; lod: number }>
       | undefined;
     const histogram = displayState.spatialSkeletonGridRenderScaleHistogram3d as
       | RenderScaleHistogram
@@ -2341,6 +3703,7 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
       renderContext,
       this,
       this.renderHelper,
+      this.browseRenderHelper,
       this.renderOptions,
       attachment,
       {
@@ -2353,26 +3716,47 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
     );
   }
 
-  isReady() {
-    return this.base.isReady();
+  isReady(
+    renderContext: PerspectiveViewReadyRenderContext,
+    _attachment: VisibleLayerInfo<
+      PerspectivePanel,
+      ThreeDimensionalRenderLayerAttachmentState
+    >,
+  ) {
+    const displayState = this.base.displayState as any;
+    const lodValue = displayState.skeletonLod?.value as number | undefined;
+    return this.base.isReady(
+      this.transformedSources,
+      renderContext.projectionParameters,
+      lodValue,
+    );
   }
 }
 
 export class SliceViewSpatiallyIndexedSkeletonLayer extends SliceViewRenderLayer {
   private renderOptions: ViewSpecificSkeletonRenderingOptions;
+  private trackedChunkStatsSliceViews = new Set<number>();
   constructor(public base: SpatiallyIndexedSkeletonLayer) {
-    super(base.chunkManager, {
-      getSources: () => {
-        return [[{
-          chunkSource: base.source,
-          chunkToMultiscaleTransform: mat4.create(),
-        }]];
-      }
-    } as any, {
-      transform: base.displayState.transform,
-      localPosition: (base.displayState as any).localPosition,
-    });
-    // @ts-ignore
+    super(
+      base.chunkManager,
+      {
+        getSources: () => {
+          return [
+            [
+              {
+                chunkSource: base.source,
+                chunkToMultiscaleTransform: mat4.create(),
+              },
+            ],
+          ];
+        },
+      } as any,
+      {
+        transform: base.displayState.transform,
+        localPosition: (base.displayState as any).localPosition,
+      },
+    );
+    // @ts-expect-error RenderHelper requires panel-specific initialization here.
     this.renderHelper = this.registerDisposer(new RenderHelper(base, true));
     this.renderOptions = base.displayState.skeletonRenderingOptions.params2d;
     this.layerChunkProgressInfo = base.layerChunkProgressInfo;
@@ -2391,20 +3775,55 @@ export class SliceViewSpatiallyIndexedSkeletonLayer extends SliceViewRenderLayer
     return this.base.gl;
   }
 
+  getValueAt(position: Float32Array) {
+    position;
+    return undefined;
+  }
+
   draw(renderContext: SliceViewRenderContext) {
-    renderContext;
-    // No-op for now to test data loading. 
-    // SliceViewRenderLayer draw is abstract, so we must implement it.
+    const displayState = this.base.displayState as any;
+    const lodValue = displayState.spatialSkeletonLod2d?.value as
+      | number
+      | undefined;
+    const sliceView = renderContext.sliceView;
+    const sliceViewId = sliceView.rpcId;
+    if (!this.trackedChunkStatsSliceViews.has(sliceViewId)) {
+      this.trackedChunkStatsSliceViews.add(sliceViewId);
+      sliceView.registerDisposer(() => {
+        this.trackedChunkStatsSliceViews.delete(sliceViewId);
+        this.base.clearVisibleChunkKeysForRenderedView("2d", sliceViewId);
+      });
+    }
+    if (displayState.objectAlpha?.value <= 0.0 || lodValue === undefined) {
+      this.base.clearVisibleChunkKeysForRenderedView("2d", sliceViewId);
+      return;
+    }
+    const visibleSources =
+      renderContext.sliceView.visibleLayers.get(this)?.visibleSources ?? [];
+    this.base.setVisibleChunkKeysForRenderedView(
+      "2d",
+      sliceViewId,
+      collectPlaneIntersectingSpatialChunkKeysBySource(
+        visibleSources,
+        renderContext.projectionParameters,
+        this.base.localPosition.value,
+        lodValue,
+      ),
+    );
   }
 }
 
 export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelRenderLayer {
   private renderHelper: RenderHelper;
+  private browseRenderHelper: RenderHelper;
   private renderOptions: ViewSpecificSkeletonRenderingOptions;
   private transformedSources: TransformedSource[][] = [];
   constructor(public base: SpatiallyIndexedSkeletonLayer) {
     super();
     this.renderHelper = this.registerDisposer(new RenderHelper(base, true));
+    this.browseRenderHelper = this.registerDisposer(
+      new RenderHelper(base.chunkGeometryRenderLayerInterface, true),
+    );
     this.renderOptions = base.displayState.skeletonRenderingOptions.params2d;
     this.layerChunkProgressInfo = base.layerChunkProgressInfo;
     this.registerDisposer(base);
@@ -2423,9 +3842,7 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
     }
     const lod2d = (base.displayState as any).spatialSkeletonLod2d;
     if (lod2d?.changed) {
-      this.registerDisposer(
-        lod2d.changed.add(this.redrawNeeded.dispatch),
-      );
+      this.registerDisposer(lod2d.changed.add(this.redrawNeeded.dispatch));
     }
     const histogram = (base.displayState as any)
       .spatialSkeletonGridRenderScaleHistogram2d as
@@ -2438,6 +3855,108 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
   }
   get gl() {
     return this.base.gl;
+  }
+
+  getValueAt(position: Float32Array) {
+    position;
+    return undefined;
+  }
+
+  transformPickedValue(pickState: PickState) {
+    const pickedSegmentId = pickState.pickedSpatialSkeleton?.segmentId;
+    if (
+      typeof pickedSegmentId === "number" &&
+      Number.isSafeInteger(pickedSegmentId)
+    ) {
+      return BigInt(pickedSegmentId);
+    }
+    return undefined;
+  }
+
+  updateMouseState(
+    mouseState: MouseSelectionState,
+    _pickedValue: bigint,
+    pickedOffset: number,
+    data: any,
+  ) {
+    const pickData = data as SpatiallyIndexedSkeletonPickData | undefined;
+    if (pickData === undefined) return;
+    if (pickData.kind === "node") {
+      if (
+        pickedOffset < 0 ||
+        pickedOffset >= pickData.nodeIds.length ||
+        pickedOffset >= pickData.segmentIds.length
+      ) {
+        return;
+      }
+      const segmentId = pickData.segmentIds[pickedOffset];
+      if (!Number.isSafeInteger(segmentId) || segmentId <= 0) {
+        return;
+      }
+      mouseState.pickedSpatialSkeleton = { segmentId };
+      if (
+        !getVisibleSegments(
+          this.base.displayState.segmentationGroupState.value,
+        ).has(BigInt(segmentId))
+      ) {
+        return;
+      }
+      const nodeId = pickData.nodeIds[pickedOffset];
+      if (!Number.isSafeInteger(nodeId) || nodeId <= 0) return;
+      const nodePosition = pickData.nodePositions.subarray(
+        pickedOffset * 3,
+        pickedOffset * 3 + 3,
+      );
+      mouseState.pickedSpatialSkeleton = {
+        nodeId,
+        segmentId,
+        position: new Float32Array(nodePosition),
+      };
+      const transform = this.base.displayState.transform.value;
+      if (transform.error === undefined) {
+        setMouseStatePositionFromSpatialSkeletonNode(
+          mouseState,
+          nodePosition,
+          transform,
+        );
+      }
+      return;
+    }
+    if (pickData.kind === "edge") {
+      if (pickedOffset < 0 || pickedOffset >= pickData.segmentIds.length) {
+        return;
+      }
+      const segmentId = pickData.segmentIds[pickedOffset];
+      if (Number.isSafeInteger(segmentId) && segmentId > 0) {
+        mouseState.pickedSpatialSkeleton = { segmentId };
+      }
+      return;
+    }
+    if (pickData.kind === "segment-node" || pickData.kind === "segment-edge") {
+      if (pickData.kind === "segment-node") {
+        const pickedNode = this.base.resolveNodePickFromChunk(
+          pickData.chunk,
+          pickedOffset,
+        );
+        if (pickedNode !== undefined) {
+          mouseState.pickedSpatialSkeleton = {
+            nodeId: pickedNode.nodeId,
+            segmentId: pickedNode.segmentId,
+            position: new Float32Array(pickedNode.position),
+            revisionToken: pickedNode.revisionToken,
+          };
+        }
+        return;
+      }
+      const segmentId = this.base.resolveSegmentPickFromChunk(
+        pickData.chunk,
+        pickedOffset,
+        "edge",
+      );
+      if (segmentId !== undefined) {
+        mouseState.pickedSpatialSkeleton = { segmentId };
+      }
+    }
   }
 
   attach(
@@ -2488,12 +4007,16 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
     >,
   ) {
     const pixelSizeWatchable = (this.base.displayState as any)
-      .spatialSkeletonGridPixelSize2d as WatchableValueInterface<number>
+      .spatialSkeletonGridPixelSize2d as
+      | WatchableValueInterface<number>
       | undefined;
     if (pixelSizeWatchable !== undefined) {
       const pixelSize =
         renderContext.sliceView.projectionParameters.value.pixelSize;
-      if (Number.isFinite(pixelSize) && pixelSizeWatchable.value !== pixelSize) {
+      if (
+        Number.isFinite(pixelSize) &&
+        pixelSizeWatchable.value !== pixelSize
+      ) {
         pixelSizeWatchable.value = pixelSize;
       }
     }
@@ -2501,8 +4024,14 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
     const lodValue = displayState.spatialSkeletonLod2d?.value as
       | number
       | undefined;
-    const levels = displayState.spatialSkeletonGridLevels
-      ?.value as Array<{ size: { x: number; y: number; z: number } }>
+    this.base.updateVisibleChunksForView(
+      "2d",
+      this.transformedSources,
+      renderContext.sliceView.projectionParameters.value,
+      lodValue,
+    );
+    const levels = displayState.spatialSkeletonGridLevels?.value as
+      | Array<{ size: { x: number; y: number; z: number }; lod: number }>
       | undefined;
     const histogram = displayState.spatialSkeletonGridRenderScaleHistogram2d as
       | RenderScaleHistogram
@@ -2529,6 +4058,7 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
       renderContext,
       this,
       this.renderHelper,
+      this.browseRenderHelper,
       this.renderOptions,
       attachment,
       {
@@ -2541,8 +4071,22 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
     );
   }
 
-  isReady() {
-    return this.base.isReady();
+  isReady(
+    renderContext: SliceViewPanelReadyRenderContext,
+    _attachment: VisibleLayerInfo<
+      SliceViewPanel,
+      ThreeDimensionalRenderLayerAttachmentState
+    >,
+  ) {
+    const displayState = this.base.displayState as any;
+    const lodValue = displayState.spatialSkeletonLod2d?.value as
+      | number
+      | undefined;
+    return this.base.isReady(
+      this.transformedSources,
+      renderContext.projectionParameters,
+      lodValue,
+    );
   }
 }
 

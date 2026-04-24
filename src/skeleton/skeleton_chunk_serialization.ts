@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2024 Google Inc.
+ * Copyright 2026 Google Inc.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -21,8 +21,8 @@ export interface SkeletonChunkData {
   vertexAttributes: TypedNumberArray[] | null;
   indices: Uint32Array | null;
   lod?: number;
-  missingConnections?: Array<{ nodeId: number; parentId: number; vertexIndex: number; skeletonId: number }>;
-  nodeMap?: Map<number, number>;
+  nodeIds?: Int32Array;
+  nodeRevisionTokens?: Array<string | undefined>;
 }
 
 /**
@@ -93,13 +93,12 @@ export function serializeSkeletonChunkData(
     }
   }
 
-  // Serialize inter-chunk connection data
-  if (data.missingConnections) {
-    msg.missingConnections = data.missingConnections;
+  if (data.nodeIds) {
+    msg.nodeIds = data.nodeIds;
+    transfers.push(data.nodeIds.buffer);
   }
-  if (data.nodeMap) {
-    // Convert Map to array of [key, value] pairs for serialization
-    msg.nodeMap = Array.from(data.nodeMap.entries());
+  if (data.nodeRevisionTokens) {
+    msg.nodeRevisionTokens = data.nodeRevisionTokens;
   }
 }
 
@@ -108,6 +107,6 @@ export function serializeSkeletonChunkData(
  */
 export function freeSkeletonChunkSystemMemory(data: SkeletonChunkData): void {
   data.vertexPositions = data.indices = data.vertexAttributes = null;
-  data.missingConnections = undefined;
-  data.nodeMap = undefined;
+  data.nodeIds = undefined;
+  data.nodeRevisionTokens = undefined;
 }
