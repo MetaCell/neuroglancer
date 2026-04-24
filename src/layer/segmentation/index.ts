@@ -47,9 +47,9 @@ import { registerLayerControls } from "#src/layer/segmentation/layer_controls.js
 import {
   getSpatialSkeletonMissingSelectionDisplayState,
   getSpatialSkeletonNodeIdFromLayerSelectionState,
-  getSpatialSkeletonNodeIdFromViewerHover,
   getSpatialSkeletonSegmentIdFromLayerSelectionState,
   getSpatialSkeletonSelectionRecoveryKey,
+  SpatialSkeletonHoverState,
   SpatialSkeletonSelectionRecoveryStatus,
 } from "#src/layer/segmentation/selection.js";
 import {
@@ -1254,9 +1254,9 @@ export class SegmentationUserLayer extends Base {
   readonly selectedSpatialSkeletonNodeId = new WatchableValue<
     number | undefined
   >(undefined);
-  readonly hoveredSpatialSkeletonNodeId = new WatchableValue<
-    number | undefined
-  >(undefined);
+  readonly hoveredSpatialSkeletonNodeId = this.registerDisposer(
+    new SpatialSkeletonHoverState(),
+  );
   readonly spatialSkeletonVisibleChunksNeeded = new WatchableValue(0);
   readonly spatialSkeletonVisibleChunksAvailable = new WatchableValue(0);
   readonly spatialSkeletonVisibleChunksLoaded = new WatchableValue(false);
@@ -1571,17 +1571,9 @@ export class SegmentationUserLayer extends Base {
       ),
     );
     syncSelectedSpatialSkeletonNodeIdFromGlobalSelection();
-    const syncHoveredSpatialSkeletonNodeId = () => {
-      this.hoveredSpatialSkeletonNodeId.value =
-        getSpatialSkeletonNodeIdFromViewerHover(
-          this.manager.layerSelectedValues.mouseState,
-          this,
-        );
-    };
-    this.registerDisposer(
-      this.manager.layerSelectedValues.changed.add(
-        syncHoveredSpatialSkeletonNodeId,
-      ),
+    this.hoveredSpatialSkeletonNodeId.bindTo(
+      this.manager.layerSelectedValues,
+      this,
     );
     this.displayState.selectedAlpha.changed.add(
       this.specificationChanged.dispatch,
