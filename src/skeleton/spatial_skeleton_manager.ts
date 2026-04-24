@@ -125,8 +125,7 @@ export function normalizeSpatiallyIndexedSkeletonNode(
         : undefined,
     isTrueEnd: node.isTrueEnd,
     ...((node.radius !== undefined && Number.isFinite(Number(node.radius))) ||
-    (node.confidence !== undefined &&
-      Number.isFinite(Number(node.confidence)))
+    (node.confidence !== undefined && Number.isFinite(Number(node.confidence)))
       ? {
           ...(node.radius !== undefined && Number.isFinite(Number(node.radius))
             ? { radius: Number(node.radius) }
@@ -376,10 +375,7 @@ export class SpatialSkeletonState extends RefCounted {
     return true;
   }
 
-  setCachedNodeRevision(
-    nodeId: number,
-    revisionToken: string | undefined,
-  ) {
+  setCachedNodeRevision(nodeId: number, revisionToken: string | undefined) {
     if (revisionToken === undefined) {
       return false;
     }

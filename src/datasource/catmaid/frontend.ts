@@ -24,10 +24,7 @@ import {
 import { WithCredentialsProvider } from "#src/credentials_provider/chunk_source_frontend.js";
 import type { CredentialsProvider } from "#src/credentials_provider/index.js";
 import type { CatmaidToken } from "#src/datasource/catmaid/api.js";
-import {
-  CatmaidClient,
-  credentialsKey,
-} from "#src/datasource/catmaid/api.js";
+import { CatmaidClient, credentialsKey } from "#src/datasource/catmaid/api.js";
 import {
   CatmaidSkeletonSourceParameters,
   CatmaidCompleteSkeletonSourceParameters,
@@ -398,32 +395,27 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
         { serverUrl: baseUrl },
       ) as CredentialsProvider<CatmaidToken>;
 
-    const client = new CatmaidClient(
-      baseUrl,
-      projectId,
-      credentialsProvider,
-    );
+    const client = new CatmaidClient(baseUrl, projectId, credentialsProvider);
 
     // Fetch metadata-derived values through the generic source interface.
-    const [spatialIndexMetadata, cacheProvider, skeletonIds] = await Promise.all(
-      [
+    const [spatialIndexMetadata, cacheProvider, skeletonIds] =
+      await Promise.all([
         options.registry.chunkManager.memoize.getAsync(
           { type: "catmaid:spatial-index-metadata", baseUrl, projectId },
           options,
           () => client.getSpatialIndexMetadata(),
         ),
-      options.registry.chunkManager.memoize.getAsync(
-        { type: "catmaid:cache-provider", baseUrl, projectId },
-        options,
-        () => client.getCacheProvider(),
-      ),
-      options.registry.chunkManager.memoize.getAsync(
-        { type: "catmaid:skeletons", baseUrl, projectId },
-        options,
-        () => client.listSkeletons(),
-      ),
-    ],
-    );
+        options.registry.chunkManager.memoize.getAsync(
+          { type: "catmaid:cache-provider", baseUrl, projectId },
+          options,
+          () => client.getCacheProvider(),
+        ),
+        options.registry.chunkManager.memoize.getAsync(
+          { type: "catmaid:skeletons", baseUrl, projectId },
+          options,
+          () => client.listSkeletons(),
+        ),
+      ]);
 
     if (spatialIndexMetadata === null) {
       throw new Error("Failed to fetch CATMAID spatial index metadata");

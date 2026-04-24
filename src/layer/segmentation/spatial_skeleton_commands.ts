@@ -134,9 +134,7 @@ function removeVisibleSegment(
   );
 }
 
-function findRootNode(
-  segmentNodes: readonly SpatiallyIndexedSkeletonNode[],
-) {
+function findRootNode(segmentNodes: readonly SpatiallyIndexedSkeletonNode[]) {
   return segmentNodes.find((candidate) => candidate.parentNodeId === undefined);
 }
 
@@ -170,10 +168,7 @@ async function getResolvedNodeForEdit(
       candidateSegmentId,
     );
   }
-  const node = findSpatiallyIndexedSkeletonNode(
-    segmentNodes,
-    currentNodeId,
-  );
+  const node = findSpatiallyIndexedSkeletonNode(segmentNodes, currentNodeId);
   if (node === undefined) {
     throw new Error(
       `Node ${currentNodeId} is not available in the inspected skeleton cache.`,
@@ -907,10 +902,7 @@ class NodeTrueEndCommand implements SpatialSkeletonCommand {
     private afterIsTrueEnd: boolean,
   ) {}
 
-  private async applyTrueEnd(
-    nextIsTrueEnd: boolean,
-    statusPrefix: string,
-  ) {
+  private async applyTrueEnd(nextIsTrueEnd: boolean, statusPrefix: string) {
     const { node, skeletonSource } = await getResolvedNodeForEdit(
       this.layer,
       this.stableNodeId,
@@ -953,17 +945,11 @@ class NodeTrueEndCommand implements SpatialSkeletonCommand {
   }
 
   undo() {
-    return this.applyTrueEnd(
-      this.beforeIsTrueEnd,
-      "Undid true end update for",
-    );
+    return this.applyTrueEnd(this.beforeIsTrueEnd, "Undid true end update for");
   }
 
   redo() {
-    return this.applyTrueEnd(
-      this.afterIsTrueEnd,
-      "Redid true end update for",
-    );
+    return this.applyTrueEnd(this.afterIsTrueEnd, "Redid true end update for");
   }
 }
 
@@ -1632,10 +1618,7 @@ export function executeSpatialSkeletonSplit(
   const segmentNodes = layer.getCachedSpatialSkeletonSegmentNodesForEdit(
     node.segmentId,
   );
-  const splitNode = findSpatiallyIndexedSkeletonNode(
-    segmentNodes,
-    node.nodeId,
-  );
+  const splitNode = findSpatiallyIndexedSkeletonNode(segmentNodes, node.nodeId);
   if (splitNode === undefined) {
     throw new Error(
       `Node ${node.nodeId} is not available in the inspected skeleton cache.`,

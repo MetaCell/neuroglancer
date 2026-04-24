@@ -1029,7 +1029,7 @@ function setMouseStatePositionFromSpatialSkeletonNode(
   gatherUpdate(
     mouseState.position,
     layerPosition,
-    transform.globalToRenderLayerDimensions
+    transform.globalToRenderLayerDimensions,
   );
 }
 
@@ -1831,9 +1831,7 @@ interface SpatiallyIndexedSkeletonLayerOptions {
   selectedNodeId?: WatchableValueInterface<number | undefined>;
   pendingNodePositionVersion?: WatchableValueInterface<number>;
   getPendingNodePosition?: (nodeId: number) => ArrayLike<number> | undefined;
-  getCachedNode?: (
-    nodeId: number,
-  ) => SpatiallyIndexedSkeletonNode | undefined;
+  getCachedNode?: (nodeId: number) => SpatiallyIndexedSkeletonNode | undefined;
   inspectionState?: SpatiallyIndexedSkeletonInspectionState;
   maxRetainedOverlaySegments?: number;
 }
@@ -3537,7 +3535,11 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
       );
       const transform = this.base.displayState.transform.value;
       if (transform.error === undefined) {
-        setMouseStatePositionFromSpatialSkeletonNode(mouseState, nodePosition, transform);
+        setMouseStatePositionFromSpatialSkeletonNode(
+          mouseState,
+          nodePosition,
+          transform,
+        );
       }
       return;
     }
@@ -3842,7 +3844,11 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
       );
       const transform = this.base.displayState.transform.value;
       if (transform.error === undefined) {
-        setMouseStatePositionFromSpatialSkeletonNode(mouseState, nodePosition, transform);
+        setMouseStatePositionFromSpatialSkeletonNode(
+          mouseState,
+          nodePosition,
+          transform,
+        );
       }
       return;
     }

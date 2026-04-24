@@ -97,7 +97,9 @@ describe("spatial_skeleton_commands", () => {
     });
     const skeletonLayer = {
       source: makeEditableSkeletonSource({ moveNode }),
-      getNode: vi.fn((nodeId: number) => (nodeId === node.nodeId ? node : undefined)),
+      getNode: vi.fn((nodeId: number) =>
+        nodeId === node.nodeId ? node : undefined,
+      ),
       retainOverlaySegment: vi.fn(),
       invalidateSourceCaches: vi.fn(),
     };
@@ -108,7 +110,9 @@ describe("spatial_skeleton_commands", () => {
     const layer = {
       spatialSkeletonState: {
         commandHistory,
-        getCachedNode: vi.fn((nodeId: number) => (nodeId === node.nodeId ? node : undefined)),
+        getCachedNode: vi.fn((nodeId: number) =>
+          nodeId === node.nodeId ? node : undefined,
+        ),
         getCachedSegmentNodes: vi.fn((segmentId: number) =>
           segmentId === node.segmentId ? [node] : undefined,
         ),
@@ -174,14 +178,8 @@ describe("spatial_skeleton_commands", () => {
       revisionToken: "split-merged-back",
     };
 
-    const serverSegments = new Map<
-      number,
-      SpatiallyIndexedSkeletonNode[]
-    >();
-    const cacheBySegment = new Map<
-      number,
-      SpatiallyIndexedSkeletonNode[]
-    >();
+    const serverSegments = new Map<number, SpatiallyIndexedSkeletonNode[]>();
+    const cacheBySegment = new Map<number, SpatiallyIndexedSkeletonNode[]>();
     const cacheByNode = new Map<number, SpatiallyIndexedSkeletonNode>();
 
     const syncCacheFromServer = (segmentId: number) => {
@@ -386,14 +384,8 @@ describe("spatial_skeleton_commands", () => {
       },
     ];
 
-    const serverSegments = new Map<
-      number,
-      SpatiallyIndexedSkeletonNode[]
-    >();
-    const cacheBySegment = new Map<
-      number,
-      SpatiallyIndexedSkeletonNode[]
-    >();
+    const serverSegments = new Map<number, SpatiallyIndexedSkeletonNode[]>();
+    const cacheBySegment = new Map<number, SpatiallyIndexedSkeletonNode[]>();
     const cacheByNode = new Map<number, SpatiallyIndexedSkeletonNode>();
 
     const syncCacheFromServer = (segmentId: number) => {

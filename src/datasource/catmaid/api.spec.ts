@@ -499,7 +499,9 @@ describe("CatmaidClient skeleton editing methods", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({ newroot: 202, skeleton_id: 17 })
-      .mockResolvedValueOnce([[201, 200, 1, 2, 3, 5, 2000, 13, 1711711711.25, 9]]);
+      .mockResolvedValueOnce([
+        [201, 200, 1, 2, 3, 5, 2000, 13, 1711711711.25, 9],
+      ]);
     (client as any).fetch = fetchMock;
 
     await expect(
