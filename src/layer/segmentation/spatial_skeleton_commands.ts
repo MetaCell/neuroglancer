@@ -795,6 +795,12 @@ class DeleteNodeCommand implements SpatialSkeletonCommand {
     this.layer.spatialSkeletonState.upsertCachedNode(restoredNode, {
       allowUncachedSegment: currentParentNode === undefined,
     });
+    for (const childNode of currentChildNodes) {
+      this.layer.spatialSkeletonState.setCachedNodeParent(
+        childNode.nodeId,
+        restoredNode.nodeId,
+      );
+    }
     if (createResult.parentRevisionToken !== undefined && currentParentNode) {
       this.layer.spatialSkeletonState.setCachedNodeRevision(
         currentParentNode.nodeId,
