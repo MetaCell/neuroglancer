@@ -905,25 +905,6 @@ void emitDefault() {
     gl.uniform1ui(shader.uniform("uPickInstanceStride"), stride);
   }
 
-  private bindVertexAttributeTextures(
-    gl: GL,
-    shader: ShaderProgram,
-    vertexAttributeTextures: readonly (WebGLTexture | null)[],
-  ) {
-    const { vertexAttributes } = this;
-    const numAttributes = vertexAttributes.length;
-    for (let i = 0; i < numAttributes; ++i) {
-      const textureUnit =
-        WebGL2RenderingContext.TEXTURE0 +
-        shader.textureUnit(vertexAttributeSamplerSymbols[i]);
-      gl.activeTexture(textureUnit);
-      gl.bindTexture(
-        WebGL2RenderingContext.TEXTURE_2D,
-        vertexAttributeTextures[i],
-      );
-    }
-  }
-
   drawSkeleton(
     gl: GL,
     edgeShader: ShaderProgram,
@@ -931,12 +912,27 @@ void emitDefault() {
     skeletonChunk: SkeletonChunkInterface,
     projectionParameters: { width: number; height: number },
   ) {
+    // Bind vertex attribute textures to be used across edge and node shaders
+    // The edge shader and node shader share the same texture unit for each attribute
+    // so we only bind once. However, if this ever changes, we
+    // instead must bind for the edge shader, draw, then bind for node shader
+    const { vertexAttributes } = this;
     const { vertexAttributeTextures } = skeletonChunk;
+    const numAttributes = vertexAttributes.length;
+    for (let i = 0; i < numAttributes; ++i) {
+      const textureUnit =
+        WebGL2RenderingContext.TEXTURE0 +
+        edgeShader.textureUnit(vertexAttributeSamplerSymbols[i]);
+      gl.activeTexture(textureUnit);
+      gl.bindTexture(
+        WebGL2RenderingContext.TEXTURE_2D,
+        vertexAttributeTextures[i],
+      );
+    }
 
     // Draw edges
     {
       edgeShader.bind();
-      this.bindVertexAttributeTextures(gl, edgeShader, vertexAttributeTextures);
       const aVertexIndex = edgeShader.attribute("aVertexIndex");
       skeletonChunk.indexBuffer.bindToVertexAttribI(
         aVertexIndex,
@@ -954,10 +950,9 @@ void emitDefault() {
       gl.disableVertexAttribArray(aVertexIndex);
     }
 
+    // Draw nodes if in line and node mode
     if (nodeShader !== null) {
       nodeShader.bind();
-      // Node and edge programs can allocate sampler units differently.
-      this.bindVertexAttributeTextures(gl, nodeShader, vertexAttributeTextures);
       initializeCircleShader(nodeShader, projectionParameters, {
         featherWidthInPixels: this.targetIsSliceView ? 1.0 : 0.0,
       });
