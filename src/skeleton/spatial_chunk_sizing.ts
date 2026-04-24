@@ -40,9 +40,7 @@ function validateFiniteOptions(
     options.minChunkSize !== undefined &&
     !Number.isFinite(options.minChunkSize)
   ) {
-    throw new Error(
-      "Spatially indexed skeleton minChunkSize must be finite.",
-    );
+    throw new Error("Spatially indexed skeleton minChunkSize must be finite.");
   }
   if (options.maxChunks !== undefined && !Number.isFinite(options.maxChunks)) {
     throw new Error("Spatially indexed skeleton maxChunks must be finite.");
@@ -86,13 +84,14 @@ export function getDefaultSpatiallyIndexedSkeletonChunkSize(
   const minChunkSize = Math.max(
     DEFAULT_SPATIALLY_INDEXED_SKELETON_MIN_CHUNK_SIZE,
     Math.ceil(
-      options.minChunkSize ??
-        DEFAULT_SPATIALLY_INDEXED_SKELETON_MIN_CHUNK_SIZE,
+      options.minChunkSize ?? DEFAULT_SPATIALLY_INDEXED_SKELETON_MIN_CHUNK_SIZE,
     ),
   );
   const maxChunks = Math.max(
     1,
-    Math.floor(options.maxChunks ?? DEFAULT_SPATIALLY_INDEXED_SKELETON_MAX_CHUNKS),
+    Math.floor(
+      options.maxChunks ?? DEFAULT_SPATIALLY_INDEXED_SKELETON_MAX_CHUNKS,
+    ),
   );
   const extents = [
     Math.max(0, bounds.max.x - bounds.min.x),

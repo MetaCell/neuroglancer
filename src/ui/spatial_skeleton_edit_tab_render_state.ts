@@ -142,11 +142,7 @@ export function buildSpatialSkeletonSegmentRenderState(
     const parentInTree =
       node.parentNodeId !== undefined && nodeById.has(node.parentNodeId);
     const type = classifyNodeType(node, children.length, parentInTree);
-    if (
-      options.collapseRegularNodes &&
-      type === "regular" &&
-      !node.isTrueEnd
-    ) {
+    if (options.collapseRegularNodes && type === "regular" && !node.isTrueEnd) {
       continue;
     }
     rows.push({ node, type, isLeaf: children.length === 0 });

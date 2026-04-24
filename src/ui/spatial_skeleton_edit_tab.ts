@@ -1717,6 +1717,25 @@ export class SpatialSkeletonEditTab extends Tab {
       }, layer.displayState.segmentationGroupState),
     );
     this.registerDisposer(
+      registerNested((context, colorGroupState) => {
+        context.registerDisposer(
+          colorGroupState.segmentColorHash.changed.add(() => {
+            updateDisplay();
+          }),
+        );
+        context.registerDisposer(
+          colorGroupState.segmentDefaultColor.changed.add(() => {
+            updateDisplay();
+          }),
+        );
+        context.registerDisposer(
+          colorGroupState.segmentStatedColors.changed.add(() => {
+            updateDisplay();
+          }),
+        );
+      }, layer.displayState.segmentationColorGroupState),
+    );
+    this.registerDisposer(
       layer.selectedSpatialSkeletonNodeId.changed.add(() => {
         pendingScrollToSelectedNode = true;
         applyRowInteractionState({ scrollSelectedIntoView: true });

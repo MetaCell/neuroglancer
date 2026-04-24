@@ -76,7 +76,6 @@ import {
   SELECTED_LAYER_SIDE_PANEL_DEFAULT_LOCATION,
   UserLayerSidePanelsState,
 } from "#src/ui/layer_side_panel_state.js";
-import { formatErrorMessage } from "#src/util/error.js";
 import {
   DEFAULT_SIDE_PANEL_LOCATION,
   TrackableSidePanelLocation,
@@ -86,6 +85,7 @@ import { LayerToolBinder, SelectedLegacyTool } from "#src/ui/tool.js";
 import { gatherUpdate } from "#src/util/array.js";
 import type { Borrowed, Owned } from "#src/util/disposable.js";
 import { invokeDisposers, RefCounted } from "#src/util/disposable.js";
+import { formatErrorMessage } from "#src/util/error.js";
 import {
   emptyToUndefined,
   parseArray,

@@ -34,12 +34,8 @@ import type {
   SpatiallyIndexedSkeletonRerootResult,
   SpatiallyIndexedSkeletonSplitResult,
 } from "#src/skeleton/api.js";
-import {
-  SPATIALLY_INDEXED_SKELETON_CONFIDENCE_VALUES,
-} from "#src/skeleton/api.js";
-import {
-  getDefaultSpatiallyIndexedSkeletonChunkSize,
-} from "#src/skeleton/spatial_chunk_sizing.js";
+import { SPATIALLY_INDEXED_SKELETON_CONFIDENCE_VALUES } from "#src/skeleton/api.js";
+import { getDefaultSpatiallyIndexedSkeletonChunkSize } from "#src/skeleton/spatial_chunk_sizing.js";
 import { HttpError } from "#src/util/http_request.js";
 
 interface CatmaidStackInfo {
@@ -388,9 +384,7 @@ function appendCatmaidState(
   body.append("state", JSON.stringify(state));
 }
 
-function normalizeCatmaidRevisionToken(
-  value: unknown,
-): string | undefined {
+function normalizeCatmaidRevisionToken(value: unknown): string | undefined {
   if (typeof value === "number" && Number.isFinite(value)) {
     const milliseconds = Math.abs(value) < 1e12 ? value * 1000 : value;
     return new Date(milliseconds).toISOString();
@@ -638,12 +632,10 @@ function buildCatmaidNeighborhoodState(
             ),
           ],
         }),
-    children: childStates.map(
-      (child): [number, string] => [
-        child.nodeId,
-        requireCatmaidRevisionToken(child.revisionToken, operation, "child"),
-      ],
-    ),
+    children: childStates.map((child): [number, string] => [
+      child.nodeId,
+      requireCatmaidRevisionToken(child.revisionToken, operation, "child"),
+    ]),
     links: [],
   };
 }
@@ -681,16 +673,10 @@ function buildCatmaidInsertNodeState(
       "insert-node",
       "parent",
     ),
-    children: childStates.map(
-      (child): [number, string] => [
-        child.nodeId,
-        requireCatmaidRevisionToken(
-          child.revisionToken,
-          "insert-node",
-          "child",
-        ),
-      ],
-    ),
+    children: childStates.map((child): [number, string] => [
+      child.nodeId,
+      requireCatmaidRevisionToken(child.revisionToken, "insert-node", "child"),
+    ]),
     links: [],
   };
 }

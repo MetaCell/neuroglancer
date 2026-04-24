@@ -88,9 +88,7 @@ describe("SpatiallyIndexedSkeletonLayer browse node picks", () => {
     };
     const layer = Object.create(SpatiallyIndexedSkeletonLayer.prototype);
 
-    expect(
-      (layer as any).resolveNodePickFromChunk(chunk, 1),
-    ).toEqual({
+    expect((layer as any).resolveNodePickFromChunk(chunk, 1)).toEqual({
       nodeId: 202,
       segmentId: 17,
       position: new Float32Array([4, 5, 6]),

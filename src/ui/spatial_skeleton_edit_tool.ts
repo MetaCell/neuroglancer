@@ -210,7 +210,9 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
           ? segmentIdRaw
           : undefined,
       position:
-        position instanceof Float32Array ? new Float32Array(position) : undefined,
+        position instanceof Float32Array
+          ? new Float32Array(position)
+          : undefined,
       revisionToken:
         typeof revisionToken === "string" ? revisionToken : undefined,
     };
@@ -502,8 +504,7 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
           ) ??
             false);
         const hasMergeAnchor =
-          this.layer.spatialSkeletonState.mergeAnchorNodeId.value !==
-          undefined;
+          this.layer.spatialSkeletonState.mergeAnchorNodeId.value !== undefined;
         if (hasSpatialSkeletonSelection || hasMergeAnchor) {
           this.layer.clearSpatialSkeletonNodeSelection("force-unpin");
           if (hasMergeAnchor) {
@@ -576,7 +577,7 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
   // and heavily assume rank 3. This is likely mostly fine
   // but need to test a little more how it works if embedded in
   // higher dim spaces or alongside images with a t dim / channel dim
-  // can also possibly remove this and just set tempChunkPosition 
+  // can also possibly remove this and just set tempChunkPosition
   // to be vec3 instead of Float32Array
   // will verify and clean up
   private handleRankChanged(rank: number) {
@@ -642,10 +643,7 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
       skeletonLayer,
       parentNodeId,
     );
-    if (
-      selectedParentNode !== undefined &&
-      selectedParentNode.isTrueEnd
-    ) {
+    if (selectedParentNode !== undefined && selectedParentNode.isTrueEnd) {
       return `Node ${parentNodeId} is marked as a true end. Clear the true end state before appending a child node.`;
     }
     return undefined;
@@ -798,10 +796,9 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
         }
         event.stopPropagation();
         event.detail.preventDefault();
-        const disabledReason =
-          layer.getSpatialSkeletonActionsDisabledReason(
-            SpatialSkeletonActions.addNodes,
-          );
+        const disabledReason = layer.getSpatialSkeletonActionsDisabledReason(
+          SpatialSkeletonActions.addNodes,
+        );
         if (disabledReason !== undefined) {
           StatusMessage.showTemporaryMessage(disabledReason);
           return;
@@ -899,10 +896,9 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
       (event: ActionEvent<MouseEvent>) => {
         event.stopPropagation();
         event.detail.preventDefault();
-        const disabledReason =
-          layer.getSpatialSkeletonActionsDisabledReason(
-            SpatialSkeletonActions.moveNodes,
-          );
+        const disabledReason = layer.getSpatialSkeletonActionsDisabledReason(
+          SpatialSkeletonActions.moveNodes,
+        );
         if (disabledReason !== undefined) {
           StatusMessage.showTemporaryMessage(disabledReason);
           return;
@@ -989,7 +985,7 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
               layer.spatialSkeletonState.setPendingNodePosition(
                 pickedNode.nodeId,
                 modelPosition,
-            );
+              );
             if (!previewChanged) return;
             moved = true;
             this.dragModelSpacePosition.set(modelPosition);
@@ -1041,10 +1037,9 @@ class SpatialSkeletonMergeModeTool extends SpatialSkeletonToolBase {
 
   activate(activation: ToolActivation<this>) {
     const rawInputEventMapBinder = activation.inputEventMapBinder;
-    const reason =
-      this.layer.getSpatialSkeletonActionsDisabledReason(
-        SpatialSkeletonActions.mergeSkeletons,
-      );
+    const reason = this.layer.getSpatialSkeletonActionsDisabledReason(
+      SpatialSkeletonActions.mergeSkeletons,
+    );
     if (reason !== undefined) {
       StatusMessage.showTemporaryMessage(reason);
       queueMicrotask(() => activation.cancel());
@@ -1158,9 +1153,8 @@ class SpatialSkeletonMergeModeTool extends SpatialSkeletonToolBase {
           );
           return;
         }
-        const pickedNode = this.resolvePickedNodeSelectionForMerge(
-          skeletonLayer,
-        );
+        const pickedNode =
+          this.resolvePickedNodeSelectionForMerge(skeletonLayer);
         const anchorNode = getAnchorNode();
         if (pickedNode === undefined) {
           const pickedSegmentId = this.getPickedSpatialSkeletonSegment();
@@ -1288,10 +1282,9 @@ class SpatialSkeletonSplitModeTool extends SpatialSkeletonToolBase {
 
   activate(activation: ToolActivation<this>) {
     const rawInputEventMapBinder = activation.inputEventMapBinder;
-    const reason =
-      this.layer.getSpatialSkeletonActionsDisabledReason(
-        SpatialSkeletonActions.splitSkeletons,
-      );
+    const reason = this.layer.getSpatialSkeletonActionsDisabledReason(
+      SpatialSkeletonActions.splitSkeletons,
+    );
     if (reason !== undefined) {
       StatusMessage.showTemporaryMessage(reason);
       queueMicrotask(() => activation.cancel());

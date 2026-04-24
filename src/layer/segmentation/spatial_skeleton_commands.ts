@@ -135,9 +135,7 @@ function removeVisibleSegment(
   );
 }
 
-function findRootNode(
-  segmentNodes: readonly SpatiallyIndexedSkeletonNode[],
-) {
+function findRootNode(segmentNodes: readonly SpatiallyIndexedSkeletonNode[]) {
   return segmentNodes.find((candidate) => candidate.parentNodeId === undefined);
 }
 
@@ -206,10 +204,7 @@ async function getResolvedNodeForEdit(
       candidateSegmentId,
     );
   }
-  const node = findSpatiallyIndexedSkeletonNode(
-    segmentNodes,
-    currentNodeId,
-  );
+  const node = findSpatiallyIndexedSkeletonNode(segmentNodes, currentNodeId);
   if (node === undefined) {
     throw new Error(
       `Node ${currentNodeId} is not available in the inspected skeleton cache.`,
@@ -942,10 +937,7 @@ class NodeTrueEndCommand implements SpatialSkeletonCommand {
     private afterIsTrueEnd: boolean,
   ) {}
 
-  private async applyTrueEnd(
-    nextIsTrueEnd: boolean,
-    statusPrefix: string,
-  ) {
+  private async applyTrueEnd(nextIsTrueEnd: boolean, statusPrefix: string) {
     const { node, skeletonSource } = await getResolvedNodeForEdit(
       this.layer,
       this.stableNodeId,
@@ -988,17 +980,11 @@ class NodeTrueEndCommand implements SpatialSkeletonCommand {
   }
 
   undo() {
-    return this.applyTrueEnd(
-      this.beforeIsTrueEnd,
-      "Undid true end update for",
-    );
+    return this.applyTrueEnd(this.beforeIsTrueEnd, "Undid true end update for");
   }
 
   redo() {
-    return this.applyTrueEnd(
-      this.afterIsTrueEnd,
-      "Redid true end update for",
-    );
+    return this.applyTrueEnd(this.afterIsTrueEnd, "Redid true end update for");
   }
 }
 
@@ -1353,12 +1339,11 @@ class MergeCommand implements SpatialSkeletonCommand {
         this.stableSecondSegmentId,
       );
     } else {
-      preservedSecondRootNodeId =
-        (
-          await secondNodeContext.skeletonSource.getSkeletonRootNode(
-            secondNodeContext.segmentId,
-          )
-        ).nodeId;
+      preservedSecondRootNodeId = (
+        await secondNodeContext.skeletonSource.getSkeletonRootNode(
+          secondNodeContext.segmentId,
+        )
+      ).nodeId;
       secondNode = {
         skeletonLayer: secondNodeContext.skeletonLayer,
         skeletonSource: secondNodeContext.skeletonSource,
@@ -1403,8 +1388,8 @@ class MergeCommand implements SpatialSkeletonCommand {
     const attachedRootNodeId =
       losingNode.segmentId === firstNode.node.segmentId
         ? findRootNode(firstNode.segmentNodes)?.nodeId
-        : preservedSecondRootNodeId ??
-          findRootNode(secondNode.segmentNodes)?.nodeId;
+        : (preservedSecondRootNodeId ??
+          findRootNode(secondNode.segmentNodes)?.nodeId);
     this.stableAttachedNodeId =
       this.stableAttachedNodeId ??
       this.layer.spatialSkeletonState.commandHistory.mappings.getStableOrCurrentNodeId(
@@ -1727,10 +1712,7 @@ export function executeSpatialSkeletonSplit(
   const segmentNodes = layer.getCachedSpatialSkeletonSegmentNodesForEdit(
     node.segmentId,
   );
-  const splitNode = findSpatiallyIndexedSkeletonNode(
-    segmentNodes,
-    node.nodeId,
-  );
+  const splitNode = findSpatiallyIndexedSkeletonNode(segmentNodes, node.nodeId);
   if (splitNode === undefined) {
     throw new Error(
       `Node ${node.nodeId} is not available in the inspected skeleton cache.`,
