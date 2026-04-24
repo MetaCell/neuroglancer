@@ -276,6 +276,7 @@ class RenderHelper extends RefCounted {
   private segmentAttributeIndex: number | undefined;
   private segmentColorAttributeIndex: number | undefined;
   private selectedNodeAttributeIndex: number | undefined;
+  private warnedVertexTextureImageUnitLimit = false;
   private visibleSegmentsShaderManager = new HashSetShaderManager(
     "visibleSegments",
   );
@@ -830,6 +831,7 @@ void emitDefault() {
     const { textureAccessHelper } = this;
     textureAccessHelper.defineShader(builder);
     const numAttributes = this.vertexAttributes.length;
+    this.checkVertexAttributeTextureUnitLimit(numAttributes);
     for (let j = vertexAttributeSamplerSymbols.length; j < numAttributes; ++j) {
       vertexAttributeSamplerSymbols[j] = Symbol(
         `SkeletonShader.vertexAttributeTextureUnit${j}`,
@@ -852,6 +854,22 @@ void emitDefault() {
         ),
       );
     });
+  }
+
+  private checkVertexAttributeTextureUnitLimit(numAttributes: number) {
+    const { maxVertexTextureImageUnits } = this.gl;
+    if (
+      this.warnedVertexTextureImageUnitLimit ||
+      numAttributes <= maxVertexTextureImageUnits
+    ) {
+      return;
+    }
+    this.warnedVertexTextureImageUnitLimit = true;
+    console.warn(
+      `Skeleton shader uses ${numAttributes} vertex attribute texture samplers, ` +
+        `but this WebGL context supports only ${maxVertexTextureImageUnits} vertex texture image units. ` +
+        "Skeleton rendering may fail or sample incorrect attributes.",
+    );
   }
 
   getCrossSectionFadeFactor() {
@@ -926,11 +944,13 @@ void emitDefault() {
     projectionParameters: { width: number; height: number },
   ) {
     const { vertexAttributeTextures } = skeletonChunk;
+    // Node and edge shaders define vertex attribute samplers in the same order,
+    // so this single bind satisfies both programs.
+    this.bindVertexAttributeTextures(gl, edgeShader, vertexAttributeTextures);
 
     // Draw edges
     {
       edgeShader.bind();
-      this.bindVertexAttributeTextures(gl, edgeShader, vertexAttributeTextures);
       const aVertexIndex = edgeShader.attribute("aVertexIndex");
       skeletonChunk.indexBuffer.bindToVertexAttribI(
         aVertexIndex,
@@ -950,8 +970,6 @@ void emitDefault() {
 
     if (nodeShader !== null) {
       nodeShader.bind();
-      // Node and edge programs can allocate sampler units differently.
-      this.bindVertexAttributeTextures(gl, nodeShader, vertexAttributeTextures);
       initializeCircleShader(nodeShader, projectionParameters, {
         featherWidthInPixels: this.targetIsSliceView ? 1.0 : 0.0,
       });

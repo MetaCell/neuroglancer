@@ -21,6 +21,7 @@ export interface GL extends WebGL2RenderingContext {
   memoize: Memoize<any, RefCounted>;
   maxTextureSize: number;
   maxTextureImageUnits: number;
+  maxVertexTextureImageUnits: number;
   max3dTextureSize: number;
   tempTextureUnit: number;
 }
@@ -47,6 +48,9 @@ export function initializeWebGL(canvas: HTMLCanvasElement) {
   );
   gl.maxTextureImageUnits = gl.getParameter(
     WebGL2RenderingContext.MAX_TEXTURE_IMAGE_UNITS,
+  );
+  gl.maxVertexTextureImageUnits = gl.getParameter(
+    WebGL2RenderingContext.MAX_VERTEX_TEXTURE_IMAGE_UNITS,
   );
   gl.tempTextureUnit = gl.maxTextureImageUnits - 1;
 
