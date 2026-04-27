@@ -19,9 +19,14 @@ CATMAID documentation to set up a CATMAID server. At minimum you will need:
 
 The project stack dimensions and resolution are used to inform the bounding box
 of the data in neuroglancer as their product. Skeletons in CATMAID are in 1 nm
-units. Optionally, you can also configure cache grid
-metadata, which is intended to be used alongside the CATMAID multiple-LOD cache
-grid for faster fetches of spatially indexed skeletons.
+units. Optionally, you can also configure stack metadata, which is intended to be used alongside the CATMAID multiple-LOD cache
+grid for faster fetches of spatially indexed skeletons. The stack metadata can specify the key ``spatial_skeleton_chunk_sizes`` to define the chunk sizes at each LOD level in neuroglancer in nm. These chunk sizes are not required to be the same as the CATMAID LOD cache grid chunk sizes, and chunks are not required to have an exact match in the cache. Neuroglancer will always request to CATMAID to provide nodes from a cache if present. In addition, neuroglancer will request chunks at:
+
+.. math::
+
+   \mathrm{lod}\!\left(\frac{k}{n - 1}\right)
+
+in CATMAID, where :math:`k` is the LOD index level in neuroglancer, and :math:`n` is the number of LOD levels.
 
 After setting this up, enter ``catmaid:<your-catmaid-server-url>/<your-catmaid-project-id>`` as a data source in neuroglancer.
 
@@ -111,12 +116,15 @@ select the node by either:
 
 Once a node is selected, you can:
 
-- Delete the node
-- Change the node type
-- Make the node the root of the skeleton
+- Delete the node *
+- Change the node type *
+- Make the node the root of the skeleton *
 - Change the radius
 - Change the confidence level
 - Add or edit a free-text description
+
+.. note::
+   * These actions can also be performed from the skeleton tab table.
 
 .. _skeleton-editing-tools:
 
@@ -151,10 +159,9 @@ With the Edit tool active:
 Merge Tool
 ~~~~~~~~~~
 
-With the Merge tool active, select the "from" node first and then the "to" node.
+With the Merge tool active, select the "from" node first and then the "to" node. You must merge from a visible skeleton, but the "to" node may belong to a non-visible skeleton.
 The surviving skeleton ID will be the ID of the skeleton containing the "from"
-node. You must merge from a visible skeleton, but the "to" node may belong to a
-non-visible skeleton.
+node. The only exception to this is if the CATMAID skeleton has annotations, and one of the skeletons is annotated as ``stable`` -- in this case, the surviving skeleton ID is from the one that was annotated as ``stable``. It is not currently possible to set these annotations within neuroglancer.
 
 Split Tool
 ~~~~~~~~~~
