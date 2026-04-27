@@ -36,14 +36,14 @@ subsource from the pre-existing pipeline for rendering precomputed format skelet
 
 In the **Render** tab you can adjust:
 
-- **Opacity** — controls the opacity of hidden skeletons, which represent
+- **Opacity (3d)** — controls the opacity of fully loaded, visible skeletons.
+- **Hidden Opacity (3d)** — controls the opacity of hidden skeletons, which represent
   LOD-influenced spatial indicators of nodes in space.
-- **Opacity 3D** — controls the opacity of fully loaded, visible skeletons.
 
 When you make a skeleton visible, a full fetch is triggered and you are guaranteed
 to see all nodes and details of that skeleton. Otherwise you see whatever is
 provided by the LOD spatial information. The selected LOD is controllable via the
-**Skeleton grid 2D** and **Skeleton grid 3D** resolution settings.
+**Resoltion (skeleton grid 2D)** and **Resolution (skeleton grid 3D)** resolution settings.
 
 The **Seg** tab works as normal for a segmentation layer, allowing you to set the
 visibility of segments/skeletons by their ID or by label if one has been assigned.
@@ -64,7 +64,7 @@ You can find a node by ID or by description, and filter nodes to show only:
 - True ends
 - Nodes with descriptions
 
-You can also pick a subset of the visible skeletons to display in this menu.
+You can also pick a subset of the visible skeletons to display information about in this menu.
 
 Skeleton Navigation
 ~~~~~~~~~~~~~~~~~~~
