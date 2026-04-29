@@ -97,9 +97,6 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
     // Pack only segment IDs into vertexAttributes (positions are in vertexPositions)
     chunk.vertexAttributes = [packed.segmentIds];
     chunk.nodeIds = packed.nodeIds;
-    chunk.nodeParentIds = packed.nodeParentIds;
-    chunk.nodeRadii = packed.nodeRadii;
-    chunk.nodeConfidences = packed.nodeConfidences;
     chunk.nodeRevisionTokens = packed.revisionTokens;
   }
 }

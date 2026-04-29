@@ -335,6 +335,54 @@ describe("layer/segmentation spatial skeleton selection serialization", () => {
     expect(selectionState.value.layers[0].state.nodeId).toBeUndefined();
     expect(selectionState.value.layers[0].state.value).toBeUndefined();
   });
+
+  it("renders only segment and node ids for non-inspected spatial index node selections", () => {
+    const state = {
+      nodeId: "22242672",
+      value: "2836850",
+    };
+    const layer = Object.assign(
+      Object.create(SegmentationUserLayer.prototype),
+      {
+        displayState: undefined,
+        getSpatiallyIndexedSkeletonLayer: () => undefined,
+        selectSegment: vi.fn(),
+        selectedSpatialSkeletonNodeInfo: new WatchableValue(undefined),
+        spatialSkeletonNodeDataVersion: new WatchableValue(0),
+        spatialSkeletonState: {
+          getCachedNode: () => undefined,
+        },
+      },
+    );
+    Object.defineProperty(layer, "manager", {
+      value: {
+        root: {
+          selectionState: {
+            value: {
+              layers: [{ layer, state }],
+            },
+          },
+        },
+      },
+      configurable: true,
+    });
+    const parent = document.createElement("div");
+    const context = {
+      redraw: vi.fn(),
+      registerDisposer: vi.fn((disposer: unknown) => disposer),
+    };
+
+    expect(
+      (layer as any).displaySpatialSkeletonSelection(state, parent, context),
+    ).toBe(true);
+
+    expect(parent.textContent).toContain("2836850");
+    expect(parent.textContent).toContain("22242672");
+    expect(parent.textContent).not.toContain("Unknown");
+    expect(parent.textContent).not.toContain("Unavailable");
+    expect(parent.textContent).not.toContain("Radius");
+    expect(parent.textContent).not.toContain("Confidence");
+  });
 });
 
 describe("layer/segmentation spatial skeleton node navigation helpers", () => {

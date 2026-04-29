@@ -65,9 +65,6 @@ interface SpatialSkeletonSelectableLayer {
     options?: {
       segmentId?: number;
       position?: ArrayLike<number>;
-      parentNodeId?: number;
-      radius?: number;
-      confidence?: number;
       revisionToken?: string;
     },
   ) => void;
@@ -542,9 +539,6 @@ export abstract class RenderedDataPanel extends RenderedPanel {
             ? pickedSegmentId
             : undefined,
         position: pickedSpatialSkeleton?.position ?? mouseState.position,
-        parentNodeId: pickedSpatialSkeleton?.parentNodeId,
-        radius: pickedSpatialSkeleton?.radius,
-        confidence: pickedSpatialSkeleton?.confidence,
         revisionToken: pickedSpatialSkeleton?.revisionToken,
       };
     };
@@ -576,9 +570,6 @@ export abstract class RenderedDataPanel extends RenderedPanel {
           {
             segmentId: pickedSelection.segmentId,
             position: pickedSelection.position,
-            parentNodeId: pickedSelection.parentNodeId,
-            radius: pickedSelection.radius,
-            confidence: pickedSelection.confidence,
             revisionToken: pickedSelection.revisionToken,
           },
         );

@@ -303,9 +303,6 @@ export class SpatiallyIndexedSkeletonChunk
   requestGeneration = -1;
   requestOwners = SpatiallyIndexedSkeletonChunkRequestOwner.NONE;
   nodeIds: Int32Array | undefined;
-  nodeParentIds: Int32Array | undefined;
-  nodeRadii: Float32Array | undefined;
-  nodeConfidences: Float32Array | undefined;
   nodeRevisionTokens: Array<string | undefined> | undefined;
 
   freeSystemMemory() {

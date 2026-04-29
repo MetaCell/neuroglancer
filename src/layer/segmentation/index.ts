@@ -1249,9 +1249,6 @@ interface SelectedSpatialSkeletonNodeInfo {
   nodeId: number;
   segmentId?: number;
   position?: Float32Array;
-  parentNodeId?: number;
-  radius?: number;
-  confidence?: number;
   revisionToken?: string;
 }
 
@@ -1261,12 +1258,6 @@ function normalizeOptionalPositiveSafeInteger(value: unknown) {
   return Number.isSafeInteger(normalized) && normalized > 0
     ? normalized
     : undefined;
-}
-
-function normalizeOptionalFiniteNumber(value: unknown) {
-  if (value === undefined) return undefined;
-  const normalized = Number(value);
-  return Number.isFinite(normalized) ? normalized : undefined;
 }
 
 function copyOptionalSpatialSkeletonPosition(
@@ -1397,9 +1388,6 @@ export class SegmentationUserLayer extends Base {
     options: {
       segmentId?: number;
       position?: ArrayLike<number>;
-      parentNodeId?: number;
-      radius?: number;
-      confidence?: number;
       revisionToken?: string;
     } = {},
   ) => {
@@ -1415,15 +1403,6 @@ export class SegmentationUserLayer extends Base {
     const selectedNodePosition = options.position ?? selectedNodeInfo?.position;
     const selectedGlobalPosition =
       this.getGlobalSelectionPositionFromModelPosition(selectedNodePosition);
-    const parentNodeId = normalizeOptionalPositiveSafeInteger(
-      options.parentNodeId ?? selectedNodeInfo?.parentNodeId,
-    );
-    const radius = normalizeOptionalFiniteNumber(
-      options.radius ?? selectedNodeInfo?.radius,
-    );
-    const confidence = normalizeOptionalFiniteNumber(
-      options.confidence ?? selectedNodeInfo?.confidence,
-    );
     const revisionToken =
       typeof options.revisionToken === "string"
         ? options.revisionToken
@@ -1432,9 +1411,6 @@ export class SegmentationUserLayer extends Base {
       nodeId: normalizedNodeId,
       segmentId,
       position: copyOptionalSpatialSkeletonPosition(selectedNodePosition),
-      parentNodeId,
-      radius,
-      confidence,
       revisionToken,
     };
     this.captureSpatialSkeletonSelectionState(
@@ -2392,7 +2368,8 @@ export class SegmentationUserLayer extends Base {
     verifyOptionalObjectProperty(
       specification,
       json_keys.SPATIAL_SKELETON_NODE_FILTER_JSON_KEY,
-      (value) => this.displayState.spatialSkeletonNodeFilter.restoreState(value),
+      (value) =>
+        this.displayState.spatialSkeletonNodeFilter.restoreState(value),
     );
     this.displayState.spatialSkeletonGridResolutionRelative2d.restoreState(
       specification[
@@ -2769,11 +2746,36 @@ export class SegmentationUserLayer extends Base {
       container.appendChild(row);
     };
 
-    if (
-      nodeInfo === undefined ||
-      nodeInfo.segmentId === undefined ||
-      nodeInfo.position === undefined
-    ) {
+    const appendSegmentAndNodeIds = (segmentId: number, nodeId: number) => {
+      const segmentChipColors = getSpatialSkeletonSegmentChipColors(
+        this.displayState,
+        segmentId,
+      );
+      const segmentIdChip = document.createElement("span");
+      segmentIdChip.className =
+        "neuroglancer-spatial-skeleton-node-segment-chip";
+      segmentIdChip.textContent = `${segmentId}`;
+      segmentIdChip.style.backgroundColor = segmentChipColors.background;
+      segmentIdChip.style.color = segmentChipColors.foreground;
+      segmentIdChip.title =
+        `Segment ${segmentId}\n` +
+        "Ctrl+right-click to pin selection\n" +
+        "Ctrl+shift+right-click to unpin";
+      bindSpatialSkeletonSegmentSelection(
+        segmentIdChip,
+        this.selectSegment,
+        segmentId,
+      );
+      appendValue("Segment ID", segmentIdChip);
+      appendValue("Node ID", `${nodeId}`);
+    };
+
+    if (completeNodeInfo === undefined) {
+      const segmentId = nodeInfo?.segmentId ?? selectedSegmentId;
+      if (segmentId !== undefined) {
+        appendSegmentAndNodeIds(segmentId, nodeId);
+        return true;
+      }
       const valueElement = document.createElement("div");
       valueElement.classList.add(
         "neuroglancer-selection-details-segment-description",
@@ -2786,9 +2788,8 @@ export class SegmentationUserLayer extends Base {
 
     const segmentId = nodeInfo.segmentId;
     const nodePosition = nodeInfo.position;
-    const segmentNodes = this.spatialSkeletonState.getCachedSegmentNodes(
-      segmentId,
-    );
+    const segmentNodes =
+      this.spatialSkeletonState.getCachedSegmentNodes(segmentId);
     const directChildNodeIds =
       segmentNodes
         ?.filter((candidate) => candidate.parentNodeId === nodeInfo.nodeId)
@@ -2968,26 +2969,7 @@ export class SegmentationUserLayer extends Base {
     summaryCoordinates.title = position.fullText;
     summaryRow.appendChild(summaryCoordinates);
 
-    const segmentChipColors = getSpatialSkeletonSegmentChipColors(
-      this.displayState,
-      segmentId,
-    );
-    const segmentIdChip = document.createElement("span");
-    segmentIdChip.className = "neuroglancer-spatial-skeleton-node-segment-chip";
-    segmentIdChip.textContent = `${segmentId}`;
-    segmentIdChip.style.backgroundColor = segmentChipColors.background;
-    segmentIdChip.style.color = segmentChipColors.foreground;
-    segmentIdChip.title =
-      `Segment ${segmentId}\n` +
-      "Ctrl+right-click to pin selection\n" +
-      "Ctrl+shift+right-click to unpin";
-    bindSpatialSkeletonSegmentSelection(
-      segmentIdChip,
-      this.selectSegment,
-      segmentId,
-    );
-    appendValue("Segment ID", segmentIdChip);
-    appendValue("Node ID", `${nodeInfo.nodeId}`);
+    appendSegmentAndNodeIds(segmentId, nodeInfo.nodeId);
     const isLeaf =
       segmentNodes !== undefined && directChildNodeIds.length === 0;
     const leafTypeEditingDisabledReason = () =>
@@ -3136,10 +3118,7 @@ export class SegmentationUserLayer extends Base {
       );
       appendValue(
         "Confidence level",
-        formatSpatialSkeletonEditableNumber(
-          nodeInfo.confidence,
-          "Unavailable",
-        ),
+        formatSpatialSkeletonEditableNumber(nodeInfo.confidence, "Unavailable"),
       );
     } else {
       let committedRadius = nodeInfo.radius ?? 0;
@@ -3232,7 +3211,8 @@ export class SegmentationUserLayer extends Base {
         const confidenceDisabledReason = getConfidenceEditingDisabledReason();
         const { radiusValid, confidenceValid, confidenceInvalidTitle } =
           getParsedProperties();
-        radiusInput.disabled = radiusDisabledReason !== undefined || savePending;
+        radiusInput.disabled =
+          radiusDisabledReason !== undefined || savePending;
         confidenceControl.disabled =
           confidenceDisabledReason !== undefined || savePending;
         setPropertyInputValidity(
@@ -3249,9 +3229,8 @@ export class SegmentationUserLayer extends Base {
         );
       };
       const resetPropertyInputs = () => {
-        radiusInput.value = formatSpatialSkeletonEditableNumber(
-          committedRadius,
-        );
+        radiusInput.value =
+          formatSpatialSkeletonEditableNumber(committedRadius);
         confidenceControl.value = committedConfidence.toString();
         updatePropertyEditorState();
       };

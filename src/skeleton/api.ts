@@ -19,13 +19,13 @@ export interface SpatiallyIndexedSkeletonNodeBase {
   segmentId: number;
   position: Float32Array;
   parentNodeId?: number;
-  radius?: number;
-  confidence?: number;
   revisionToken?: string;
 }
 
 export interface SpatiallyIndexedSkeletonNode
   extends SpatiallyIndexedSkeletonNodeBase {
+  radius?: number;
+  confidence?: number;
   description?: string;
   isTrueEnd: boolean;
 }

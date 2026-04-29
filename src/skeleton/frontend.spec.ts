@@ -84,9 +84,6 @@ describe("SpatiallyIndexedSkeletonLayer browse node picks", () => {
       numVertices: 2,
       indices: new Uint32Array([0, 1]),
       nodeIds: new Int32Array([101, 202]),
-      nodeParentIds: new Int32Array([0, 101]),
-      nodeRadii: new Float32Array([NaN, 2000]),
-      nodeConfidences: new Float32Array([NaN, 100]),
       nodeRevisionTokens: ["2026-03-29T11:50:00Z", "2026-03-29T11:51:00Z"],
     };
     const layer = Object.create(SpatiallyIndexedSkeletonLayer.prototype);
@@ -95,9 +92,6 @@ describe("SpatiallyIndexedSkeletonLayer browse node picks", () => {
       nodeId: 202,
       segmentId: 17,
       position: new Float32Array([4, 5, 6]),
-      parentNodeId: 101,
-      radius: 2000,
-      confidence: 100,
       revisionToken: "2026-03-29T11:51:00Z",
     });
   });

@@ -11,16 +11,12 @@ describe("datasource/catmaid/skeleton_packing", () => {
         parentNodeId: undefined,
         position: new Float32Array([1, 2, 3]),
         segmentId: 10,
-        radius: 2.5,
-        confidence: 100,
       },
       {
         nodeId: 2,
         parentNodeId: 1,
         position: new Float32Array([4, 5, 6]),
         segmentId: 10,
-        radius: 3.5,
-        confidence: 75,
       },
       {
         nodeId: 3,
@@ -38,9 +34,6 @@ describe("datasource/catmaid/skeleton_packing", () => {
     expect(packed.segmentIds).toEqual(Uint32Array.of(10, 10, 11));
     expect(packed.indices).toEqual(Uint32Array.of(1, 0));
     expect(packed.nodeIds).toEqual(Int32Array.of(1, 2, 3));
-    expect(packed.nodeParentIds).toEqual(Int32Array.of(0, 1, 99));
-    expect(packed.nodeRadii).toEqual(Float32Array.of(2.5, 3.5, NaN));
-    expect(packed.nodeConfidences).toEqual(Float32Array.of(100, 75, NaN));
   });
 
   it("preserves large segment ids exactly", () => {

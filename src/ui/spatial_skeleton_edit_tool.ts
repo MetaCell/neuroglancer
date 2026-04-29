@@ -185,9 +185,6 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
         nodeId: number;
         segmentId?: number;
         position?: Float32Array;
-        parentNodeId?: number;
-        radius?: number;
-        confidence?: number;
         revisionToken?: string;
       }
     | undefined {
@@ -205,9 +202,6 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
     }
     const segmentIdRaw = pickedSpatialSkeleton?.segmentId;
     const position = pickedSpatialSkeleton?.position;
-    const parentNodeId = pickedSpatialSkeleton?.parentNodeId;
-    const radius = pickedSpatialSkeleton?.radius;
-    const confidence = pickedSpatialSkeleton?.confidence;
     const revisionToken = pickedSpatialSkeleton?.revisionToken;
     return {
       nodeId: nodeIdRaw,
@@ -218,20 +212,6 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
       position:
         position instanceof Float32Array
           ? new Float32Array(position)
-          : undefined,
-      parentNodeId:
-        typeof parentNodeId === "number" &&
-        Number.isSafeInteger(parentNodeId) &&
-        parentNodeId > 0
-          ? parentNodeId
-          : undefined,
-      radius:
-        typeof radius === "number" && Number.isFinite(radius)
-          ? radius
-          : undefined,
-      confidence:
-        typeof confidence === "number" && Number.isFinite(confidence)
-          ? confidence
           : undefined,
       revisionToken:
         typeof revisionToken === "string" ? revisionToken : undefined,
@@ -395,9 +375,6 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
       nodeId: nodeHit.nodeId,
       segmentId: nodeHit.segmentId ?? resolvedNodeInfo?.segmentId,
       position: nodeHit.position ?? resolvedNodeInfo?.position,
-      parentNodeId: nodeHit.parentNodeId ?? resolvedNodeInfo?.parentNodeId,
-      radius: nodeHit.radius ?? resolvedNodeInfo?.radius,
-      confidence: nodeHit.confidence ?? resolvedNodeInfo?.confidence,
       revisionToken: nodeHit.revisionToken ?? resolvedNodeInfo?.revisionToken,
     };
   }
@@ -409,9 +386,6 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
         nodeId: number;
         segmentId?: number;
         position?: Float32Array;
-        parentNodeId?: number;
-        radius?: number;
-        confidence?: number;
         revisionToken?: string;
         visible: boolean;
       }
@@ -428,9 +402,6 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
       nodeId: nodeHit.nodeId,
       segmentId,
       position: nodeHit.position ?? resolvedNodeInfo?.position,
-      parentNodeId: nodeHit.parentNodeId ?? resolvedNodeInfo?.parentNodeId,
-      radius: nodeHit.radius ?? resolvedNodeInfo?.radius,
-      confidence: nodeHit.confidence ?? resolvedNodeInfo?.confidence,
       revisionToken: nodeHit.revisionToken ?? resolvedNodeInfo?.revisionToken,
       visible:
         segmentId !== undefined &&

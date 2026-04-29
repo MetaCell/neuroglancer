@@ -1148,9 +1148,6 @@ export interface PickedSpatialSkeletonState {
   nodeId?: number;
   segmentId?: number;
   position?: Float32Array;
-  parentNodeId?: number;
-  radius?: number;
-  confidence?: number;
   revisionToken?: string;
 }
 
