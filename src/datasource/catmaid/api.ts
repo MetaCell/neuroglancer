@@ -1118,6 +1118,10 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
         nodeId: n[0],
         parentNodeId: n[1] ?? undefined,
         position: new Float32Array([n[2], n[3], n[4]]),
+        radius: Number.isFinite(n[6]) ? n[6] : undefined,
+        confidence: Number.isFinite(n[5])
+          ? mapCatmaidConfidenceToPercent(n[5])
+          : undefined,
         segmentId: n[7],
         revisionToken: normalizeCatmaidRevisionToken(n[8]),
       }),
@@ -1139,6 +1143,10 @@ export class CatmaidClient implements EditableSpatiallyIndexedSkeletonSource {
               nodeId: n[0],
               parentNodeId: n[1] ?? undefined,
               position: new Float32Array([n[2], n[3], n[4]]),
+              radius: Number.isFinite(n[6]) ? n[6] : undefined,
+              confidence: Number.isFinite(n[5])
+                ? mapCatmaidConfidenceToPercent(n[5])
+                : undefined,
               segmentId: n[7],
               revisionToken: normalizeCatmaidRevisionToken(n[8]),
             });

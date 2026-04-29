@@ -245,6 +245,11 @@ interface SkeletonChunkData {
   indices: Uint32Array;
   numVertices: number;
   vertexAttributeOffsets: Uint32Array;
+  nodeIds?: Int32Array;
+  nodeParentIds?: Int32Array;
+  nodeRadii?: Float32Array;
+  nodeConfidences?: Float32Array;
+  nodeRevisionTokens?: Array<string | undefined>;
 }
 
 type SpatiallyIndexedSkeletonPickData =
@@ -1537,6 +1542,9 @@ export class SpatiallyIndexedSkeletonChunk
   vertexAttributeOffsets: Uint32Array;
   vertexAttributeTextures: (WebGLTexture | null)[] = [];
   nodeIds: Int32Array = new Int32Array(0);
+  nodeParentIds: Int32Array = new Int32Array(0);
+  nodeRadii: Float32Array = new Float32Array(0);
+  nodeConfidences: Float32Array = new Float32Array(0);
   nodeRevisionTokens: Array<string | undefined> = [];
   lod: number | undefined;
 
@@ -1562,6 +1570,42 @@ export class SpatiallyIndexedSkeletonChunk
       );
     } else {
       this.nodeIds = new Int32Array(0);
+    }
+    const nodeParentIdsData = (chunkData as any).nodeParentIds;
+    if (nodeParentIdsData instanceof Int32Array) {
+      this.nodeParentIds = nodeParentIdsData;
+    } else if (ArrayBuffer.isView(nodeParentIdsData)) {
+      this.nodeParentIds = new Int32Array(
+        nodeParentIdsData.buffer,
+        nodeParentIdsData.byteOffset,
+        nodeParentIdsData.byteLength / Int32Array.BYTES_PER_ELEMENT,
+      );
+    } else {
+      this.nodeParentIds = new Int32Array(0);
+    }
+    const nodeRadiiData = (chunkData as any).nodeRadii;
+    if (nodeRadiiData instanceof Float32Array) {
+      this.nodeRadii = nodeRadiiData;
+    } else if (ArrayBuffer.isView(nodeRadiiData)) {
+      this.nodeRadii = new Float32Array(
+        nodeRadiiData.buffer,
+        nodeRadiiData.byteOffset,
+        nodeRadiiData.byteLength / Float32Array.BYTES_PER_ELEMENT,
+      );
+    } else {
+      this.nodeRadii = new Float32Array(0);
+    }
+    const nodeConfidencesData = (chunkData as any).nodeConfidences;
+    if (nodeConfidencesData instanceof Float32Array) {
+      this.nodeConfidences = nodeConfidencesData;
+    } else if (ArrayBuffer.isView(nodeConfidencesData)) {
+      this.nodeConfidences = new Float32Array(
+        nodeConfidencesData.buffer,
+        nodeConfidencesData.byteOffset,
+        nodeConfidencesData.byteLength / Float32Array.BYTES_PER_ELEMENT,
+      );
+    } else {
+      this.nodeConfidences = new Float32Array(0);
     }
     const nodeRevisionTokens = (chunkData as any).nodeRevisionTokens;
     this.nodeRevisionTokens = Array.isArray(nodeRevisionTokens)
@@ -2902,10 +2946,19 @@ export class SpatiallyIndexedSkeletonLayer
       return undefined;
     }
     const baseOffset = pickedOffset * 3;
+    const parentNodeId = chunk.nodeParentIds[pickedOffset];
+    const radius = chunk.nodeRadii[pickedOffset];
+    const confidence = chunk.nodeConfidences[pickedOffset];
     return {
       nodeId,
       segmentId,
       position: data.positions.subarray(baseOffset, baseOffset + 3),
+      parentNodeId:
+        Number.isSafeInteger(parentNodeId) && parentNodeId > 0
+          ? parentNodeId
+          : undefined,
+      radius: Number.isFinite(radius) ? radius : undefined,
+      confidence: Number.isFinite(confidence) ? confidence : undefined,
       revisionToken: chunk.nodeRevisionTokens[pickedOffset],
     };
   }
@@ -3615,6 +3668,9 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
             nodeId: pickedNode.nodeId,
             segmentId: pickedNode.segmentId,
             position: new Float32Array(pickedNode.position),
+            parentNodeId: pickedNode.parentNodeId,
+            radius: pickedNode.radius,
+            confidence: pickedNode.confidence,
             revisionToken: pickedNode.revisionToken,
           };
         }
@@ -3943,6 +3999,9 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
             nodeId: pickedNode.nodeId,
             segmentId: pickedNode.segmentId,
             position: new Float32Array(pickedNode.position),
+            parentNodeId: pickedNode.parentNodeId,
+            radius: pickedNode.radius,
+            confidence: pickedNode.confidence,
             revisionToken: pickedNode.revisionToken,
           };
         }

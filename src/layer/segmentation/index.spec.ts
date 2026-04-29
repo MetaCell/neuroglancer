@@ -52,6 +52,12 @@ function makeEditableSpatialSkeletonSource(
     removeTrueEnd: async () => ({}),
     updateRadius: async () => ({}),
     updateConfidence: async () => ({}),
+    getSkeletonRootNode: async () => ({
+      nodeId: 1,
+      x: 0,
+      y: 0,
+      z: 0,
+    }),
     mergeSkeletons: async () => ({
       resultSkeletonId: 1,
       deletedSkeletonId: 2,
@@ -245,7 +251,35 @@ describe("layer/segmentation spatial skeleton selection serialization", () => {
     expect(selectionState.baseValue).toBe(7n);
   });
 
-  it("round-trips spatial skeleton selection ids as canonical strings", () => {
+  it("round-trips node id and segment value for spatial skeleton selections", () => {
+    const layer = Object.create(SegmentationUserLayer.prototype);
+    Object.defineProperty(layer, "localCoordinateSpace", {
+      value: { value: { rank: 0 } },
+      configurable: true,
+    });
+    const state: any = {};
+    layer.initializeSelectionState(state);
+
+    layer.selectionStateFromJson(state, {
+      nodeId: "23",
+      value: "7",
+    });
+
+    expect(state.nodeId).toBe("23");
+    expect(state.value).toBe(7n);
+    expect(layer.selectionStateToJson(state, false)).toEqual({
+      nodeId: "23",
+      value: "7",
+    });
+
+    const copiedState: any = {};
+    layer.initializeSelectionState(copiedState);
+    layer.copySelectionState(copiedState, state);
+    expect(copiedState.nodeId).toBe("23");
+    expect(copiedState.value).toBe(7n);
+  });
+
+  it("ignores legacy spatial skeleton selection keys", () => {
     const layer = Object.create(SegmentationUserLayer.prototype);
     Object.defineProperty(layer, "localCoordinateSpace", {
       value: { value: { rank: 0 } },
@@ -257,17 +291,49 @@ describe("layer/segmentation spatial skeleton selection serialization", () => {
     layer.selectionStateFromJson(state, {
       spatialSkeletonNodeId: "23",
       spatialSkeletonSegmentId: "7",
-      value: "7",
     });
 
-    expect(state.spatialSkeletonNodeId).toBe("23");
-    expect(state.spatialSkeletonSegmentId).toBe("7");
-    expect(state.value).toBe(7n);
-    expect(layer.selectionStateToJson(state, false)).toEqual({
-      spatialSkeletonNodeId: "23",
-      spatialSkeletonSegmentId: "7",
-      value: "7",
+    expect(state.nodeId).toBeUndefined();
+    expect(state.value).toBeUndefined();
+    expect(layer.selectionStateToJson(state, false)).toEqual({});
+  });
+
+  it("captures and clears spatial skeleton nodes using nodeId and segment value", () => {
+    const selectionState = {
+      pin: { value: false },
+      coordinateSpace: { value: undefined },
+      value: undefined as any,
+    };
+    const layer = Object.create(SegmentationUserLayer.prototype);
+    Object.defineProperty(layer, "localCoordinateSpace", {
+      value: { value: { rank: 0 } },
+      configurable: true,
     });
+    Object.defineProperty(layer, "manager", {
+      value: {
+        root: {
+          selectionState,
+        },
+      },
+      configurable: true,
+    });
+    layer.captureSpatialSkeletonSelectionState((state: any) => {
+      state.nodeId = "31";
+      state.value = 9n;
+      return true;
+    }, false);
+
+    expect(selectionState.value.layers[0].state.nodeId).toBe("31");
+    expect(selectionState.value.layers[0].state.value).toBe(9n);
+
+    layer.captureSpatialSkeletonSelectionState((state: any) => {
+      state.nodeId = undefined;
+      state.value = undefined;
+      return true;
+    }, false);
+
+    expect(selectionState.value.layers[0].state.nodeId).toBeUndefined();
+    expect(selectionState.value.layers[0].state.value).toBeUndefined();
   });
 });
 

@@ -18,7 +18,7 @@ import "#src/ui/spatial_skeleton_edit_tool.css";
 
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import {
-  getSpatialSkeletonSegmentIdFromLayerSelectionState,
+  getSegmentIdFromLayerSelectionValue,
   hasSpatialSkeletonNodeSelection,
 } from "#src/layer/segmentation/selection.js";
 import {
@@ -185,6 +185,9 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
         nodeId: number;
         segmentId?: number;
         position?: Float32Array;
+        parentNodeId?: number;
+        radius?: number;
+        confidence?: number;
         revisionToken?: string;
       }
     | undefined {
@@ -202,6 +205,9 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
     }
     const segmentIdRaw = pickedSpatialSkeleton?.segmentId;
     const position = pickedSpatialSkeleton?.position;
+    const parentNodeId = pickedSpatialSkeleton?.parentNodeId;
+    const radius = pickedSpatialSkeleton?.radius;
+    const confidence = pickedSpatialSkeleton?.confidence;
     const revisionToken = pickedSpatialSkeleton?.revisionToken;
     return {
       nodeId: nodeIdRaw,
@@ -212,6 +218,20 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
       position:
         position instanceof Float32Array
           ? new Float32Array(position)
+          : undefined,
+      parentNodeId:
+        typeof parentNodeId === "number" &&
+        Number.isSafeInteger(parentNodeId) &&
+        parentNodeId > 0
+          ? parentNodeId
+          : undefined,
+      radius:
+        typeof radius === "number" && Number.isFinite(radius)
+          ? radius
+          : undefined,
+      confidence:
+        typeof confidence === "number" && Number.isFinite(confidence)
+          ? confidence
           : undefined,
       revisionToken:
         typeof revisionToken === "string" ? revisionToken : undefined,
@@ -356,10 +376,7 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
     if (pickedNode.segmentId !== undefined) {
       this.selectSegmentByNumber(pickedNode.segmentId);
     }
-    this.layer.selectSpatialSkeletonNode(pickedNode.nodeId, false, {
-      segmentId: pickedNode.segmentId,
-      position: pickedNode.position,
-    });
+    this.layer.selectSpatialSkeletonNode(pickedNode.nodeId, false, pickedNode);
     return {
       nodeId: pickedNode.nodeId,
       segmentId: pickedNode.segmentId,
@@ -374,13 +391,14 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
       return undefined;
     }
     const resolvedNodeInfo = skeletonLayer.getNode(nodeHit.nodeId);
-    if (resolvedNodeInfo === undefined) {
-      return undefined;
-    }
     return {
       nodeId: nodeHit.nodeId,
       segmentId: nodeHit.segmentId ?? resolvedNodeInfo?.segmentId,
-      position: nodeHit.position ?? resolvedNodeInfo.position,
+      position: nodeHit.position ?? resolvedNodeInfo?.position,
+      parentNodeId: nodeHit.parentNodeId ?? resolvedNodeInfo?.parentNodeId,
+      radius: nodeHit.radius ?? resolvedNodeInfo?.radius,
+      confidence: nodeHit.confidence ?? resolvedNodeInfo?.confidence,
+      revisionToken: nodeHit.revisionToken ?? resolvedNodeInfo?.revisionToken,
     };
   }
 
@@ -391,6 +409,9 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
         nodeId: number;
         segmentId?: number;
         position?: Float32Array;
+        parentNodeId?: number;
+        radius?: number;
+        confidence?: number;
         revisionToken?: string;
         visible: boolean;
       }
@@ -407,6 +428,9 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
       nodeId: nodeHit.nodeId,
       segmentId,
       position: nodeHit.position ?? resolvedNodeInfo?.position,
+      parentNodeId: nodeHit.parentNodeId ?? resolvedNodeInfo?.parentNodeId,
+      radius: nodeHit.radius ?? resolvedNodeInfo?.radius,
+      confidence: nodeHit.confidence ?? resolvedNodeInfo?.confidence,
       revisionToken: nodeHit.revisionToken ?? resolvedNodeInfo?.revisionToken,
       visible:
         segmentId !== undefined &&
@@ -429,7 +453,7 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
       nodeId,
       segmentId:
         selectedNode?.segmentId ??
-        getSpatialSkeletonSegmentIdFromLayerSelectionState(layerSelectionState),
+        getSegmentIdFromLayerSelectionValue(layerSelectionState),
     };
   }
 
@@ -469,10 +493,11 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
         if (pickedNode.segmentId !== undefined) {
           this.pinSegmentByNumber(pickedNode.segmentId);
         }
-        this.layer.selectSpatialSkeletonNode(pickedNode.nodeId, true, {
-          segmentId: pickedNode.segmentId,
-          position: pickedNode.position,
-        });
+        this.layer.selectSpatialSkeletonNode(
+          pickedNode.nodeId,
+          true,
+          pickedNode,
+        );
         if (showNodeSelectionMessage) {
           StatusMessage.showTemporaryMessage(
             `Selected and pinned node ${pickedNode.nodeId}.`,
@@ -1191,10 +1216,11 @@ class SpatialSkeletonMergeModeTool extends SpatialSkeletonToolBase {
             revisionToken: pickedNode.revisionToken,
           };
           this.layer.setSpatialSkeletonMergeAnchor(pickedNode.nodeId);
-          this.layer.selectSpatialSkeletonNode(pickedNode.nodeId, true, {
-            segmentId: pickedNode.segmentId,
-            position: pickedNode.position,
-          });
+          this.layer.selectSpatialSkeletonNode(
+            pickedNode.nodeId,
+            true,
+            pickedNode,
+          );
           renderStatus();
           return;
         }
@@ -1213,10 +1239,11 @@ class SpatialSkeletonMergeModeTool extends SpatialSkeletonToolBase {
             revisionToken: pickedNode.revisionToken,
           };
           this.layer.setSpatialSkeletonMergeAnchor(pickedNode.nodeId);
-          this.layer.selectSpatialSkeletonNode(pickedNode.nodeId, true, {
-            segmentId: pickedNode.segmentId,
-            position: pickedNode.position,
-          });
+          this.layer.selectSpatialSkeletonNode(
+            pickedNode.nodeId,
+            true,
+            pickedNode,
+          );
           renderStatus();
           return;
         }
@@ -1237,10 +1264,11 @@ class SpatialSkeletonMergeModeTool extends SpatialSkeletonToolBase {
           return;
         }
         this.pinSegmentByNumber(pickedNode.segmentId);
-        this.layer.selectSpatialSkeletonNode(pickedNode.nodeId, true, {
-          segmentId: pickedNode.segmentId,
-          position: pickedNode.position,
-        });
+        this.layer.selectSpatialSkeletonNode(
+          pickedNode.nodeId,
+          true,
+          pickedNode,
+        );
         pending = true;
         setStatus("Merging selected nodes.");
         void (async () => {
@@ -1378,10 +1406,11 @@ class SpatialSkeletonSplitModeTool extends SpatialSkeletonToolBase {
           return;
         }
         this.pinSegmentByNumber(pickedNode.segmentId);
-        this.layer.selectSpatialSkeletonNode(pickedNode.nodeId, true, {
-          segmentId: pickedNode.segmentId,
-          position: pickedNode.position,
-        });
+        this.layer.selectSpatialSkeletonNode(
+          pickedNode.nodeId,
+          true,
+          pickedNode,
+        );
         const point = {
           nodeId: pickedNode.nodeId,
           segmentId: pickedNode.segmentId,

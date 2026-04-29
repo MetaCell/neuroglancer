@@ -62,7 +62,14 @@ interface SpatialSkeletonSelectableLayer {
   selectSpatialSkeletonNode: (
     nodeId: number,
     pin: boolean | "toggle" | "force-unpin",
-    options?: { segmentId?: number; position?: ArrayLike<number> },
+    options?: {
+      segmentId?: number;
+      position?: ArrayLike<number>;
+      parentNodeId?: number;
+      radius?: number;
+      confidence?: number;
+      revisionToken?: string;
+    },
   ) => void;
   clearSpatialSkeletonNodeSelection: (
     pin: boolean | "toggle" | "force-unpin",
@@ -84,7 +91,7 @@ function isSpatialSkeletonSelectableLayer(
 
 function isSpatialSkeletonNodeSelectionValue(state: unknown) {
   return hasSpatialSkeletonNodeSelection(
-    state as { spatialSkeletonNodeId?: unknown } | undefined,
+    state as { nodeId?: unknown } | undefined,
   );
 }
 
@@ -534,7 +541,11 @@ export abstract class RenderedDataPanel extends RenderedPanel {
           pickedSegmentId > 0
             ? pickedSegmentId
             : undefined,
-        position: mouseState.position,
+        position: pickedSpatialSkeleton?.position ?? mouseState.position,
+        parentNodeId: pickedSpatialSkeleton?.parentNodeId,
+        radius: pickedSpatialSkeleton?.radius,
+        confidence: pickedSpatialSkeleton?.confidence,
+        revisionToken: pickedSpatialSkeleton?.revisionToken,
       };
     };
 
@@ -565,6 +576,10 @@ export abstract class RenderedDataPanel extends RenderedPanel {
           {
             segmentId: pickedSelection.segmentId,
             position: pickedSelection.position,
+            parentNodeId: pickedSelection.parentNodeId,
+            radius: pickedSelection.radius,
+            confidence: pickedSelection.confidence,
+            revisionToken: pickedSelection.revisionToken,
           },
         );
         return;

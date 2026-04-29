@@ -21,6 +21,9 @@ interface PackedCatmaidSkeletonData {
   segmentIds: Uint32Array;
   indices: Uint32Array;
   nodeIds: Int32Array;
+  nodeParentIds: Int32Array;
+  nodeRadii: Float32Array;
+  nodeConfidences: Float32Array;
   revisionTokens: Array<string | undefined>;
 }
 
@@ -31,6 +34,9 @@ export function packCatmaidSkeletonNodes(
   const vertexPositions = new Float32Array(numVertices * 3);
   const segmentIds = new Uint32Array(numVertices);
   const nodeIds = new Int32Array(numVertices);
+  const nodeParentIds = new Int32Array(numVertices);
+  const nodeRadii = new Float32Array(numVertices);
+  const nodeConfidences = new Float32Array(numVertices);
   const revisionTokens = new Array<string | undefined>(numVertices);
   const indices: number[] = [];
   const nodeMap = new Map<number, number>();
@@ -39,6 +45,15 @@ export function packCatmaidSkeletonNodes(
     const node = nodes[i];
     nodeMap.set(node.nodeId, i);
     nodeIds[i] = node.nodeId;
+    nodeParentIds[i] = node.parentNodeId ?? 0;
+    nodeRadii[i] =
+      node.radius !== undefined && Number.isFinite(node.radius)
+        ? node.radius
+        : NaN;
+    nodeConfidences[i] =
+      node.confidence !== undefined && Number.isFinite(node.confidence)
+        ? node.confidence
+        : NaN;
     vertexPositions[i * 3] = node.position[0];
     vertexPositions[i * 3 + 1] = node.position[1];
     vertexPositions[i * 3 + 2] = node.position[2];
@@ -60,6 +75,9 @@ export function packCatmaidSkeletonNodes(
     segmentIds,
     indices: new Uint32Array(indices),
     nodeIds,
+    nodeParentIds,
+    nodeRadii,
+    nodeConfidences,
     revisionTokens,
   };
 }
