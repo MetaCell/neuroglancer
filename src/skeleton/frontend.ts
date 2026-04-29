@@ -398,7 +398,7 @@ vec4 getSegmentAppearance(highp uint segmentValue) {
     );
     gl.uniform1f(
       shader.uniform("uHiddenAlpha"),
-      this.base.displayState.hiddenObjectAlpha?.value ?? 0,
+      this.base.displayState.hiddenObjectAlpha.value,
     );
     gl.uniform1ui(
       shader.uniform("uSkipVisibleSegments"),
@@ -1605,8 +1605,7 @@ export class SpatiallyIndexedSkeletonChunk
   }
 }
 
-export interface SpatiallyIndexedSkeletonChunkSpecification
-  extends SliceViewChunkSpecification {
+export interface SpatiallyIndexedSkeletonChunkSpecification extends SliceViewChunkSpecification {
   chunkLayout: ChunkLayout;
 }
 
@@ -1815,7 +1814,11 @@ export class MultiscaleSliceViewSpatiallyIndexedSkeletonLayer extends SliceViewR
     this.registerChunkStatsSliceView(
       sliceView as RefCounted & { rpcId: number },
     );
-    if (displayState.objectAlpha?.value <= 0.0 || lodValue === undefined) {
+    if (
+      (displayState.objectAlpha?.value <= 0.0 &&
+        displayState.hiddenObjectAlpha?.value <= 0.0) ||
+      lodValue === undefined
+    ) {
       this.clearVisibleChunkKeysForSliceView(sliceView.rpcId);
       return;
     }
@@ -2985,7 +2988,10 @@ export class SpatiallyIndexedSkeletonLayer
     projectionParameters: any,
     lod: number | undefined,
   ) {
-    if (this.displayState.objectAlpha.value <= 0.0) {
+    if (
+      this.displayState.objectAlpha.value <= 0.0 &&
+      this.displayState.hiddenObjectAlpha.value <= 0.0
+    ) {
       return true;
     }
     if (lod === undefined || transformedSources.length === 0) {
@@ -3352,7 +3358,10 @@ export class SpatiallyIndexedSkeletonLayer
   ) {
     const lineWidth = renderOptions.lineWidth.value;
     const { displayState } = this;
-    if (displayState.objectAlpha.value <= 0.0) {
+    if (
+      displayState.objectAlpha.value <= 0.0 &&
+      displayState.hiddenObjectAlpha.value <= 0.0
+    ) {
       return;
     }
     const modelMatrix = update3dRenderLayerAttachment(
@@ -3408,7 +3417,10 @@ export class SpatiallyIndexedSkeletonLayer
       transformedSources === undefined ||
       projectionParameters === undefined
     ) {
-      return this.displayState.objectAlpha.value <= 0.0;
+      return (
+        this.displayState.objectAlpha.value <= 0.0 &&
+        (this.displayState.hiddenObjectAlpha?.value ?? 0) <= 0.0
+      );
     }
     return this.areVisibleChunksReady(
       transformedSources,
@@ -3526,7 +3538,10 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
   }
 
   get isTransparent() {
-    return this.base.displayState.objectAlpha.value < 1.0;
+    return (
+      this.base.displayState.objectAlpha.value < 1.0 ||
+      this.base.displayState.hiddenObjectAlpha.value < 1.0
+    );
   }
 
   getValueAt(position: Float32Array) {
