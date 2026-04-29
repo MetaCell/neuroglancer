@@ -199,6 +199,7 @@ import {
 } from "#src/util/json.js";
 import * as matrix from "#src/util/matrix.js";
 import { Signal } from "#src/util/signal.js";
+import { TrackableEnum } from "#src/util/trackable_enum.js";
 import { makeWatchableShaderError } from "#src/webgl/dynamic_shader.js";
 import { makeDeleteButton } from "#src/widget/delete_button.js";
 import type { DependentViewContext } from "#src/widget/dependent_view_widget.js";
@@ -941,6 +942,11 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
   spatialSkeletonGridRenderScaleHistogram2d = new RenderScaleHistogram();
   spatialSkeletonGridRenderScaleHistogram3d = new RenderScaleHistogram();
   spatialSkeletonLod2d = new WatchableValue<number>(0);
+  spatialSkeletonNodeQuery = new TrackableValue<string>("", verifyString);
+  spatialSkeletonNodeFilter = new TrackableEnum(
+    SpatialSkeletonNodeFilterType,
+    SpatialSkeletonNodeFilterType.NONE,
+  );
   private spatialSkeletonGridResolutionTarget2dExplicit = false;
   private spatialSkeletonGridResolutionTarget3dExplicit = false;
   private spatialSkeletonGridLevel2dExplicit = false;
@@ -1634,6 +1640,12 @@ export class SegmentationUserLayer extends Base {
       this.specificationChanged.dispatch,
     );
     this.displayState.skeletonLod.changed.add(
+      this.specificationChanged.dispatch,
+    );
+    this.displayState.spatialSkeletonNodeQuery.changed.add(
+      this.specificationChanged.dispatch,
+    );
+    this.displayState.spatialSkeletonNodeFilter.changed.add(
       this.specificationChanged.dispatch,
     );
     this.displayState.spatialSkeletonGridResolutionTarget2d.changed.add(
@@ -2374,6 +2386,14 @@ export class SegmentationUserLayer extends Base {
     this.displayState.skeletonLod.restoreState(
       specification[json_keys.SKELETON_LOD_JSON_KEY],
     );
+    this.displayState.spatialSkeletonNodeQuery.restoreState(
+      specification[json_keys.SPATIAL_SKELETON_NODE_QUERY_JSON_KEY],
+    );
+    verifyOptionalObjectProperty(
+      specification,
+      json_keys.SPATIAL_SKELETON_NODE_FILTER_JSON_KEY,
+      (value) => this.displayState.spatialSkeletonNodeFilter.restoreState(value),
+    );
     this.displayState.spatialSkeletonGridResolutionRelative2d.restoreState(
       specification[
         json_keys.SPATIAL_SKELETON_GRID_RESOLUTION_RELATIVE_2D_JSON_KEY
@@ -2463,6 +2483,10 @@ export class SegmentationUserLayer extends Base {
       this.displayState.notSelectedAlpha.toJSON();
     x[json_keys.SATURATION_JSON_KEY] = this.displayState.saturation.toJSON();
     x[json_keys.OBJECT_ALPHA_JSON_KEY] = this.displayState.objectAlpha.toJSON();
+    x[json_keys.SPATIAL_SKELETON_NODE_QUERY_JSON_KEY] =
+      this.displayState.spatialSkeletonNodeQuery.toJSON();
+    x[json_keys.SPATIAL_SKELETON_NODE_FILTER_JSON_KEY] =
+      this.displayState.spatialSkeletonNodeFilter.toJSON();
     appendSpatialSkeletonSerializationState(
       x,
       {

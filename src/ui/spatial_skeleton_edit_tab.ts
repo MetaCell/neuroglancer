@@ -82,7 +82,6 @@ import type { ArraySpliceOp } from "#src/util/array.js";
 import * as matrix from "#src/util/matrix.js";
 import { formatScaleWithUnitAsString } from "#src/util/si_units.js";
 import { Signal } from "#src/util/signal.js";
-import { TrackableEnum } from "#src/util/trackable_enum.js";
 import { EnumSelectWidget } from "#src/widget/enum_widget.js";
 import { makeIcon } from "#src/widget/icon.js";
 import { Tab } from "#src/widget/tab_view.js";
@@ -235,10 +234,9 @@ export class SpatialSkeletonEditTab extends Tab {
     filterInput.type = "text";
     filterInput.placeholder = "Enter node ID or description";
     filterInput.className = "neuroglancer-spatial-skeleton-filter";
-    const nodeFilterTypeModel = new TrackableEnum(
-      SpatialSkeletonNodeFilterType,
-      SpatialSkeletonNodeFilterType.NONE,
-    );
+    const nodeQuery = layer.displayState.spatialSkeletonNodeQuery;
+    const nodeFilterTypeModel = layer.displayState.spatialSkeletonNodeFilter;
+    filterInput.value = nodeQuery.value;
     const nodeFilterTypeWidget = this.registerDisposer(
       new EnumSelectWidget(nodeFilterTypeModel),
     );
@@ -301,8 +299,6 @@ export class SpatialSkeletonEditTab extends Tab {
     let allNodes: SpatiallyIndexedSkeletonNode[] = [];
     let activeSegmentId: number | undefined;
     let nodesBySegment = new Map<number, SpatiallyIndexedSkeletonNode[]>();
-    let filterText = "";
-    let nodeFilterType = SpatialSkeletonNodeFilterType.NONE;
     let inspectionAllowed = false;
     let navigationAllowed = false;
     let trueEndEditingAllowed = false;
@@ -389,6 +385,8 @@ export class SpatialSkeletonEditTab extends Tab {
       if (selectedId === undefined) return undefined;
       return allNodes.find((node) => node.nodeId === selectedId);
     };
+
+    const getFilterText = () => nodeQuery.value.trim().toLowerCase();
 
     const ensureActionsAllowed = (
       requiredActions: SpatialSkeletonAction | readonly SpatialSkeletonAction[],
@@ -1026,8 +1024,8 @@ export class SpatialSkeletonEditTab extends Tab {
               segmentId,
               getSegmentNavigationGraph(segmentId),
               {
-                filterText,
-                nodeFilterType,
+                filterText: getFilterText(),
+                nodeFilterType: nodeFilterTypeModel.value,
                 getNodeDescription: getNodeDescriptionText,
               },
             );
@@ -1369,8 +1367,8 @@ export class SpatialSkeletonEditTab extends Tab {
       if (
         segmentState === undefined ||
         segmentState.totalNodeCount === 0 ||
-        (filterText.length === 0 &&
-          nodeFilterType === SpatialSkeletonNodeFilterType.NONE)
+        (getFilterText().length === 0 &&
+          nodeFilterTypeModel.value === SpatialSkeletonNodeFilterType.NONE)
       ) {
         return "No loaded nodes.";
       }
@@ -1561,12 +1559,18 @@ export class SpatialSkeletonEditTab extends Tab {
     };
 
     filterInput.addEventListener("input", () => {
-      filterText = filterInput.value.trim().toLowerCase();
-      updateDisplay();
+      nodeQuery.value = filterInput.value;
     });
     this.registerDisposer(
+      nodeQuery.changed.add(() => {
+        if (filterInput.value !== nodeQuery.value) {
+          filterInput.value = nodeQuery.value;
+        }
+        updateDisplay();
+      }),
+    );
+    this.registerDisposer(
       nodeFilterTypeModel.changed.add(() => {
-        nodeFilterType = nodeFilterTypeModel.value;
         updateDisplay();
       }),
     );
