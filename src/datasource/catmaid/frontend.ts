@@ -67,8 +67,6 @@ import type { Borrowed } from "#src/util/disposable.js";
 import { mat4, vec3 } from "#src/util/geom.js";
 import "#src/datasource/catmaid/register_credentials_provider.js";
 
-const METERS_PER_NANOMETER = 1e-9;
-
 export class CatmaidSpatiallyIndexedSkeletonSource
   extends WithParameters(
     WithCredentialsProvider<CatmaidToken>()(SpatiallyIndexedSkeletonSource),
@@ -429,9 +427,9 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
 
     // The model-space coordinates we emit are in nanometers, converted to meters for Neuroglancer.
     const coordinateScaleFactors = Float64Array.from([
-      METERS_PER_NANOMETER,
-      METERS_PER_NANOMETER,
-      METERS_PER_NANOMETER,
+      1e-9,
+      1e-9,
+      1e-9,
     ]);
 
     // Bounds and chunk sizes are represented in project-space nanometers.
