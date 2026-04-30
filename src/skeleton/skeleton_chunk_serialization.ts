@@ -22,7 +22,7 @@ export interface SkeletonChunkData {
   indices: Uint32Array | null;
   lod?: number;
   nodeIds?: Int32Array;
-  nodeRevisionTokens?: Array<string | undefined>;
+  nodeSourceStates?: unknown[];
 }
 
 /**
@@ -97,8 +97,8 @@ export function serializeSkeletonChunkData(
     msg.nodeIds = data.nodeIds;
     transfers.push(data.nodeIds.buffer);
   }
-  if (data.nodeRevisionTokens) {
-    msg.nodeRevisionTokens = data.nodeRevisionTokens;
+  if (data.nodeSourceStates) {
+    msg.nodeSourceStates = data.nodeSourceStates;
   }
 }
 
@@ -108,5 +108,5 @@ export function serializeSkeletonChunkData(
 export function freeSkeletonChunkSystemMemory(data: SkeletonChunkData): void {
   data.vertexPositions = data.indices = data.vertexAttributes = null;
   data.nodeIds = undefined;
-  data.nodeRevisionTokens = undefined;
+  data.nodeSourceStates = undefined;
 }

@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { makeCatmaidNodeSourceState } from "#src/datasource/catmaid/api.js";
+import { CatmaidSpatialSkeletonEditController } from "#src/datasource/catmaid/spatial_skeleton_commands.js";
 import {
   executeSpatialSkeletonAddNode,
   executeSpatialSkeletonMerge,
@@ -42,6 +44,7 @@ function makeVisibleSegmentsState(initialVisibleSegments: bigint[] = []) {
 
 function makeEditableSkeletonSource(overrides: Record<string, unknown> = {}) {
   return {
+    spatialSkeletonEditController: new CatmaidSpatialSkeletonEditController(),
     listSkeletons: vi.fn(),
     getSkeleton: vi.fn(),
     fetchNodes: vi.fn(),
@@ -61,6 +64,10 @@ function makeEditableSkeletonSource(overrides: Record<string, unknown> = {}) {
     splitSkeleton: vi.fn(),
     ...overrides,
   };
+}
+
+function testSourceState(revisionToken: string) {
+  return makeCatmaidNodeSourceState(revisionToken);
 }
 
 function suppressStatusMessages() {
@@ -103,7 +110,7 @@ describe("spatial_skeleton_edit_tool", () => {
   it("keeps parented add-node commits overlay-first without refetching chunks", async () => {
     suppressStatusMessages();
     const upsertCachedNode = vi.fn();
-    const setCachedNodeRevision = vi.fn();
+    const setCachedNodeSourceState = vi.fn();
     const selectSegment = vi.fn();
     const selectSpatialSkeletonNode = vi.fn();
     const markSpatialSkeletonNodeDataChanged = vi.fn();
@@ -114,13 +121,13 @@ describe("spatial_skeleton_edit_tool", () => {
       segmentId: 11,
       position: new Float32Array([8, 9, 10]),
       isTrueEnd: false,
-      revisionToken: "parent-before",
+      sourceState: testSourceState("parent-before"),
     };
     const addNode = vi.fn().mockResolvedValue({
-      treenodeId: 17,
-      skeletonId: 11,
-      revisionToken: "node-after",
-      parentRevisionToken: "parent-after",
+      nodeId: 17,
+      segmentId: 11,
+      sourceState: testSourceState("node-after"),
+      parentSourceState: testSourceState("parent-after"),
     });
     const skeletonLayer = {
       source: makeEditableSkeletonSource({ addNode }),
@@ -148,7 +155,7 @@ describe("spatial_skeleton_edit_tool", () => {
         ),
         getFullSegmentNodes,
         upsertCachedNode,
-        setCachedNodeRevision,
+        setCachedNodeSourceState,
       },
       getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
       selectSegment,
@@ -187,11 +194,14 @@ describe("spatial_skeleton_edit_tool", () => {
         position: new Float32Array([1, 2, 3]),
         parentNodeId: 5,
         isTrueEnd: false,
-        revisionToken: "node-after",
+        sourceState: testSourceState("node-after"),
       },
       { allowUncachedSegment: false },
     );
-    expect(setCachedNodeRevision).toHaveBeenCalledWith(5, "parent-after");
+    expect(setCachedNodeSourceState).toHaveBeenCalledWith(
+      5,
+      testSourceState("parent-after"),
+    );
     expect(visibleSegmentsState.visibleSegments.has(11n)).toBe(true);
     expect(selectSegment).toHaveBeenCalledWith(11n, true);
     expect(selectSpatialSkeletonNode).toHaveBeenCalledWith(17, true, {
@@ -212,16 +222,16 @@ describe("spatial_skeleton_edit_tool", () => {
   it("seeds root add-node commits locally without overlay retention or refetching chunks", async () => {
     suppressStatusMessages();
     const upsertCachedNode = vi.fn();
-    const setCachedNodeRevision = vi.fn();
+    const setCachedNodeSourceState = vi.fn();
     const selectSegment = vi.fn();
     const selectSpatialSkeletonNode = vi.fn();
     const markSpatialSkeletonNodeDataChanged = vi.fn();
     const moveViewToSpatialSkeletonNodePosition = vi.fn();
     const getFullSegmentNodes = vi.fn();
     const addNode = vi.fn().mockResolvedValue({
-      treenodeId: 29,
-      skeletonId: 13,
-      revisionToken: "root-after",
+      nodeId: 29,
+      segmentId: 13,
+      sourceState: testSourceState("root-after"),
     });
     const skeletonLayer = {
       source: makeEditableSkeletonSource({ addNode }),
@@ -243,7 +253,7 @@ describe("spatial_skeleton_edit_tool", () => {
         getCachedSegmentNodes: vi.fn(),
         getFullSegmentNodes,
         upsertCachedNode,
-        setCachedNodeRevision,
+        setCachedNodeSourceState,
       },
       getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
       selectSegment,
@@ -276,11 +286,11 @@ describe("spatial_skeleton_edit_tool", () => {
         position: new Float32Array([4, 5, 6]),
         parentNodeId: undefined,
         isTrueEnd: false,
-        revisionToken: "root-after",
+        sourceState: testSourceState("root-after"),
       },
       { allowUncachedSegment: true },
     );
-    expect(setCachedNodeRevision).not.toHaveBeenCalled();
+    expect(setCachedNodeSourceState).not.toHaveBeenCalled();
     expect(visibleSegmentsState.visibleSegments.has(13n)).toBe(true);
     expect(selectSegment).toHaveBeenCalledWith(13n, true);
     expect(selectSpatialSkeletonNode).toHaveBeenCalledWith(29, false, {
@@ -346,19 +356,19 @@ describe("spatial_skeleton_edit_tool", () => {
       segmentId: 11,
       position: new Float32Array([1, 2, 3]),
       isTrueEnd: false,
-      revisionToken: "first-before",
+      sourceState: testSourceState("first-before"),
     };
     const secondNode: SpatiallyIndexedSkeletonNode = {
       nodeId: 202,
       segmentId: 17,
       position: new Float32Array([4, 5, 6]),
       isTrueEnd: false,
-      revisionToken: "second-before",
+      sourceState: testSourceState("second-before"),
     };
     const mergeSkeletons = vi.fn().mockResolvedValue({
-      resultSkeletonId: 17,
-      deletedSkeletonId: 11,
-      stableAnnotationSwap: true,
+      resultSegmentId: 17,
+      deletedSegmentId: 11,
+      directionAdjusted: true,
     });
     const invalidateCachedSegments = vi.fn();
     const getFullSegmentNodes = vi.fn(async () => []);

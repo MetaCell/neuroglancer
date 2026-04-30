@@ -246,7 +246,7 @@ interface SkeletonChunkData {
   numVertices: number;
   vertexAttributeOffsets: Uint32Array;
   nodeIds?: Int32Array;
-  nodeRevisionTokens?: Array<string | undefined>;
+  nodeSourceStates?: unknown[];
 }
 
 type SpatiallyIndexedSkeletonPickData =
@@ -1539,7 +1539,7 @@ export class SpatiallyIndexedSkeletonChunk
   vertexAttributeOffsets: Uint32Array;
   vertexAttributeTextures: (WebGLTexture | null)[] = [];
   nodeIds: Int32Array = new Int32Array(0);
-  nodeRevisionTokens: Array<string | undefined> = [];
+  nodeSourceStates: unknown[] = [];
   lod: number | undefined;
 
   constructor(
@@ -1565,11 +1565,9 @@ export class SpatiallyIndexedSkeletonChunk
     } else {
       this.nodeIds = new Int32Array(0);
     }
-    const nodeRevisionTokens = (chunkData as any).nodeRevisionTokens;
-    this.nodeRevisionTokens = Array.isArray(nodeRevisionTokens)
-      ? nodeRevisionTokens.map((value) =>
-          typeof value === "string" ? value : undefined,
-        )
+    const nodeSourceStates = (chunkData as any).nodeSourceStates;
+    this.nodeSourceStates = Array.isArray(nodeSourceStates)
+      ? nodeSourceStates
       : [];
   }
 
@@ -2908,7 +2906,7 @@ export class SpatiallyIndexedSkeletonLayer
       nodeId,
       segmentId,
       position: data.positions.subarray(baseOffset, baseOffset + 3),
-      revisionToken: chunk.nodeRevisionTokens[pickedOffset],
+      sourceState: chunk.nodeSourceStates[pickedOffset],
     };
   }
 
@@ -3617,7 +3615,7 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
             nodeId: pickedNode.nodeId,
             segmentId: pickedNode.segmentId,
             position: new Float32Array(pickedNode.position),
-            revisionToken: pickedNode.revisionToken,
+            sourceState: pickedNode.sourceState,
           };
         }
         return;
@@ -3945,7 +3943,7 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
             nodeId: pickedNode.nodeId,
             segmentId: pickedNode.segmentId,
             position: new Float32Array(pickedNode.position),
-            revisionToken: pickedNode.revisionToken,
+            sourceState: pickedNode.sourceState,
           };
         }
         return;

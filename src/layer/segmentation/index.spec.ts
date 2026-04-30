@@ -39,12 +39,17 @@ function makeEditableSpatialSkeletonSource(
   } = {},
 ) {
   return {
+    spatialSkeletonEditController: {
+      supports: (action: string) =>
+        action !== SpatialSkeletonActions.reroot ||
+        options.rerootSkeleton !== undefined,
+    },
     listSkeletons: async () => [],
     getSkeleton: async () => [],
     fetchNodes: async () => [],
     getSpatialIndexMetadata: async () => null,
-    addNode: async () => ({ treenodeId: 1, skeletonId: 1 }),
-    insertNode: async () => ({ treenodeId: 1, skeletonId: 1 }),
+    addNode: async () => ({ nodeId: 1, segmentId: 1 }),
+    insertNode: async () => ({ nodeId: 1, segmentId: 1 }),
     moveNode: async () => ({}),
     deleteNode: async () => ({}),
     updateDescription: async () => ({}),
@@ -59,13 +64,13 @@ function makeEditableSpatialSkeletonSource(
       z: 0,
     }),
     mergeSkeletons: async () => ({
-      resultSkeletonId: 1,
-      deletedSkeletonId: 2,
-      stableAnnotationSwap: false,
+      resultSegmentId: 1,
+      deletedSegmentId: 2,
+      directionAdjusted: false,
     }),
     splitSkeleton: async () => ({
-      existingSkeletonId: 1,
-      newSkeletonId: 2,
+      existingSegmentId: 1,
+      newSegmentId: 2,
     }),
     ...(options.rerootSkeleton === undefined
       ? {}

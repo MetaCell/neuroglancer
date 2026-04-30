@@ -303,7 +303,7 @@ export class SpatiallyIndexedSkeletonChunk
   requestGeneration = -1;
   requestOwners = SpatiallyIndexedSkeletonChunkRequestOwner.NONE;
   nodeIds: Int32Array | undefined;
-  nodeRevisionTokens: Array<string | undefined> | undefined;
+  nodeSourceStates: unknown[] | undefined;
 
   freeSystemMemory() {
     freeSkeletonChunkSystemMemory(this);

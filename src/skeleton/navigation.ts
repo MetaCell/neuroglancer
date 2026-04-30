@@ -63,15 +63,16 @@ function buildNavigationGraphDerivedState(
     const parentNodeId = node.parentNodeId;
     const parentInTree =
       parentNodeId !== undefined && graph.nodeById.has(parentNodeId);
-    const sortPriority = node.isTrueEnd
-      ? 0
-      : childCount === 0
+    const sortPriority =
+      (node.isTrueEnd ?? false)
         ? 0
-        : !parentInTree
-          ? 3
-          : childCount > 1
-            ? 1
-            : 2;
+        : childCount === 0
+          ? 0
+          : !parentInTree
+            ? 3
+            : childCount > 1
+              ? 1
+              : 2;
     sortPriorityByNodeId.set(nodeId, sortPriority);
   }
   return {

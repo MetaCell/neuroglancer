@@ -1193,7 +1193,7 @@ export class SpatialSkeletonEditTab extends Tab {
         row.setAttribute("aria-disabled", "true");
       }
 
-      const nodeIsTrueEnd = node.isTrueEnd;
+      const nodeIsTrueEnd = node.isTrueEnd ?? false;
       const iconFilterType = getSpatialSkeletonNodeIconFilterType({
         nodeIsTrueEnd,
         nodeType: type,
@@ -1458,7 +1458,9 @@ export class SpatialSkeletonEditTab extends Tab {
           ? undefined
           : skeletonState.getCachedSegmentNodes(selectedSegmentId);
       activeSegmentId =
-        cachedSelectedSegmentNodes === undefined ? undefined : selectedSegmentId;
+        cachedSelectedSegmentNodes === undefined
+          ? undefined
+          : selectedSegmentId;
       loadedNodeSummarySuffix = "";
       if (
         skeletonLayer === undefined ||

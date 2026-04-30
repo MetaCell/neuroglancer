@@ -29,13 +29,16 @@ import {
 describe("skeleton/spatial_skeleton_manager", () => {
   it("does not require reroot support for editable sources", () => {
     const editableSource = {
+      spatialSkeletonEditController: {
+        supports: () => true,
+      },
       listSkeletons: async () => [],
       getSkeleton: async () => [],
       fetchNodes: async () => [],
       getSpatialIndexMetadata: async () => null,
       getSkeletonRootNode: async () => ({ nodeId: 1, x: 1, y: 2, z: 3 }),
-      addNode: async () => ({ treenodeId: 1, skeletonId: 1 }),
-      insertNode: async () => ({ treenodeId: 1, skeletonId: 1 }),
+      addNode: async () => ({ nodeId: 1, segmentId: 1 }),
+      insertNode: async () => ({ nodeId: 1, segmentId: 1 }),
       moveNode: async () => {},
       deleteNode: async () => {},
       updateDescription: async () => {},
@@ -44,13 +47,13 @@ describe("skeleton/spatial_skeleton_manager", () => {
       updateRadius: async () => {},
       updateConfidence: async () => {},
       mergeSkeletons: async () => ({
-        resultSkeletonId: 1,
-        deletedSkeletonId: 2,
-        stableAnnotationSwap: false,
+        resultSegmentId: 1,
+        deletedSegmentId: 2,
+        directionAdjusted: false,
       }),
       splitSkeleton: async () => ({
-        existingSkeletonId: 1,
-        newSkeletonId: 2,
+        existingSegmentId: 1,
+        newSegmentId: 2,
       }),
     };
 
@@ -451,7 +454,7 @@ describe("skeleton/spatial_skeleton_manager", () => {
     });
   });
 
-  it("caches inspected revision metadata from full skeleton inspection", async () => {
+  it("caches inspected source state from full skeleton inspection", async () => {
     const state = new SpatialSkeletonState();
     const getSkeleton = vi.fn(async () => [
       {
@@ -460,7 +463,7 @@ describe("skeleton/spatial_skeleton_manager", () => {
         position: new Float32Array([1, 2, 3]),
         segmentId: 11,
         isTrueEnd: false,
-        revisionToken: "2026-03-29T12:30:00Z",
+        sourceState: { revisionToken: "2026-03-29T12:30:00Z" },
       },
     ]);
 
@@ -484,7 +487,7 @@ describe("skeleton/spatial_skeleton_manager", () => {
         parentNodeId: undefined,
         description: undefined,
         isTrueEnd: false,
-        revisionToken: "2026-03-29T12:30:00Z",
+        sourceState: { revisionToken: "2026-03-29T12:30:00Z" },
       },
     ]);
 
@@ -496,7 +499,7 @@ describe("skeleton/spatial_skeleton_manager", () => {
       parentNodeId: undefined,
       description: undefined,
       isTrueEnd: false,
-      revisionToken: "2026-03-29T12:30:00Z",
+      sourceState: { revisionToken: "2026-03-29T12:30:00Z" },
     });
   });
 

@@ -1148,7 +1148,7 @@ export interface PickedSpatialSkeletonState {
   nodeId?: number;
   segmentId?: number;
   position?: Float32Array;
-  revisionToken?: string;
+  sourceState?: unknown;
 }
 
 export interface PickState {

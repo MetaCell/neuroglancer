@@ -14,12 +14,25 @@
  * limitations under the License.
  */
 
+import type { SpatialSkeletonAction } from "#src/skeleton/actions.js";
+import type { SpatialSkeletonCommand } from "#src/skeleton/command_history.js";
+
+export class SpatialSkeletonEditConflictError extends Error {
+  constructor(detail?: string) {
+    super(
+      detail ??
+        "The skeleton edit could not be applied because the source state is out of date.",
+    );
+    this.name = "SpatialSkeletonEditConflictError";
+  }
+}
+
 export interface SpatiallyIndexedSkeletonNodeBase {
   nodeId: number;
   segmentId: number;
   position: Float32Array;
   parentNodeId?: number;
-  revisionToken?: string;
+  sourceState?: unknown;
 }
 
 export interface SpatiallyIndexedSkeletonNode
@@ -27,7 +40,7 @@ export interface SpatiallyIndexedSkeletonNode
   radius?: number;
   confidence?: number;
   description?: string;
-  isTrueEnd: boolean;
+  isTrueEnd?: boolean;
 }
 
 export interface SpatiallyIndexedSkeletonOpenLeaf {
@@ -46,33 +59,33 @@ export interface SpatiallyIndexedSkeletonNavigationTarget {
   z: number;
 }
 
-export interface SpatiallyIndexedSkeletonNodeRevisionUpdate {
+export interface SpatiallyIndexedSkeletonNodeSourceStateUpdate {
   nodeId: number;
-  revisionToken: string;
+  sourceState: unknown;
 }
 
 export interface SpatiallyIndexedSkeletonEditResult {
-  nodeRevisionUpdates?: readonly SpatiallyIndexedSkeletonNodeRevisionUpdate[];
+  nodeSourceStateUpdates?: readonly SpatiallyIndexedSkeletonNodeSourceStateUpdate[];
 }
 
 export interface SpatiallyIndexedSkeletonAddNodeResult
   extends SpatiallyIndexedSkeletonEditResult {
-  treenodeId: number;
-  skeletonId: number;
-  revisionToken?: string;
-  parentRevisionToken?: string;
+  nodeId: number;
+  segmentId: number;
+  sourceState?: unknown;
+  parentSourceState?: unknown;
 }
 
 export type SpatiallyIndexedSkeletonInsertNodeResult =
   SpatiallyIndexedSkeletonAddNodeResult;
 
-export interface SpatiallyIndexedSkeletonNodeRevisionResult
+export interface SpatiallyIndexedSkeletonNodeSourceStateResult
   extends SpatiallyIndexedSkeletonEditResult {
-  revisionToken?: string;
+  sourceState?: unknown;
 }
 
 export interface SpatiallyIndexedSkeletonDescriptionUpdateResult
-  extends SpatiallyIndexedSkeletonNodeRevisionResult {
+  extends SpatiallyIndexedSkeletonNodeSourceStateResult {
   description?: string;
 }
 
@@ -82,35 +95,17 @@ export type SpatiallyIndexedSkeletonDeleteNodeResult =
 export type SpatiallyIndexedSkeletonRerootResult =
   SpatiallyIndexedSkeletonEditResult;
 
-export interface SpatiallyIndexedSkeletonEditNodeContext {
-  nodeId: number;
-  parentNodeId?: number;
-  revisionToken: string;
-}
-
-export interface SpatiallyIndexedSkeletonEditParentContext {
-  nodeId: number;
-  revisionToken: string;
-}
-
-export interface SpatiallyIndexedSkeletonEditContext {
-  node?: SpatiallyIndexedSkeletonEditNodeContext;
-  parent?: SpatiallyIndexedSkeletonEditParentContext;
-  children?: readonly SpatiallyIndexedSkeletonEditParentContext[];
-  nodes?: readonly SpatiallyIndexedSkeletonEditParentContext[];
-}
-
 export interface SpatiallyIndexedSkeletonMergeResult
   extends SpatiallyIndexedSkeletonEditResult {
-  resultSkeletonId: number | undefined;
-  deletedSkeletonId: number | undefined;
-  stableAnnotationSwap: boolean;
+  resultSegmentId: number | undefined;
+  deletedSegmentId: number | undefined;
+  directionAdjusted: boolean;
 }
 
 export interface SpatiallyIndexedSkeletonSplitResult
   extends SpatiallyIndexedSkeletonEditResult {
-  existingSkeletonId: number | undefined;
-  newSkeletonId: number | undefined;
+  existingSegmentId: number | undefined;
+  newSegmentId: number | undefined;
 }
 
 export interface SpatiallyIndexedSkeletonMetadata {
@@ -122,11 +117,96 @@ export interface SpatiallyIndexedSkeletonMetadata {
   gridCellSizes: Array<{ x: number; y: number; z: number }>;
 }
 
-export const SPATIALLY_INDEXED_SKELETON_CONFIDENCE_VALUES = [
-  0, 25, 50, 75, 100,
-] as const;
+export interface SpatialSkeletonNodeFeatureCapabilities {
+  description?: boolean;
+  trueEnd?: boolean;
+  radius?: boolean;
+  confidenceValues?: readonly number[];
+}
+
+export interface SpatialSkeletonEditCapabilities {
+  nodeFeatures?: SpatialSkeletonNodeFeatureCapabilities;
+}
+
+export interface SpatialSkeletonAddNodeCommandOptions {
+  skeletonId: number;
+  parentNodeId: number | undefined;
+  positionInModelSpace: Float32Array;
+}
+
+export interface SpatialSkeletonMoveNodeCommandOptions {
+  node: SpatiallyIndexedSkeletonNode;
+  nextPositionInModelSpace: Float32Array;
+}
+
+export interface SpatialSkeletonNodeDescriptionCommandOptions {
+  node: SpatiallyIndexedSkeletonNode;
+  nextDescription?: string;
+}
+
+export interface SpatialSkeletonNodeTrueEndCommandOptions {
+  node: SpatiallyIndexedSkeletonNode;
+  nextIsTrueEnd: boolean;
+}
+
+export interface SpatialSkeletonNodePropertiesCommandOptions {
+  node: SpatiallyIndexedSkeletonNode;
+  next: { radius: number; confidence: number };
+}
+
+export interface SpatialSkeletonMergeEndpoint {
+  nodeId: number;
+  segmentId: number;
+  sourceState?: unknown;
+}
+
+export interface SpatialSkeletonEditController {
+  readonly capabilities?: SpatialSkeletonEditCapabilities;
+  supports(action: SpatialSkeletonAction): boolean;
+  createAddNodeCommand?(
+    layer: any,
+    options: SpatialSkeletonAddNodeCommandOptions,
+  ): SpatialSkeletonCommand;
+  createMoveNodeCommand?(
+    layer: any,
+    options: SpatialSkeletonMoveNodeCommandOptions,
+  ): SpatialSkeletonCommand;
+  createDeleteNodeCommand?(
+    layer: any,
+    node: SpatiallyIndexedSkeletonNode,
+  ): SpatialSkeletonCommand;
+  createNodeDescriptionCommand?(
+    layer: any,
+    options: SpatialSkeletonNodeDescriptionCommandOptions,
+  ): SpatialSkeletonCommand;
+  createNodeTrueEndCommand?(
+    layer: any,
+    options: SpatialSkeletonNodeTrueEndCommandOptions,
+  ): SpatialSkeletonCommand;
+  createNodePropertiesCommand?(
+    layer: any,
+    options: SpatialSkeletonNodePropertiesCommandOptions,
+  ): SpatialSkeletonCommand;
+  createRerootCommand?(
+    layer: any,
+    node: Pick<
+      SpatiallyIndexedSkeletonNode,
+      "nodeId" | "segmentId" | "parentNodeId"
+    >,
+  ): SpatialSkeletonCommand;
+  createSplitCommand?(
+    layer: any,
+    node: Pick<SpatiallyIndexedSkeletonNode, "nodeId" | "segmentId">,
+  ): SpatialSkeletonCommand;
+  createMergeCommand?(
+    layer: any,
+    firstNode: SpatialSkeletonMergeEndpoint,
+    secondNode: SpatialSkeletonMergeEndpoint,
+  ): SpatialSkeletonCommand;
+}
 
 export interface SpatiallyIndexedSkeletonSource {
+  readonly spatialSkeletonEditController?: SpatialSkeletonEditController;
   listSkeletons(): Promise<number[]>;
   getSkeleton(
     skeletonId: number,
@@ -140,7 +220,6 @@ export interface SpatiallyIndexedSkeletonSource {
     },
     lod?: number,
     options?: {
-      cacheProvider?: string;
       signal?: AbortSignal;
     },
   ): Promise<SpatiallyIndexedSkeletonNodeBase[]>;
@@ -157,7 +236,7 @@ export interface EditableSpatiallyIndexedSkeletonSource
     y: number,
     z: number,
     parentId?: number,
-    editContext?: SpatiallyIndexedSkeletonEditContext,
+    editContext?: unknown,
   ): Promise<SpatiallyIndexedSkeletonAddNodeResult>;
   insertNode(
     skeletonId: number,
@@ -166,25 +245,25 @@ export interface EditableSpatiallyIndexedSkeletonSource
     z: number,
     parentId: number,
     childNodeIds: readonly number[],
-    editContext?: SpatiallyIndexedSkeletonEditContext,
+    editContext?: unknown,
   ): Promise<SpatiallyIndexedSkeletonInsertNodeResult>;
   moveNode(
     nodeId: number,
     x: number,
     y: number,
     z: number,
-    editContext?: SpatiallyIndexedSkeletonEditContext,
-  ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult>;
+    editContext?: unknown,
+  ): Promise<SpatiallyIndexedSkeletonNodeSourceStateResult>;
   deleteNode(
     nodeId: number,
     options: {
       childNodeIds?: readonly number[];
-      editContext?: SpatiallyIndexedSkeletonEditContext;
+      editContext?: unknown;
     },
   ): Promise<SpatiallyIndexedSkeletonDeleteNodeResult>;
   rerootSkeleton?(
     nodeId: number,
-    editContext?: SpatiallyIndexedSkeletonEditContext,
+    editContext?: unknown,
   ): Promise<SpatiallyIndexedSkeletonRerootResult>;
   updateDescription(
     nodeId: number,
@@ -192,27 +271,27 @@ export interface EditableSpatiallyIndexedSkeletonSource
   ): Promise<SpatiallyIndexedSkeletonDescriptionUpdateResult>;
   setTrueEnd(
     nodeId: number,
-  ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult>;
+  ): Promise<SpatiallyIndexedSkeletonNodeSourceStateResult>;
   removeTrueEnd(
     nodeId: number,
-  ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult>;
+  ): Promise<SpatiallyIndexedSkeletonNodeSourceStateResult>;
   updateRadius(
     nodeId: number,
     radius: number,
-    editContext?: SpatiallyIndexedSkeletonEditContext,
-  ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult>;
+    editContext?: unknown,
+  ): Promise<SpatiallyIndexedSkeletonNodeSourceStateResult>;
   updateConfidence(
     nodeId: number,
     confidence: number,
-    editContext?: SpatiallyIndexedSkeletonEditContext,
-  ): Promise<SpatiallyIndexedSkeletonNodeRevisionResult>;
+    editContext?: unknown,
+  ): Promise<SpatiallyIndexedSkeletonNodeSourceStateResult>;
   mergeSkeletons(
     fromNodeId: number,
     toNodeId: number,
-    editContext?: SpatiallyIndexedSkeletonEditContext,
+    editContext?: unknown,
   ): Promise<SpatiallyIndexedSkeletonMergeResult>;
   splitSkeleton(
     nodeId: number,
-    editContext?: SpatiallyIndexedSkeletonEditContext,
+    editContext?: unknown,
   ): Promise<SpatiallyIndexedSkeletonSplitResult>;
 }

@@ -17,7 +17,8 @@
 import type {
   EditableSpatiallyIndexedSkeletonSource,
   SpatiallyIndexedSkeletonNode,
-  SpatiallyIndexedSkeletonNodeRevisionUpdate,
+  SpatiallyIndexedSkeletonNodeSourceStateUpdate,
+  SpatialSkeletonEditController,
   SpatiallyIndexedSkeletonSource,
 } from "#src/skeleton/api.js";
 import { SpatialSkeletonCommandHistory } from "#src/skeleton/command_history.js";
@@ -56,18 +57,9 @@ export function isEditableSpatiallyIndexedSkeletonSource(
 ): value is EditableSpatiallyIndexedSkeletonSource {
   return (
     isSpatiallyIndexedSkeletonSource(value) &&
-    hasFunction(value, "addNode") &&
-    hasFunction(value, "insertNode") &&
-    hasFunction(value, "moveNode") &&
-    hasFunction(value, "deleteNode") &&
-    hasFunction(value, "updateDescription") &&
-    hasFunction(value, "setTrueEnd") &&
-    hasFunction(value, "removeTrueEnd") &&
-    hasFunction(value, "updateRadius") &&
-    hasFunction(value, "updateConfidence") &&
-    hasFunction(value, "getSkeletonRootNode") &&
-    hasFunction(value, "mergeSkeletons") &&
-    hasFunction(value, "splitSkeleton")
+    typeof value.spatialSkeletonEditController === "object" &&
+    value.spatialSkeletonEditController !== null &&
+    hasFunction(value.spatialSkeletonEditController, "supports")
   );
 }
 
@@ -87,6 +79,13 @@ export function getEditableSpatiallyIndexedSkeletonSource(
   return isEditableSpatiallyIndexedSkeletonSource(value.source)
     ? value.source
     : undefined;
+}
+
+export function getSpatialSkeletonEditController(
+  value: SpatialSkeletonSourceAccess | undefined,
+): SpatialSkeletonEditController | undefined {
+  const source = getSpatiallyIndexedSkeletonSource(value);
+  return source?.spatialSkeletonEditController;
 }
 
 export function normalizeSpatiallyIndexedSkeletonNode(
@@ -124,7 +123,7 @@ export function normalizeSpatiallyIndexedSkeletonNode(
       typeof node.description === "string" && node.description.length > 0
         ? node.description
         : undefined,
-    isTrueEnd: node.isTrueEnd,
+    isTrueEnd: node.isTrueEnd ?? false,
     ...((node.radius !== undefined && Number.isFinite(Number(node.radius))) ||
     (node.confidence !== undefined && Number.isFinite(Number(node.confidence)))
       ? {
@@ -137,9 +136,9 @@ export function normalizeSpatiallyIndexedSkeletonNode(
             : {}),
         }
       : {}),
-    ...(node.revisionToken === undefined
+    ...(node.sourceState === undefined
       ? {}
-      : { revisionToken: node.revisionToken }),
+      : { sourceState: node.sourceState }),
   };
 }
 
@@ -376,28 +375,28 @@ export class SpatialSkeletonState extends RefCounted {
     return true;
   }
 
-  setCachedNodeRevision(nodeId: number, revisionToken: string | undefined) {
-    if (revisionToken === undefined) {
+  setCachedNodeSourceState(nodeId: number, sourceState: unknown) {
+    if (sourceState === undefined) {
       return false;
     }
     return this.updateCachedNode(nodeId, (node) => {
-      if (node.revisionToken === revisionToken) {
+      if (node.sourceState === sourceState) {
         return node;
       }
       return {
         ...node,
-        revisionToken,
+        sourceState,
       };
     });
   }
 
-  setCachedNodeRevisions(
-    revisionUpdates: readonly SpatiallyIndexedSkeletonNodeRevisionUpdate[],
+  setCachedNodeSourceStates(
+    sourceStateUpdates: readonly SpatiallyIndexedSkeletonNodeSourceStateUpdate[],
   ) {
     let changed = false;
-    for (const update of revisionUpdates) {
+    for (const update of sourceStateUpdates) {
       changed =
-        this.setCachedNodeRevision(update.nodeId, update.revisionToken) ||
+        this.setCachedNodeSourceState(update.nodeId, update.sourceState) ||
         changed;
     }
     return changed;

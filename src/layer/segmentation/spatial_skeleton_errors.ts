@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { CatmaidStateValidationError } from "#src/datasource/catmaid/api.js";
+import { SpatialSkeletonEditConflictError } from "#src/skeleton/api.js";
 import { StatusMessage } from "#src/status.js";
 
 function formatError(error: unknown) {
@@ -22,7 +22,7 @@ function formatError(error: unknown) {
 }
 
 export function isSpatialSkeletonOutdatedStateError(error: unknown) {
-  return error instanceof CatmaidStateValidationError;
+  return error instanceof SpatialSkeletonEditConflictError;
 }
 
 export function showSpatialSkeletonActionError(action: string, error: unknown) {
