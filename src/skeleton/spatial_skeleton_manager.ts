@@ -15,13 +15,11 @@
  */
 
 import type {
-  EditableSpatiallyIndexedSkeletonSource,
   SpatiallyIndexedSkeletonNode,
-  SpatiallyIndexedSkeletonNodeSourceStateUpdate,
-  SpatialSkeletonEditController,
   SpatiallyIndexedSkeletonSource,
 } from "#src/skeleton/api.js";
 import { SpatialSkeletonCommandHistory } from "#src/skeleton/command_history.js";
+import type { SpatialSkeletonEditController } from "#src/skeleton/edit_controller.js";
 import type { SpatiallyIndexedSkeletonLayer } from "#src/skeleton/frontend.js";
 import { WatchableValue } from "#src/trackable_value.js";
 import { RefCounted } from "#src/util/disposable.js";
@@ -52,14 +50,19 @@ export function isSpatiallyIndexedSkeletonSource(
   );
 }
 
-export function isEditableSpatiallyIndexedSkeletonSource(
+function isSpatialSkeletonEditController(
   value: unknown,
-): value is EditableSpatiallyIndexedSkeletonSource {
+): value is SpatialSkeletonEditController {
   return (
-    isSpatiallyIndexedSkeletonSource(value) &&
-    typeof value.spatialSkeletonEditController === "object" &&
-    value.spatialSkeletonEditController !== null &&
-    hasFunction(value.spatialSkeletonEditController, "supports")
+    typeof value === "object" &&
+    value !== null &&
+    hasFunction(value, "supports") &&
+    hasFunction(value, "createAddNodeCommand") &&
+    hasFunction(value, "createInsertNodeCommand") &&
+    hasFunction(value, "createMoveNodeCommand") &&
+    hasFunction(value, "createDeleteNodeCommand") &&
+    hasFunction(value, "createSplitCommand") &&
+    hasFunction(value, "createMergeCommand")
   );
 }
 
@@ -72,20 +75,12 @@ export function getSpatiallyIndexedSkeletonSource(
     : undefined;
 }
 
-export function getEditableSpatiallyIndexedSkeletonSource(
-  value: SpatialSkeletonSourceAccess | undefined,
-): EditableSpatiallyIndexedSkeletonSource | undefined {
-  if (value === undefined) return undefined;
-  return isEditableSpatiallyIndexedSkeletonSource(value.source)
-    ? value.source
-    : undefined;
-}
-
 export function getSpatialSkeletonEditController(
   value: SpatialSkeletonSourceAccess | undefined,
 ): SpatialSkeletonEditController | undefined {
   const source = getSpatiallyIndexedSkeletonSource(value);
-  return source?.spatialSkeletonEditController;
+  const controller = source?.spatialSkeletonEditController;
+  return isSpatialSkeletonEditController(controller) ? controller : undefined;
 }
 
 export function normalizeSpatiallyIndexedSkeletonNode(
@@ -391,7 +386,10 @@ export class SpatialSkeletonState extends RefCounted {
   }
 
   setCachedNodeSourceStates(
-    sourceStateUpdates: readonly SpatiallyIndexedSkeletonNodeSourceStateUpdate[],
+    sourceStateUpdates: readonly {
+      nodeId: number;
+      sourceState: unknown;
+    }[],
   ) {
     let changed = false;
     for (const update of sourceStateUpdates) {

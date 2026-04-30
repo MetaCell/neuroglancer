@@ -44,9 +44,7 @@ import {
   type SpatialSkeletonAction,
 } from "#src/skeleton/actions.js";
 import type {
-  SpatiallyIndexedSkeletonNavigationTarget,
   SpatiallyIndexedSkeletonNode,
-  SpatiallyIndexedSkeletonOpenLeaf,
 } from "#src/skeleton/api.js";
 import {
   buildSpatiallyIndexedSkeletonNavigationGraph,
@@ -57,6 +55,8 @@ import {
   getOpenLeaves as getOpenLeavesFromGraph,
   getParentNode as getParentNodeFromGraph,
   getSkeletonRootNode as getSkeletonRootNodeFromGraph,
+  type SpatiallyIndexedSkeletonNavigationTarget,
+  type SpatiallyIndexedSkeletonOpenLeaf,
   type SpatiallyIndexedSkeletonNavigationGraph,
 } from "#src/skeleton/navigation.js";
 import {
@@ -637,12 +637,9 @@ export class SpatialSkeletonEditTab extends Tab {
       },
     };
 
-    const navigateToNodeTarget = (target: {
-      nodeId: number;
-      x: number;
-      y: number;
-      z: number;
-    }) => {
+    const navigateToNodeTarget = (
+      target: SpatiallyIndexedSkeletonNavigationTarget,
+    ) => {
       const existingNode = allNodes.find(
         (node) => node.nodeId === target.nodeId,
       );
@@ -651,7 +648,7 @@ export class SpatialSkeletonEditTab extends Tab {
         return;
       }
       pendingScrollToSelectedNode = true;
-      const position = [target.x, target.y, target.z];
+      const position = target.position;
       layer.selectSpatialSkeletonNode(target.nodeId, true, { position });
       moveViewToNodePosition(position);
       updateDisplay();

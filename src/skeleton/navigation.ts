@@ -15,10 +15,20 @@
  */
 
 import type {
-  SpatiallyIndexedSkeletonNavigationTarget,
   SpatiallyIndexedSkeletonNode,
-  SpatiallyIndexedSkeletonOpenLeaf,
+  SpatialSkeletonVector,
 } from "#src/skeleton/api.js";
+
+export interface SpatiallyIndexedSkeletonNavigationTarget {
+  nodeId: number;
+  position: SpatialSkeletonVector;
+}
+
+export interface SpatiallyIndexedSkeletonOpenLeaf
+  extends SpatiallyIndexedSkeletonNavigationTarget {
+  distance: number;
+  creationTime?: string;
+}
 
 export interface SpatiallyIndexedSkeletonNavigationGraph {
   nodeById: Map<number, SpatiallyIndexedSkeletonNode>;
@@ -243,9 +253,7 @@ function getNodeTarget(
   const node = getNodeOrThrow(graph, nodeId);
   return {
     nodeId: node.nodeId,
-    x: Number(node.position[0]),
-    y: Number(node.position[1]),
-    z: Number(node.position[2]),
+    position: node.position,
   };
 }
 

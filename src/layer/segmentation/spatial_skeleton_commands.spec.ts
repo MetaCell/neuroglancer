@@ -7,6 +7,7 @@ import {
   executeSpatialSkeletonDeleteNode,
   executeSpatialSkeletonMerge,
   executeSpatialSkeletonMoveNode,
+  executeSpatialSkeletonNodeDescriptionUpdate,
   executeSpatialSkeletonSplit,
   redoSpatialSkeletonCommand,
   undoSpatialSkeletonCommand,
@@ -102,7 +103,7 @@ describe("spatial_skeleton_commands", () => {
     vi.restoreAllMocks();
   });
 
-  it("executes opaque source-created commands without generic edit methods", async () => {
+  it("executes opaque source-created commands through a valid edit controller", async () => {
     const execute = vi.fn();
     const undo = vi.fn();
     const redo = vi.fn();
@@ -113,6 +114,7 @@ describe("spatial_skeleton_commands", () => {
       redo,
     };
     const createMoveNodeCommand = vi.fn(() => command);
+    const createCommand = vi.fn(() => command);
     const layer = {
       spatialSkeletonState: {
         commandHistory: new SpatialSkeletonCommandHistory(),
@@ -121,7 +123,12 @@ describe("spatial_skeleton_commands", () => {
         source: {
           spatialSkeletonEditController: {
             supports: () => true,
+            createAddNodeCommand: createCommand,
+            createInsertNodeCommand: createCommand,
             createMoveNodeCommand,
+            createDeleteNodeCommand: createCommand,
+            createSplitCommand: createCommand,
+            createMergeCommand: createCommand,
           },
           listSkeletons: vi.fn(),
           getSkeleton: vi.fn(),
@@ -151,6 +158,52 @@ describe("spatial_skeleton_commands", () => {
     expect(execute).toHaveBeenCalledTimes(1);
     expect(undo).toHaveBeenCalledTimes(1);
     expect(redo).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports unsupported optional command factories clearly", () => {
+    const command = {
+      label: "required command",
+      execute: vi.fn(),
+      undo: vi.fn(),
+      redo: vi.fn(),
+    };
+    const createCommand = vi.fn(() => command);
+    const layer = {
+      spatialSkeletonState: {
+        commandHistory: new SpatialSkeletonCommandHistory(),
+      },
+      getSpatiallyIndexedSkeletonLayer: () => ({
+        source: {
+          spatialSkeletonEditController: {
+            supports: () => true,
+            createAddNodeCommand: createCommand,
+            createInsertNodeCommand: createCommand,
+            createMoveNodeCommand: createCommand,
+            createDeleteNodeCommand: createCommand,
+            createSplitCommand: createCommand,
+            createMergeCommand: createCommand,
+          },
+          listSkeletons: vi.fn(),
+          getSkeleton: vi.fn(),
+          fetchNodes: vi.fn(),
+          getSpatialIndexMetadata: vi.fn(),
+        },
+      }),
+    };
+    const node: SpatiallyIndexedSkeletonNode = {
+      nodeId: 17,
+      segmentId: 23,
+      position: new Float32Array([1, 2, 3]),
+    };
+
+    expect(() =>
+      executeSpatialSkeletonNodeDescriptionUpdate(layer as any, {
+        node,
+        nextDescription: "next",
+      }),
+    ).toThrow(
+      "The active skeleton source does not support node description editing.",
+    );
   });
 
   it("commits move-node commands using model-space positions", async () => {
@@ -924,9 +977,7 @@ describe("spatial_skeleton_commands", () => {
     const skeletonSource = makeEditableSkeletonSource({
       getSkeletonRootNode: vi.fn(async () => ({
         nodeId: hiddenRootNode.nodeId,
-        x: hiddenRootNode.position[0],
-        y: hiddenRootNode.position[1],
-        z: hiddenRootNode.position[2],
+        position: hiddenRootNode.position,
       })),
       mergeSkeletons: vi.fn(async () => {
         serverSegments.set(visibleSegmentId, mergedNodes.map(cloneNode));
@@ -1177,9 +1228,7 @@ describe("spatial_skeleton_commands", () => {
     const skeletonSource = makeEditableSkeletonSource({
       getSkeletonRootNode: vi.fn(async () => ({
         nodeId: hiddenRootNode.nodeId,
-        x: hiddenRootNode.position[0],
-        y: hiddenRootNode.position[1],
-        z: hiddenRootNode.position[2],
+        position: hiddenRootNode.position,
       })),
       mergeSkeletons: vi.fn(async () => {
         serverSegments.set(visibleSegmentId, mergedNodes.map(cloneNode));
@@ -1372,9 +1421,7 @@ describe("spatial_skeleton_commands", () => {
     const skeletonSource = makeEditableSkeletonSource({
       getSkeletonRootNode: vi.fn(async () => ({
         nodeId: secondRootNode.nodeId,
-        x: secondRootNode.position[0],
-        y: secondRootNode.position[1],
-        z: secondRootNode.position[2],
+        position: secondRootNode.position,
       })),
       mergeSkeletons: vi.fn(async () => ({
         resultSegmentId: firstSegmentId,

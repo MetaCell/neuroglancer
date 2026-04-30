@@ -24,7 +24,15 @@ import {
 import { WithCredentialsProvider } from "#src/credentials_provider/chunk_source_frontend.js";
 import type { CredentialsProvider } from "#src/credentials_provider/index.js";
 import type {
+  CatmaidAddNodeResult,
+  CatmaidDeleteNodeResult,
+  CatmaidDescriptionUpdateResult,
   CatmaidEditContext,
+  CatmaidInsertNodeResult,
+  CatmaidMergeResult,
+  CatmaidNodeSourceStateResult,
+  CatmaidSplitResult,
+  CatmaidSpatialSkeletonEditApi,
   CatmaidToken,
 } from "#src/datasource/catmaid/api.js";
 import { CatmaidClient, credentialsKey } from "#src/datasource/catmaid/api.js";
@@ -44,17 +52,10 @@ import {
   normalizeInlineSegmentPropertyMap,
 } from "#src/segmentation_display_state/property_map.js";
 import type {
-  EditableSpatiallyIndexedSkeletonSource,
-  SpatiallyIndexedSkeletonAddNodeResult,
-  SpatiallyIndexedSkeletonDeleteNodeResult,
-  SpatiallyIndexedSkeletonDescriptionUpdateResult,
-  SpatiallyIndexedSkeletonInsertNodeResult,
-  SpatiallyIndexedSkeletonMergeResult,
+  SpatialSkeletonBounds,
   SpatiallyIndexedSkeletonMetadata,
   SpatiallyIndexedSkeletonNode,
-  SpatiallyIndexedSkeletonNodeSourceStateResult,
   SpatiallyIndexedSkeletonNodeBase,
-  SpatiallyIndexedSkeletonSplitResult,
 } from "#src/skeleton/api.js";
 import {
   SpatiallyIndexedSkeletonSource,
@@ -77,7 +78,7 @@ export class CatmaidSpatiallyIndexedSkeletonSource
     WithCredentialsProvider<CatmaidToken>()(SpatiallyIndexedSkeletonSource),
     CatmaidSkeletonSourceParameters,
   )
-  implements EditableSpatiallyIndexedSkeletonSource
+  implements CatmaidSpatialSkeletonEditApi
 {
   readonly spatialSkeletonEditController =
     new CatmaidSpatialSkeletonEditController();
@@ -114,17 +115,14 @@ export class CatmaidSpatiallyIndexedSkeletonSource
   }
 
   fetchNodes(
-    boundingBox: {
-      min: { x: number; y: number; z: number };
-      max: { x: number; y: number; z: number };
-    },
+    bounds: SpatialSkeletonBounds,
     lod?: number,
     options?: {
       cacheProvider?: string;
       signal?: AbortSignal;
     },
   ): Promise<SpatiallyIndexedSkeletonNodeBase[]> {
-    return this.client.fetchNodes(boundingBox, lod, options);
+    return this.client.fetchNodes(bounds, lod, options);
   }
 
   getSkeletonRootNode(skeletonId: number) {
@@ -138,7 +136,7 @@ export class CatmaidSpatiallyIndexedSkeletonSource
     z: number,
     parentId?: number,
     editContext?: CatmaidEditContext,
-  ): Promise<SpatiallyIndexedSkeletonAddNodeResult> {
+  ): Promise<CatmaidAddNodeResult> {
     return this.client.addNode(skeletonId, x, y, z, parentId, editContext);
   }
 
@@ -150,7 +148,7 @@ export class CatmaidSpatiallyIndexedSkeletonSource
     parentId: number,
     childNodeIds: readonly number[],
     editContext?: CatmaidEditContext,
-  ): Promise<SpatiallyIndexedSkeletonInsertNodeResult> {
+  ): Promise<CatmaidInsertNodeResult> {
     return this.client.insertNode(
       skeletonId,
       x,
@@ -168,7 +166,7 @@ export class CatmaidSpatiallyIndexedSkeletonSource
     y: number,
     z: number,
     editContext?: CatmaidEditContext,
-  ): Promise<SpatiallyIndexedSkeletonNodeSourceStateResult> {
+  ): Promise<CatmaidNodeSourceStateResult> {
     return this.client.moveNode(nodeId, x, y, z, editContext);
   }
 
@@ -178,7 +176,7 @@ export class CatmaidSpatiallyIndexedSkeletonSource
       childNodeIds?: readonly number[];
       editContext?: CatmaidEditContext;
     },
-  ): Promise<SpatiallyIndexedSkeletonDeleteNodeResult> {
+  ): Promise<CatmaidDeleteNodeResult> {
     return this.client.deleteNode(nodeId, options);
   }
 
@@ -189,19 +187,15 @@ export class CatmaidSpatiallyIndexedSkeletonSource
   updateDescription(
     nodeId: number,
     description: string,
-  ): Promise<SpatiallyIndexedSkeletonDescriptionUpdateResult> {
+  ): Promise<CatmaidDescriptionUpdateResult> {
     return this.client.updateDescription(nodeId, description);
   }
 
-  setTrueEnd(
-    nodeId: number,
-  ): Promise<SpatiallyIndexedSkeletonNodeSourceStateResult> {
+  setTrueEnd(nodeId: number): Promise<CatmaidNodeSourceStateResult> {
     return this.client.setTrueEnd(nodeId);
   }
 
-  removeTrueEnd(
-    nodeId: number,
-  ): Promise<SpatiallyIndexedSkeletonNodeSourceStateResult> {
+  removeTrueEnd(nodeId: number): Promise<CatmaidNodeSourceStateResult> {
     return this.client.removeTrueEnd(nodeId);
   }
 
@@ -209,7 +203,7 @@ export class CatmaidSpatiallyIndexedSkeletonSource
     nodeId: number,
     radius: number,
     editContext?: CatmaidEditContext,
-  ): Promise<SpatiallyIndexedSkeletonNodeSourceStateResult> {
+  ): Promise<CatmaidNodeSourceStateResult> {
     return this.client.updateRadius(nodeId, radius, editContext);
   }
 
@@ -217,7 +211,7 @@ export class CatmaidSpatiallyIndexedSkeletonSource
     nodeId: number,
     confidence: number,
     editContext?: CatmaidEditContext,
-  ): Promise<SpatiallyIndexedSkeletonNodeSourceStateResult> {
+  ): Promise<CatmaidNodeSourceStateResult> {
     return this.client.updateConfidence(nodeId, confidence, editContext);
   }
 
@@ -225,14 +219,14 @@ export class CatmaidSpatiallyIndexedSkeletonSource
     fromNodeId: number,
     toNodeId: number,
     editContext?: CatmaidEditContext,
-  ): Promise<SpatiallyIndexedSkeletonMergeResult> {
+  ): Promise<CatmaidMergeResult> {
     return this.client.mergeSkeletons(fromNodeId, toNodeId, editContext);
   }
 
   splitSkeleton(
     nodeId: number,
     editContext?: CatmaidEditContext,
-  ): Promise<SpatiallyIndexedSkeletonSplitResult> {
+  ): Promise<CatmaidSplitResult> {
     return this.client.splitSkeleton(nodeId, editContext);
   }
 }
@@ -427,7 +421,16 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
       throw new Error("Failed to fetch CATMAID spatial index metadata");
     }
 
-    const { bounds: projectBounds, gridCellSizes } = spatialIndexMetadata;
+    const {
+      lowerBounds: projectLowerBounds,
+      upperBounds: projectUpperBounds,
+      spatial,
+    } = spatialIndexMetadata;
+    const gridCellSizes = spatial.map(({ chunkSize }) => ({
+      x: Number(chunkSize[0]),
+      y: Number(chunkSize[1]),
+      z: Number(chunkSize[2]),
+    }));
 
     // The model-space coordinates we emit are in nanometers, converted to meters for Neuroglancer.
     const coordinateScaleFactors = Float64Array.from([
@@ -437,16 +440,8 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
     ]);
 
     // Bounds and chunk sizes are represented in project-space nanometers.
-    const lowerBounds = Float64Array.from([
-      projectBounds.min.x,
-      projectBounds.min.y,
-      projectBounds.min.z,
-    ]);
-    const upperBounds = Float64Array.from([
-      projectBounds.max.x,
-      projectBounds.max.y,
-      projectBounds.max.z,
-    ]);
+    const lowerBounds = Float64Array.from(projectLowerBounds);
+    const upperBounds = Float64Array.from(projectUpperBounds);
 
     const modelSpace = makeCoordinateSpace({
       names: ["x", "y", "z"],

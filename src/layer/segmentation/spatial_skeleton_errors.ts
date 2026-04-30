@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { SpatialSkeletonEditConflictError } from "#src/skeleton/api.js";
+import { SpatialSkeletonEditConflictError } from "#src/skeleton/edit_errors.js";
 import { StatusMessage } from "#src/status.js";
 
 function formatError(error: unknown) {

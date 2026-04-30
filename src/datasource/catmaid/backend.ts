@@ -76,16 +76,16 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
       chunkDataSize as unknown as vec3,
     );
 
-    const bbox = {
-      min: { x: localMin[0], y: localMin[1], z: localMin[2] },
-      max: { x: localMax[0], y: localMax[1], z: localMax[2] },
+    const bounds = {
+      lowerBounds: localMin,
+      upperBounds: localMax,
     };
 
     // Use LOD stored on the chunk to support per-view LODs on shared sources.
     const lodValue = chunk.lod ?? this.currentLod;
     // Get cache provider from parameters (passed from frontend)
     const cacheProvider = this.parameters.catmaidParameters.cacheProvider;
-    const nodes = await this.client.fetchNodes(bbox, lodValue, {
+    const nodes = await this.client.fetchNodes(bounds, lodValue, {
       cacheProvider,
       signal,
     });
