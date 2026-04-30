@@ -1471,16 +1471,6 @@ export class SpatialSkeletonEditTab extends Tab {
           ? a.nodeId - b.nodeId
           : a.segmentId - b.segmentId,
       );
-      const selectedId = layer.selectedSpatialSkeletonNodeId.value;
-      if (
-        allNodes.length > 0 &&
-        (selectedId === undefined ||
-          !allNodes.some((node) => node.nodeId === selectedId))
-      ) {
-        layer.selectSpatialSkeletonNode(allNodes[0].nodeId, false, {
-          segmentId: allNodes[0].segmentId,
-        });
-      }
       updateDisplay(summarySuffix);
     };
 
