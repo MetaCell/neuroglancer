@@ -26,7 +26,11 @@ import {
   renderScaleHistogramBinSize,
   renderScaleHistogramOrigin,
 } from "#src/render_scale_statistics.js";
-import type { TrackableValueInterface } from "#src/trackable_value.js";
+import { TrackableBooleanCheckbox } from "#src/trackable_boolean.js";
+import type {
+  TrackableValueInterface,
+  WatchableValueInterface,
+} from "#src/trackable_value.js";
 import { WatchableValue } from "#src/trackable_value.js";
 import { serializeColor } from "#src/util/color.js";
 import { hsvToRgb } from "#src/util/colorspace.js";
@@ -65,6 +69,19 @@ export interface RenderScaleWidgetOptions {
   target: TrackableValueInterface<number>;
 }
 
+export interface SpatialSkeletonGridRenderScaleWidgetOptions {
+  histogram: RenderScaleHistogram;
+  target: TrackableValueInterface<number>;
+  relative: WatchableValueInterface<boolean>;
+  pixelSize: WatchableValueInterface<number>;
+  chunkStats?: WatchableValueInterface<{
+    presentCount: number;
+    totalCount: number;
+  }>;
+  relativeLabel?: string;
+  relativeTooltip?: string;
+}
+
 export class RenderScaleWidget extends RefCounted {
   label = document.createElement("div");
   element = document.createElement("div");
@@ -74,6 +91,7 @@ export class RenderScaleWidget extends RefCounted {
   legendSpatialScale = document.createElement("div");
   legendChunks = document.createElement("div");
   protected logScaleOrigin = renderScaleHistogramOrigin;
+  protected logScaleBinSize = renderScaleHistogramBinSize;
   protected unitOfTarget = "px";
   private ctx = this.canvas.getContext("2d")!;
   hoverTarget = new WatchableValue<[number, number] | undefined>(undefined);
@@ -94,8 +112,7 @@ export class RenderScaleWidget extends RefCounted {
     }
     this.hoverTarget.value = undefined;
     const logScaleMax = Math.round(
-      this.logScaleOrigin +
-        numRenderScaleHistogramBins * renderScaleHistogramBinSize,
+      this.logScaleOrigin + numRenderScaleHistogramBins * this.logScaleBinSize,
     );
     const targetValue = clampToInterval(
       [2 ** this.logScaleOrigin, 2 ** (logScaleMax - 1)],
@@ -145,7 +162,11 @@ export class RenderScaleWidget extends RefCounted {
     const getTargetValue = (event: MouseEvent) => {
       const position =
         (event.offsetX / canvas.width) * numRenderScaleHistogramBins;
-      return getRenderScaleFromHistogramOffset(position, this.logScaleOrigin);
+      return getRenderScaleFromHistogramOffset(
+        position,
+        this.logScaleOrigin,
+        this.logScaleBinSize,
+      );
     };
     this.registerEventListener(canvas, "pointermove", (event: MouseEvent) => {
       this.hoverTarget.value = [getTargetValue(event), event.offsetY];
@@ -190,6 +211,16 @@ export class RenderScaleWidget extends RefCounted {
   reset() {
     this.hoverTarget.value = undefined;
     this.target.reset();
+  }
+
+  protected getLegendChunkCounts(
+    totalPresent: number,
+    totalNotPresent: number,
+  ) {
+    return {
+      presentCount: totalPresent,
+      totalCount: totalPresent + totalNotPresent,
+    };
   }
 
   updateView() {
@@ -256,7 +287,11 @@ export class RenderScaleWidget extends RefCounted {
     let hoverSpatialScale: number | undefined = undefined;
     if (hoverValue !== undefined) {
       const i = Math.floor(
-        getRenderScaleHistogramOffset(hoverValue[0], this.logScaleOrigin),
+        getRenderScaleHistogramOffset(
+          hoverValue[0],
+          this.logScaleOrigin,
+          this.logScaleBinSize,
+        ),
       );
       if (i >= 0 && i < numRenderScaleHistogramBins) {
         let sum = 0;
@@ -305,10 +340,10 @@ export class RenderScaleWidget extends RefCounted {
     } else {
       this.legendSpatialScale.textContent = "";
     }
+    const { presentCount: legendPresentCount, totalCount: legendTotalCount } =
+      this.getLegendChunkCounts(totalPresent, totalNotPresent);
 
-    this.legendChunks.textContent = `${totalPresent}/${
-      totalPresent + totalNotPresent
-    }`;
+    this.legendChunks.textContent = `${legendPresentCount}/${legendTotalCount}`;
 
     const spatialScaleColors = sortedSpatialScales.map((spatialScale) => {
       const saturation = spatialScale === hoverSpatialScale ? 0.5 : 1;
@@ -357,7 +392,11 @@ export class RenderScaleWidget extends RefCounted {
       const value = targetValue;
       ctx.fillStyle = "#fff";
       const startOffset = binToCanvasX(
-        getRenderScaleHistogramOffset(value, this.logScaleOrigin),
+        getRenderScaleHistogramOffset(
+          value,
+          this.logScaleOrigin,
+          this.logScaleBinSize,
+        ),
       );
       const lineWidth = 1;
       ctx.fillRect(Math.floor(startOffset), 0, lineWidth, height);
@@ -367,7 +406,11 @@ export class RenderScaleWidget extends RefCounted {
       const value = hoverValue[0];
       ctx.fillStyle = "#888";
       const startOffset = binToCanvasX(
-        getRenderScaleHistogramOffset(value, this.logScaleOrigin),
+        getRenderScaleHistogramOffset(
+          value,
+          this.logScaleOrigin,
+          this.logScaleBinSize,
+        ),
       );
       const lineWidth = 1;
       ctx.fillRect(Math.floor(startOffset), 0, lineWidth, height);
@@ -381,6 +424,103 @@ export class VolumeRenderingRenderScaleWidget extends RenderScaleWidget {
 
   getWheelMoveValue(event: WheelEvent) {
     return -event.deltaY;
+  }
+}
+
+export class SpatialSkeletonGridRenderScaleWidget extends RenderScaleWidget {
+  protected unitOfTarget = "nm";
+  private relative?: WatchableValueInterface<boolean>;
+  private chunkStats?: WatchableValueInterface<{
+    presentCount: number;
+    totalCount: number;
+  }>;
+
+  private syncScaleConfig() {
+    this.logScaleOrigin = this.histogram.logScaleOrigin;
+    this.logScaleBinSize = this.histogram.logScaleBinSize;
+  }
+
+  constructor(
+    histogram: RenderScaleHistogram,
+    target: TrackableValueInterface<number>,
+    options: {
+      relative?: WatchableValueInterface<boolean>;
+      pixelSize?: WatchableValueInterface<number>;
+      chunkStats?: WatchableValueInterface<{
+        presentCount: number;
+        totalCount: number;
+      }>;
+      relativeLabel?: string;
+      relativeTooltip?: string;
+    } = {},
+  ) {
+    super(histogram, target);
+    this.element.classList.add("neuroglancer-render-scale-widget-grid");
+    this.syncScaleConfig();
+    this.relative = options.relative;
+    this.chunkStats = options.chunkStats;
+    if (options.chunkStats !== undefined) {
+      this.registerDisposer(
+        options.chunkStats.changed.add(() => this.updateView()),
+      );
+    }
+    if (options.relative !== undefined) {
+      const relativeTooltip =
+        options.relativeTooltip ??
+        "Interpret the skeleton grid resolution target as relative to zoom";
+      this.label.classList.add("neuroglancer-render-scale-widget-relative");
+      this.label.title = relativeTooltip;
+      const relativeCheckbox = this.registerDisposer(
+        new TrackableBooleanCheckbox(options.relative, {
+          enabledTitle: relativeTooltip,
+          disabledTitle: relativeTooltip,
+        }),
+      );
+      relativeCheckbox.element.classList.add(
+        "neuroglancer-render-scale-widget-relative-checkbox",
+      );
+      this.label.appendChild(relativeCheckbox.element);
+      const relativeLabel = document.createElement("span");
+      relativeLabel.textContent = options.relativeLabel ?? "Rel";
+      this.label.appendChild(relativeLabel);
+      this.registerDisposer(
+        options.relative.changed.add(() => this.updateView()),
+      );
+      if (options.pixelSize !== undefined) {
+        this.registerDisposer(
+          options.pixelSize.changed.add(() => this.updateView()),
+        );
+      }
+      this.registerEventListener(this.element, "click", (event: MouseEvent) => {
+        if (event.target === relativeCheckbox.element) {
+          return;
+        }
+        event.preventDefault();
+      });
+    }
+    this.legendRenderScale.title = "Target skeleton grid spacing";
+  }
+
+  adjustViaWheel(event: WheelEvent) {
+    this.syncScaleConfig();
+    super.adjustViaWheel(event);
+  }
+
+  protected getLegendChunkCounts(
+    totalPresent: number,
+    totalNotPresent: number,
+  ) {
+    const chunkStats = this.chunkStats?.value;
+    if (chunkStats !== undefined) {
+      return chunkStats;
+    }
+    return super.getLegendChunkCounts(totalPresent, totalNotPresent);
+  }
+
+  updateView() {
+    this.syncScaleConfig();
+    this.unitOfTarget = this.relative?.value === true ? "px" : "nm";
+    super.updateView();
   }
 }
 
@@ -407,6 +547,52 @@ export function renderScaleLayerControl<
       const { histogram, target } = getter(layer);
       const control = context.registerDisposer(
         new widgetClass(histogram, target),
+      );
+      return { control, controlElement: control.element };
+    },
+    activateTool: (activation, control) => {
+      activation.bindInputEventMap(TOOL_INPUT_EVENT_MAP);
+      activation.bindAction(
+        "adjust-via-wheel",
+        (event: ActionEvent<WheelEvent>) => {
+          event.stopPropagation();
+          event.preventDefault();
+          control.adjustViaWheel(event.detail);
+        },
+      );
+      activation.bindAction("reset", (event: ActionEvent<WheelEvent>) => {
+        event.stopPropagation();
+        event.preventDefault();
+        control.reset();
+      });
+    },
+  };
+}
+
+export function spatialSkeletonGridRenderScaleLayerControl<
+  LayerType extends UserLayer,
+>(
+  getter: (layer: LayerType) => SpatialSkeletonGridRenderScaleWidgetOptions,
+): LayerControlFactory<LayerType, SpatialSkeletonGridRenderScaleWidget> {
+  return {
+    makeControl: (layer, context) => {
+      const {
+        histogram,
+        target,
+        relative,
+        pixelSize,
+        chunkStats,
+        relativeLabel,
+        relativeTooltip,
+      } = getter(layer);
+      const control = context.registerDisposer(
+        new SpatialSkeletonGridRenderScaleWidget(histogram, target, {
+          relative,
+          pixelSize,
+          chunkStats,
+          relativeLabel,
+          relativeTooltip,
+        }),
       );
       return { control, controlElement: control.element };
     },
