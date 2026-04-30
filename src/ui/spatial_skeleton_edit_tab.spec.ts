@@ -23,7 +23,7 @@ function makeNode(
   };
 }
 
-async function getSyncShownSpatialSkeletonSegmentIds() {
+async function getBuildSpatialSkeletonVirtualListItems() {
   const webglContextStub = new Proxy(
     {},
     {
@@ -34,7 +34,7 @@ async function getSyncShownSpatialSkeletonSegmentIds() {
     globalThis as { WebGL2RenderingContext?: unknown }
   ).WebGL2RenderingContext ??= webglContextStub;
   return (await import("#src/ui/spatial_skeleton_edit_tab.js"))
-    .syncShownSpatialSkeletonSegmentIds;
+    .buildSpatialSkeletonVirtualListItems;
 }
 
 describe("spatial skeleton edit tab render state", () => {
@@ -49,7 +49,6 @@ describe("spatial skeleton edit tab render state", () => {
     const state = buildSpatialSkeletonSegmentRenderState(20380, graph, {
       filterText: "target",
       nodeFilterType: SpatialSkeletonNodeFilterType.NONE,
-      collapseRegularNodes: false,
       getNodeDescription(node) {
         return node.nodeId === 4 ? "target" : undefined;
       },
@@ -70,7 +69,6 @@ describe("spatial skeleton edit tab render state", () => {
     const byCoordinates = buildSpatialSkeletonSegmentRenderState(20380, graph, {
       filterText: "101 102 103",
       nodeFilterType: SpatialSkeletonNodeFilterType.NONE,
-      collapseRegularNodes: false,
       getNodeDescription() {
         return undefined;
       },
@@ -78,7 +76,6 @@ describe("spatial skeleton edit tab render state", () => {
     const bySegmentId = buildSpatialSkeletonSegmentRenderState(20380, graph, {
       filterText: "20380",
       nodeFilterType: SpatialSkeletonNodeFilterType.NONE,
-      collapseRegularNodes: false,
       getNodeDescription() {
         return undefined;
       },
@@ -86,7 +83,6 @@ describe("spatial skeleton edit tab render state", () => {
     const byTrueEndText = buildSpatialSkeletonSegmentRenderState(20380, graph, {
       filterText: "true end",
       nodeFilterType: SpatialSkeletonNodeFilterType.NONE,
-      collapseRegularNodes: false,
       getNodeDescription() {
         return undefined;
       },
@@ -110,7 +106,6 @@ describe("spatial skeleton edit tab render state", () => {
     const state = buildSpatialSkeletonSegmentRenderState(20380, graph, {
       filterText: "",
       nodeFilterType: SpatialSkeletonNodeFilterType.NONE,
-      collapseRegularNodes: true,
       getNodeDescription() {
         return undefined;
       },
@@ -132,7 +127,6 @@ describe("spatial skeleton edit tab render state", () => {
     const state = buildSpatialSkeletonSegmentRenderState(20380, graph, {
       filterText: "",
       nodeFilterType: SpatialSkeletonNodeFilterType.VIRTUAL_END,
-      collapseRegularNodes: false,
       getNodeDescription() {
         return undefined;
       },
@@ -155,7 +149,6 @@ describe("spatial skeleton edit tab render state", () => {
     const state = buildSpatialSkeletonSegmentRenderState(20380, graph, {
       filterText: "",
       nodeFilterType: SpatialSkeletonNodeFilterType.HAS_DESCRIPTION,
-      collapseRegularNodes: false,
       getNodeDescription(node) {
         switch (node.nodeId) {
           case 31:
@@ -177,29 +170,90 @@ describe("spatial skeleton edit tab render state", () => {
   });
 });
 
-describe("spatial skeleton edit tab state", () => {
-  it("preserves hidden segments across data refreshes while showing new segments", async () => {
-    const syncShownSpatialSkeletonSegmentIds =
-      await getSyncShownSpatialSkeletonSegmentIds();
-    const shownSegmentIds = new Set([1, 3]);
+describe("spatial skeleton edit tab virtual list items", () => {
+  it("flattens one selected segment and its displayed node rows", async () => {
+    const buildSpatialSkeletonVirtualListItems =
+      await getBuildSpatialSkeletonVirtualListItems();
+    const graph = buildSpatiallyIndexedSkeletonNavigationGraph([
+      makeNode(1, undefined),
+      makeNode(2, 1),
+      makeNode(3, 2),
+    ]);
+    const segmentState = {
+      ...buildSpatialSkeletonSegmentRenderState(20380, graph, {
+        filterText: "",
+        nodeFilterType: SpatialSkeletonNodeFilterType.NONE,
+        getNodeDescription() {
+          return undefined;
+        },
+      }),
+      segmentLabel: "selected segment",
+    };
 
-    syncShownSpatialSkeletonSegmentIds(
-      shownSegmentIds,
-      [1, 2, 3, 4],
-      [1, 2, 3],
+    const flattened = buildSpatialSkeletonVirtualListItems(
+      segmentState,
+      "empty",
     );
 
-    expect([...shownSegmentIds]).toEqual([1, 3, 4]);
+    expect(flattened.items.map((item) => item.kind)).toEqual([
+      "segment",
+      "node",
+      "node",
+    ]);
+    expect(
+      flattened.items
+        .filter((item) => item.kind === "node")
+        .map((item) => item.row.node.nodeId),
+    ).toEqual([1, 3]);
+    expect(flattened.listIndexByNodeId.get(1)).toBe(1);
+    expect(flattened.listIndexByNodeId.get(3)).toBe(2);
   });
 
-  it("re-adds a segment when it becomes active again after leaving the view", async () => {
-    const syncShownSpatialSkeletonSegmentIds =
-      await getSyncShownSpatialSkeletonSegmentIds();
-    const shownSegmentIds = new Set([1]);
+  it("returns one empty row when no selected segment rows are available", async () => {
+    const buildSpatialSkeletonVirtualListItems =
+      await getBuildSpatialSkeletonVirtualListItems();
 
-    syncShownSpatialSkeletonSegmentIds(shownSegmentIds, [1], [1, 2]);
-    syncShownSpatialSkeletonSegmentIds(shownSegmentIds, [1, 2], [1]);
+    const flattened = buildSpatialSkeletonVirtualListItems(
+      undefined,
+      "Select a skeleton segment to inspect editable nodes.",
+    );
 
-    expect([...shownSegmentIds]).toEqual([1, 2]);
+    expect(flattened.items).toEqual([
+      {
+        kind: "empty",
+        text: "Select a skeleton segment to inspect editable nodes.",
+      },
+    ]);
+    expect(flattened.listIndexByNodeId.size).toBe(0);
+  });
+
+  it("keeps more than 10,000 displayed rows in the virtual source items", async () => {
+    const buildSpatialSkeletonVirtualListItems =
+      await getBuildSpatialSkeletonVirtualListItems();
+    const leafCount = 10001;
+    const nodes = [makeNode(1, undefined)];
+    for (let i = 0; i < leafCount; ++i) {
+      nodes.push(makeNode(i + 2, 1));
+    }
+    const graph = buildSpatiallyIndexedSkeletonNavigationGraph(nodes);
+    const segmentState = {
+      ...buildSpatialSkeletonSegmentRenderState(20380, graph, {
+        filterText: "",
+        nodeFilterType: SpatialSkeletonNodeFilterType.NONE,
+        getNodeDescription() {
+          return undefined;
+        },
+      }),
+      segmentLabel: undefined,
+    };
+
+    const flattened = buildSpatialSkeletonVirtualListItems(
+      segmentState,
+      "empty",
+    );
+
+    expect(segmentState.displayedNodeCount).toBeGreaterThan(10_000);
+    expect(flattened.items.length).toBe(segmentState.displayedNodeCount + 1);
+    expect(flattened.listIndexByNodeId.get(leafCount + 1)).toBe(leafCount + 1);
   });
 });

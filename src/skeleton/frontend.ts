@@ -245,6 +245,8 @@ interface SkeletonChunkData {
   indices: Uint32Array;
   numVertices: number;
   vertexAttributeOffsets: Uint32Array;
+  nodeIds?: Int32Array;
+  nodeRevisionTokens?: Array<string | undefined>;
 }
 
 type SpatiallyIndexedSkeletonPickData =

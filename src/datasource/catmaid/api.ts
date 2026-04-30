@@ -149,25 +149,82 @@ function isCatmaidStateMatchingErrorPayload(payload: unknown): boolean {
   return value.type === CATMAID_STATE_MATCHING_ERROR_TYPE;
 }
 
+interface ParsedCatmaidNodeLabel {
+  label: string;
+  time?: number;
+}
+
 function normalizeCatmaidDescription(
-  labels: readonly string[] | undefined,
+  labels: readonly ParsedCatmaidNodeLabel[] | undefined,
 ): string | undefined {
   if (labels === undefined || labels.length === 0) {
     return undefined;
   }
   const descriptionLabels = labels.filter(
-    (label) =>
+    ({ label }) =>
       label.trim().length > 0 &&
       label.trim().toLowerCase() !== CATMAID_TRUE_END_LABEL &&
       !isCatmaidClosedEndLabel(label),
   );
-  return descriptionLabels.length === 0
+  const timedDescriptionLabels = descriptionLabels.filter(
+    ({ time }) => time !== undefined,
+  );
+  const currentDescriptionLabels =
+    timedDescriptionLabels.length === 0
+      ? descriptionLabels
+      : (() => {
+          const latestTime = Math.max(
+            ...timedDescriptionLabels.map(({ time }) => time!),
+          );
+          return timedDescriptionLabels.filter(
+            ({ time }) => time === latestTime,
+          );
+        })();
+  return currentDescriptionLabels.length === 0
     ? undefined
-    : descriptionLabels.join("\n");
+    : currentDescriptionLabels.map(({ label }) => label).join("\n");
 }
 
-function parseCatmaidNodeLabels(rawLabels: unknown): Map<number, string[]> {
-  const labelsByNodeId = new Map<number, string[]>();
+function parseCatmaidLabelNodeReference(entry: unknown):
+  | {
+      nodeId: number;
+      time?: number;
+    }
+  | undefined {
+  const rawNodeId = Array.isArray(entry) ? entry[0] : entry;
+  const nodeId = Math.round(Number(rawNodeId));
+  if (!Number.isSafeInteger(nodeId) || nodeId <= 0) return undefined;
+  const time = Array.isArray(entry)
+    ? getComparableCatmaidRevisionTime(entry[1])
+    : undefined;
+  return { nodeId, time };
+}
+
+function addParsedCatmaidNodeLabel(
+  labelsByNodeId: Map<number, ParsedCatmaidNodeLabel[]>,
+  nodeId: number,
+  label: ParsedCatmaidNodeLabel,
+) {
+  const existingLabels = labelsByNodeId.get(nodeId);
+  if (existingLabels === undefined) {
+    labelsByNodeId.set(nodeId, [label]);
+    return;
+  }
+  if (
+    !existingLabels.some(
+      (existingLabel) =>
+        existingLabel.label === label.label &&
+        existingLabel.time === label.time,
+    )
+  ) {
+    existingLabels.push(label);
+  }
+}
+
+function parseCatmaidNodeLabels(
+  rawLabels: unknown,
+): Map<number, ParsedCatmaidNodeLabel[]> {
+  const labelsByNodeId = new Map<number, ParsedCatmaidNodeLabel[]>();
   if (rawLabels === null || typeof rawLabels !== "object") {
     return labelsByNodeId;
   }
@@ -185,32 +242,30 @@ function parseCatmaidNodeLabels(rawLabels: unknown): Map<number, string[]> {
         .map((label) => label.trim())
         .filter((label) => label.length > 0);
       if (labels.length === 0) continue;
-      labelsByNodeId.set(Math.round(nodeId), labels);
+      labelsByNodeId.set(
+        Math.round(nodeId),
+        labels.map((label) => ({ label })),
+      );
       continue;
     }
-    const numericValues = value.filter((entry) =>
-      Number.isFinite(Number(entry)),
-    );
-    if (numericValues.length !== value.length) continue;
+    const nodeReferences = value.map(parseCatmaidLabelNodeReference);
+    if (nodeReferences.some((nodeReference) => nodeReference === undefined))
+      continue;
     const label = key.trim();
     if (label.length === 0) continue;
-    for (const entry of numericValues) {
-      const nodeId = Math.round(Number(entry));
-      const existingLabels = labelsByNodeId.get(nodeId);
-      if (existingLabels === undefined) {
-        labelsByNodeId.set(nodeId, [label]);
-        continue;
-      }
-      if (!existingLabels.includes(label)) {
-        existingLabels.push(label);
-      }
+    for (const nodeReference of nodeReferences) {
+      if (nodeReference === undefined) continue;
+      addParsedCatmaidNodeLabel(labelsByNodeId, nodeReference.nodeId, {
+        label,
+        time: nodeReference.time,
+      });
     }
   }
   return labelsByNodeId;
 }
 
 function getCatmaidNodeDescriptions(
-  labelsByNodeId: ReadonlyMap<number, readonly string[]>,
+  labelsByNodeId: ReadonlyMap<number, readonly ParsedCatmaidNodeLabel[]>,
 ) {
   const descriptionsByNodeId = new Map<number, string>();
   for (const [nodeId, labels] of labelsByNodeId) {
@@ -223,12 +278,12 @@ function getCatmaidNodeDescriptions(
 }
 
 function getCatmaidTrueEndNodes(
-  labelsByNodeId: ReadonlyMap<number, readonly string[]>,
+  labelsByNodeId: ReadonlyMap<number, readonly ParsedCatmaidNodeLabel[]>,
 ) {
   const trueEndByNodeId = new Map<number, true>();
   for (const [nodeId, labels] of labelsByNodeId) {
     const isTrueEnd = labels.some(
-      (label) => label.trim().toLowerCase() === CATMAID_TRUE_END_LABEL,
+      ({ label }) => label.trim().toLowerCase() === CATMAID_TRUE_END_LABEL,
     );
     if (isTrueEnd) {
       trueEndByNodeId.set(nodeId, true);
@@ -398,6 +453,9 @@ function normalizeCatmaidRevisionToken(value: unknown): string | undefined {
   return undefined;
 }
 
+const CATMAID_TIMESTAMP_WITH_SPACE_PATTERN =
+  /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}(?:\.\d+)?)(Z|[+-]\d{2}:\d{2})$/;
+
 function getComparableCatmaidRevisionTime(value: unknown) {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -409,7 +467,9 @@ function getComparableCatmaidRevisionTime(value: unknown) {
   if (normalizedValue.length === 0) {
     return undefined;
   }
-  const parsedValue = Date.parse(normalizedValue);
+  const parsedValue = Date.parse(
+    normalizedValue.replace(CATMAID_TIMESTAMP_WITH_SPACE_PATTERN, "$1T$2$3"),
+  );
   return Number.isFinite(parsedValue) ? parsedValue : undefined;
 }
 
