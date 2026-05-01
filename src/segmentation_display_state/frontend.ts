@@ -926,12 +926,14 @@ export function makeSegmentWidget(
   return factory.getWithNormalizedId(normalizedId);
 }
 
-export interface SegmentationDisplayStateWithAlpha extends SegmentationDisplayState {
+export interface SegmentationDisplayStateWithAlpha
+  extends SegmentationDisplayState {
   objectAlpha: TrackableAlphaValue;
   hiddenObjectAlpha: TrackableAlphaValue;
 }
 
-export interface SegmentationDisplayState3D extends SegmentationDisplayStateWithAlpha {
+export interface SegmentationDisplayState3D
+  extends SegmentationDisplayStateWithAlpha {
   transform: WatchableRenderLayerTransform;
   renderScaleHistogram: RenderScaleHistogram;
   renderScaleTarget: TrackableValue<number>;
@@ -998,6 +1000,11 @@ export function registerRedrawWhenSegmentationDisplayStateWithAlphaChanged(
   registerRedrawWhenSegmentationDisplayStateChanged(displayState, renderLayer);
   renderLayer.registerDisposer(
     displayState.objectAlpha.changed.add(renderLayer.redrawNeeded.dispatch),
+  );
+  renderLayer.registerDisposer(
+    displayState.hiddenObjectAlpha.changed.add(
+      renderLayer.redrawNeeded.dispatch,
+    ),
   );
 }
 
