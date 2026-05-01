@@ -58,7 +58,6 @@ import {
   executeSpatialSkeletonNodeTrueEndUpdate,
 } from "#src/layer/segmentation/spatial_skeleton_commands.js";
 import { showSpatialSkeletonActionError } from "#src/layer/segmentation/spatial_skeleton_errors.js";
-import { appendSpatialSkeletonSerializationState } from "#src/layer/segmentation/spatial_skeleton_serialization.js";
 import {
   MeshLayer,
   MeshSource,
@@ -2465,26 +2464,21 @@ export class SegmentationUserLayer extends Base {
       this.displayState.spatialSkeletonNodeQuery.toJSON();
     x[json_keys.SPATIAL_SKELETON_NODE_FILTER_JSON_KEY] =
       this.displayState.spatialSkeletonNodeFilter.toJSON();
-    appendSpatialSkeletonSerializationState(
-      x,
-      {
-        hiddenObjectAlpha: this.displayState.hiddenObjectAlpha,
-        skeletonLod: this.displayState.skeletonLod,
-        spatialSkeletonGridResolutionTarget2d:
-          this.displayState.spatialSkeletonGridResolutionTarget2d,
-        spatialSkeletonGridResolutionTarget3d:
-          this.displayState.spatialSkeletonGridResolutionTarget3d,
-        spatialSkeletonGridResolutionRelative2d:
-          this.displayState.spatialSkeletonGridResolutionRelative2d,
-        spatialSkeletonGridResolutionRelative3d:
-          this.displayState.spatialSkeletonGridResolutionRelative3d,
-        spatialSkeletonGridLevel2d:
-          this.displayState.spatialSkeletonGridLevel2d,
-        spatialSkeletonGridLevel3d:
-          this.displayState.spatialSkeletonGridLevel3d,
-      },
-      this.hasSpatiallyIndexedSkeletonsLayer.value,
-    );
+    x[json_keys.HIDDEN_OPACITY_3D_JSON_KEY] =
+      this.displayState.hiddenObjectAlpha.toJSON();
+    x[json_keys.SKELETON_LOD_JSON_KEY] = this.displayState.skeletonLod.toJSON();
+    x[json_keys.SPATIAL_SKELETON_GRID_LEVEL_2D_JSON_KEY] =
+      this.displayState.spatialSkeletonGridLevel2d.toJSON();
+    x[json_keys.SPATIAL_SKELETON_GRID_LEVEL_3D_JSON_KEY] =
+      this.displayState.spatialSkeletonGridLevel3d.toJSON();
+    x[json_keys.SPATIAL_SKELETON_GRID_RESOLUTION_TARGET_2D_JSON_KEY] =
+      this.displayState.spatialSkeletonGridResolutionTarget2d.toJSON();
+    x[json_keys.SPATIAL_SKELETON_GRID_RESOLUTION_TARGET_3D_JSON_KEY] =
+      this.displayState.spatialSkeletonGridResolutionTarget3d.toJSON();
+    x[json_keys.SPATIAL_SKELETON_GRID_RESOLUTION_RELATIVE_2D_JSON_KEY] =
+      this.displayState.spatialSkeletonGridResolutionRelative2d.toJSON();
+    x[json_keys.SPATIAL_SKELETON_GRID_RESOLUTION_RELATIVE_3D_JSON_KEY] =
+      this.displayState.spatialSkeletonGridResolutionRelative3d.toJSON();
     x[json_keys.HOVER_HIGHLIGHT_JSON_KEY] =
       this.displayState.hoverHighlight.toJSON();
     x[json_keys.BASE_SEGMENT_COLORING_JSON_KEY] =
