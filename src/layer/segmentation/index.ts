@@ -2359,9 +2359,6 @@ export class SegmentationUserLayer extends Base {
     this.displayState.hiddenObjectAlpha.restoreState(
       specification[json_keys.HIDDEN_OPACITY_3D_JSON_KEY],
     );
-    this.displayState.skeletonLod.restoreState(
-      specification[json_keys.SKELETON_LOD_JSON_KEY],
-    );
     this.displayState.spatialSkeletonNodeQuery.restoreState(
       specification[json_keys.SPATIAL_SKELETON_NODE_QUERY_JSON_KEY],
     );
@@ -2371,31 +2368,11 @@ export class SegmentationUserLayer extends Base {
       (value) =>
         this.displayState.spatialSkeletonNodeFilter.restoreState(value),
     );
-    this.displayState.spatialSkeletonGridResolutionRelative2d.restoreState(
-      specification[
-        json_keys.SPATIAL_SKELETON_GRID_RESOLUTION_RELATIVE_2D_JSON_KEY
-      ],
-    );
-    this.displayState.spatialSkeletonGridResolutionRelative3d.restoreState(
-      specification[
-        json_keys.SPATIAL_SKELETON_GRID_RESOLUTION_RELATIVE_3D_JSON_KEY
-      ],
-    );
-    this.displayState.applySpatialSkeletonGridResolutionTarget2dFromSpec(
-      specification[
-        json_keys.SPATIAL_SKELETON_GRID_RESOLUTION_TARGET_2D_JSON_KEY
-      ],
-    );
-    this.displayState.applySpatialSkeletonGridResolutionTarget3dFromSpec(
-      specification[
-        json_keys.SPATIAL_SKELETON_GRID_RESOLUTION_TARGET_3D_JSON_KEY
-      ],
-    );
     this.displayState.applySpatialSkeletonGridLevel2dFromSpec(
-      specification[json_keys.SPATIAL_SKELETON_GRID_LEVEL_2D_JSON_KEY],
+      specification[json_keys.SKELETON_CROSS_SECTION_RENDER_SCALE_JSON_KEY],
     );
     this.displayState.applySpatialSkeletonGridLevel3dFromSpec(
-      specification[json_keys.SPATIAL_SKELETON_GRID_LEVEL_3D_JSON_KEY],
+      specification[json_keys.SKELETON_PERSPECTIVE_RENDER_SCALE_JSON_KEY],
     );
     this.displayState.baseSegmentColoring.restoreState(
       specification[json_keys.BASE_SEGMENT_COLORING_JSON_KEY],
@@ -2466,19 +2443,10 @@ export class SegmentationUserLayer extends Base {
       this.displayState.spatialSkeletonNodeFilter.toJSON();
     x[json_keys.HIDDEN_OPACITY_3D_JSON_KEY] =
       this.displayState.hiddenObjectAlpha.toJSON();
-    x[json_keys.SKELETON_LOD_JSON_KEY] = this.displayState.skeletonLod.toJSON();
-    x[json_keys.SPATIAL_SKELETON_GRID_LEVEL_2D_JSON_KEY] =
-      this.displayState.spatialSkeletonGridLevel2d.toJSON();
-    x[json_keys.SPATIAL_SKELETON_GRID_LEVEL_3D_JSON_KEY] =
-      this.displayState.spatialSkeletonGridLevel3d.toJSON();
-    x[json_keys.SPATIAL_SKELETON_GRID_RESOLUTION_TARGET_2D_JSON_KEY] =
+    x[json_keys.SKELETON_CROSS_SECTION_RENDER_SCALE_JSON_KEY] =
       this.displayState.spatialSkeletonGridResolutionTarget2d.toJSON();
-    x[json_keys.SPATIAL_SKELETON_GRID_RESOLUTION_TARGET_3D_JSON_KEY] =
+    x[json_keys.SKELETON_PERSPECTIVE_RENDER_SCALE_JSON_KEY] =
       this.displayState.spatialSkeletonGridResolutionTarget3d.toJSON();
-    x[json_keys.SPATIAL_SKELETON_GRID_RESOLUTION_RELATIVE_2D_JSON_KEY] =
-      this.displayState.spatialSkeletonGridResolutionRelative2d.toJSON();
-    x[json_keys.SPATIAL_SKELETON_GRID_RESOLUTION_RELATIVE_3D_JSON_KEY] =
-      this.displayState.spatialSkeletonGridResolutionRelative3d.toJSON();
     x[json_keys.HOVER_HIGHLIGHT_JSON_KEY] =
       this.displayState.hoverHighlight.toJSON();
     x[json_keys.BASE_SEGMENT_COLORING_JSON_KEY] =

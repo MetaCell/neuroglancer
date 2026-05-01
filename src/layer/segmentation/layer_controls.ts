@@ -73,7 +73,7 @@ export const LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
   },
   {
     label: "Resolution (skeleton grid 2D)",
-    toolJson: json_keys.SPATIAL_SKELETON_GRID_RESOLUTION_TARGET_2D_JSON_KEY,
+    toolJson: json_keys.SKELETON_CROSS_SECTION_RENDER_SCALE_JSON_KEY,
     isValid: (layer) =>
       makeCachedDerivedWatchableValue(
         (levels, hasSpatialSkeletons) =>
@@ -97,7 +97,7 @@ export const LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
   },
   {
     label: "Resolution (skeleton grid 3D)",
-    toolJson: json_keys.SPATIAL_SKELETON_GRID_RESOLUTION_TARGET_3D_JSON_KEY,
+    toolJson: json_keys.SKELETON_PERSPECTIVE_RENDER_SCALE_JSON_KEY,
     isValid: (layer) =>
       makeCachedDerivedWatchableValue(
         (levels, hasSpatialSkeletons) =>
