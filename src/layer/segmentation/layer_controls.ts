@@ -8,7 +8,7 @@ import { enumLayerControl } from "#src/widget/layer_control_enum.js";
 import { rangeLayerControl } from "#src/widget/layer_control_range.js";
 import {
   renderScaleLayerControl,
-  spatialSkeletonGridRenderScaleLayerControl,
+  SpatialSkeletonGridRenderScaleWidget,
 } from "#src/widget/render_scale_widget.js";
 import {
   colorSeedLayerControl,
@@ -85,11 +85,10 @@ export const LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
       ),
     title:
       "Select the grid size level for spatially indexed skeletons in 2D views",
-    ...spatialSkeletonGridRenderScaleLayerControl((layer) => ({
+    ...renderScaleLayerControl((layer) => ({
       histogram: layer.displayState.spatialSkeletonGridRenderScaleHistogram2d,
       target: layer.displayState.spatialSkeletonGridResolutionTarget2d,
-      chunkStats: layer.displayState.spatialSkeletonGridChunkStats2d,
-    })),
+    }), SpatialSkeletonGridRenderScaleWidget),
   },
   {
     label: "Resolution (skeleton grid 3D)",
@@ -105,11 +104,10 @@ export const LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
       ),
     title:
       "Select the grid size level for spatially indexed skeletons in 3D views",
-    ...spatialSkeletonGridRenderScaleLayerControl((layer) => ({
+    ...renderScaleLayerControl((layer) => ({
       histogram: layer.displayState.spatialSkeletonGridRenderScaleHistogram3d,
       target: layer.displayState.spatialSkeletonGridResolutionTarget3d,
-      chunkStats: layer.displayState.spatialSkeletonGridChunkStats3d,
-    })),
+    }), SpatialSkeletonGridRenderScaleWidget),
   },
   {
     label: "Opacity (3d)",

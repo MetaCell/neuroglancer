@@ -26,10 +26,7 @@ import {
   renderScaleHistogramBinSize,
   renderScaleHistogramOrigin,
 } from "#src/render_scale_statistics.js";
-import type {
-  TrackableValueInterface,
-  WatchableValueInterface,
-} from "#src/trackable_value.js";
+import type { TrackableValueInterface } from "#src/trackable_value.js";
 import { WatchableValue } from "#src/trackable_value.js";
 import { serializeColor } from "#src/util/color.js";
 import { hsvToRgb } from "#src/util/colorspace.js";
@@ -66,15 +63,6 @@ function formatPixelNumber(x: number) {
 export interface RenderScaleWidgetOptions {
   histogram: RenderScaleHistogram;
   target: TrackableValueInterface<number>;
-}
-
-export interface SpatialSkeletonGridRenderScaleWidgetOptions {
-  histogram: RenderScaleHistogram;
-  target: TrackableValueInterface<number>;
-  chunkStats?: WatchableValueInterface<{
-    presentCount: number;
-    totalCount: number;
-  }>;
 }
 
 export class RenderScaleWidget extends RefCounted {
@@ -424,56 +412,10 @@ export class VolumeRenderingRenderScaleWidget extends RenderScaleWidget {
 
 export class SpatialSkeletonGridRenderScaleWidget extends RenderScaleWidget {
   protected unitOfTarget = "nm";
-  private chunkStats?: WatchableValueInterface<{
-    presentCount: number;
-    totalCount: number;
-  }>;
-
-  private syncScaleConfig() {
-    this.logScaleOrigin = this.histogram.logScaleOrigin;
-    this.logScaleBinSize = this.histogram.logScaleBinSize;
-  }
-
-  constructor(
-    histogram: RenderScaleHistogram,
-    target: TrackableValueInterface<number>,
-    options: {
-      chunkStats?: WatchableValueInterface<{
-        presentCount: number;
-        totalCount: number;
-      }>;
-    } = {},
-  ) {
-    super(histogram, target);
-    this.element.classList.add("neuroglancer-render-scale-widget-grid");
-    this.syncScaleConfig();
-    this.chunkStats = options.chunkStats;
-    if (options.chunkStats !== undefined) {
-      this.registerDisposer(
-        options.chunkStats.changed.add(() => this.updateView()),
-      );
-    }
-    this.legendRenderScale.title = "Target skeleton grid spacing";
-  }
-
-  adjustViaWheel(event: WheelEvent) {
-    this.syncScaleConfig();
-    super.adjustViaWheel(event);
-  }
-
-  protected getLegendChunkCounts(
-    totalPresent: number,
-    totalNotPresent: number,
-  ) {
-    const chunkStats = this.chunkStats?.value;
-    if (chunkStats !== undefined) {
-      return chunkStats;
-    }
-    return super.getLegendChunkCounts(totalPresent, totalNotPresent);
-  }
 
   updateView() {
-    this.syncScaleConfig();
+    this.logScaleOrigin = this.histogram.logScaleOrigin;
+    this.logScaleBinSize = this.histogram.logScaleBinSize;
     super.updateView();
   }
 }
@@ -501,40 +443,6 @@ export function renderScaleLayerControl<
       const { histogram, target } = getter(layer);
       const control = context.registerDisposer(
         new widgetClass(histogram, target),
-      );
-      return { control, controlElement: control.element };
-    },
-    activateTool: (activation, control) => {
-      activation.bindInputEventMap(TOOL_INPUT_EVENT_MAP);
-      activation.bindAction(
-        "adjust-via-wheel",
-        (event: ActionEvent<WheelEvent>) => {
-          event.stopPropagation();
-          event.preventDefault();
-          control.adjustViaWheel(event.detail);
-        },
-      );
-      activation.bindAction("reset", (event: ActionEvent<WheelEvent>) => {
-        event.stopPropagation();
-        event.preventDefault();
-        control.reset();
-      });
-    },
-  };
-}
-
-export function spatialSkeletonGridRenderScaleLayerControl<
-  LayerType extends UserLayer,
->(
-  getter: (layer: LayerType) => SpatialSkeletonGridRenderScaleWidgetOptions,
-): LayerControlFactory<LayerType, SpatialSkeletonGridRenderScaleWidget> {
-  return {
-    makeControl: (layer, context) => {
-      const { histogram, target, chunkStats } = getter(layer);
-      const control = context.registerDisposer(
-        new SpatialSkeletonGridRenderScaleWidget(histogram, target, {
-          chunkStats,
-        }),
       );
       return { control, controlElement: control.element };
     },
