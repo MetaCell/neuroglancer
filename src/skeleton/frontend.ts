@@ -3742,7 +3742,11 @@ export class SliceViewSpatiallyIndexedSkeletonLayer extends SliceViewRenderLayer
         this.base.clearVisibleChunkKeysForRenderedView("2d", sliceViewId);
       });
     }
-    if (displayState.objectAlpha?.value <= 0.0 || lodValue === undefined) {
+    if (
+      (displayState.objectAlpha?.value <= 0.0 &&
+        displayState.hiddenObjectAlpha?.value <= 0.0) ||
+      lodValue === undefined
+    ) {
       this.base.clearVisibleChunkKeysForRenderedView("2d", sliceViewId);
       return;
     }
