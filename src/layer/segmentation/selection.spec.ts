@@ -19,11 +19,11 @@ import { describe, expect, it } from "vitest";
 import type { LayerSelectedValues } from "#src/layer/index.js";
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import {
+  getNodeIdFromLayerSelectionState,
+  getNodeIdFromViewerSelection,
+  getSegmentIdFromLayerSelectionValue,
   getSpatialSkeletonMissingSelectionDisplayState,
-  getSpatialSkeletonSegmentIdFromLayerSelectionState,
-  getSpatialSkeletonNodeIdFromLayerSelectionState,
   getSpatialSkeletonSelectionRecoveryKey,
-  getSpatialSkeletonNodeIdFromViewerSelection,
   hasSpatialSkeletonNodeSelection,
   SpatialSkeletonHoverState,
   SpatialSkeletonSelectionRecoveryStatus,
@@ -33,23 +33,23 @@ describe("layer/segmentation/selection", () => {
   it("recognizes field-based spatial skeleton node selections", () => {
     expect(
       hasSpatialSkeletonNodeSelection({
-        spatialSkeletonNodeId: "17",
-        spatialSkeletonSegmentId: "9",
+        nodeId: "17",
+        value: 9n,
       }),
     ).toBe(true);
     expect(
       hasSpatialSkeletonNodeSelection({
-        spatialSkeletonNodeId: "18446744073709551615",
+        nodeId: "18446744073709551615",
       }),
     ).toBe(true);
     expect(
       hasSpatialSkeletonNodeSelection({
-        spatialSkeletonNodeId: 17,
+        nodeId: 17,
       }),
     ).toBe(false);
     expect(
       hasSpatialSkeletonNodeSelection({
-        spatialSkeletonNodeId: 0,
+        nodeId: 0,
       }),
     ).toBe(false);
     expect(hasSpatialSkeletonNodeSelection({})).toBe(false);
@@ -57,41 +57,41 @@ describe("layer/segmentation/selection", () => {
 
   it("extracts node and segment ids from a layer selection state", () => {
     expect(
-      getSpatialSkeletonNodeIdFromLayerSelectionState({
-        spatialSkeletonNodeId: "23",
-        spatialSkeletonSegmentId: "7",
+      getNodeIdFromLayerSelectionState({
+        nodeId: "23",
+        value: 7n,
       }),
     ).toBe(23);
     expect(
-      getSpatialSkeletonSegmentIdFromLayerSelectionState({
-        spatialSkeletonNodeId: "23",
-        spatialSkeletonSegmentId: "7",
+      getSegmentIdFromLayerSelectionValue({
+        nodeId: "23",
+        value: "7",
       }),
     ).toBe(7);
     expect(
-      getSpatialSkeletonNodeIdFromLayerSelectionState({
-        spatialSkeletonNodeId: -1,
+      getNodeIdFromLayerSelectionState({
+        nodeId: -1,
       }),
     ).toBeUndefined();
     expect(
-      getSpatialSkeletonSegmentIdFromLayerSelectionState({
-        spatialSkeletonSegmentId: "9",
+      getSegmentIdFromLayerSelectionValue({
+        value: "9",
       }),
     ).toBe(9);
     expect(
       getSpatialSkeletonSelectionRecoveryKey({
-        spatialSkeletonNodeId: "23",
-        spatialSkeletonSegmentId: "7",
+        nodeId: "23",
+        value: 7n,
       }),
     ).toBe("23:7");
     expect(
-      getSpatialSkeletonNodeIdFromLayerSelectionState({
-        spatialSkeletonNodeId: "18446744073709551615",
+      getNodeIdFromLayerSelectionState({
+        nodeId: "18446744073709551615",
       }),
     ).toBeUndefined();
     expect(
       getSpatialSkeletonSelectionRecoveryKey({
-        spatialSkeletonNodeId: 23,
+        nodeId: 23,
       }),
     ).toBeUndefined();
   });
@@ -100,7 +100,7 @@ describe("layer/segmentation/selection", () => {
     const layerA = {};
     const layerB = {};
     expect(
-      getSpatialSkeletonNodeIdFromViewerSelection(
+      getNodeIdFromViewerSelection(
         {
           layers: [
             {
@@ -110,8 +110,8 @@ describe("layer/segmentation/selection", () => {
             {
               layer: layerB,
               state: {
-                spatialSkeletonNodeId: "31",
-                spatialSkeletonSegmentId: "8",
+                nodeId: "31",
+                value: 8n,
               },
             },
           ],
@@ -120,13 +120,13 @@ describe("layer/segmentation/selection", () => {
       ),
     ).toBe(31);
     expect(
-      getSpatialSkeletonNodeIdFromViewerSelection(
+      getNodeIdFromViewerSelection(
         {
           layers: [
             {
               layer: layerA,
               state: {
-                spatialSkeletonNodeId: 4,
+                nodeId: 4,
               },
             },
           ],
@@ -144,11 +144,11 @@ describe("layer/segmentation/selection", () => {
     let mouseState: {
       active: boolean;
       pickedRenderLayer: unknown;
-      pickedSpatialSkeletonNodeId: unknown;
+      pickedSpatialSkeleton?: { nodeId?: unknown };
     } = {
       active: false,
       pickedRenderLayer: null,
-      pickedSpatialSkeletonNodeId: undefined,
+      pickedSpatialSkeleton: undefined,
     };
     const handlers: Array<() => void> = [];
     const layerSelectedValues = {
@@ -172,7 +172,7 @@ describe("layer/segmentation/selection", () => {
     mouseState = {
       active: true,
       pickedRenderLayer: renderLayerA,
-      pickedSpatialSkeletonNodeId: 31,
+      pickedSpatialSkeleton: { nodeId: 31 },
     };
     trigger();
     expect(hoverState.value).toBe(31);
@@ -180,7 +180,7 @@ describe("layer/segmentation/selection", () => {
     mouseState = {
       active: true,
       pickedRenderLayer: renderLayerB,
-      pickedSpatialSkeletonNodeId: 31,
+      pickedSpatialSkeleton: { nodeId: 31 },
     };
     trigger();
     expect(hoverState.value).toBeUndefined();
@@ -188,7 +188,7 @@ describe("layer/segmentation/selection", () => {
     mouseState = {
       active: false,
       pickedRenderLayer: renderLayerA,
-      pickedSpatialSkeletonNodeId: 31,
+      pickedSpatialSkeleton: { nodeId: 31 },
     };
     trigger();
     expect(hoverState.value).toBeUndefined();
@@ -196,7 +196,7 @@ describe("layer/segmentation/selection", () => {
     mouseState = {
       active: true,
       pickedRenderLayer: renderLayerA,
-      pickedSpatialSkeletonNodeId: -1,
+      pickedSpatialSkeleton: { nodeId: -1 },
     };
     trigger();
     expect(hoverState.value).toBeUndefined();
@@ -208,8 +208,8 @@ describe("layer/segmentation/selection", () => {
     expect(
       getSpatialSkeletonMissingSelectionDisplayState(
         {
-          spatialSkeletonNodeId: "31",
-          spatialSkeletonSegmentId: "8",
+          nodeId: "31",
+          value: 8n,
         },
         {
           hasInspectableSource: true,
@@ -226,8 +226,8 @@ describe("layer/segmentation/selection", () => {
     expect(
       getSpatialSkeletonMissingSelectionDisplayState(
         {
-          spatialSkeletonNodeId: "31",
-          spatialSkeletonSegmentId: "8",
+          nodeId: "31",
+          value: 8n,
         },
         {
           hasInspectableSource: true,
@@ -244,8 +244,8 @@ describe("layer/segmentation/selection", () => {
     expect(
       getSpatialSkeletonMissingSelectionDisplayState(
         {
-          spatialSkeletonNodeId: "31",
-          spatialSkeletonSegmentId: "8",
+          nodeId: "31",
+          value: 8n,
         },
         {
           hasInspectableSource: true,
@@ -262,8 +262,8 @@ describe("layer/segmentation/selection", () => {
     expect(
       getSpatialSkeletonMissingSelectionDisplayState(
         {
-          spatialSkeletonNodeId: "31",
-          spatialSkeletonSegmentId: "8",
+          nodeId: "31",
+          value: 8n,
         },
         {
           hasInspectableSource: true,
@@ -280,7 +280,7 @@ describe("layer/segmentation/selection", () => {
     expect(
       getSpatialSkeletonMissingSelectionDisplayState(
         {
-          spatialSkeletonNodeId: 31,
+          nodeId: 31,
         },
         {
           hasInspectableSource: true,

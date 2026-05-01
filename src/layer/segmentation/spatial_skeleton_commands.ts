@@ -582,7 +582,7 @@ class AddNodeCommand implements SpatialSkeletonCommand {
     applyDeleteNodeToCache(
       this.layer,
       deleteContext,
-      { moveView: false },
+      { moveView: true },
       result.nodeRevisionUpdates,
     );
     StatusMessage.showTemporaryMessage(

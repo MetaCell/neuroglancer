@@ -20,11 +20,6 @@ import { RefCounted } from "#src/util/disposable.js";
 import { parseUint64 } from "#src/util/json.js";
 import { NullarySignal } from "#src/util/signal.js";
 
-interface SpatialSkeletonSelectionStateLike {
-  spatialSkeletonNodeId?: unknown;
-  spatialSkeletonSegmentId?: unknown;
-}
-
 interface SpatialSkeletonViewerHoverMouseStateLike<TRenderLayer> {
   active: boolean;
   pickedRenderLayer: TRenderLayer | null | undefined;
@@ -46,7 +41,7 @@ export enum SpatialSkeletonSelectionRecoveryStatus {
 
 const MAX_SAFE_INTEGER_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
 
-function parseSpatialSkeletonSelectionStateId(value: unknown) {
+function parseSelectionStateStringId(value: unknown) {
   if (typeof value !== "string") {
     return undefined;
   }
@@ -58,16 +53,39 @@ function parseSpatialSkeletonSelectionStateId(value: unknown) {
   }
 }
 
-function normalizeSpatialSkeletonSelectionStateId(value: unknown) {
-  const parsedValue = parseSpatialSkeletonSelectionStateId(value);
+function normalizeSelectionStateStringId(value: unknown) {
+  const parsedValue = parseSelectionStateStringId(value);
   if (parsedValue === undefined || parsedValue > MAX_SAFE_INTEGER_BIGINT) {
     return undefined;
   }
   return Number(parsedValue);
 }
 
-function getSpatialSkeletonSelectionIdString(value: unknown) {
-  return parseSpatialSkeletonSelectionStateId(value)?.toString();
+function getSelectionIdString(value: unknown) {
+  return parseSelectionStateStringId(value)?.toString();
+}
+
+function normalizeSelectionStateValueId(value: unknown) {
+  try {
+    const parsedValue = parseUint64(value);
+    if (parsedValue <= 0n || parsedValue > MAX_SAFE_INTEGER_BIGINT) {
+      return undefined;
+    }
+    return Number(parsedValue);
+  } catch {
+    return undefined;
+  }
+}
+
+function getSelectionValueIdString(value: unknown) {
+  try {
+    const parsedValue = parseUint64(value);
+    return parsedValue > 0n && parsedValue <= MAX_SAFE_INTEGER_BIGINT
+      ? parsedValue.toString()
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function normalizeSpatialSkeletonViewerHoverNodeId(value: unknown) {
@@ -76,29 +94,23 @@ function normalizeSpatialSkeletonViewerHoverNodeId(value: unknown) {
     : undefined;
 }
 
-export function getSpatialSkeletonNodeIdFromLayerSelectionState(
-  state: SpatialSkeletonSelectionStateLike | undefined,
+export function getNodeIdFromLayerSelectionState(
+  state: { nodeId?: unknown; value?: unknown } | undefined,
 ) {
-  return normalizeSpatialSkeletonSelectionStateId(state?.spatialSkeletonNodeId);
+  return normalizeSelectionStateStringId(state?.nodeId);
 }
 
-export function getSpatialSkeletonSegmentIdFromLayerSelectionState(
-  state: SpatialSkeletonSelectionStateLike | undefined,
+export function getSegmentIdFromLayerSelectionValue(
+  state: { nodeId?: unknown; value?: unknown } | undefined,
 ) {
-  return normalizeSpatialSkeletonSelectionStateId(
-    state?.spatialSkeletonSegmentId,
-  );
+  return normalizeSelectionStateValueId(state?.value);
 }
 
 export function getSpatialSkeletonSelectionRecoveryKey(
-  state: SpatialSkeletonSelectionStateLike | undefined,
+  state: { nodeId?: unknown; value?: unknown } | undefined,
 ) {
-  const nodeId = getSpatialSkeletonSelectionIdString(
-    state?.spatialSkeletonNodeId,
-  );
-  const segmentId = getSpatialSkeletonSelectionIdString(
-    state?.spatialSkeletonSegmentId,
-  );
+  const nodeId = getSelectionIdString(state?.nodeId);
+  const segmentId = getSelectionValueIdString(state?.value);
   if (nodeId === undefined || segmentId === undefined) {
     return undefined;
   }
@@ -106,7 +118,7 @@ export function getSpatialSkeletonSelectionRecoveryKey(
 }
 
 export function getSpatialSkeletonMissingSelectionDisplayState(
-  state: SpatialSkeletonSelectionStateLike | undefined,
+  state: { nodeId?: unknown; value?: unknown } | undefined,
   options: {
     hasInspectableSource: boolean;
     hasCachedSegment: boolean;
@@ -142,26 +154,23 @@ export function getSpatialSkeletonMissingSelectionDisplayState(
 }
 
 export function hasSpatialSkeletonNodeSelection(
-  state: SpatialSkeletonSelectionStateLike | undefined,
+  state: { nodeId?: unknown; value?: unknown } | undefined,
 ) {
-  return (
-    getSpatialSkeletonSelectionIdString(state?.spatialSkeletonNodeId) !==
-    undefined
-  );
+  return getSelectionIdString(state?.nodeId) !== undefined;
 }
 
-export function getSpatialSkeletonNodeIdFromViewerSelection<TLayer>(
+export function getNodeIdFromViewerSelection<TLayer>(
   selection:
     | {
         layers: readonly {
           layer: TLayer;
-          state: SpatialSkeletonSelectionStateLike;
+          state: { nodeId?: unknown; value?: unknown };
         }[];
       }
     | undefined,
   layer: TLayer,
 ) {
-  return getSpatialSkeletonNodeIdFromLayerSelectionState(
+  return getNodeIdFromLayerSelectionState(
     selection?.layers.find((entry) => entry.layer === layer)?.state,
   );
 }

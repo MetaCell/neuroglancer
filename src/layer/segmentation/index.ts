@@ -31,6 +31,7 @@ import {
 import type {
   LayerActionContext,
   ManagedUserLayer,
+  MouseSelectionState,
   UserLayerSelectionState,
 } from "#src/layer/index.js";
 import {
@@ -45,12 +46,9 @@ import { layerDataSourceSpecificationFromJson } from "#src/layer/layer_data_sour
 import * as json_keys from "#src/layer/segmentation/json_keys.js";
 import { registerLayerControls } from "#src/layer/segmentation/layer_controls.js";
 import {
-  getSpatialSkeletonMissingSelectionDisplayState,
-  getSpatialSkeletonNodeIdFromLayerSelectionState,
-  getSpatialSkeletonSegmentIdFromLayerSelectionState,
-  getSpatialSkeletonSelectionRecoveryKey,
+  getNodeIdFromLayerSelectionState,
+  getSegmentIdFromLayerSelectionValue,
   SpatialSkeletonHoverState,
-  SpatialSkeletonSelectionRecoveryStatus,
 } from "#src/layer/segmentation/selection.js";
 import {
   executeSpatialSkeletonDeleteNode,
@@ -180,7 +178,6 @@ import { registerSpatialSkeletonEditModeTool } from "#src/ui/spatial_skeleton_ed
 import { Uint64Map } from "#src/uint64_map.js";
 import { Uint64OrderedSet } from "#src/uint64_ordered_set.js";
 import { Uint64Set } from "#src/uint64_set.js";
-import { isAbortError } from "#src/util/abort.js";
 import { gatherUpdate } from "#src/util/array.js";
 import {
   packColor,
@@ -203,6 +200,7 @@ import {
 } from "#src/util/json.js";
 import * as matrix from "#src/util/matrix.js";
 import { Signal } from "#src/util/signal.js";
+import { TrackableEnum } from "#src/util/trackable_enum.js";
 import { makeWatchableShaderError } from "#src/webgl/dynamic_shader.js";
 import { makeDeleteButton } from "#src/widget/delete_button.js";
 import type { DependentViewContext } from "#src/widget/dependent_view_widget.js";
@@ -945,6 +943,11 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
   spatialSkeletonGridRenderScaleHistogram2d = new RenderScaleHistogram();
   spatialSkeletonGridRenderScaleHistogram3d = new RenderScaleHistogram();
   spatialSkeletonLod2d = new WatchableValue<number>(0);
+  spatialSkeletonNodeQuery = new TrackableValue<string>("", verifyString);
+  spatialSkeletonNodeFilter = new TrackableEnum(
+    SpatialSkeletonNodeFilterType,
+    SpatialSkeletonNodeFilterType.NONE,
+  );
   private spatialSkeletonGridResolutionTarget2dExplicit = false;
   private spatialSkeletonGridResolutionTarget3dExplicit = false;
   private spatialSkeletonGridLevel2dExplicit = false;
@@ -1243,6 +1246,28 @@ interface SegmentationActionContext extends LayerActionContext {
   segmentationToggleSegmentState?: boolean | undefined;
 }
 
+interface SelectedSpatialSkeletonNodeInfo {
+  nodeId: number;
+  segmentId?: number;
+  position?: Float32Array;
+  revisionToken?: string;
+}
+
+function normalizeOptionalPositiveSafeInteger(value: unknown) {
+  if (value === undefined) return undefined;
+  const normalized = Math.round(Number(value));
+  return Number.isSafeInteger(normalized) && normalized > 0
+    ? normalized
+    : undefined;
+}
+
+function copyOptionalSpatialSkeletonPosition(
+  value: ArrayLike<number> | undefined,
+) {
+  if (value === undefined) return undefined;
+  return new Float32Array(Array.from(value, Number));
+}
+
 const Base = UserLayerWithAnnotationsMixin(UserLayer);
 export class SegmentationUserLayer extends Base {
   sliceViewRenderScaleHistogram = new RenderScaleHistogram();
@@ -1254,18 +1279,15 @@ export class SegmentationUserLayer extends Base {
   readonly selectedSpatialSkeletonNodeId = new WatchableValue<
     number | undefined
   >(undefined);
+  readonly selectedSpatialSkeletonNodeInfo = new WatchableValue<
+    SelectedSpatialSkeletonNodeInfo | undefined
+  >(undefined);
   readonly hoveredSpatialSkeletonNodeId = this.registerDisposer(
     new SpatialSkeletonHoverState(),
   );
   readonly spatialSkeletonVisibleChunksNeeded = new WatchableValue(0);
   readonly spatialSkeletonVisibleChunksAvailable = new WatchableValue(0);
   readonly spatialSkeletonVisibleChunksLoaded = new WatchableValue(false);
-  private spatialSkeletonSelectionRecovery:
-    | {
-        key: string;
-        status: SpatialSkeletonSelectionRecoveryStatus;
-      }
-    | undefined;
 
   graphConnection = new WatchableValue<
     SegmentationGraphSourceConnection | undefined
@@ -1364,34 +1386,37 @@ export class SegmentationUserLayer extends Base {
   selectSpatialSkeletonNode = (
     nodeId: number,
     pin: boolean | "toggle" = false,
-    options: { segmentId?: number; position?: ArrayLike<number> } = {},
+    options: {
+      segmentId?: number;
+      position?: ArrayLike<number>;
+      revisionToken?: string;
+    } = {},
   ) => {
-    const normalizedNodeId = Math.round(Number(nodeId));
-    if (!Number.isSafeInteger(normalizedNodeId) || normalizedNodeId <= 0) {
+    const normalizedNodeId = normalizeOptionalPositiveSafeInteger(nodeId);
+    if (normalizedNodeId === undefined) {
       return;
     }
     const selectedNodeInfo =
       this.getSpatiallyIndexedSkeletonLayer()?.getNode(normalizedNodeId);
     const requestedSegmentId =
       options.segmentId ?? selectedNodeInfo?.segmentId ?? undefined;
-    const normalizedSegmentId =
-      requestedSegmentId === undefined
-        ? undefined
-        : Math.round(Number(requestedSegmentId));
+    const segmentId = normalizeOptionalPositiveSafeInteger(requestedSegmentId);
     const selectedNodePosition = options.position ?? selectedNodeInfo?.position;
     const selectedGlobalPosition =
       this.getGlobalSelectionPositionFromModelPosition(selectedNodePosition);
+    const revisionToken =
+      typeof options.revisionToken === "string"
+        ? options.revisionToken
+        : selectedNodeInfo?.revisionToken;
+    this.selectedSpatialSkeletonNodeInfo.value = {
+      nodeId: normalizedNodeId,
+      segmentId,
+      position: copyOptionalSpatialSkeletonPosition(selectedNodePosition),
+      revisionToken,
+    };
     this.captureSpatialSkeletonSelectionState(
       (state) => {
-        const segmentId =
-          normalizedSegmentId !== undefined &&
-          Number.isSafeInteger(normalizedSegmentId) &&
-          normalizedSegmentId > 0
-            ? normalizedSegmentId
-            : undefined;
-        state.spatialSkeletonNodeId = normalizedNodeId.toString();
-        state.spatialSkeletonSegmentId =
-          segmentId === undefined ? undefined : segmentId.toString();
+        state.nodeId = normalizedNodeId.toString();
         state.value = segmentId === undefined ? undefined : BigInt(segmentId);
         return true;
       },
@@ -1487,9 +1512,9 @@ export class SegmentationUserLayer extends Base {
   clearSpatialSkeletonNodeSelection = (
     pin: boolean | "toggle" | "force-unpin" = false,
   ) => {
+    this.selectedSpatialSkeletonNodeInfo.value = undefined;
     this.captureSpatialSkeletonSelectionState((state) => {
-      state.spatialSkeletonNodeId = undefined;
-      state.spatialSkeletonSegmentId = undefined;
+      state.nodeId = undefined;
       state.value = undefined;
       return true;
     }, pin);
@@ -1548,21 +1573,22 @@ export class SegmentationUserLayer extends Base {
         this.manager.root.selectionState.value?.layers.find(
           (entry) => entry.layer === this,
         )?.state;
-      const nextSelectedNodeId =
-        getSpatialSkeletonNodeIdFromLayerSelectionState(
-          nextLayerSelectionState,
-        );
-      const nextRecoveryKey = getSpatialSkeletonSelectionRecoveryKey(
+      const nextSelectedNodeId = getNodeIdFromLayerSelectionState(
         nextLayerSelectionState,
       );
-      if (
-        this.spatialSkeletonSelectionRecovery !== undefined &&
-        this.spatialSkeletonSelectionRecovery.key !== nextRecoveryKey
-      ) {
-        this.spatialSkeletonSelectionRecovery = undefined;
-      }
+      const nextSelectedSegmentId = getSegmentIdFromLayerSelectionValue(
+        nextLayerSelectionState,
+      );
       if (this.selectedSpatialSkeletonNodeId.value !== nextSelectedNodeId) {
         this.selectedSpatialSkeletonNodeId.value = nextSelectedNodeId;
+      }
+      const selectedNodeInfo = this.selectedSpatialSkeletonNodeInfo.value;
+      if (
+        selectedNodeInfo !== undefined &&
+        (selectedNodeInfo.nodeId !== nextSelectedNodeId ||
+          selectedNodeInfo.segmentId !== nextSelectedSegmentId)
+      ) {
+        this.selectedSpatialSkeletonNodeInfo.value = undefined;
       }
     };
     this.registerDisposer(
@@ -1591,6 +1617,12 @@ export class SegmentationUserLayer extends Base {
       this.specificationChanged.dispatch,
     );
     this.displayState.skeletonLod.changed.add(
+      this.specificationChanged.dispatch,
+    );
+    this.displayState.spatialSkeletonNodeQuery.changed.add(
+      this.specificationChanged.dispatch,
+    );
+    this.displayState.spatialSkeletonNodeFilter.changed.add(
       this.specificationChanged.dispatch,
     );
     this.displayState.spatialSkeletonGridResolutionTarget2d.changed.add(
@@ -2331,6 +2363,15 @@ export class SegmentationUserLayer extends Base {
     this.displayState.skeletonLod.restoreState(
       specification[json_keys.SKELETON_LOD_JSON_KEY],
     );
+    this.displayState.spatialSkeletonNodeQuery.restoreState(
+      specification[json_keys.SPATIAL_SKELETON_NODE_QUERY_JSON_KEY],
+    );
+    verifyOptionalObjectProperty(
+      specification,
+      json_keys.SPATIAL_SKELETON_NODE_FILTER_JSON_KEY,
+      (value) =>
+        this.displayState.spatialSkeletonNodeFilter.restoreState(value),
+    );
     this.displayState.spatialSkeletonGridResolutionRelative2d.restoreState(
       specification[
         json_keys.SPATIAL_SKELETON_GRID_RESOLUTION_RELATIVE_2D_JSON_KEY
@@ -2420,6 +2461,10 @@ export class SegmentationUserLayer extends Base {
       this.displayState.notSelectedAlpha.toJSON();
     x[json_keys.SATURATION_JSON_KEY] = this.displayState.saturation.toJSON();
     x[json_keys.OBJECT_ALPHA_JSON_KEY] = this.displayState.objectAlpha.toJSON();
+    x[json_keys.SPATIAL_SKELETON_NODE_QUERY_JSON_KEY] =
+      this.displayState.spatialSkeletonNodeQuery.toJSON();
+    x[json_keys.SPATIAL_SKELETON_NODE_FILTER_JSON_KEY] =
+      this.displayState.spatialSkeletonNodeFilter.toJSON();
     appendSpatialSkeletonSerializationState(
       x,
       {
@@ -2540,6 +2585,33 @@ export class SegmentationUserLayer extends Base {
       state.value = undefined;
     }
   }
+
+  captureSelectionState(
+    state: this["selectionState"],
+    mouseState: MouseSelectionState,
+  ) {
+    super.captureSelectionState(state, mouseState);
+    const pickedSpatialSkeleton = mouseState.pickedSpatialSkeleton;
+    if (pickedSpatialSkeleton === undefined) return;
+    const pickedRenderLayer = mouseState.pickedRenderLayer;
+    if (
+      pickedRenderLayer !== null &&
+      !this.renderLayers.includes(pickedRenderLayer)
+    ) {
+      return;
+    }
+    const nodeId = normalizeOptionalPositiveSafeInteger(
+      pickedSpatialSkeleton.nodeId,
+    );
+    state.nodeId = nodeId === undefined ? undefined : nodeId.toString();
+    const segmentId = normalizeOptionalPositiveSafeInteger(
+      pickedSpatialSkeleton.segmentId,
+    );
+    if (segmentId !== undefined) {
+      state.value = BigInt(segmentId);
+    }
+  }
+
   selectionStateToJson(state: this["selectionState"], forPython: boolean): any {
     const json = super.selectionStateToJson(state, forPython);
     const { value } = state;
@@ -2660,41 +2732,26 @@ export class SegmentationUserLayer extends Base {
     context.registerDisposer(
       this.spatialSkeletonNodeDataVersion.changed.add(context.redraw),
     );
-    const nodeId = getSpatialSkeletonNodeIdFromLayerSelectionState(state);
+    context.registerDisposer(
+      this.selectedSpatialSkeletonNodeInfo.changed.add(context.redraw),
+    );
+    const nodeId = getNodeIdFromLayerSelectionState(state);
     if (nodeId === undefined) {
       return false;
     }
 
-    const selectedSegmentId =
-      getSpatialSkeletonSegmentIdFromLayerSelectionState(state);
+    const selectedSegmentId = getSegmentIdFromLayerSelectionValue(state);
     const skeletonLayer = this.getSpatiallyIndexedSkeletonLayer();
-    const nodeInfo = skeletonLayer?.getNode(nodeId);
     const cachedNodeInfo = this.spatialSkeletonState.getCachedNode(nodeId);
-    const cachedSelectedSegmentNodes =
-      selectedSegmentId === undefined
-        ? undefined
-        : this.spatialSkeletonState.getCachedSegmentNodes(selectedSegmentId);
-    const recoveryKey = getSpatialSkeletonSelectionRecoveryKey(state);
-    if (
-      nodeInfo !== undefined &&
-      recoveryKey !== undefined &&
-      this.spatialSkeletonSelectionRecovery?.key === recoveryKey
-    ) {
-      this.spatialSkeletonSelectionRecovery = undefined;
-    }
-    const selectionRecovery = this.spatialSkeletonSelectionRecovery;
-    const recoveryStatus =
-      recoveryKey !== undefined && selectionRecovery?.key === recoveryKey
-        ? selectionRecovery.status
+    const completeNodeInfo = skeletonLayer?.getNode(nodeId) ?? cachedNodeInfo;
+    const selectedNodeInfo = this.selectedSpatialSkeletonNodeInfo.value;
+    const previewNodeInfo =
+      selectedNodeInfo !== undefined &&
+      selectedNodeInfo.nodeId === nodeId &&
+      selectedNodeInfo.segmentId === selectedSegmentId
+        ? selectedNodeInfo
         : undefined;
-    const missingSelectionDisplayState =
-      getSpatialSkeletonMissingSelectionDisplayState(state, {
-        hasInspectableSource:
-          skeletonLayer !== undefined &&
-          getSpatiallyIndexedSkeletonSource(skeletonLayer) !== undefined,
-        hasCachedSegment: cachedSelectedSegmentNodes !== undefined,
-        recoveryStatus,
-      });
+    const nodeInfo = completeNodeInfo ?? previewNodeInfo;
     const container = document.createElement("div");
     container.classList.add("neuroglancer-spatial-skeleton-selection");
     parent.appendChild(container);
@@ -2717,97 +2774,73 @@ export class SegmentationUserLayer extends Base {
       container.appendChild(row);
     };
 
-    if (nodeInfo === undefined) {
-      if (
-        missingSelectionDisplayState.shouldRequestRecovery &&
-        skeletonLayer !== undefined &&
-        selectedSegmentId !== undefined &&
-        missingSelectionDisplayState.recoveryKey !== undefined
-      ) {
-        const { recoveryKey } = missingSelectionDisplayState;
-        this.spatialSkeletonSelectionRecovery = {
-          key: recoveryKey,
-          status: SpatialSkeletonSelectionRecoveryStatus.PENDING,
-        };
-        void this.spatialSkeletonState
-          .getFullSegmentNodes(skeletonLayer, selectedSegmentId)
-          .then((segmentNodes) => {
-            if (
-              this.spatialSkeletonSelectionRecovery?.key !== recoveryKey ||
-              this.spatialSkeletonSelectionRecovery.status !==
-                SpatialSkeletonSelectionRecoveryStatus.PENDING
-            ) {
-              return;
-            }
-            const recovered = segmentNodes.some(
-              (candidate) => candidate.nodeId === nodeId,
-            );
-            if (recovered) {
-              return;
-            }
-            this.spatialSkeletonSelectionRecovery = {
-              key: recoveryKey,
-              status: SpatialSkeletonSelectionRecoveryStatus.FAILED,
-            };
-            this.spatialSkeletonState.markNodeDataChanged({
-              invalidateFullSkeletonCache: false,
-            });
-          })
-          .catch((error) => {
-            if (
-              this.spatialSkeletonSelectionRecovery?.key !== recoveryKey ||
-              this.spatialSkeletonSelectionRecovery.status !==
-                SpatialSkeletonSelectionRecoveryStatus.PENDING
-            ) {
-              return;
-            }
-            if (isAbortError(error)) {
-              this.spatialSkeletonSelectionRecovery = undefined;
-              this.spatialSkeletonState.markNodeDataChanged({
-                invalidateFullSkeletonCache: false,
-              });
-              return;
-            }
-            this.spatialSkeletonSelectionRecovery = {
-              key: recoveryKey,
-              status: SpatialSkeletonSelectionRecoveryStatus.FAILED,
-            };
-            this.spatialSkeletonState.markNodeDataChanged({
-              invalidateFullSkeletonCache: false,
-            });
-          });
+    const appendSegmentAndNodeIds = (segmentId: number, nodeId: number) => {
+      const segmentChipColors = getSpatialSkeletonSegmentChipColors(
+        this.displayState,
+        segmentId,
+      );
+      const segmentIdChip = document.createElement("span");
+      segmentIdChip.className =
+        "neuroglancer-spatial-skeleton-node-segment-chip";
+      segmentIdChip.textContent = `${segmentId}`;
+      segmentIdChip.style.backgroundColor = segmentChipColors.background;
+      segmentIdChip.style.color = segmentChipColors.foreground;
+      segmentIdChip.title =
+        `Segment ${segmentId}\n` +
+        "Ctrl+right-click to pin selection\n" +
+        "Ctrl+shift+right-click to unpin";
+      bindSpatialSkeletonSegmentSelection(
+        segmentIdChip,
+        this.selectSegment,
+        segmentId,
+      );
+      appendValue("Segment ID", segmentIdChip);
+      appendValue("Node ID", `${nodeId}`);
+    };
+
+    if (completeNodeInfo === undefined) {
+      const segmentId = nodeInfo?.segmentId ?? selectedSegmentId;
+      if (segmentId !== undefined) {
+        appendSegmentAndNodeIds(segmentId, nodeId);
+        return true;
       }
       const valueElement = document.createElement("div");
       valueElement.classList.add(
         "neuroglancer-selection-details-segment-description",
       );
-      valueElement.textContent = missingSelectionDisplayState.loading
-        ? "Loading selected node from full skeleton data."
-        : "Selected node is not available in the current loaded or cached skeleton data.";
+      valueElement.textContent =
+        "Selected node is not available in the current loaded or cached skeleton data.";
       container.appendChild(valueElement);
       return true;
     }
 
-    const segmentNodes = this.spatialSkeletonState.getCachedSegmentNodes(
-      nodeInfo.segmentId,
-    );
+    const segmentId = nodeInfo.segmentId;
+    const nodePosition = nodeInfo.position;
+    const segmentNodes =
+      this.spatialSkeletonState.getCachedSegmentNodes(segmentId);
     const directChildNodeIds =
       segmentNodes
         ?.filter((candidate) => candidate.parentNodeId === nodeInfo.nodeId)
         .map((candidate) => candidate.nodeId) ?? [];
-    const nodeHasTrueEnd = nodeInfo.isTrueEnd;
-    const nodeType = getSpatialSkeletonDisplayNodeType(
-      nodeInfo,
-      segmentNodes === undefined ? undefined : directChildNodeIds.length,
-    );
-    const nodeTypeLabel = getSpatialSkeletonNodeTypeLabel(
-      nodeType,
-      nodeHasTrueEnd,
-    );
-    const iconFilterType = getSpatialSkeletonNodeIconFilterType({
-      nodeIsTrueEnd: nodeHasTrueEnd,
-      nodeType,
-    });
+    const nodeHasTrueEnd = completeNodeInfo?.isTrueEnd ?? false;
+    const nodeType =
+      completeNodeInfo === undefined
+        ? undefined
+        : getSpatialSkeletonDisplayNodeType(
+            completeNodeInfo,
+            segmentNodes === undefined ? undefined : directChildNodeIds.length,
+          );
+    const nodeTypeLabel =
+      nodeType === undefined
+        ? "Unknown"
+        : getSpatialSkeletonNodeTypeLabel(nodeType, nodeHasTrueEnd);
+    const iconFilterType =
+      nodeType === undefined
+        ? undefined
+        : getSpatialSkeletonNodeIconFilterType({
+            nodeIsTrueEnd: nodeHasTrueEnd,
+            nodeType,
+          });
     const summaryRow = document.createElement("div");
     summaryRow.classList.add("neuroglancer-spatial-skeleton-selection-summary");
     container.appendChild(summaryRow);
@@ -2819,9 +2852,9 @@ export class SegmentationUserLayer extends Base {
     const rerootDisabledReason =
       skeletonSource?.rerootSkeleton === undefined
         ? "Unable to resolve a reroot-capable skeleton source for the active layer."
-        : segmentNodes === undefined
+        : completeNodeInfo === undefined || segmentNodes === undefined
           ? "Load the active skeleton in the Skeleton tab before rerooting from Selection."
-          : nodeInfo.parentNodeId === undefined
+          : completeNodeInfo.parentNodeId === undefined
             ? "Selected node is already root."
             : this.getSpatialSkeletonActionsDisabledReason(
                 SpatialSkeletonActions.reroot,
@@ -2846,7 +2879,8 @@ export class SegmentationUserLayer extends Base {
       if (
         rerootButton.disabled ||
         rerootPending ||
-        nodeInfo.parentNodeId === undefined
+        completeNodeInfo === undefined ||
+        completeNodeInfo.parentNodeId === undefined
       ) {
         return;
       }
@@ -2854,7 +2888,7 @@ export class SegmentationUserLayer extends Base {
       rerootButton.disabled = true;
       void (async () => {
         try {
-          await this.rerootSpatialSkeletonNode(nodeInfo);
+          await this.rerootSpatialSkeletonNode(completeNodeInfo);
         } catch (error) {
           showSpatialSkeletonActionError("set node as root", error);
         } finally {
@@ -2866,9 +2900,10 @@ export class SegmentationUserLayer extends Base {
     const deleteDisabledReason =
       skeletonSource === undefined
         ? "Unable to resolve editable skeleton source for the active layer."
-        : segmentNodes === undefined
+        : completeNodeInfo === undefined || segmentNodes === undefined
           ? "Load the active skeleton in the Skeleton tab before deleting from Selection."
-          : nodeInfo.parentNodeId === undefined && directChildNodeIds.length > 0
+          : completeNodeInfo.parentNodeId === undefined &&
+              directChildNodeIds.length > 0
             ? "Reroot the skeleton manually before deleting the current root node."
             : this.getSpatialSkeletonActionsDisabledReason(
                 SpatialSkeletonActions.deleteNodes,
@@ -2886,6 +2921,7 @@ export class SegmentationUserLayer extends Base {
       if (
         deleteButton.disabled ||
         skeletonSource === undefined ||
+        completeNodeInfo === undefined ||
         deletePending
       ) {
         return;
@@ -2893,7 +2929,7 @@ export class SegmentationUserLayer extends Base {
       deletePending = true;
       void (async () => {
         try {
-          await executeSpatialSkeletonDeleteNode(this, nodeInfo);
+          await executeSpatialSkeletonDeleteNode(this, completeNodeInfo);
         } catch (error) {
           showSpatialSkeletonActionError("delete node", error);
         } finally {
@@ -2917,7 +2953,9 @@ export class SegmentationUserLayer extends Base {
             ? svg_flag
             : iconFilterType === SpatialSkeletonNodeFilterType.VIRTUAL_END
               ? svg_circle
-              : SPATIAL_SKELETON_NODE_TYPE_ICONS[nodeType],
+              : nodeType === undefined
+                ? svg_circle
+                : SPATIAL_SKELETON_NODE_TYPE_ICONS[nodeType],
         title: nodeTypeIconTitle,
         clickable: false,
       }),
@@ -2926,7 +2964,7 @@ export class SegmentationUserLayer extends Base {
 
     const skeletonDisplayTransform =
       skeletonLayer?.displayState.transform.value;
-    let displayPosition: ArrayLike<number> = nodeInfo.position;
+    let displayPosition: ArrayLike<number> = nodePosition;
     let displayNames: readonly string[] | undefined;
     if (
       skeletonDisplayTransform !== undefined &&
@@ -2934,8 +2972,8 @@ export class SegmentationUserLayer extends Base {
     ) {
       const rank = skeletonDisplayTransform.rank;
       const modelPos = new Float32Array(rank);
-      for (let i = 0; i < Math.min(nodeInfo.position.length, rank); i++) {
-        modelPos[i] = Number(nodeInfo.position[i]);
+      for (let i = 0; i < Math.min(nodePosition.length, rank); i++) {
+        modelPos[i] = Number(nodePosition[i]);
       }
       const layerPos = new Float32Array(rank);
       matrix.transformPoint(
@@ -2959,26 +2997,7 @@ export class SegmentationUserLayer extends Base {
     summaryCoordinates.title = position.fullText;
     summaryRow.appendChild(summaryCoordinates);
 
-    const segmentChipColors = getSpatialSkeletonSegmentChipColors(
-      this.displayState,
-      nodeInfo.segmentId,
-    );
-    const segmentIdChip = document.createElement("span");
-    segmentIdChip.className = "neuroglancer-spatial-skeleton-node-segment-chip";
-    segmentIdChip.textContent = `${nodeInfo.segmentId}`;
-    segmentIdChip.style.backgroundColor = segmentChipColors.background;
-    segmentIdChip.style.color = segmentChipColors.foreground;
-    segmentIdChip.title =
-      `Segment ${nodeInfo.segmentId}\n` +
-      "Ctrl+right-click to pin selection\n" +
-      "Ctrl+shift+right-click to unpin";
-    bindSpatialSkeletonSegmentSelection(
-      segmentIdChip,
-      this.selectSegment,
-      nodeInfo.segmentId,
-    );
-    appendValue("Segment ID", segmentIdChip);
-    appendValue("Node ID", `${nodeInfo.nodeId}`);
+    appendSegmentAndNodeIds(segmentId, nodeInfo.nodeId);
     const isLeaf =
       segmentNodes !== undefined && directChildNodeIds.length === 0;
     const leafTypeEditingDisabledReason = () =>
@@ -2989,12 +3008,12 @@ export class SegmentationUserLayer extends Base {
           : this.getSpatialSkeletonActionsDisabledReason(
               SpatialSkeletonActions.editNodeTrueEnd,
             );
-    if (isLeaf || nodeHasTrueEnd) {
+    if (completeNodeInfo !== undefined && (isLeaf || nodeHasTrueEnd)) {
       let committedTrueEnd = nodeHasTrueEnd;
       let leafTypeSavePending = false;
       const leafTypeEditor = document.createElement("div");
       leafTypeEditor.className = "neuroglancer-spatial-skeleton-leaf-type";
-      const leafTypeRadioName = `neuroglancer-spatial-skeleton-leaf-type-${nodeInfo.segmentId}-${nodeInfo.nodeId}`;
+      const leafTypeRadioName = `neuroglancer-spatial-skeleton-leaf-type-${segmentId}-${nodeInfo.nodeId}`;
       const leafTypeOptionElements: HTMLLabelElement[] = [];
       const makeLeafTypeOption = (options: {
         label: string;
@@ -3120,184 +3139,198 @@ export class SegmentationUserLayer extends Base {
     } else {
       appendValue("Node type", nodeTypeLabel);
     }
-    let committedRadius = nodeInfo.radius ?? 0;
-    let committedConfidence =
-      nodeInfo.confidence !== undefined && Number.isFinite(nodeInfo.confidence)
-        ? Number(nodeInfo.confidence)
-        : 0;
-    const radiusInput = document.createElement("input");
-    radiusInput.className = "neuroglancer-spatial-skeleton-properties-input";
-    radiusInput.type = "number";
-    radiusInput.step = "any";
-    radiusInput.value = formatSpatialSkeletonEditableNumber(nodeInfo.radius);
-    appendValue("Radius", radiusInput);
-    const supportedConfidenceValues = Array.from(
-      new Set([
-        ...SPATIALLY_INDEXED_SKELETON_CONFIDENCE_VALUES,
-        committedConfidence,
-      ]),
-    ).filter((value): value is number => Number.isFinite(value));
-    const confidenceSelectValues = Array.from(
-      new Set([...supportedConfidenceValues, committedConfidence]),
-    );
-    const confidenceControl = document.createElement("select");
-    confidenceControl.className =
-      "neuroglancer-spatial-skeleton-properties-input";
-    for (const value of confidenceSelectValues) {
-      const option = document.createElement("option");
-      option.value = value.toString();
-      option.textContent = formatSpatialSkeletonEditableNumber(value);
-      confidenceControl.appendChild(option);
-    }
-    confidenceControl.value = committedConfidence.toString();
-    appendValue("Confidence level", confidenceControl);
-    let savePending = false;
-    const getPropertyEditingDisabledReason = () =>
-      skeletonSource === undefined
-        ? "Unable to resolve editable skeleton source for the active layer."
-        : this.getSpatialSkeletonActionsDisabledReason(
-            SpatialSkeletonActions.editNodeProperties,
-          );
-    const getConfidenceEditingDisabledReason = () => {
-      const disabledReason = getPropertyEditingDisabledReason();
-      if (disabledReason !== undefined) {
-        return disabledReason;
-      }
-      return undefined;
-    };
-    const setPropertyInputValidity = (
-      input: HTMLInputElement | HTMLSelectElement,
-      valid: boolean,
-      invalidTitle: string,
-      disabledReason: string | undefined,
-    ) => {
-      input.classList.toggle(
-        "neuroglancer-spatial-skeleton-properties-input-invalid",
-        !valid,
+    if (cachedNodeInfo === undefined || segmentNodes === undefined) {
+      appendValue(
+        "Radius",
+        formatSpatialSkeletonEditableNumber(nodeInfo.radius, "Unavailable"),
       );
-      if (disabledReason !== undefined) {
-        input.title = disabledReason;
-      } else if (!valid) {
-        input.title = invalidTitle;
-      } else {
-        input.removeAttribute("title");
-      }
-    };
-    const getConfidenceValidationError = (confidence: number) => {
-      if (!Number.isFinite(confidence)) {
-        return "Confidence must be a finite number.";
-      }
-      return confidenceSelectValues.includes(confidence)
-        ? undefined
-        : "Confidence must use one of the supported values.";
-    };
-    const getParsedProperties = () => {
-      const radius = Number(radiusInput.value);
-      const confidence = Number(confidenceControl.value);
-      const radiusValid = Number.isFinite(radius);
-      const confidenceInvalidTitle = getConfidenceValidationError(confidence);
-      return {
-        radius,
-        confidence,
-        radiusValid,
-        confidenceValid: confidenceInvalidTitle === undefined,
-        confidenceInvalidTitle,
-      };
-    };
-    const updatePropertyEditorState = () => {
-      const radiusDisabledReason = getPropertyEditingDisabledReason();
-      const confidenceDisabledReason = getConfidenceEditingDisabledReason();
-      const { radiusValid, confidenceValid, confidenceInvalidTitle } =
-        getParsedProperties();
-      radiusInput.disabled = radiusDisabledReason !== undefined || savePending;
-      confidenceControl.disabled =
-        confidenceDisabledReason !== undefined || savePending;
-      setPropertyInputValidity(
-        radiusInput,
-        radiusValid,
-        "Radius must be a finite number.",
-        radiusDisabledReason,
+      appendValue(
+        "Confidence level",
+        formatSpatialSkeletonEditableNumber(nodeInfo.confidence, "Unavailable"),
       );
-      setPropertyInputValidity(
-        confidenceControl,
-        confidenceValid,
-        confidenceInvalidTitle ?? "Confidence is invalid.",
-        confidenceDisabledReason,
+    } else {
+      let committedRadius = nodeInfo.radius ?? 0;
+      let committedConfidence =
+        nodeInfo.confidence !== undefined &&
+        Number.isFinite(nodeInfo.confidence)
+          ? Number(nodeInfo.confidence)
+          : 0;
+      const radiusInput = document.createElement("input");
+      radiusInput.className = "neuroglancer-spatial-skeleton-properties-input";
+      radiusInput.type = "number";
+      radiusInput.step = "any";
+      radiusInput.value = formatSpatialSkeletonEditableNumber(nodeInfo.radius);
+      appendValue("Radius", radiusInput);
+      const supportedConfidenceValues = Array.from(
+        new Set([
+          ...SPATIALLY_INDEXED_SKELETON_CONFIDENCE_VALUES,
+          committedConfidence,
+        ]),
+      ).filter((value): value is number => Number.isFinite(value));
+      const confidenceSelectValues = Array.from(
+        new Set([...supportedConfidenceValues, committedConfidence]),
       );
-    };
-    const resetPropertyInputs = () => {
-      radiusInput.value = formatSpatialSkeletonEditableNumber(committedRadius);
+      const confidenceControl = document.createElement("select");
+      confidenceControl.className =
+        "neuroglancer-spatial-skeleton-properties-input";
+      for (const value of confidenceSelectValues) {
+        const option = document.createElement("option");
+        option.value = value.toString();
+        option.textContent = formatSpatialSkeletonEditableNumber(value);
+        confidenceControl.appendChild(option);
+      }
       confidenceControl.value = committedConfidence.toString();
-      updatePropertyEditorState();
-    };
-    const handlePropertyInputKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Enter") return;
-      event.preventDefault();
-      (event.currentTarget as HTMLElement | null)?.blur();
-    };
-    const commitProperties = () => {
-      if (savePending) return;
-      const disabledReason = getPropertyEditingDisabledReason();
-      if (disabledReason !== undefined) {
-        StatusMessage.showTemporaryMessage(disabledReason);
-        resetPropertyInputs();
-        return;
-      }
-      const {
-        radius,
-        confidence,
-        radiusValid,
-        confidenceValid,
-        confidenceInvalidTitle,
-      } = getParsedProperties();
-      if (!radiusValid || !confidenceValid) {
-        StatusMessage.showTemporaryMessage(
-          confidenceInvalidTitle ?? "Enter a valid radius and confidence.",
-        );
-        resetPropertyInputs();
-        return;
-      }
-      const radiusChanged = radius !== committedRadius;
-      const confidenceChanged = confidence !== committedConfidence;
-      if (!radiusChanged && !confidenceChanged) {
-        resetPropertyInputs();
-        return;
-      }
-      savePending = true;
-      updatePropertyEditorState();
-      void (async () => {
-        try {
-          const currentNode = this.spatialSkeletonState.getCachedNode(
-            nodeInfo.nodeId,
-          );
-          if (currentNode === undefined) {
-            throw new Error(
-              `Node ${nodeInfo.nodeId} is missing from the inspected skeleton cache.`,
+      appendValue("Confidence level", confidenceControl);
+      let savePending = false;
+      const getPropertyEditingDisabledReason = () =>
+        skeletonSource === undefined
+          ? "Unable to resolve editable skeleton source for the active layer."
+          : this.getSpatialSkeletonActionsDisabledReason(
+              SpatialSkeletonActions.editNodeProperties,
             );
-          }
-          await executeSpatialSkeletonNodePropertiesUpdate(this, {
-            node: currentNode,
-            next: { radius, confidence },
-          });
-          committedRadius = radius;
-          committedConfidence = confidence;
-          resetPropertyInputs();
-        } catch (error) {
-          showSpatialSkeletonActionError("update node properties", error);
-          resetPropertyInputs();
-        } finally {
-          savePending = false;
-          updatePropertyEditorState();
+      const getConfidenceEditingDisabledReason = () => {
+        const disabledReason = getPropertyEditingDisabledReason();
+        if (disabledReason !== undefined) {
+          return disabledReason;
         }
-      })();
-    };
-    radiusInput.addEventListener("input", updatePropertyEditorState);
-    radiusInput.addEventListener("keydown", handlePropertyInputKeyDown);
-    radiusInput.addEventListener("change", commitProperties);
-    confidenceControl.addEventListener("change", commitProperties);
-    updatePropertyEditorState();
+        return undefined;
+      };
+      const setPropertyInputValidity = (
+        input: HTMLInputElement | HTMLSelectElement,
+        valid: boolean,
+        invalidTitle: string,
+        disabledReason: string | undefined,
+      ) => {
+        input.classList.toggle(
+          "neuroglancer-spatial-skeleton-properties-input-invalid",
+          !valid,
+        );
+        if (disabledReason !== undefined) {
+          input.title = disabledReason;
+        } else if (!valid) {
+          input.title = invalidTitle;
+        } else {
+          input.removeAttribute("title");
+        }
+      };
+      const getConfidenceValidationError = (confidence: number) => {
+        if (!Number.isFinite(confidence)) {
+          return "Confidence must be a finite number.";
+        }
+        return confidenceSelectValues.includes(confidence)
+          ? undefined
+          : "Confidence must use one of the supported values.";
+      };
+      const getParsedProperties = () => {
+        const radius = Number(radiusInput.value);
+        const confidence = Number(confidenceControl.value);
+        const radiusValid = Number.isFinite(radius);
+        const confidenceInvalidTitle = getConfidenceValidationError(confidence);
+        return {
+          radius,
+          confidence,
+          radiusValid,
+          confidenceValid: confidenceInvalidTitle === undefined,
+          confidenceInvalidTitle,
+        };
+      };
+      const updatePropertyEditorState = () => {
+        const radiusDisabledReason = getPropertyEditingDisabledReason();
+        const confidenceDisabledReason = getConfidenceEditingDisabledReason();
+        const { radiusValid, confidenceValid, confidenceInvalidTitle } =
+          getParsedProperties();
+        radiusInput.disabled =
+          radiusDisabledReason !== undefined || savePending;
+        confidenceControl.disabled =
+          confidenceDisabledReason !== undefined || savePending;
+        setPropertyInputValidity(
+          radiusInput,
+          radiusValid,
+          "Radius must be a finite number.",
+          radiusDisabledReason,
+        );
+        setPropertyInputValidity(
+          confidenceControl,
+          confidenceValid,
+          confidenceInvalidTitle ?? "Confidence is invalid.",
+          confidenceDisabledReason,
+        );
+      };
+      const resetPropertyInputs = () => {
+        radiusInput.value =
+          formatSpatialSkeletonEditableNumber(committedRadius);
+        confidenceControl.value = committedConfidence.toString();
+        updatePropertyEditorState();
+      };
+      const handlePropertyInputKeyDown = (event: KeyboardEvent) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        (event.currentTarget as HTMLElement | null)?.blur();
+      };
+      const commitProperties = () => {
+        if (savePending) return;
+        const disabledReason = getPropertyEditingDisabledReason();
+        if (disabledReason !== undefined) {
+          StatusMessage.showTemporaryMessage(disabledReason);
+          resetPropertyInputs();
+          return;
+        }
+        const {
+          radius,
+          confidence,
+          radiusValid,
+          confidenceValid,
+          confidenceInvalidTitle,
+        } = getParsedProperties();
+        if (!radiusValid || !confidenceValid) {
+          StatusMessage.showTemporaryMessage(
+            confidenceInvalidTitle ?? "Enter a valid radius and confidence.",
+          );
+          resetPropertyInputs();
+          return;
+        }
+        const radiusChanged = radius !== committedRadius;
+        const confidenceChanged = confidence !== committedConfidence;
+        if (!radiusChanged && !confidenceChanged) {
+          resetPropertyInputs();
+          return;
+        }
+        savePending = true;
+        updatePropertyEditorState();
+        void (async () => {
+          try {
+            const currentNode = this.spatialSkeletonState.getCachedNode(
+              nodeInfo.nodeId,
+            );
+            if (currentNode === undefined) {
+              throw new Error(
+                `Node ${nodeInfo.nodeId} is missing from the inspected skeleton cache.`,
+              );
+            }
+            await executeSpatialSkeletonNodePropertiesUpdate(this, {
+              node: currentNode,
+              next: { radius, confidence },
+            });
+            committedRadius = radius;
+            committedConfidence = confidence;
+            resetPropertyInputs();
+          } catch (error) {
+            showSpatialSkeletonActionError("update node properties", error);
+            resetPropertyInputs();
+          } finally {
+            savePending = false;
+            updatePropertyEditorState();
+          }
+        })();
+      };
+      radiusInput.addEventListener("input", updatePropertyEditorState);
+      radiusInput.addEventListener("keydown", handlePropertyInputKeyDown);
+      radiusInput.addEventListener("change", commitProperties);
+      confidenceControl.addEventListener("change", commitProperties);
+      updatePropertyEditorState();
+    }
     const descriptionText =
-      cachedNodeInfo?.description ?? nodeInfo.description ?? "";
+      cachedNodeInfo?.description ?? completeNodeInfo?.description ?? "";
     const descriptionEditingDisabledReason =
       skeletonSource === undefined
         ? "Unable to resolve editable skeleton source for the active layer."
@@ -3359,6 +3392,8 @@ export class SegmentationUserLayer extends Base {
       descriptionElement.textContent = descriptionText;
       descriptionElement.title = descriptionEditingDisabledReason;
       container.appendChild(descriptionElement);
+    } else if (completeNodeInfo === undefined) {
+      appendValue("Description", "Unavailable");
     }
     return true;
   }
