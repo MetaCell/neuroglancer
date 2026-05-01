@@ -596,22 +596,6 @@ function buildSpatialSkeletonGridLevels(
   }));
 }
 
-function findClosestSpatialSkeletonGridLevel(
-  levels: SpatialSkeletonGridLevel[],
-  lod: number,
-): number {
-  let bestIndex = 0;
-  let bestDistance = Number.POSITIVE_INFINITY;
-  for (let i = 0; i < levels.length; ++i) {
-    const distance = Math.abs(levels[i].lod - lod);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      bestIndex = i;
-    }
-  }
-  return bestIndex;
-}
-
 function findClosestSpatialSkeletonGridLevelBySpacing(
   levels: SpatialSkeletonGridLevel[],
   spacing: number,
@@ -823,72 +807,6 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
       this.spatialSkeletonGridResolutionTarget3dExplicit = true;
       this.applySpatialSkeletonGridResolutionTarget("3d");
     });
-    this.spatialSkeletonGridResolutionRelative2d.changed.add(() => {
-      const nextRelative = this.spatialSkeletonGridResolutionRelative2d.value;
-      if (nextRelative !== this.lastSpatialSkeletonGridResolutionRelative2d) {
-        const pixelSize = Math.max(
-          this.spatialSkeletonGridPixelSize2d.value,
-          1e-6,
-        );
-        const currentTarget = this.spatialSkeletonGridResolutionTarget2d.value;
-        const adjustedTarget = nextRelative
-          ? currentTarget / pixelSize
-          : currentTarget * pixelSize;
-        this.suppressSpatialSkeletonGridResolutionTarget2d = true;
-        this.spatialSkeletonGridResolutionTarget2d.value = adjustedTarget;
-        this.suppressSpatialSkeletonGridResolutionTarget2d = false;
-        this.spatialSkeletonGridResolutionTarget2dExplicit = true;
-        this.lastSpatialSkeletonGridResolutionRelative2d = nextRelative;
-      }
-      this.applySpatialSkeletonGridResolutionTarget("2d");
-    });
-    this.spatialSkeletonGridResolutionRelative3d.changed.add(() => {
-      const nextRelative = this.spatialSkeletonGridResolutionRelative3d.value;
-      if (nextRelative !== this.lastSpatialSkeletonGridResolutionRelative3d) {
-        const pixelSize = Math.max(
-          this.spatialSkeletonGridPixelSize3d.value,
-          1e-6,
-        );
-        const currentTarget = this.spatialSkeletonGridResolutionTarget3d.value;
-        const adjustedTarget = nextRelative
-          ? currentTarget / pixelSize
-          : currentTarget * pixelSize;
-        this.suppressSpatialSkeletonGridResolutionTarget3d = true;
-        this.spatialSkeletonGridResolutionTarget3d.value = adjustedTarget;
-        this.suppressSpatialSkeletonGridResolutionTarget3d = false;
-        this.spatialSkeletonGridResolutionTarget3dExplicit = true;
-        this.lastSpatialSkeletonGridResolutionRelative3d = nextRelative;
-      }
-      this.applySpatialSkeletonGridResolutionTarget("3d");
-    });
-    this.spatialSkeletonGridPixelSize2d.changed.add(() => {
-      if (this.spatialSkeletonGridResolutionRelative2d.value) {
-        this.applySpatialSkeletonGridResolutionTarget("2d");
-      }
-    });
-    this.spatialSkeletonGridPixelSize3d.changed.add(() => {
-      if (this.spatialSkeletonGridResolutionRelative3d.value) {
-        this.applySpatialSkeletonGridResolutionTarget("3d");
-      }
-    });
-    this.spatialSkeletonGridLevel2d.changed.add(() => {
-      if (this.suppressSpatialSkeletonGridLevel2d) return;
-      if (this.spatialSkeletonGridLevels.value.length === 0) return;
-      this.setSpatialSkeletonGridLevel(
-        "2d",
-        this.spatialSkeletonGridLevel2d.value,
-        true,
-      );
-    });
-    this.spatialSkeletonGridLevel3d.changed.add(() => {
-      if (this.suppressSpatialSkeletonGridLevel3d) return;
-      if (this.spatialSkeletonGridLevels.value.length === 0) return;
-      this.setSpatialSkeletonGridLevel(
-        "3d",
-        this.spatialSkeletonGridLevel3d.value,
-        true,
-      );
-    });
   }
 
   segmentSelectionState = new SegmentSelectionState();
@@ -927,10 +845,6 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
     verifyFiniteNonNegativeFloat,
     1,
   );
-  spatialSkeletonGridResolutionRelative2d = new TrackableBoolean(false, false);
-  spatialSkeletonGridResolutionRelative3d = new TrackableBoolean(false, false);
-  spatialSkeletonGridPixelSize2d = new WatchableValue<number>(1);
-  spatialSkeletonGridPixelSize3d = new WatchableValue<number>(1);
   spatialSkeletonGridChunkStats2d = new WatchableValue({
     presentCount: 0,
     totalCount: 0,
@@ -949,14 +863,8 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
   );
   private spatialSkeletonGridResolutionTarget2dExplicit = false;
   private spatialSkeletonGridResolutionTarget3dExplicit = false;
-  private spatialSkeletonGridLevel2dExplicit = false;
-  private spatialSkeletonGridLevel3dExplicit = false;
-  private suppressSpatialSkeletonGridLevel2d = false;
-  private suppressSpatialSkeletonGridLevel3d = false;
   private suppressSpatialSkeletonGridResolutionTarget2d = false;
   private suppressSpatialSkeletonGridResolutionTarget3d = false;
-  private lastSpatialSkeletonGridResolutionRelative2d = false;
-  private lastSpatialSkeletonGridResolutionRelative3d = false;
   ignoreNullVisibleSet = new TrackableBoolean(true, true);
   skeletonRenderingOptions = new SkeletonRenderingOptions();
   shaderError = makeWatchableShaderError();
@@ -1011,40 +919,23 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
     const target3dIndex = this.spatialSkeletonGridResolutionTarget3dExplicit
       ? findClosestSpatialSkeletonGridLevelBySpacing(
           levels,
-          this.getSpatialSkeletonGridTargetSpacing("3d"),
+          this.spatialSkeletonGridResolutionTarget3d.value,
         )
-      : this.spatialSkeletonGridLevel3dExplicit
-        ? this.spatialSkeletonGridLevel3d.value
-        : findClosestSpatialSkeletonGridLevel(levels, this.skeletonLod.value);
-    const resolved3dIndex = this.setSpatialSkeletonGridLevel(
-      "3d",
-      target3dIndex,
-      this.spatialSkeletonGridResolutionTarget3dExplicit ||
-        this.spatialSkeletonGridLevel3dExplicit,
-    );
+      : 0;
+    const resolved3dIndex = this.setSpatialSkeletonGridLevel("3d", target3dIndex);
     const target2dIndex = this.spatialSkeletonGridResolutionTarget2dExplicit
       ? findClosestSpatialSkeletonGridLevelBySpacing(
           levels,
-          this.getSpatialSkeletonGridTargetSpacing("2d"),
+          this.spatialSkeletonGridResolutionTarget2d.value,
         )
-      : this.spatialSkeletonGridLevel2dExplicit
-        ? this.spatialSkeletonGridLevel2d.value
-        : resolved3dIndex;
-    this.setSpatialSkeletonGridLevel(
-      "2d",
-      target2dIndex,
-      this.spatialSkeletonGridResolutionTarget2dExplicit ||
-        this.spatialSkeletonGridLevel2dExplicit,
-    );
+      : resolved3dIndex;
+    this.setSpatialSkeletonGridLevel("2d", target2dIndex);
     if (!this.spatialSkeletonGridResolutionTarget3dExplicit) {
       const spacing = getSpatialSkeletonGridSpacing(
         levels[Math.min(resolved3dIndex, levels.length - 1)].size,
       );
-      const targetValue = this.spatialSkeletonGridResolutionRelative3d.value
-        ? spacing / Math.max(this.spatialSkeletonGridPixelSize3d.value, 1e-6)
-        : spacing;
       this.suppressSpatialSkeletonGridResolutionTarget3d = true;
-      this.spatialSkeletonGridResolutionTarget3d.value = targetValue;
+      this.spatialSkeletonGridResolutionTarget3d.value = spacing;
       this.suppressSpatialSkeletonGridResolutionTarget3d = false;
     }
     if (!this.spatialSkeletonGridResolutionTarget2dExplicit) {
@@ -1052,83 +943,10 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
         Math.max(target2dIndex, 0),
         levels.length - 1,
       );
-      const spacing = getSpatialSkeletonGridSpacing(
-        levels[resolved2dIndex].size,
-      );
-      const targetValue = this.spatialSkeletonGridResolutionRelative2d.value
-        ? spacing / Math.max(this.spatialSkeletonGridPixelSize2d.value, 1e-6)
-        : spacing;
+      const spacing = getSpatialSkeletonGridSpacing(levels[resolved2dIndex].size);
       this.suppressSpatialSkeletonGridResolutionTarget2d = true;
-      this.spatialSkeletonGridResolutionTarget2d.value = targetValue;
+      this.spatialSkeletonGridResolutionTarget2d.value = spacing;
       this.suppressSpatialSkeletonGridResolutionTarget2d = false;
-    }
-  }
-
-  applySpatialSkeletonGridLevel2dFromSpec(value: any) {
-    if (
-      value !== undefined &&
-      !this.spatialSkeletonGridResolutionTarget2dExplicit
-    ) {
-      this.spatialSkeletonGridLevel2d.restoreState(value);
-      this.spatialSkeletonGridLevel2dExplicit = true;
-      if (this.spatialSkeletonGridLevels.value.length > 0) {
-        this.setSpatialSkeletonGridLevel(
-          "2d",
-          this.spatialSkeletonGridLevel2d.value,
-          true,
-        );
-        if (!this.spatialSkeletonGridResolutionTarget2dExplicit) {
-          const spacing = getSpatialSkeletonGridSpacing(
-            this.spatialSkeletonGridLevels.value[
-              Math.min(
-                this.spatialSkeletonGridLevel2d.value,
-                this.spatialSkeletonGridLevels.value.length - 1,
-              )
-            ].size,
-          );
-          const targetValue = this.spatialSkeletonGridResolutionRelative2d.value
-            ? spacing /
-              Math.max(this.spatialSkeletonGridPixelSize2d.value, 1e-6)
-            : spacing;
-          this.suppressSpatialSkeletonGridResolutionTarget2d = true;
-          this.spatialSkeletonGridResolutionTarget2d.value = targetValue;
-          this.suppressSpatialSkeletonGridResolutionTarget2d = false;
-        }
-      }
-    }
-  }
-
-  applySpatialSkeletonGridLevel3dFromSpec(value: any) {
-    if (
-      value !== undefined &&
-      !this.spatialSkeletonGridResolutionTarget3dExplicit
-    ) {
-      this.spatialSkeletonGridLevel3d.restoreState(value);
-      this.spatialSkeletonGridLevel3dExplicit = true;
-      if (this.spatialSkeletonGridLevels.value.length > 0) {
-        this.setSpatialSkeletonGridLevel(
-          "3d",
-          this.spatialSkeletonGridLevel3d.value,
-          true,
-        );
-        if (!this.spatialSkeletonGridResolutionTarget3dExplicit) {
-          const spacing = getSpatialSkeletonGridSpacing(
-            this.spatialSkeletonGridLevels.value[
-              Math.min(
-                this.spatialSkeletonGridLevel3d.value,
-                this.spatialSkeletonGridLevels.value.length - 1,
-              )
-            ].size,
-          );
-          const targetValue = this.spatialSkeletonGridResolutionRelative3d.value
-            ? spacing /
-              Math.max(this.spatialSkeletonGridPixelSize3d.value, 1e-6)
-            : spacing;
-          this.suppressSpatialSkeletonGridResolutionTarget3d = true;
-          this.spatialSkeletonGridResolutionTarget3d.value = targetValue;
-          this.suppressSpatialSkeletonGridResolutionTarget3d = false;
-        }
-      }
     }
   }
 
@@ -1156,60 +974,30 @@ class SegmentationUserLayerDisplayState implements SegmentationDisplayState {
     }
   }
 
-  private getSpatialSkeletonGridTargetSpacing(kind: "2d" | "3d") {
+  private applySpatialSkeletonGridResolutionTarget(kind: "2d" | "3d") {
+    const levels = this.spatialSkeletonGridLevels.value;
+    if (levels.length === 0) return;
     const target =
       kind === "2d"
         ? this.spatialSkeletonGridResolutionTarget2d.value
         : this.spatialSkeletonGridResolutionTarget3d.value;
-    const isRelative =
-      kind === "2d"
-        ? this.spatialSkeletonGridResolutionRelative2d.value
-        : this.spatialSkeletonGridResolutionRelative3d.value;
-    const pixelSize =
-      kind === "2d"
-        ? this.spatialSkeletonGridPixelSize2d.value
-        : this.spatialSkeletonGridPixelSize3d.value;
-    return isRelative ? target * pixelSize : target;
+    const index = findClosestSpatialSkeletonGridLevelBySpacing(levels, target);
+    this.setSpatialSkeletonGridLevel(kind, index);
   }
 
-  private applySpatialSkeletonGridResolutionTarget(kind: "2d" | "3d") {
-    const levels = this.spatialSkeletonGridLevels.value;
-    if (levels.length === 0) return;
-    const targetSpacing = this.getSpatialSkeletonGridTargetSpacing(kind);
-    const index = findClosestSpatialSkeletonGridLevelBySpacing(
-      levels,
-      targetSpacing,
-    );
-    const markExplicit =
-      kind === "2d"
-        ? this.spatialSkeletonGridResolutionTarget2dExplicit
-        : this.spatialSkeletonGridResolutionTarget3dExplicit;
-    this.setSpatialSkeletonGridLevel(kind, index, markExplicit);
-  }
-
-  private setSpatialSkeletonGridLevel(
-    kind: "2d" | "3d",
-    index: number,
-    markExplicit: boolean,
-  ) {
+  private setSpatialSkeletonGridLevel(kind: "2d" | "3d", index: number) {
     const levels = this.spatialSkeletonGridLevels.value;
     if (levels.length === 0) return 0;
     const clampedIndex = Math.min(Math.max(index, 0), levels.length - 1);
     if (kind === "2d") {
-      if (markExplicit) this.spatialSkeletonGridLevel2dExplicit = true;
-      this.suppressSpatialSkeletonGridLevel2d = true;
       this.spatialSkeletonGridLevel2d.value = clampedIndex;
-      this.suppressSpatialSkeletonGridLevel2d = false;
       const nextLod = levels[clampedIndex].lod;
       if (this.spatialSkeletonLod2d.value !== nextLod) {
         this.spatialSkeletonLod2d.value = nextLod;
       }
       return clampedIndex;
     }
-    if (markExplicit) this.spatialSkeletonGridLevel3dExplicit = true;
-    this.suppressSpatialSkeletonGridLevel3d = true;
     this.spatialSkeletonGridLevel3d.value = clampedIndex;
-    this.suppressSpatialSkeletonGridLevel3d = false;
     const nextLod = levels[clampedIndex].lod;
     if (this.skeletonLod.value !== nextLod) {
       this.skeletonLod.value = nextLod;
@@ -1615,9 +1403,6 @@ export class SegmentationUserLayer extends Base {
     this.displayState.hiddenObjectAlpha.changed.add(
       this.specificationChanged.dispatch,
     );
-    this.displayState.skeletonLod.changed.add(
-      this.specificationChanged.dispatch,
-    );
     this.displayState.spatialSkeletonNodeQuery.changed.add(
       this.specificationChanged.dispatch,
     );
@@ -1628,18 +1413,6 @@ export class SegmentationUserLayer extends Base {
       this.specificationChanged.dispatch,
     );
     this.displayState.spatialSkeletonGridResolutionTarget3d.changed.add(
-      this.specificationChanged.dispatch,
-    );
-    this.displayState.spatialSkeletonGridResolutionRelative2d.changed.add(
-      this.specificationChanged.dispatch,
-    );
-    this.displayState.spatialSkeletonGridResolutionRelative3d.changed.add(
-      this.specificationChanged.dispatch,
-    );
-    this.displayState.spatialSkeletonGridLevel2d.changed.add(
-      this.specificationChanged.dispatch,
-    );
-    this.displayState.spatialSkeletonGridLevel3d.changed.add(
       this.specificationChanged.dispatch,
     );
     this.displayState.hoverHighlight.changed.add(
@@ -2368,10 +2141,10 @@ export class SegmentationUserLayer extends Base {
       (value) =>
         this.displayState.spatialSkeletonNodeFilter.restoreState(value),
     );
-    this.displayState.applySpatialSkeletonGridLevel2dFromSpec(
+    this.displayState.applySpatialSkeletonGridResolutionTarget2dFromSpec(
       specification[json_keys.SKELETON_CROSS_SECTION_RENDER_SCALE_JSON_KEY],
     );
-    this.displayState.applySpatialSkeletonGridLevel3dFromSpec(
+    this.displayState.applySpatialSkeletonGridResolutionTarget3dFromSpec(
       specification[json_keys.SKELETON_PERSPECTIVE_RENDER_SCALE_JSON_KEY],
     );
     this.displayState.baseSegmentColoring.restoreState(

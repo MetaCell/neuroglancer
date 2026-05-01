@@ -26,7 +26,6 @@ import {
   renderScaleHistogramBinSize,
   renderScaleHistogramOrigin,
 } from "#src/render_scale_statistics.js";
-import { TrackableBooleanCheckbox } from "#src/trackable_boolean.js";
 import type {
   TrackableValueInterface,
   WatchableValueInterface,
@@ -72,14 +71,10 @@ export interface RenderScaleWidgetOptions {
 export interface SpatialSkeletonGridRenderScaleWidgetOptions {
   histogram: RenderScaleHistogram;
   target: TrackableValueInterface<number>;
-  relative: WatchableValueInterface<boolean>;
-  pixelSize: WatchableValueInterface<number>;
   chunkStats?: WatchableValueInterface<{
     presentCount: number;
     totalCount: number;
   }>;
-  relativeLabel?: string;
-  relativeTooltip?: string;
 }
 
 export class RenderScaleWidget extends RefCounted {
@@ -429,7 +424,6 @@ export class VolumeRenderingRenderScaleWidget extends RenderScaleWidget {
 
 export class SpatialSkeletonGridRenderScaleWidget extends RenderScaleWidget {
   protected unitOfTarget = "nm";
-  private relative?: WatchableValueInterface<boolean>;
   private chunkStats?: WatchableValueInterface<{
     presentCount: number;
     totalCount: number;
@@ -444,59 +438,20 @@ export class SpatialSkeletonGridRenderScaleWidget extends RenderScaleWidget {
     histogram: RenderScaleHistogram,
     target: TrackableValueInterface<number>,
     options: {
-      relative?: WatchableValueInterface<boolean>;
-      pixelSize?: WatchableValueInterface<number>;
       chunkStats?: WatchableValueInterface<{
         presentCount: number;
         totalCount: number;
       }>;
-      relativeLabel?: string;
-      relativeTooltip?: string;
     } = {},
   ) {
     super(histogram, target);
     this.element.classList.add("neuroglancer-render-scale-widget-grid");
     this.syncScaleConfig();
-    this.relative = options.relative;
     this.chunkStats = options.chunkStats;
     if (options.chunkStats !== undefined) {
       this.registerDisposer(
         options.chunkStats.changed.add(() => this.updateView()),
       );
-    }
-    if (options.relative !== undefined) {
-      const relativeTooltip =
-        options.relativeTooltip ??
-        "Interpret the skeleton grid resolution target as relative to zoom";
-      this.label.classList.add("neuroglancer-render-scale-widget-relative");
-      this.label.title = relativeTooltip;
-      const relativeCheckbox = this.registerDisposer(
-        new TrackableBooleanCheckbox(options.relative, {
-          enabledTitle: relativeTooltip,
-          disabledTitle: relativeTooltip,
-        }),
-      );
-      relativeCheckbox.element.classList.add(
-        "neuroglancer-render-scale-widget-relative-checkbox",
-      );
-      this.label.appendChild(relativeCheckbox.element);
-      const relativeLabel = document.createElement("span");
-      relativeLabel.textContent = options.relativeLabel ?? "Rel";
-      this.label.appendChild(relativeLabel);
-      this.registerDisposer(
-        options.relative.changed.add(() => this.updateView()),
-      );
-      if (options.pixelSize !== undefined) {
-        this.registerDisposer(
-          options.pixelSize.changed.add(() => this.updateView()),
-        );
-      }
-      this.registerEventListener(this.element, "click", (event: MouseEvent) => {
-        if (event.target === relativeCheckbox.element) {
-          return;
-        }
-        event.preventDefault();
-      });
     }
     this.legendRenderScale.title = "Target skeleton grid spacing";
   }
@@ -519,7 +474,6 @@ export class SpatialSkeletonGridRenderScaleWidget extends RenderScaleWidget {
 
   updateView() {
     this.syncScaleConfig();
-    this.unitOfTarget = this.relative?.value === true ? "px" : "nm";
     super.updateView();
   }
 }
@@ -576,22 +530,10 @@ export function spatialSkeletonGridRenderScaleLayerControl<
 ): LayerControlFactory<LayerType, SpatialSkeletonGridRenderScaleWidget> {
   return {
     makeControl: (layer, context) => {
-      const {
-        histogram,
-        target,
-        relative,
-        pixelSize,
-        chunkStats,
-        relativeLabel,
-        relativeTooltip,
-      } = getter(layer);
+      const { histogram, target, chunkStats } = getter(layer);
       const control = context.registerDisposer(
         new SpatialSkeletonGridRenderScaleWidget(histogram, target, {
-          relative,
-          pixelSize,
           chunkStats,
-          relativeLabel,
-          relativeTooltip,
         }),
       );
       return { control, controlElement: control.element };
