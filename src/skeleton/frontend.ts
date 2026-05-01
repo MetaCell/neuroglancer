@@ -1816,7 +1816,6 @@ export class MultiscaleSliceViewSpatiallyIndexedSkeletonLayer extends SliceViewR
     this.registerChunkStatsSliceView(
       sliceView as RefCounted & { rpcId: number },
     );
-    // Skip drawing if hidden and visible skeletons are both invisible
     if (
       displayState.objectAlpha?.value <= 0.0 &&
       displayState.hiddenObjectAlpha?.value <= 0.0
