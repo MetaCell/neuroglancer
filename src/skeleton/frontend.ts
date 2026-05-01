@@ -35,6 +35,7 @@ import type {
   PerspectiveViewRenderContext,
 } from "#src/perspective_view/render_layer.js";
 import { PerspectiveViewRenderLayer } from "#src/perspective_view/render_layer.js";
+import type { ProjectionParameters } from "#src/projection_parameters.js";
 import type {
   ChunkTransformParameters,
   RenderLayerTransform,
@@ -2923,7 +2924,7 @@ export class SpatiallyIndexedSkeletonLayer
 
   private areVisibleChunksReady(
     transformedSources: readonly TransformedSource[][],
-    projectionParameters: any,
+    projectionParameters: ProjectionParameters,
     lod: number | undefined,
   ) {
     if (
@@ -3347,19 +3348,13 @@ export class SpatiallyIndexedSkeletonLayer
   }
 
   isReady(
-    transformedSources?: readonly TransformedSource[][],
-    projectionParameters?: any,
-    lod?: number | undefined,
+    transformedSources: readonly TransformedSource[][],
+    projectionParameters: ProjectionParameters,
+    lod?: number,
   ) {
-    if (
-      transformedSources === undefined ||
-      projectionParameters === undefined
-    ) {
-      return (
-        this.displayState.objectAlpha.value <= 0.0 &&
-        (this.displayState.hiddenObjectAlpha?.value ?? 0) <= 0.0
-      );
-    }
+    // TODO (SKM) I don't think this is getting
+    // called as expected, for example, I think
+    // the screenshot should call this but it doesn't seem to
     return this.areVisibleChunksReady(
       transformedSources,
       projectionParameters,
