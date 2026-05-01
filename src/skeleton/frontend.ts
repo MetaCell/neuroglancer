@@ -3471,10 +3471,12 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
   }
 
   get isTransparent() {
-    return (
-      this.base.displayState.objectAlpha.value < 1.0 ||
-      this.base.displayState.hiddenObjectAlpha.value < 1.0
-    );
+    const { objectAlpha, hiddenObjectAlpha } = this.base.displayState;
+    const opaque =
+      (objectAlpha.value == 1.0 &&
+        (hiddenObjectAlpha.value == 1.0 || hiddenObjectAlpha.value == 0.0)) ||
+      (objectAlpha.value == 0.0 && hiddenObjectAlpha.value == 1.0);
+    return !opaque;
   }
 
   getValueAt(position: Float32Array) {
