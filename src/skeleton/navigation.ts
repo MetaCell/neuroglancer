@@ -15,12 +15,14 @@
  */
 
 import type {
+  SpatialSkeletonId,
   SpatiallyIndexedSkeletonNode,
   SpatialSkeletonVector,
 } from "#src/skeleton/api.js";
+import { compareUint64Ids } from "#src/util/bigint.js";
 
 export interface SpatiallyIndexedSkeletonNavigationTarget {
-  nodeId: number;
+  nodeId: SpatialSkeletonId;
   position: SpatialSkeletonVector;
 }
 
@@ -31,31 +33,31 @@ export interface SpatiallyIndexedSkeletonOpenLeaf
 }
 
 export interface SpatiallyIndexedSkeletonNavigationGraph {
-  nodeById: Map<number, SpatiallyIndexedSkeletonNode>;
-  childrenByParent: Map<number, number[]>;
-  rootNodeIds: number[];
+  nodeById: Map<SpatialSkeletonId, SpatiallyIndexedSkeletonNode>;
+  childrenByParent: Map<SpatialSkeletonId, SpatialSkeletonId[]>;
+  rootNodeIds: SpatialSkeletonId[];
 }
 
 interface CollapsedChildPath {
-  path: readonly number[];
-  representativeNodeId: number;
+  path: readonly SpatialSkeletonId[];
+  representativeNodeId: SpatialSkeletonId;
 }
 
 interface CollapsedLevelContext {
-  levelByNodeId: Map<number, number>;
-  nodeIdsByLevel: Map<number, number[]>;
+  levelByNodeId: Map<SpatialSkeletonId, number>;
+  nodeIdsByLevel: Map<number, SpatialSkeletonId[]>;
 }
 
 interface NavigationGraphDerivedState {
-  sortPriorityByNodeId: Map<number, number>;
-  orderedChildNodeIdsByNodeId: Map<number, readonly number[]>;
-  collapsedPathByNodeId: Map<number, readonly number[]>;
+  sortPriorityByNodeId: Map<SpatialSkeletonId, number>;
+  orderedChildNodeIdsByNodeId: Map<SpatialSkeletonId, readonly SpatialSkeletonId[]>;
+  collapsedPathByNodeId: Map<SpatialSkeletonId, readonly SpatialSkeletonId[]>;
   collapsedOrderedChildPathsByNodeId: Map<
-    number,
+    SpatialSkeletonId,
     readonly CollapsedChildPath[]
   >;
-  flatListNodeIds?: readonly number[];
-  collapsedFlatListNodeIds?: readonly number[];
+  flatListNodeIds?: readonly SpatialSkeletonId[];
+  collapsedFlatListNodeIds?: readonly SpatialSkeletonId[];
   collapsedLevelContext?: CollapsedLevelContext;
 }
 
@@ -67,7 +69,7 @@ const navigationGraphDerivedState = new WeakMap<
 function buildNavigationGraphDerivedState(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
 ): NavigationGraphDerivedState {
-  const sortPriorityByNodeId = new Map<number, number>();
+  const sortPriorityByNodeId = new Map<SpatialSkeletonId, number>();
   for (const [nodeId, node] of graph.nodeById) {
     const childCount = graph.childrenByParent.get(nodeId)?.length ?? 0;
     const parentNodeId = node.parentNodeId;
@@ -107,14 +109,14 @@ function getNavigationGraphDerivedState(
 export function buildSpatiallyIndexedSkeletonNavigationGraph(
   nodes: readonly SpatiallyIndexedSkeletonNode[],
 ): SpatiallyIndexedSkeletonNavigationGraph {
-  const nodeById = new Map<number, SpatiallyIndexedSkeletonNode>();
+  const nodeById = new Map<SpatialSkeletonId, SpatiallyIndexedSkeletonNode>();
   for (const node of nodes) {
     if (!nodeById.has(node.nodeId)) {
       nodeById.set(node.nodeId, node);
     }
   }
 
-  const childrenByParent = new Map<number, number[]>();
+  const childrenByParent = new Map<SpatialSkeletonId, SpatialSkeletonId[]>();
   for (const node of nodeById.values()) {
     const parentNodeId = node.parentNodeId;
     if (parentNodeId === undefined || !nodeById.has(parentNodeId)) continue;
@@ -126,19 +128,19 @@ export function buildSpatiallyIndexedSkeletonNavigationGraph(
     children.push(node.nodeId);
   }
   for (const children of childrenByParent.values()) {
-    children.sort((a, b) => a - b);
+    children.sort(compareUint64Ids);
   }
 
-  const rootNodeIds: number[] = [];
+  const rootNodeIds: SpatialSkeletonId[] = [];
   for (const node of nodeById.values()) {
     const parentNodeId = node.parentNodeId;
     if (parentNodeId === undefined || !nodeById.has(parentNodeId)) {
       rootNodeIds.push(node.nodeId);
     }
   }
-  rootNodeIds.sort((a, b) => a - b);
+  rootNodeIds.sort(compareUint64Ids);
   if (rootNodeIds.length === 0 && nodeById.size > 0) {
-    rootNodeIds.push([...nodeById.keys()].sort((a, b) => a - b)[0]);
+    rootNodeIds.push([...nodeById.keys()].sort(compareUint64Ids)[0]);
   }
 
   const graph = {
@@ -155,7 +157,7 @@ export function buildSpatiallyIndexedSkeletonNavigationGraph(
 
 function getFlatListNodeSortPriority(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
 ) {
   const priority =
     getNavigationGraphDerivedState(graph).sortPriorityByNodeId.get(nodeId);
@@ -167,13 +169,13 @@ function getFlatListNodeSortPriority(
 
 function compareFlatListNodeIds(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
-  a: number,
-  b: number,
+  a: SpatialSkeletonId,
+  b: SpatialSkeletonId,
 ) {
   const priorityDelta =
     getFlatListNodeSortPriority(graph, a) -
     getFlatListNodeSortPriority(graph, b);
-  return priorityDelta !== 0 ? priorityDelta : a - b;
+  return priorityDelta !== 0 ? priorityDelta : compareUint64Ids(a, b);
 }
 
 export function getFlatListNodeIds(
@@ -188,10 +190,12 @@ export function getFlatListNodeIds(
     return derivedState.flatListNodeIds;
   }
 
-  const orderedNodeIds: number[] = [];
-  const visited = new Set<number>();
+  const orderedNodeIds: SpatialSkeletonId[] = [];
+  const visited = new Set<SpatialSkeletonId>();
 
-  const appendLeafFirstPreOrder = (startNodeIds: readonly number[]) => {
+  const appendLeafFirstPreOrder = (
+    startNodeIds: readonly SpatialSkeletonId[],
+  ) => {
     const stack = [...startNodeIds]
       .sort((a, b) => compareFlatListNodeIds(graph, a, b))
       .reverse();
@@ -237,7 +241,7 @@ export function getFlatListNodeIds(
 
 function getNodeOrThrow(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
 ) {
   const node = graph.nodeById.get(nodeId);
   if (node === undefined) {
@@ -248,7 +252,7 @@ function getNodeOrThrow(
 
 function getNodeTarget(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
 ): SpatiallyIndexedSkeletonNavigationTarget {
   const node = getNodeOrThrow(graph, nodeId);
   return {
@@ -259,14 +263,14 @@ function getNodeTarget(
 
 function getChildNodeIds(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
 ) {
   return graph.childrenByParent.get(nodeId) ?? [];
 }
 
 function getParentNodeId(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
 ) {
   const parentNodeId = getNodeOrThrow(graph, nodeId).parentNodeId;
   if (parentNodeId === undefined || !graph.nodeById.has(parentNodeId)) {
@@ -277,7 +281,7 @@ function getParentNodeId(
 
 function getFlatListOrderedChildNodeIds(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
 ) {
   const childNodeIds = getChildNodeIds(graph, nodeId);
   if (childNodeIds.length <= 1) {
@@ -297,7 +301,7 @@ function getFlatListOrderedChildNodeIds(
 
 function getCollapsedBranchPath(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
 ) {
   const derivedState = getNavigationGraphDerivedState(graph);
   const cached = derivedState.collapsedPathByNodeId.get(nodeId);
@@ -305,7 +309,7 @@ function getCollapsedBranchPath(
     return cached;
   }
   const path = [nodeId];
-  const visited = new Set<number>(path);
+  const visited = new Set<SpatialSkeletonId>(path);
   let currentNodeId = nodeId;
   while (isCollapsedRegularNode(graph, currentNodeId)) {
     const nextNodeId = getChildNodeIds(graph, currentNodeId)[0];
@@ -322,7 +326,7 @@ function getCollapsedBranchPath(
 
 function getCollapsedOrderedChildPaths(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
 ) {
   const derivedState = getNavigationGraphDerivedState(graph);
   const cached = derivedState.collapsedOrderedChildPathsByNodeId.get(nodeId);
@@ -349,7 +353,7 @@ function getCollapsedOrderedChildPaths(
 
 function isCollapsedRegularNode(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
 ) {
   const node = getNodeOrThrow(graph, nodeId);
   return (
@@ -361,7 +365,7 @@ function isCollapsedRegularNode(
 
 function getCollapsedChildNodeIds(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
 ) {
   return getCollapsedOrderedChildPaths(graph, nodeId).map(
     ({ representativeNodeId }) => representativeNodeId,
@@ -375,11 +379,11 @@ function getCollapsedOrderedFlatListNodeIds(
   if (derivedState.collapsedFlatListNodeIds !== undefined) {
     return derivedState.collapsedFlatListNodeIds;
   }
-  const orderedNodeIds: number[] = [];
-  const visited = new Set<number>();
+  const orderedNodeIds: SpatialSkeletonId[] = [];
+  const visited = new Set<SpatialSkeletonId>();
 
   const appendLeafFirstPreOrder = (
-    startPaths: readonly (readonly number[])[],
+    startPaths: readonly (readonly SpatialSkeletonId[])[],
   ) => {
     const stack = [...startPaths].map((path) => [...path]).reverse();
     while (stack.length > 0) {
@@ -439,10 +443,10 @@ function getCollapsedLevelContext(
   if (derivedState.collapsedLevelContext !== undefined) {
     return derivedState.collapsedLevelContext;
   }
-  const levelByNodeId = new Map<number, number>();
-  const nodeIdsByLevel = new Map<number, number[]>();
+  const levelByNodeId = new Map<SpatialSkeletonId, number>();
+  const nodeIdsByLevel = new Map<number, SpatialSkeletonId[]>();
   const queue = graph.rootNodeIds.map((nodeId) => ({ nodeId, level: 0 }));
-  const visited = new Set<number>();
+  const visited = new Set<SpatialSkeletonId>();
 
   for (let queueIndex = 0; queueIndex < queue.length; ++queueIndex) {
     const { nodeId, level } = queue[queueIndex];
@@ -469,7 +473,7 @@ function getCollapsedLevelContext(
 
 function getBranchEndNodeIds(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
 ) {
   getNodeOrThrow(graph, nodeId);
   const childNodeIds = getFlatListOrderedChildNodeIds(graph, nodeId);
@@ -498,11 +502,11 @@ export function getSkeletonRootNode(
 
 export function getBranchStart(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
 ) {
   getNodeOrThrow(graph, nodeId);
   let currentNodeId = nodeId;
-  const visited = new Set<number>([currentNodeId]);
+  const visited = new Set<SpatialSkeletonId>([currentNodeId]);
   while (true) {
     const parentNodeId = getParentNodeId(graph, currentNodeId);
     if (parentNodeId === undefined || visited.has(parentNodeId)) {
@@ -518,7 +522,7 @@ export function getBranchStart(
 
 export function getBranchEnd(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
 ) {
   getNodeOrThrow(graph, nodeId);
   const branchEndNodeIds = getBranchEndNodeIds(graph, nodeId);
@@ -534,7 +538,7 @@ export function getBranchEnd(
 
 export function getParentNode(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
 ) {
   const parentNodeId = getParentNodeId(graph, nodeId);
   return parentNodeId === undefined
@@ -544,7 +548,7 @@ export function getParentNode(
 
 export function getChildNode(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
 ) {
   const childNodeId = getFlatListOrderedChildNodeIds(graph, nodeId)[0];
   return childNodeId === undefined
@@ -554,7 +558,7 @@ export function getChildNode(
 
 export function getRandomChildNode(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
   options: { random?: () => number } = {},
 ) {
   const childNodeIds = getFlatListOrderedChildNodeIds(graph, nodeId);
@@ -574,7 +578,7 @@ export function getRandomChildNode(
 
 export function getNextCollapsedLevelNode(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
 ) {
   getNodeOrThrow(graph, nodeId);
   if (getParentNodeId(graph, nodeId) === undefined) {
@@ -602,10 +606,10 @@ export function getNextCollapsedLevelNode(
 
 export function getOpenLeaves(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
 ): SpatiallyIndexedSkeletonOpenLeaf[] {
   getNodeOrThrow(graph, nodeId);
-  const distances = new Map<number, number>([[nodeId, 0]]);
+  const distances = new Map<SpatialSkeletonId, number>([[nodeId, 0]]);
   const queue = [nodeId];
   for (let queueIndex = 0; queueIndex < queue.length; ++queueIndex) {
     const currentNodeId = queue[queueIndex];
@@ -652,7 +656,9 @@ export function getOpenLeaves(
   }
 
   leaves.sort((a, b) =>
-    a.distance === b.distance ? a.nodeId - b.nodeId : a.distance - b.distance,
+    a.distance === b.distance
+      ? compareUint64Ids(a.nodeId, b.nodeId)
+      : a.distance - b.distance,
   );
   return leaves;
 }

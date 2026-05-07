@@ -15,6 +15,7 @@
  */
 
 import type {
+  SpatialSkeletonId,
   SpatiallyIndexedSkeletonNode,
   SpatialSkeletonSourceState,
   SpatialSkeletonVector,
@@ -22,7 +23,7 @@ import type {
 
 // CATMAID owns these payloads; the generic skeleton API only promises named edit operations.
 export interface CatmaidSpatialSkeletonNodeSourceStateUpdate {
-  nodeId: number;
+  nodeId: SpatialSkeletonId;
   sourceState: SpatialSkeletonSourceState;
 }
 
@@ -31,21 +32,21 @@ export interface CatmaidSpatialSkeletonEditResult {
 }
 
 export interface CatmaidSpatialSkeletonAddNodeRequest {
-  segmentId: number;
+  segmentId: SpatialSkeletonId;
   position: SpatialSkeletonVector;
   parentNode?: SpatiallyIndexedSkeletonNode;
 }
 
 export interface CatmaidSpatialSkeletonAddNodeResult
   extends CatmaidSpatialSkeletonEditResult {
-  nodeId: number;
-  segmentId: number;
+  nodeId: SpatialSkeletonId;
+  segmentId: SpatialSkeletonId;
   sourceState?: SpatialSkeletonSourceState;
   parentSourceState?: SpatialSkeletonSourceState;
 }
 
 export interface CatmaidSpatialSkeletonInsertNodeRequest {
-  segmentId: number;
+  segmentId: SpatialSkeletonId;
   position: SpatialSkeletonVector;
   parentNode: SpatiallyIndexedSkeletonNode;
   childNodes: readonly SpatiallyIndexedSkeletonNode[];
@@ -80,8 +81,8 @@ export interface CatmaidSpatialSkeletonSplitRequest {
 
 export interface CatmaidSpatialSkeletonSplitResult
   extends CatmaidSpatialSkeletonEditResult {
-  existingSegmentId: number | undefined;
-  newSegmentId: number | undefined;
+  existingSegmentId: SpatialSkeletonId | undefined;
+  newSegmentId: SpatialSkeletonId | undefined;
 }
 
 export interface CatmaidSpatialSkeletonMergeRequest {
@@ -91,8 +92,8 @@ export interface CatmaidSpatialSkeletonMergeRequest {
 
 export interface CatmaidSpatialSkeletonMergeResult
   extends CatmaidSpatialSkeletonEditResult {
-  resultSegmentId: number | undefined;
-  deletedSegmentId: number | undefined;
+  resultSegmentId: SpatialSkeletonId | undefined;
+  deletedSegmentId: SpatialSkeletonId | undefined;
   directionAdjusted: boolean;
 }
 

@@ -61,13 +61,13 @@ describe("layer/segmentation/selection", () => {
         nodeId: "23",
         value: 7n,
       }),
-    ).toBe(23);
+    ).toBe(23n);
     expect(
       getSegmentIdFromLayerSelectionValue({
         nodeId: "23",
         value: "7",
       }),
-    ).toBe(7);
+    ).toBe(7n);
     expect(
       getNodeIdFromLayerSelectionState({
         nodeId: -1,
@@ -77,7 +77,7 @@ describe("layer/segmentation/selection", () => {
       getSegmentIdFromLayerSelectionValue({
         value: "9",
       }),
-    ).toBe(9);
+    ).toBe(9n);
     expect(
       getSpatialSkeletonSelectionRecoveryKey({
         nodeId: "23",
@@ -88,7 +88,7 @@ describe("layer/segmentation/selection", () => {
       getNodeIdFromLayerSelectionState({
         nodeId: "18446744073709551615",
       }),
-    ).toBeUndefined();
+    ).toBe(18446744073709551615n);
     expect(
       getSpatialSkeletonSelectionRecoveryKey({
         nodeId: 23,
@@ -118,7 +118,7 @@ describe("layer/segmentation/selection", () => {
         },
         layerB,
       ),
-    ).toBe(31);
+    ).toBe(31n);
     expect(
       getNodeIdFromViewerSelection(
         {
@@ -172,15 +172,15 @@ describe("layer/segmentation/selection", () => {
     mouseState = {
       active: true,
       pickedRenderLayer: renderLayerA,
-      pickedSpatialSkeleton: { nodeId: 31 },
+      pickedSpatialSkeleton: { nodeId: 31n },
     };
     trigger();
-    expect(hoverState.value).toBe(31);
+    expect(hoverState.value).toBe(31n);
 
     mouseState = {
       active: true,
       pickedRenderLayer: renderLayerB,
-      pickedSpatialSkeleton: { nodeId: 31 },
+      pickedSpatialSkeleton: { nodeId: 31n },
     };
     trigger();
     expect(hoverState.value).toBeUndefined();
@@ -188,7 +188,7 @@ describe("layer/segmentation/selection", () => {
     mouseState = {
       active: false,
       pickedRenderLayer: renderLayerA,
-      pickedSpatialSkeleton: { nodeId: 31 },
+      pickedSpatialSkeleton: { nodeId: 31n },
     };
     trigger();
     expect(hoverState.value).toBeUndefined();

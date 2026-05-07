@@ -107,12 +107,17 @@ import { SegmentationGraphSourceTab } from "#src/segmentation_graph/source.js";
 import { SharedDisjointUint64Sets } from "#src/shared_disjoint_sets.js";
 import { SharedWatchableValue } from "#src/shared_watchable_value.js";
 import {
+  parsePositiveUint64Id,
+  stringifySpatialSkeletonId,
+} from "#src/util/bigint.js";
+import {
   DEFAULT_SPATIAL_SKELETON_EDIT_ACTIONS,
   getSpatialSkeletonActionSupportLabel,
   SpatialSkeletonActions,
   type SpatialSkeletonAction,
 } from "#src/skeleton/actions.js";
 import type {
+  SpatialSkeletonId,
   SpatiallyIndexedSkeletonNode,
   SpatialSkeletonSourceState,
 } from "#src/skeleton/api.js";
@@ -261,11 +266,11 @@ function formatSpatialSkeletonEditableNumber(
 
 function getSpatialSkeletonSegmentChipColors(
   displayState: SegmentationDisplayState | undefined | null,
-  segmentId: number,
+  segmentId: SpatialSkeletonId,
 ) {
   const color = getBaseObjectColor(
     displayState,
-    BigInt(segmentId),
+    segmentId,
     new Float32Array(4),
   );
   const r = Math.round(color[0] * 255);
@@ -281,9 +286,9 @@ function getSpatialSkeletonSegmentChipColors(
 function bindSpatialSkeletonSegmentSelection(
   element: HTMLElement,
   selectSegment: (id: bigint, pin: true | "force-unpin") => void,
-  segmentId: number,
+  segmentId: SpatialSkeletonId,
 ) {
-  const id = BigInt(segmentId);
+  const id = segmentId;
   const hasSegmentSelectionModifiers = (event: MouseEvent) =>
     event.ctrlKey && !event.altKey && !event.metaKey;
   element.addEventListener("mousedown", (event: MouseEvent) => {
@@ -978,18 +983,19 @@ interface SegmentationActionContext extends LayerActionContext {
 }
 
 interface SelectedSpatialSkeletonNodeInfo {
-  nodeId: number;
-  segmentId?: number;
+  nodeId: SpatialSkeletonId;
+  segmentId?: SpatialSkeletonId;
   position?: Float32Array;
   sourceState?: SpatialSkeletonSourceState;
 }
 
-function normalizeOptionalPositiveSafeInteger(value: unknown) {
+function normalizeOptionalSpatialSkeletonId(value: unknown) {
   if (value === undefined) return undefined;
-  const normalized = Math.round(Number(value));
-  return Number.isSafeInteger(normalized) && normalized > 0
-    ? normalized
-    : undefined;
+  try {
+    return parsePositiveUint64Id(value, "spatial skeleton id");
+  } catch {
+    return undefined;
+  }
 }
 
 function copyOptionalSpatialSkeletonPosition(
@@ -1008,7 +1014,7 @@ export class SegmentationUserLayer extends Base {
     new SpatialSkeletonState(),
   );
   readonly selectedSpatialSkeletonNodeId = new WatchableValue<
-    number | undefined
+    SpatialSkeletonId | undefined
   >(undefined);
   readonly selectedSpatialSkeletonNodeInfo = new WatchableValue<
     SelectedSpatialSkeletonNodeInfo | undefined
@@ -1115,15 +1121,15 @@ export class SegmentationUserLayer extends Base {
   }
 
   selectSpatialSkeletonNode = (
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
     pin: boolean | "toggle" = false,
     options: {
-      segmentId?: number;
+      segmentId?: SpatialSkeletonId;
       position?: ArrayLike<number>;
       sourceState?: SpatialSkeletonSourceState;
     } = {},
   ) => {
-    const normalizedNodeId = normalizeOptionalPositiveSafeInteger(nodeId);
+    const normalizedNodeId = normalizeOptionalSpatialSkeletonId(nodeId);
     if (normalizedNodeId === undefined) {
       return;
     }
@@ -1131,7 +1137,7 @@ export class SegmentationUserLayer extends Base {
       this.getSpatiallyIndexedSkeletonLayer()?.getNode(normalizedNodeId);
     const requestedSegmentId =
       options.segmentId ?? selectedNodeInfo?.segmentId ?? undefined;
-    const segmentId = normalizeOptionalPositiveSafeInteger(requestedSegmentId);
+    const segmentId = normalizeOptionalSpatialSkeletonId(requestedSegmentId);
     const selectedNodePosition = options.position ?? selectedNodeInfo?.position;
     const selectedGlobalPosition =
       this.getGlobalSelectionPositionFromModelPosition(selectedNodePosition);
@@ -1144,8 +1150,8 @@ export class SegmentationUserLayer extends Base {
     };
     this.captureSpatialSkeletonSelectionState(
       (state) => {
-        state.nodeId = normalizedNodeId.toString();
-        state.value = segmentId === undefined ? undefined : BigInt(segmentId);
+        state.nodeId = stringifySpatialSkeletonId(normalizedNodeId);
+        state.value = segmentId;
         return true;
       },
       pin,
@@ -1172,31 +1178,28 @@ export class SegmentationUserLayer extends Base {
   }
 
   inspectSpatialSkeletonSegment = (
-    segmentId: number,
+    segmentId: SpatialSkeletonId,
     options: { secondary?: boolean } = {},
   ) => {
     void options;
-    const normalizedSegmentId = Math.round(Number(segmentId));
-    if (
-      !Number.isSafeInteger(normalizedSegmentId) ||
-      normalizedSegmentId <= 0
-    ) {
+    const normalizedSegmentId = normalizeOptionalSpatialSkeletonId(segmentId);
+    if (normalizedSegmentId === undefined) {
       return false;
     }
     const visibleSegments = getVisibleSegments(
       this.displayState.segmentationGroupState.value,
     );
-    if (visibleSegments.has(BigInt(normalizedSegmentId))) {
+    if (visibleSegments.has(normalizedSegmentId)) {
       return false;
     }
     addSegmentToVisibleSets(
       this.displayState.segmentationGroupState.value,
-      BigInt(normalizedSegmentId),
+      normalizedSegmentId,
     );
     return true;
   };
 
-  setSpatialSkeletonMergeAnchor = (nodeId: number | undefined) => {
+  setSpatialSkeletonMergeAnchor = (nodeId: SpatialSkeletonId | undefined) => {
     return this.spatialSkeletonState.setMergeAnchor(nodeId);
   };
 
@@ -1215,7 +1218,7 @@ export class SegmentationUserLayer extends Base {
     );
     if (
       selectedNode !== undefined &&
-      visibleSegments.has(BigInt(selectedNode.segmentId))
+      visibleSegments.has(selectedNode.segmentId)
     ) {
       return selectedNode.segmentId;
     }
@@ -1224,15 +1227,11 @@ export class SegmentationUserLayer extends Base {
     const selectedSegmentId =
       selectedSegmentValue === undefined
         ? undefined
-        : Number(selectedSegmentValue);
-    if (
-      selectedSegmentId === undefined ||
-      !Number.isSafeInteger(selectedSegmentId) ||
-      selectedSegmentId <= 0
-    ) {
+        : normalizeOptionalSpatialSkeletonId(selectedSegmentValue);
+    if (selectedSegmentId === undefined) {
       return undefined;
     }
-    return visibleSegments.has(BigInt(selectedSegmentId))
+    return visibleSegments.has(selectedSegmentId)
       ? selectedSegmentId
       : undefined;
   };
@@ -1672,7 +1671,7 @@ export class SegmentationUserLayer extends Base {
     return undefined;
   }
 
-  getCachedSpatialSkeletonSegmentNodesForEdit(segmentId: number) {
+  getCachedSpatialSkeletonSegmentNodesForEdit(segmentId: SpatialSkeletonId) {
     const segmentNodes =
       this.spatialSkeletonState.getCachedSegmentNodes(segmentId);
     if (segmentNodes === undefined) {
@@ -2277,15 +2276,15 @@ export class SegmentationUserLayer extends Base {
     ) {
       return;
     }
-    const nodeId = normalizeOptionalPositiveSafeInteger(
+    const nodeId = normalizeOptionalSpatialSkeletonId(
       pickedSpatialSkeleton.nodeId,
     );
     state.nodeId = nodeId === undefined ? undefined : nodeId.toString();
-    const segmentId = normalizeOptionalPositiveSafeInteger(
+    const segmentId = normalizeOptionalSpatialSkeletonId(
       pickedSpatialSkeleton.segmentId,
     );
     if (segmentId !== undefined) {
-      state.value = BigInt(segmentId);
+      state.value = segmentId;
     }
   }
 
@@ -2451,7 +2450,10 @@ export class SegmentationUserLayer extends Base {
       container.appendChild(row);
     };
 
-    const appendSegmentAndNodeIds = (segmentId: number, nodeId: number) => {
+    const appendSegmentAndNodeIds = (
+      segmentId: SpatialSkeletonId,
+      nodeId: SpatialSkeletonId,
+    ) => {
       const segmentChipColors = getSpatialSkeletonSegmentChipColors(
         this.displayState,
         segmentId,

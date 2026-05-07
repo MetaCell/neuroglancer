@@ -14,7 +14,10 @@
  * limitations under the License.
  */
 
-import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
+import type {
+  SpatialSkeletonId,
+  SpatiallyIndexedSkeletonNode,
+} from "#src/skeleton/api.js";
 import {
   getFlatListNodeIds,
   type SpatiallyIndexedSkeletonNavigationGraph,
@@ -47,7 +50,7 @@ export interface SpatialSkeletonSegmentRenderRow {
 }
 
 export interface SpatialSkeletonSegmentRenderState {
-  segmentId: number;
+  segmentId: SpatialSkeletonId;
   totalNodeCount: number;
   matchedNodeCount: number;
   displayedNodeCount: number;
@@ -56,7 +59,7 @@ export interface SpatialSkeletonSegmentRenderState {
 }
 
 export function buildSpatialSkeletonSegmentRenderState(
-  segmentId: number,
+  segmentId: SpatialSkeletonId,
   graph: SpatiallyIndexedSkeletonNavigationGraph,
   options: {
     filterText: string;
@@ -78,8 +81,8 @@ export function buildSpatialSkeletonSegmentRenderState(
     };
   }
 
-  const visibleMemo = new Map<number, boolean>();
-  const isNodeVisible = (nodeId: number): boolean => {
+  const visibleMemo = new Map<SpatialSkeletonId, boolean>();
+  const isNodeVisible = (nodeId: SpatialSkeletonId): boolean => {
     const cached = visibleMemo.get(nodeId);
     if (cached !== undefined) {
       return cached;
@@ -110,7 +113,7 @@ export function buildSpatialSkeletonSegmentRenderState(
   const visibleNodeIds = getFlatListNodeIds(graph, {
     collapseRegularNodesForOrdering: true,
   }).filter((nodeId) => isNodeVisible(nodeId));
-  const visibleNodeIdSet = new Set<number>(visibleNodeIds);
+  const visibleNodeIdSet = new Set<SpatialSkeletonId>(visibleNodeIds);
 
   let branchCount = 0;
   for (const nodeId of visibleNodeIds) {

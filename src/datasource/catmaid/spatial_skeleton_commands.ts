@@ -54,6 +54,7 @@ import {
   type SpatialSkeletonAction,
 } from "#src/skeleton/actions.js";
 import type {
+  SpatialSkeletonId,
   SpatiallyIndexedSkeletonNode,
   SpatialSkeletonSourceState,
   SpatialSkeletonVector,
@@ -70,18 +71,19 @@ import {
 import type { SpatiallyIndexedSkeletonLayer } from "#src/skeleton/frontend.js";
 import { getEditableSpatiallyIndexedSkeletonSource } from "#src/skeleton/spatial_skeleton_manager.js";
 import { StatusMessage } from "#src/status.js";
+import { parsePositiveUint64Id } from "#src/util/bigint.js";
 import { formatErrorMessage } from "#src/util/error.js";
 
 interface CatmaidSpatialSkeletonAddNodeCommandOptions {
-  skeletonId: number;
-  parentNodeId: number | undefined;
+  skeletonId: SpatialSkeletonId;
+  parentNodeId: SpatialSkeletonId | undefined;
   positionInModelSpace: SpatialSkeletonVector;
 }
 
 interface CatmaidSpatialSkeletonInsertNodeCommandOptions {
-  skeletonId: number;
-  parentNodeId: number;
-  childNodeIds: readonly number[];
+  skeletonId: SpatialSkeletonId;
+  parentNodeId: SpatialSkeletonId;
+  childNodeIds: readonly SpatialSkeletonId[];
   positionInModelSpace: SpatialSkeletonVector;
 }
 
@@ -111,8 +113,8 @@ interface CatmaidSpatialSkeletonNodeConfidenceCommandOptions {
 }
 
 interface CatmaidSpatialSkeletonMergeEndpoint {
-  nodeId: number;
-  segmentId: number;
+  nodeId: SpatialSkeletonId;
+  segmentId: SpatialSkeletonId;
   sourceState?: SpatialSkeletonSourceState;
 }
 
@@ -169,6 +171,60 @@ function isOptionalFiniteNumber(value: number | undefined) {
   return value === undefined || isFiniteNumber(value);
 }
 
+function isSpatialSkeletonIdValue(value: unknown) {
+  try {
+    parsePositiveUint64Id(value, "spatial skeleton id");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isOptionalSpatialSkeletonIdValue(value: unknown) {
+  return value === undefined || isSpatialSkeletonIdValue(value);
+}
+
+function isCatmaidCommandTargetSkeletonIdValue(value: unknown) {
+  if (value === 0n || value === 0 || value === "0") {
+    return true;
+  }
+  return isSpatialSkeletonIdValue(value);
+}
+
+function parseCatmaidCommandTargetSkeletonId(value: unknown) {
+  if (value === 0n || value === 0 || value === "0") {
+    return 0n;
+  }
+  return parsePositiveUint64Id(value, "CATMAID skeleton id");
+}
+
+function normalizeSpatialSkeletonIdValue(value: unknown, label: string) {
+  return parsePositiveUint64Id(value, label);
+}
+
+function normalizeOptionalSpatialSkeletonIdValue(
+  value: unknown,
+  label: string,
+) {
+  return value === undefined
+    ? undefined
+    : normalizeSpatialSkeletonIdValue(value, label);
+}
+
+function normalizeSpatiallyIndexedSkeletonNodePayload(
+  value: SpatiallyIndexedSkeletonNode,
+): SpatiallyIndexedSkeletonNode {
+  return {
+    ...value,
+    nodeId: normalizeSpatialSkeletonIdValue(value.nodeId, "node id"),
+    segmentId: normalizeSpatialSkeletonIdValue(value.segmentId, "segment id"),
+    parentNodeId: normalizeOptionalSpatialSkeletonIdValue(
+      value.parentNodeId,
+      "parent node id",
+    ),
+  };
+}
+
 function isSpatialSkeletonVector(
   value: object | undefined,
 ): value is SpatialSkeletonVector {
@@ -186,20 +242,20 @@ function isSpatiallyIndexedSkeletonNodePayload(
 ): value is SpatiallyIndexedSkeletonNode {
   if (value === undefined) return false;
   const candidate = value as {
-    nodeId?: number;
-    segmentId?: number;
+    nodeId?: unknown;
+    segmentId?: unknown;
     position?: object;
-    parentNodeId?: number;
+    parentNodeId?: unknown;
     radius?: number;
     confidence?: number;
     description?: string;
     isTrueEnd?: boolean;
   };
   return (
-    isFiniteNumber(candidate.nodeId) &&
-    isFiniteNumber(candidate.segmentId) &&
+    isSpatialSkeletonIdValue(candidate.nodeId) &&
+    isSpatialSkeletonIdValue(candidate.segmentId) &&
     isSpatialSkeletonVector(candidate.position) &&
-    isOptionalFiniteNumber(candidate.parentNodeId) &&
+    isOptionalSpatialSkeletonIdValue(candidate.parentNodeId) &&
     isOptionalFiniteNumber(candidate.radius) &&
     isOptionalFiniteNumber(candidate.confidence) &&
     (candidate.description === undefined ||
@@ -214,11 +270,12 @@ function isCatmaidMergeEndpoint(
 ): value is CatmaidSpatialSkeletonMergeEndpoint {
   if (value === undefined) return false;
   const candidate = value as {
-    nodeId?: number;
-    segmentId?: number;
+    nodeId?: unknown;
+    segmentId?: unknown;
   };
   return (
-    isFiniteNumber(candidate.nodeId) && isFiniteNumber(candidate.segmentId)
+    isSpatialSkeletonIdValue(candidate.nodeId) &&
+    isSpatialSkeletonIdValue(candidate.segmentId)
   );
 }
 
@@ -234,49 +291,72 @@ function requireCatmaidCommandPayload<T extends object>(
 }
 
 function requireCatmaidAddNodeCommandOptions(payload: object) {
-  return requireCatmaidCommandPayload(
+  const options = requireCatmaidCommandPayload(
     payload,
     "add-node",
     (candidate): candidate is CatmaidSpatialSkeletonAddNodeCommandOptions => {
       const options = candidate as {
-        skeletonId?: number;
-        parentNodeId?: number;
+        skeletonId?: unknown;
+        parentNodeId?: unknown;
         positionInModelSpace?: object;
       };
       return (
-        isFiniteNumber(options.skeletonId) &&
-        isOptionalFiniteNumber(options.parentNodeId) &&
+        isCatmaidCommandTargetSkeletonIdValue(options.skeletonId) &&
+        isOptionalSpatialSkeletonIdValue(options.parentNodeId) &&
         isSpatialSkeletonVector(options.positionInModelSpace)
       );
     },
   );
+  return {
+    ...options,
+    skeletonId: parseCatmaidCommandTargetSkeletonId(options.skeletonId),
+    parentNodeId: normalizeOptionalSpatialSkeletonIdValue(
+      options.parentNodeId,
+      "parent node id",
+    ),
+  };
 }
 
 function requireCatmaidInsertNodeCommandOptions(payload: object) {
-  return requireCatmaidCommandPayload(
+  const options = requireCatmaidCommandPayload(
     payload,
     "insert-node",
     (
       candidate,
     ): candidate is CatmaidSpatialSkeletonInsertNodeCommandOptions => {
       const options = candidate as {
-        skeletonId?: number;
-        parentNodeId?: number;
-        childNodeIds?: readonly number[];
+        skeletonId?: unknown;
+        parentNodeId?: unknown;
+        childNodeIds?: readonly unknown[];
         positionInModelSpace?: object;
       };
       return (
-        isFiniteNumber(options.skeletonId) &&
-        isFiniteNumber(options.parentNodeId) &&
-        areFiniteNumbers(options.childNodeIds) &&
+        isSpatialSkeletonIdValue(options.skeletonId) &&
+        isSpatialSkeletonIdValue(options.parentNodeId) &&
+        options.childNodeIds !== undefined &&
+        options.childNodeIds.every(isSpatialSkeletonIdValue) &&
         isSpatialSkeletonVector(options.positionInModelSpace)
       );
     },
   );
+  return {
+    ...options,
+    skeletonId: normalizeSpatialSkeletonIdValue(
+      options.skeletonId,
+      "skeleton id",
+    ),
+    parentNodeId: normalizeSpatialSkeletonIdValue(
+      options.parentNodeId,
+      "parent node id",
+    ),
+    childNodeIds: options.childNodeIds.map((childNodeId) =>
+      normalizeSpatialSkeletonIdValue(childNodeId, "child node id"),
+    ),
+  };
 }
 
 function requireCatmaidMoveNodeCommandOptions(payload: object) {
-  return requireCatmaidCommandPayload(
+  const options = requireCatmaidCommandPayload(
     payload,
     "move-node",
     (candidate): candidate is CatmaidSpatialSkeletonMoveNodeCommandOptions => {
@@ -290,18 +370,23 @@ function requireCatmaidMoveNodeCommandOptions(payload: object) {
       );
     },
   );
+  return {
+    ...options,
+    node: normalizeSpatiallyIndexedSkeletonNodePayload(options.node),
+  };
 }
 
 function requireCatmaidDeleteNodeCommandPayload(payload: object) {
-  return requireCatmaidCommandPayload(
+  const node = requireCatmaidCommandPayload(
     payload,
     "delete-node",
     isSpatiallyIndexedSkeletonNodePayload,
   );
+  return normalizeSpatiallyIndexedSkeletonNodePayload(node);
 }
 
 function requireCatmaidNodeDescriptionCommandOptions(payload: object) {
-  return requireCatmaidCommandPayload(
+  const options = requireCatmaidCommandPayload(
     payload,
     "node-description",
     (
@@ -318,10 +403,14 @@ function requireCatmaidNodeDescriptionCommandOptions(payload: object) {
       );
     },
   );
+  return {
+    ...options,
+    node: normalizeSpatiallyIndexedSkeletonNodePayload(options.node),
+  };
 }
 
 function requireCatmaidNodeTrueEndCommandOptions(payload: object) {
-  return requireCatmaidCommandPayload(
+  const options = requireCatmaidCommandPayload(
     payload,
     "node-true-end",
     (
@@ -337,10 +426,14 @@ function requireCatmaidNodeTrueEndCommandOptions(payload: object) {
       );
     },
   );
+  return {
+    ...options,
+    node: normalizeSpatiallyIndexedSkeletonNodePayload(options.node),
+  };
 }
 
 function requireCatmaidNodeRadiusCommandOptions(payload: object) {
-  return requireCatmaidCommandPayload(
+  const options = requireCatmaidCommandPayload(
     payload,
     "node-radius",
     (
@@ -356,10 +449,14 @@ function requireCatmaidNodeRadiusCommandOptions(payload: object) {
       );
     },
   );
+  return {
+    ...options,
+    node: normalizeSpatiallyIndexedSkeletonNodePayload(options.node),
+  };
 }
 
 function requireCatmaidNodeConfidenceCommandOptions(payload: object) {
-  return requireCatmaidCommandPayload(
+  const options = requireCatmaidCommandPayload(
     payload,
     "node-confidence",
     (
@@ -375,10 +472,14 @@ function requireCatmaidNodeConfidenceCommandOptions(payload: object) {
       );
     },
   );
+  return {
+    ...options,
+    node: normalizeSpatiallyIndexedSkeletonNodePayload(options.node),
+  };
 }
 
 function requireCatmaidRerootCommandPayload(payload: object) {
-  return requireCatmaidCommandPayload(
+  const node = requireCatmaidCommandPayload(
     payload,
     "reroot",
     (
@@ -388,21 +489,29 @@ function requireCatmaidRerootCommandPayload(payload: object) {
       "nodeId" | "segmentId" | "parentNodeId"
     > => {
       const node = candidate as {
-        nodeId?: number;
-        segmentId?: number;
-        parentNodeId?: number;
+        nodeId?: unknown;
+        segmentId?: unknown;
+        parentNodeId?: unknown;
       };
       return (
-        isFiniteNumber(node.nodeId) &&
-        isFiniteNumber(node.segmentId) &&
-        isOptionalFiniteNumber(node.parentNodeId)
+        isSpatialSkeletonIdValue(node.nodeId) &&
+        isSpatialSkeletonIdValue(node.segmentId) &&
+        isOptionalSpatialSkeletonIdValue(node.parentNodeId)
       );
     },
   );
+  return {
+    nodeId: normalizeSpatialSkeletonIdValue(node.nodeId, "node id"),
+    segmentId: normalizeSpatialSkeletonIdValue(node.segmentId, "segment id"),
+    parentNodeId: normalizeOptionalSpatialSkeletonIdValue(
+      node.parentNodeId,
+      "parent node id",
+    ),
+  };
 }
 
 function requireCatmaidSplitCommandPayload(payload: object) {
-  return requireCatmaidCommandPayload(
+  const node = requireCatmaidCommandPayload(
     payload,
     "split",
     (
@@ -412,16 +521,23 @@ function requireCatmaidSplitCommandPayload(payload: object) {
       "nodeId" | "segmentId"
     > => {
       const node = candidate as {
-        nodeId?: number;
-        segmentId?: number;
+        nodeId?: unknown;
+        segmentId?: unknown;
       };
-      return isFiniteNumber(node.nodeId) && isFiniteNumber(node.segmentId);
+      return (
+        isSpatialSkeletonIdValue(node.nodeId) &&
+        isSpatialSkeletonIdValue(node.segmentId)
+      );
     },
   );
+  return {
+    nodeId: normalizeSpatialSkeletonIdValue(node.nodeId, "node id"),
+    segmentId: normalizeSpatialSkeletonIdValue(node.segmentId, "segment id"),
+  };
 }
 
 function requireCatmaidMergeCommandPayload(payload: object) {
-  return requireCatmaidCommandPayload(
+  const options = requireCatmaidCommandPayload(
     payload,
     "merge",
     (candidate): candidate is CatmaidSpatialSkeletonMergeCommandPayload => {
@@ -435,6 +551,30 @@ function requireCatmaidMergeCommandPayload(payload: object) {
       );
     },
   );
+  return {
+    firstNode: {
+      ...options.firstNode,
+      nodeId: normalizeSpatialSkeletonIdValue(
+        options.firstNode.nodeId,
+        "first node id",
+      ),
+      segmentId: normalizeSpatialSkeletonIdValue(
+        options.firstNode.segmentId,
+        "first segment id",
+      ),
+    },
+    secondNode: {
+      ...options.secondNode,
+      nodeId: normalizeSpatialSkeletonIdValue(
+        options.secondNode.nodeId,
+        "second node id",
+      ),
+      segmentId: normalizeSpatialSkeletonIdValue(
+        options.secondNode.segmentId,
+        "second segment id",
+      ),
+    },
+  };
 }
 
 function toCatmaidPositionInModelSpace(
@@ -490,53 +630,41 @@ function getEditableSkeletonSourceForLayer(layer: SegmentationUserLayer): {
 
 function ensureVisibleSegment(
   layer: SegmentationUserLayer,
-  segmentId: number | undefined,
+  segmentId: SpatialSkeletonId | undefined,
 ) {
-  if (
-    segmentId === undefined ||
-    !Number.isSafeInteger(Math.round(Number(segmentId))) ||
-    Math.round(Number(segmentId)) <= 0
-  ) {
+  if (segmentId === undefined || segmentId <= 0n) {
     return;
   }
   addSegmentToVisibleSets(
     layer.displayState.segmentationGroupState.value,
-    BigInt(Math.round(Number(segmentId))),
+    segmentId,
   );
 }
 
 function selectSegment(
   layer: SegmentationUserLayer,
-  segmentId: number | undefined,
+  segmentId: SpatialSkeletonId | undefined,
   pin: boolean,
 ) {
-  if (
-    segmentId === undefined ||
-    !Number.isSafeInteger(Math.round(Number(segmentId))) ||
-    Math.round(Number(segmentId)) <= 0
-  ) {
+  if (segmentId === undefined || segmentId <= 0n) {
     return;
   }
-  layer.selectSegment(BigInt(Math.round(Number(segmentId))), pin);
+  layer.selectSegment(segmentId, pin);
 }
 
 function removeVisibleSegment(
   layer: SegmentationUserLayer,
-  segmentId: number | undefined,
+  segmentId: SpatialSkeletonId | undefined,
   options: {
     deselect?: boolean;
   } = {},
 ) {
-  if (
-    segmentId === undefined ||
-    !Number.isSafeInteger(Math.round(Number(segmentId))) ||
-    Math.round(Number(segmentId)) <= 0
-  ) {
+  if (segmentId === undefined || segmentId <= 0n) {
     return;
   }
   removeSegmentFromVisibleSets(
     layer.displayState.segmentationGroupState.value,
-    BigInt(Math.round(Number(segmentId))),
+    segmentId,
     options,
   );
 }
@@ -552,16 +680,16 @@ interface ResolvedSpatialSkeletonEditNode {
 }
 
 interface ResolvedSpatialSkeletonEditNodeContext {
-  currentNodeId: number;
-  segmentId: number;
+  currentNodeId: SpatialSkeletonId;
+  segmentId: SpatialSkeletonId;
   cachedNode: SpatiallyIndexedSkeletonNode | undefined;
   skeletonLayer: SpatiallyIndexedSkeletonLayer;
 }
 
 function getResolvedNodeContextForEdit(
   layer: SegmentationUserLayer,
-  stableNodeId: number,
-  stableSegmentId: number | undefined,
+  stableNodeId: SpatialSkeletonId,
+  stableSegmentId: SpatialSkeletonId | undefined,
 ): ResolvedSpatialSkeletonEditNodeContext {
   const commandMappings = layer.spatialSkeletonState.commandHistory.mappings;
   const currentNodeId = commandMappings.resolveNodeId(stableNodeId);
@@ -589,8 +717,8 @@ function getResolvedNodeContextForEdit(
 
 async function getResolvedNodeForEdit(
   layer: SegmentationUserLayer,
-  stableNodeId: number,
-  stableSegmentId: number | undefined,
+  stableNodeId: SpatialSkeletonId,
+  stableSegmentId: SpatialSkeletonId | undefined,
 ): Promise<ResolvedSpatialSkeletonEditNode> {
   const {
     currentNodeId,
@@ -620,13 +748,11 @@ async function getResolvedNodeForEdit(
 
 async function refreshTopologySegments(
   layer: SegmentationUserLayer,
-  segmentIds: readonly number[],
+  segmentIds: readonly SpatialSkeletonId[],
 ) {
   const normalizedSegmentIds = [
-    ...new Set(
-      segmentIds.filter((value) => Number.isSafeInteger(Math.round(value))),
-    ),
-  ].map((value) => Math.round(value));
+    ...new Set(segmentIds.filter((value) => value > 0n)),
+  ];
   if (normalizedSegmentIds.length === 0) {
     return;
   }
@@ -647,7 +773,7 @@ function applyAddNodeToCache(
   layer: SegmentationUserLayer,
   skeletonLayer: SpatiallyIndexedSkeletonLayer,
   committedNode: CatmaidSpatialSkeletonAddNodeResult,
-  parentNodeId: number | undefined,
+  parentNodeId: SpatialSkeletonId | undefined,
   positionInModelSpace: Float32Array,
   options: {
     focusSelection: boolean;
@@ -843,13 +969,13 @@ async function restoreNodeAttributes(
 
 class AddNodeCommand implements SpatialSkeletonCommand {
   readonly label = "Add node";
-  private stableNodeId: number | undefined;
-  private stableSegmentId: number | undefined;
+  private stableNodeId: SpatialSkeletonId | undefined;
+  private stableSegmentId: SpatialSkeletonId | undefined;
 
   constructor(
     private layer: SegmentationUserLayer,
-    private stableParentNodeId: number | undefined,
-    private targetSkeletonId: number,
+    private stableParentNodeId: SpatialSkeletonId | undefined,
+    private targetSkeletonId: SpatialSkeletonId,
     private positionInModelSpace: Float32Array,
     private editOperations: CatmaidSpatialSkeletonEditOperations,
   ) {}
@@ -969,14 +1095,14 @@ class AddNodeCommand implements SpatialSkeletonCommand {
 
 class InsertNodeCommand implements SpatialSkeletonCommand {
   readonly label = "Insert node";
-  private stableNodeId: number | undefined;
-  private stableSegmentId: number | undefined;
+  private stableNodeId: SpatialSkeletonId | undefined;
+  private stableSegmentId: SpatialSkeletonId | undefined;
 
   constructor(
     private layer: SegmentationUserLayer,
-    private stableParentNodeId: number,
-    private stableChildNodeIds: readonly number[],
-    private targetSkeletonId: number,
+    private stableParentNodeId: SpatialSkeletonId,
+    private stableChildNodeIds: readonly SpatialSkeletonId[],
+    private targetSkeletonId: SpatialSkeletonId,
     private positionInModelSpace: Float32Array,
     private editOperations: CatmaidSpatialSkeletonEditOperations,
   ) {}
@@ -1131,8 +1257,8 @@ class MoveNodeCommand implements SpatialSkeletonCommand {
 
   constructor(
     private layer: SegmentationUserLayer,
-    private stableNodeId: number,
-    private stableSegmentId: number | undefined,
+    private stableNodeId: SpatialSkeletonId,
+    private stableSegmentId: SpatialSkeletonId | undefined,
     private beforePositionInModelSpace: Float32Array,
     private afterPositionInModelSpace: Float32Array,
     private editOperations: CatmaidSpatialSkeletonEditOperations,
@@ -1185,10 +1311,10 @@ class MoveNodeCommand implements SpatialSkeletonCommand {
 
 class DeleteNodeCommand implements SpatialSkeletonCommand {
   readonly label = "Delete node";
-  private stableDeletedNodeId: number;
-  private stableSegmentId: number | undefined;
-  private stableParentNodeId: number | undefined;
-  private stableChildNodeIds: number[];
+  private stableDeletedNodeId: SpatialSkeletonId;
+  private stableSegmentId: SpatialSkeletonId | undefined;
+  private stableParentNodeId: SpatialSkeletonId | undefined;
+  private stableChildNodeIds: SpatialSkeletonId[];
   private deletedSnapshot: SpatiallyIndexedSkeletonNode;
 
   constructor(
@@ -1269,7 +1395,7 @@ class DeleteNodeCommand implements SpatialSkeletonCommand {
       | CatmaidSpatialSkeletonInsertNodeResult;
     if (currentChildNodes.length === 0) {
       createResult = await this.editOperations.commitAddNode({
-        segmentId: currentParentNode?.segmentId ?? 0,
+        segmentId: currentParentNode?.segmentId ?? 0n,
         position: this.deletedSnapshot.position,
         parentNode: currentParentNode,
       });
@@ -1376,8 +1502,8 @@ class NodeDescriptionCommand implements SpatialSkeletonCommand {
 
   constructor(
     private layer: SegmentationUserLayer,
-    private stableNodeId: number,
-    private stableSegmentId: number | undefined,
+    private stableNodeId: SpatialSkeletonId,
+    private stableSegmentId: SpatialSkeletonId | undefined,
     private beforeDescription: string | undefined,
     private afterDescription: string | undefined,
     private editOperations: CatmaidSpatialSkeletonEditOperations,
@@ -1450,8 +1576,8 @@ class NodeTrueEndCommand implements SpatialSkeletonCommand {
 
   constructor(
     private layer: SegmentationUserLayer,
-    private stableNodeId: number,
-    private stableSegmentId: number | undefined,
+    private stableNodeId: SpatialSkeletonId,
+    private stableSegmentId: SpatialSkeletonId | undefined,
     private beforeIsTrueEnd: boolean,
     private afterIsTrueEnd: boolean,
     private editOperations: CatmaidSpatialSkeletonEditOperations,
@@ -1514,8 +1640,8 @@ class NodeRadiusCommand implements SpatialSkeletonCommand {
 
   constructor(
     private layer: SegmentationUserLayer,
-    private stableNodeId: number,
-    private stableSegmentId: number | undefined,
+    private stableNodeId: SpatialSkeletonId,
+    private stableSegmentId: SpatialSkeletonId | undefined,
     private beforeRadius: number,
     private afterRadius: number,
     private editOperations: CatmaidSpatialSkeletonEditOperations,
@@ -1567,8 +1693,8 @@ class NodeConfidenceCommand implements SpatialSkeletonCommand {
 
   constructor(
     private layer: SegmentationUserLayer,
-    private stableNodeId: number,
-    private stableSegmentId: number | undefined,
+    private stableNodeId: SpatialSkeletonId,
+    private stableSegmentId: SpatialSkeletonId | undefined,
     private beforeConfidence: number,
     private afterConfidence: number,
     private editOperations: CatmaidSpatialSkeletonEditOperations,
@@ -1629,13 +1755,16 @@ class RerootCommand implements SpatialSkeletonCommand {
 
   constructor(
     private layer: SegmentationUserLayer,
-    private stableNodeId: number,
-    private stableSegmentId: number | undefined,
-    private stablePreviousRootNodeId: number,
+    private stableNodeId: SpatialSkeletonId,
+    private stableSegmentId: SpatialSkeletonId | undefined,
+    private stablePreviousRootNodeId: SpatialSkeletonId,
     private editOperations: CatmaidSpatialSkeletonEditOperations,
   ) {}
 
-  private async rerootAt(stableTargetNodeId: number, statusPrefix: string) {
+  private async rerootAt(
+    stableTargetNodeId: SpatialSkeletonId,
+    statusPrefix: string,
+  ) {
     const resolvedNode = await getResolvedNodeForEdit(
       this.layer,
       stableTargetNodeId,
@@ -1690,13 +1819,13 @@ class RerootCommand implements SpatialSkeletonCommand {
 
 class SplitCommand implements SpatialSkeletonCommand {
   readonly label = "Split skeleton";
-  private stableNewSegmentId: number | undefined;
+  private stableNewSegmentId: SpatialSkeletonId | undefined;
 
   constructor(
     private layer: SegmentationUserLayer,
-    private stableNodeId: number,
-    private stableSegmentId: number | undefined,
-    private stableFormerParentNodeId: number | undefined,
+    private stableNodeId: SpatialSkeletonId,
+    private stableSegmentId: SpatialSkeletonId | undefined,
+    private stableFormerParentNodeId: SpatialSkeletonId | undefined,
     private editOperations: CatmaidSpatialSkeletonEditOperations,
   ) {}
 
@@ -1806,9 +1935,7 @@ class SplitCommand implements SpatialSkeletonCommand {
     ensureVisibleSegment(this.layer, resultSkeletonId);
     if (deletedSkeletonId !== resultSkeletonId) {
       removeVisibleSegment(this.layer, deletedSkeletonId, { deselect: true });
-      this.layer.displayState.segmentStatedColors.value.delete(
-        BigInt(deletedSkeletonId),
-      );
+      this.layer.displayState.segmentStatedColors.value.delete(deletedSkeletonId);
       splitNode.skeletonLayer.suppressBrowseSegment(deletedSkeletonId);
     }
     this.layer.selectSpatialSkeletonNode(
@@ -1842,17 +1969,17 @@ class SplitCommand implements SpatialSkeletonCommand {
 
 class MergeCommand implements SpatialSkeletonCommand {
   readonly label = "Merge skeletons";
-  private stableResultSegmentId: number | undefined;
-  private stableDeletedSegmentId: number | undefined;
-  private stableAttachedNodeId: number | undefined;
-  private stableAttachedRootNodeId: number | undefined;
+  private stableResultSegmentId: SpatialSkeletonId | undefined;
+  private stableDeletedSegmentId: SpatialSkeletonId | undefined;
+  private stableAttachedNodeId: SpatialSkeletonId | undefined;
+  private stableAttachedRootNodeId: SpatialSkeletonId | undefined;
 
   constructor(
     private layer: SegmentationUserLayer,
-    private stableFirstNodeId: number,
-    private stableFirstSegmentId: number | undefined,
-    private stableSecondNodeId: number,
-    private stableSecondSegmentId: number | undefined,
+    private stableFirstNodeId: SpatialSkeletonId,
+    private stableFirstSegmentId: SpatialSkeletonId | undefined,
+    private stableSecondNodeId: SpatialSkeletonId,
+    private stableSecondSegmentId: SpatialSkeletonId | undefined,
     private editOperations: CatmaidSpatialSkeletonEditOperations,
   ) {}
 
@@ -1928,9 +2055,7 @@ class MergeCommand implements SpatialSkeletonCommand {
         segmentId: resultSkeletonId,
       },
     );
-    this.layer.displayState.segmentStatedColors.value.delete(
-      BigInt(deletedSkeletonId),
-    );
+    this.layer.displayState.segmentStatedColors.value.delete(deletedSkeletonId);
     if (deletedSkeletonId !== resultSkeletonId) {
       firstNode.skeletonLayer.suppressBrowseSegment(deletedSkeletonId);
     }

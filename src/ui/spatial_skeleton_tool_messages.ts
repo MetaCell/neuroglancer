@@ -14,9 +14,11 @@
  * limitations under the License.
  */
 
+import type { SpatialSkeletonId } from "#src/skeleton/api.js";
+
 export interface SpatialSkeletonToolPointInfo {
-  nodeId: number;
-  segmentId?: number;
+  nodeId: SpatialSkeletonId;
+  segmentId?: SpatialSkeletonId;
   position?: ArrayLike<number>;
 }
 

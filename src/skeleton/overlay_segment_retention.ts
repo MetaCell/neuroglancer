@@ -14,44 +14,37 @@
  * limitations under the License.
  */
 
+import type { SpatialSkeletonId } from "#src/skeleton/api.js";
+import { compareUint64Ids } from "#src/util/bigint.js";
+
 export const DEFAULT_MAX_RETAINED_OVERLAY_SEGMENTS = 4;
 
-function normalizeSegmentId(segmentId: number) {
-  const normalizedSegmentId = Math.round(Number(segmentId));
-  if (!Number.isSafeInteger(normalizedSegmentId) || normalizedSegmentId <= 0) {
-    return undefined;
-  }
-  return normalizedSegmentId;
-}
-
 export function mergeSpatiallyIndexedSkeletonOverlaySegmentIds(
-  activeSegmentIds: readonly number[],
-  retainedSegmentIds: readonly number[],
+  activeSegmentIds: readonly SpatialSkeletonId[],
+  retainedSegmentIds: readonly SpatialSkeletonId[],
 ) {
-  const mergedSegmentIds = new Set<number>();
+  const mergedSegmentIds = new Set<SpatialSkeletonId>();
   for (const segmentId of [...activeSegmentIds, ...retainedSegmentIds]) {
-    const normalizedSegmentId = normalizeSegmentId(segmentId);
-    if (normalizedSegmentId === undefined) continue;
-    mergedSegmentIds.add(normalizedSegmentId);
+    if (segmentId <= 0n) continue;
+    mergedSegmentIds.add(segmentId);
   }
-  return [...mergedSegmentIds].sort((a, b) => a - b);
+  return [...mergedSegmentIds].sort(compareUint64Ids);
 }
 
 export function retainSpatiallyIndexedSkeletonOverlaySegment(
-  retainedSegmentIds: readonly number[],
-  segmentId: number,
+  retainedSegmentIds: readonly SpatialSkeletonId[],
+  segmentId: SpatialSkeletonId,
   options: {
     maxRetained?: number;
   } = {},
 ) {
-  const normalizedSegmentId = normalizeSegmentId(segmentId);
-  if (normalizedSegmentId === undefined) {
+  if (segmentId <= 0n) {
     return [...retainedSegmentIds];
   }
   const nextRetainedSegmentIds = retainedSegmentIds.filter(
-    (candidateSegmentId) => candidateSegmentId !== normalizedSegmentId,
+    (candidateSegmentId) => candidateSegmentId !== segmentId,
   );
-  nextRetainedSegmentIds.push(normalizedSegmentId);
+  nextRetainedSegmentIds.push(segmentId);
   const maxRetained = Math.max(
     1,
     Math.round(options.maxRetained ?? DEFAULT_MAX_RETAINED_OVERLAY_SEGMENTS),

@@ -16,6 +16,7 @@
 
 import type { LayerSelectedValues } from "#src/layer/index.js";
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
+import { parsePositiveUint64Id } from "#src/util/bigint.js";
 import { RefCounted } from "#src/util/disposable.js";
 import { parseUint64 } from "#src/util/json.js";
 import { NullarySignal } from "#src/util/signal.js";
@@ -39,8 +40,6 @@ export enum SpatialSkeletonSelectionRecoveryStatus {
   FAILED = "failed",
 }
 
-const MAX_SAFE_INTEGER_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
-
 function parseSelectionStateStringId(value: unknown) {
   if (typeof value !== "string") {
     return undefined;
@@ -54,11 +53,7 @@ function parseSelectionStateStringId(value: unknown) {
 }
 
 function normalizeSelectionStateStringId(value: unknown) {
-  const parsedValue = parseSelectionStateStringId(value);
-  if (parsedValue === undefined || parsedValue > MAX_SAFE_INTEGER_BIGINT) {
-    return undefined;
-  }
-  return Number(parsedValue);
+  return parseSelectionStateStringId(value);
 }
 
 function getSelectionIdString(value: unknown) {
@@ -67,11 +62,7 @@ function getSelectionIdString(value: unknown) {
 
 function normalizeSelectionStateValueId(value: unknown) {
   try {
-    const parsedValue = parseUint64(value);
-    if (parsedValue <= 0n || parsedValue > MAX_SAFE_INTEGER_BIGINT) {
-      return undefined;
-    }
-    return Number(parsedValue);
+    return parsePositiveUint64Id(value, "spatial skeleton segment id");
   } catch {
     return undefined;
   }
@@ -80,18 +71,18 @@ function normalizeSelectionStateValueId(value: unknown) {
 function getSelectionValueIdString(value: unknown) {
   try {
     const parsedValue = parseUint64(value);
-    return parsedValue > 0n && parsedValue <= MAX_SAFE_INTEGER_BIGINT
-      ? parsedValue.toString()
-      : undefined;
+    return parsedValue > 0n ? parsedValue.toString() : undefined;
   } catch {
     return undefined;
   }
 }
 
 function normalizeSpatialSkeletonViewerHoverNodeId(value: unknown) {
-  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
-    ? value
-    : undefined;
+  try {
+    return parsePositiveUint64Id(value, "spatial skeleton node id");
+  } catch {
+    return undefined;
+  }
 }
 
 export function getNodeIdFromLayerSelectionState(
@@ -196,10 +187,10 @@ function getSpatialSkeletonNodeIdFromViewerHover<TRenderLayer>(
 }
 
 export class SpatialSkeletonHoverState extends RefCounted {
-  value: number | undefined = undefined;
+  value: bigint | undefined = undefined;
   readonly changed = new NullarySignal();
 
-  setValue(value: number | undefined) {
+  setValue(value: bigint | undefined) {
     if (this.value !== value) {
       this.value = value;
       this.changed.dispatch();

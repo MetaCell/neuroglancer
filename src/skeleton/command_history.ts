@@ -15,6 +15,8 @@
  */
 
 import { WatchableValue } from "#src/trackable_value.js";
+import type { SpatialSkeletonId } from "#src/skeleton/api.js";
+import { compareUint64Ids, parsePositiveUint64Id } from "#src/util/bigint.js";
 import { RefCounted } from "#src/util/disposable.js";
 
 export const SPATIAL_SKELETON_COMMAND_HISTORY_MAX_ENTRIES = 100;
@@ -31,28 +33,28 @@ export interface SpatialSkeletonCommand {
 }
 
 interface SpatialSkeletonCommandMappingSnapshot {
-  nodeIdMappings: Array<[number, number]>;
-  segmentIdMappings: Array<[number, number]>;
+  nodeIdMappings: Array<[SpatialSkeletonId, SpatialSkeletonId]>;
+  segmentIdMappings: Array<[SpatialSkeletonId, SpatialSkeletonId]>;
 }
 
-function normalizeIdentifier(value: number | undefined) {
+function normalizeIdentifier(value: unknown) {
   if (value === undefined) return undefined;
-  const normalizedValue = Math.round(Number(value));
-  if (!Number.isSafeInteger(normalizedValue) || normalizedValue <= 0) {
+  try {
+    return parsePositiveUint64Id(value, "spatial skeleton command id");
+  } catch {
     return undefined;
   }
-  return normalizedValue;
 }
 
 function resolveIdentifierMapping(
-  mappings: Map<number, number>,
-  value: number | undefined,
+  mappings: Map<SpatialSkeletonId, SpatialSkeletonId>,
+  value: SpatialSkeletonId | undefined,
 ) {
   let currentValue = normalizeIdentifier(value);
   if (currentValue === undefined) {
     return undefined;
   }
-  const seen = new Set<number>();
+  const seen = new Set<SpatialSkeletonId>();
   while (true) {
     const nextValue = mappings.get(currentValue);
     if (nextValue === undefined || seen.has(currentValue)) {
@@ -64,8 +66,8 @@ function resolveIdentifierMapping(
 }
 
 function findStableIdentifier(
-  mappings: Map<number, number>,
-  value: number | undefined,
+  mappings: Map<SpatialSkeletonId, SpatialSkeletonId>,
+  value: SpatialSkeletonId | undefined,
 ) {
   const currentValue = normalizeIdentifier(value);
   if (currentValue === undefined) {
@@ -76,7 +78,7 @@ function findStableIdentifier(
     if (resolveIdentifierMapping(mappings, candidate) !== currentValue) {
       continue;
     }
-    if (candidate < stableValue) {
+    if (compareUint64Ids(candidate, stableValue) < 0) {
       stableValue = candidate;
     }
   }
@@ -84,8 +86,8 @@ function findStableIdentifier(
 }
 
 export class SpatialSkeletonCommandMappings {
-  private nodeIdMappings = new Map<number, number>();
-  private segmentIdMappings = new Map<number, number>();
+  private nodeIdMappings = new Map<SpatialSkeletonId, SpatialSkeletonId>();
+  private segmentIdMappings = new Map<SpatialSkeletonId, SpatialSkeletonId>();
 
   clear() {
     this.nodeIdMappings.clear();
@@ -104,31 +106,34 @@ export class SpatialSkeletonCommandMappings {
     this.segmentIdMappings = new Map(snapshot.segmentIdMappings);
   }
 
-  resolveNodeId(nodeId: number | undefined) {
+  resolveNodeId(nodeId: SpatialSkeletonId | undefined) {
     return resolveIdentifierMapping(this.nodeIdMappings, nodeId);
   }
 
-  resolveSegmentId(segmentId: number | undefined) {
+  resolveSegmentId(segmentId: SpatialSkeletonId | undefined) {
     return resolveIdentifierMapping(this.segmentIdMappings, segmentId);
   }
 
-  getStableNodeId(nodeId: number | undefined) {
+  getStableNodeId(nodeId: SpatialSkeletonId | undefined) {
     return findStableIdentifier(this.nodeIdMappings, nodeId);
   }
 
-  getStableSegmentId(segmentId: number | undefined) {
+  getStableSegmentId(segmentId: SpatialSkeletonId | undefined) {
     return findStableIdentifier(this.segmentIdMappings, segmentId);
   }
 
-  getStableOrCurrentNodeId(nodeId: number | undefined) {
+  getStableOrCurrentNodeId(nodeId: SpatialSkeletonId | undefined) {
     return this.getStableNodeId(nodeId) ?? normalizeIdentifier(nodeId);
   }
 
-  getStableOrCurrentSegmentId(segmentId: number | undefined) {
+  getStableOrCurrentSegmentId(segmentId: SpatialSkeletonId | undefined) {
     return this.getStableSegmentId(segmentId) ?? normalizeIdentifier(segmentId);
   }
 
-  remapNodeId(originalNodeId: number | undefined, currentNodeId: number) {
+  remapNodeId(
+    originalNodeId: SpatialSkeletonId | undefined,
+    currentNodeId: SpatialSkeletonId,
+  ) {
     const normalizedOriginalNodeId = normalizeIdentifier(originalNodeId);
     const normalizedCurrentNodeId = normalizeIdentifier(currentNodeId);
     if (
@@ -151,8 +156,8 @@ export class SpatialSkeletonCommandMappings {
   }
 
   remapSegmentId(
-    originalSegmentId: number | undefined,
-    currentSegmentId: number,
+    originalSegmentId: SpatialSkeletonId | undefined,
+    currentSegmentId: SpatialSkeletonId,
   ) {
     const normalizedOriginalSegmentId = normalizeIdentifier(originalSegmentId);
     const normalizedCurrentSegmentId = normalizeIdentifier(currentSegmentId);

@@ -46,7 +46,10 @@ import {
   SpatialSkeletonActions,
   type SpatialSkeletonAction,
 } from "#src/skeleton/actions.js";
-import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
+import type {
+  SpatialSkeletonId,
+  SpatiallyIndexedSkeletonNode,
+} from "#src/skeleton/api.js";
 import {
   buildSpatiallyIndexedSkeletonNavigationGraph,
   getBranchEnd as getBranchEndFromGraph,
@@ -81,6 +84,7 @@ import {
 import { makeToolButton } from "#src/ui/tool.js";
 import type { ArraySpliceOp } from "#src/util/array.js";
 import * as matrix from "#src/util/matrix.js";
+import { compareUint64Ids } from "#src/util/bigint.js";
 import { formatScaleWithUnitAsString } from "#src/util/si_units.js";
 import { Signal } from "#src/util/signal.js";
 import { EnumSelectWidget } from "#src/widget/enum_widget.js";
@@ -103,7 +107,7 @@ export function buildSpatialSkeletonVirtualListItems(
   emptyText: string,
 ) {
   const items: SpatialSkeletonListItem[] = [];
-  const listIndexByNodeId = new Map<number, number>();
+  const listIndexByNodeId = new Map<SpatialSkeletonId, number>();
   if (segmentState !== undefined && segmentState.displayedNodeCount > 0) {
     items.push({ kind: "segment", segmentState });
     for (const row of segmentState.rows) {
@@ -118,26 +122,26 @@ export function buildSpatialSkeletonVirtualListItems(
 
 interface SpatiallyIndexedSkeletonNavigationApi {
   getSkeletonRootNode(
-    skeletonId: number,
+    skeletonId: SpatialSkeletonId,
   ): Promise<SpatiallyIndexedSkeletonNavigationTarget>;
   getBranchStart(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
   ): Promise<SpatiallyIndexedSkeletonNavigationTarget>;
   getBranchEnd(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
   ): Promise<SpatiallyIndexedSkeletonNavigationTarget>;
   getNextCollapsedLevelNode(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
   ): Promise<SpatiallyIndexedSkeletonNavigationTarget>;
   getOpenLeaves(
-    skeletonId: number,
-    nodeId: number,
+    skeletonId: SpatialSkeletonId,
+    nodeId: SpatialSkeletonId,
   ): Promise<SpatiallyIndexedSkeletonOpenLeaf[]>;
   getParentNode(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
   ): Promise<SpatiallyIndexedSkeletonNavigationTarget | undefined>;
   getChildNode(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
   ): Promise<SpatiallyIndexedSkeletonNavigationTarget | undefined>;
 }
 
@@ -298,8 +302,11 @@ export class SpatialSkeletonEditTab extends Tab {
     element.appendChild(nodesSection);
 
     let allNodes: SpatiallyIndexedSkeletonNode[] = [];
-    let activeSegmentId: number | undefined;
-    let nodesBySegment = new Map<number, SpatiallyIndexedSkeletonNode[]>();
+    let activeSegmentId: SpatialSkeletonId | undefined;
+    let nodesBySegment = new Map<
+      SpatialSkeletonId,
+      SpatiallyIndexedSkeletonNode[]
+    >();
     let inspectionAllowed = false;
     let navigationAllowed = false;
     let trueEndEditingAllowed = false;
@@ -307,15 +314,15 @@ export class SpatialSkeletonEditTab extends Tab {
     let nodeRerootAllowed = false;
     let pendingScrollToSelectedNode = false;
     let loadedNodeSummarySuffix = "";
-    let hoveredViewerNodeId: number | undefined;
-    let hoveredListNodeId: number | undefined;
-    const pendingDeleteNodes = new Set<number>();
-    const pendingRerootNodes = new Set<number>();
-    const pendingTrueEndNodes = new Set<number>();
-    const listIndexByNodeId = new Map<number, number>();
+    let hoveredViewerNodeId: SpatialSkeletonId | undefined;
+    let hoveredListNodeId: SpatialSkeletonId | undefined;
+    const pendingDeleteNodes = new Set<SpatialSkeletonId>();
+    const pendingRerootNodes = new Set<SpatialSkeletonId>();
+    const pendingTrueEndNodes = new Set<SpatialSkeletonId>();
+    const listIndexByNodeId = new Map<SpatialSkeletonId, number>();
     const skeletonState = layer.spatialSkeletonState;
     const navigationGraphCache = new Map<
-      number,
+      SpatialSkeletonId,
       {
         nodes: readonly SpatiallyIndexedSkeletonNode[];
         graph: SpatiallyIndexedSkeletonNavigationGraph;
@@ -432,18 +439,18 @@ export class SpatialSkeletonEditTab extends Tab {
       layer.moveViewToSpatialSkeletonNodePosition(position);
     };
 
-    const getNavigationNode = (nodeId: number) => {
+    const getNavigationNode = (nodeId: SpatialSkeletonId) => {
       return skeletonState.getCachedNode(nodeId);
     };
 
-    const getSegmentNavigationNodes = (segmentId: number) => {
+    const getSegmentNavigationNodes = (segmentId: SpatialSkeletonId) => {
       return (
         nodesBySegment.get(segmentId) ??
         skeletonState.getCachedSegmentNodes(segmentId)
       );
     };
 
-    const getSegmentNavigationGraph = (segmentId: number) => {
+    const getSegmentNavigationGraph = (segmentId: SpatialSkeletonId) => {
       const segmentNodes = getSegmentNavigationNodes(segmentId);
       if (segmentNodes === undefined || segmentNodes.length === 0) {
         throw new Error(
@@ -462,10 +469,10 @@ export class SpatialSkeletonEditTab extends Tab {
       return graph;
     };
 
-    const getSegmentChipColors = (segmentId: number) => {
+    const getSegmentChipColors = (segmentId: SpatialSkeletonId) => {
       const color = getBaseObjectColor(
         layer.displayState,
-        BigInt(segmentId),
+        segmentId,
         segmentColorScratch,
       );
       const r = Math.round(color[0] * 255);
@@ -480,30 +487,35 @@ export class SpatialSkeletonEditTab extends Tab {
 
     const bindSegmentSelectionControls = (
       element: HTMLElement,
-      segmentId: number,
+      segmentId: SpatialSkeletonId,
     ) => {
-      const id = BigInt(segmentId);
       const hasSegmentSelectionModifiers = (event: MouseEvent) =>
         event.ctrlKey && !event.altKey && !event.metaKey;
       element.addEventListener("mousedown", (event: MouseEvent) => {
         if (event.button !== 2 || !hasSegmentSelectionModifiers(event)) {
           return;
         }
-        layer.selectSegment(id, event.shiftKey ? "force-unpin" : true);
+        layer.selectSegment(
+          segmentId,
+          event.shiftKey ? "force-unpin" : true,
+        );
         event.preventDefault();
         event.stopPropagation();
       });
       element.addEventListener("contextmenu", (event: MouseEvent) => {
         if (!hasSegmentSelectionModifiers(event)) return;
         if (event.button !== 2) {
-          layer.selectSegment(id, event.shiftKey ? "force-unpin" : true);
+          layer.selectSegment(
+            segmentId,
+            event.shiftKey ? "force-unpin" : true,
+          );
         }
         event.preventDefault();
         event.stopPropagation();
       });
     };
 
-    const getSegmentSelectionTitle = (segmentId: number) =>
+    const getSegmentSelectionTitle = (segmentId: SpatialSkeletonId) =>
       `segment ${segmentId}\n` +
       "Ctrl+right-click to pin selection\n" +
       "Ctrl+shift+right-click to unpin";
@@ -523,17 +535,13 @@ export class SpatialSkeletonEditTab extends Tab {
       return getSegmentIdFromLayerSelectionValue(layerSelectionState);
     };
 
-    const addVisibleSegmentIds = (segmentIds: Set<number>) => {
+    const addVisibleSegmentIds = (segmentIds: Set<SpatialSkeletonId>) => {
       const visibleSegments = getVisibleSegments(
         layer.displayState.segmentationGroupState.value,
       );
       for (const segmentId of visibleSegments.keys()) {
-        const normalizedSegmentId = Number(segmentId);
-        if (
-          Number.isSafeInteger(normalizedSegmentId) &&
-          normalizedSegmentId > 0
-        ) {
-          segmentIds.add(normalizedSegmentId);
+        if (segmentId > 0n) {
+          segmentIds.add(segmentId);
         }
       }
     };
@@ -582,19 +590,21 @@ export class SpatialSkeletonEditTab extends Tab {
       applyRowInteractionState();
     };
 
-    const updateHoveredListNode = (nextHoveredNodeId: number | undefined) => {
+    const updateHoveredListNode = (
+      nextHoveredNodeId: SpatialSkeletonId | undefined,
+    ) => {
       if (hoveredListNodeId === nextHoveredNodeId) return;
       hoveredListNodeId = nextHoveredNodeId;
       applyRowInteractionState();
     };
 
     const skeletonNavigationApi: SpatiallyIndexedSkeletonNavigationApi = {
-      async getSkeletonRootNode(skeletonId: number) {
+      async getSkeletonRootNode(skeletonId: SpatialSkeletonId) {
         return getSkeletonRootNodeFromGraph(
           getSegmentNavigationGraph(skeletonId),
         );
       },
-      async getBranchStart(nodeId: number) {
+      async getBranchStart(nodeId: SpatialSkeletonId) {
         const node = getNavigationNode(nodeId);
         if (node === undefined) {
           throw new Error(
@@ -606,7 +616,7 @@ export class SpatialSkeletonEditTab extends Tab {
           nodeId,
         );
       },
-      async getBranchEnd(nodeId: number) {
+      async getBranchEnd(nodeId: SpatialSkeletonId) {
         const node = getNavigationNode(nodeId);
         if (node === undefined) {
           throw new Error(
@@ -618,7 +628,7 @@ export class SpatialSkeletonEditTab extends Tab {
           nodeId,
         );
       },
-      async getNextCollapsedLevelNode(nodeId: number) {
+      async getNextCollapsedLevelNode(nodeId: SpatialSkeletonId) {
         const node = getNavigationNode(nodeId);
         if (node === undefined) {
           throw new Error(
@@ -630,13 +640,16 @@ export class SpatialSkeletonEditTab extends Tab {
           nodeId,
         );
       },
-      async getOpenLeaves(skeletonId: number, nodeId: number) {
+      async getOpenLeaves(
+        skeletonId: SpatialSkeletonId,
+        nodeId: SpatialSkeletonId,
+      ) {
         return getOpenLeavesFromGraph(
           getSegmentNavigationGraph(skeletonId),
           nodeId,
         );
       },
-      async getParentNode(nodeId: number) {
+      async getParentNode(nodeId: SpatialSkeletonId) {
         const node = getNavigationNode(nodeId);
         if (node === undefined) {
           throw new Error(
@@ -648,7 +661,7 @@ export class SpatialSkeletonEditTab extends Tab {
           nodeId,
         );
       },
-      async getChildNode(nodeId: number) {
+      async getChildNode(nodeId: SpatialSkeletonId) {
         const node = getNavigationNode(nodeId);
         if (node === undefined) {
           throw new Error(
@@ -755,7 +768,7 @@ export class SpatialSkeletonEditTab extends Tab {
           }
           openLeaves.sort((a, b) =>
             a.distance === b.distance
-              ? a.nodeId - b.nodeId
+              ? compareUint64Ids(a.nodeId, b.nodeId)
               : a.distance - b.distance,
           );
           navigateToNodeTarget(openLeaves[0]);
@@ -1014,7 +1027,7 @@ export class SpatialSkeletonEditTab extends Tab {
       return button;
     };
 
-    const getSegmentDisplayLabel = (segmentId: number) => {
+    const getSegmentDisplayLabel = (segmentId: SpatialSkeletonId) => {
       const segmentationGroupState =
         layer.displayState.segmentationGroupState.value;
       const segmentPropertyMap =
@@ -1024,7 +1037,7 @@ export class SpatialSkeletonEditTab extends Tab {
       }
       const mappedSegmentId = getSegmentEquivalences(
         segmentationGroupState,
-      ).get(BigInt(segmentId));
+      ).get(segmentId);
       return segmentPropertyMap.getSegmentLabel(mappedSegmentId);
     };
 
@@ -1447,13 +1460,19 @@ export class SpatialSkeletonEditTab extends Tab {
     };
 
     const applyNodesBySegment = (
-      nextNodesBySegment: Map<number, SpatiallyIndexedSkeletonNode[]>,
+      nextNodesBySegment: Map<
+        SpatialSkeletonId,
+        SpatiallyIndexedSkeletonNode[]
+      >,
       summarySuffix = "",
     ) => {
       loadedNodeSummarySuffix = summarySuffix;
       navigationGraphCache.clear();
       nodesBySegment = nextNodesBySegment;
-      const allNodesById = new Map<number, SpatiallyIndexedSkeletonNode>();
+      const allNodesById = new Map<
+        SpatialSkeletonId,
+        SpatiallyIndexedSkeletonNode
+      >();
       for (const segmentNodes of nextNodesBySegment.values()) {
         for (const node of segmentNodes) {
           if (!allNodesById.has(node.nodeId)) {
@@ -1463,8 +1482,8 @@ export class SpatialSkeletonEditTab extends Tab {
       }
       allNodes = [...allNodesById.values()].sort((a, b) =>
         a.segmentId === b.segmentId
-          ? a.nodeId - b.nodeId
-          : a.segmentId - b.segmentId,
+          ? compareUint64Ids(a.nodeId, b.nodeId)
+          : compareUint64Ids(a.segmentId, b.segmentId),
       );
       updateDisplay(summarySuffix);
     };
@@ -1498,14 +1517,14 @@ export class SpatialSkeletonEditTab extends Tab {
       updateDisplay();
 
       const segmentId = activeSegmentId;
-      const cachedSegmentIds = new Set<number>([segmentId]);
+      const cachedSegmentIds = new Set<SpatialSkeletonId>([segmentId]);
       addVisibleSegmentIds(cachedSegmentIds);
       for (const retainedSegmentId of skeletonLayer.getRetainedOverlaySegmentIds()) {
         cachedSegmentIds.add(retainedSegmentId);
       }
       skeletonState.evictInactiveSegmentNodes(cachedSegmentIds);
       applyNodesBySegment(
-        new Map<number, SpatiallyIndexedSkeletonNode[]>([
+        new Map<SpatialSkeletonId, SpatiallyIndexedSkeletonNode[]>([
           [segmentId, cachedSelectedSegmentNodes],
         ]),
         " Using inspected full skeleton data.",

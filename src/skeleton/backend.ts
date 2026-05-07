@@ -68,7 +68,7 @@ import {
   type SliceViewProjectionParameters,
   type TransformedSource,
 } from "#src/sliceview/base.js";
-import type { TypedNumberArray } from "#src/util/array.js";
+import type { TypedArray } from "#src/util/array.js";
 import type { Endianness } from "#src/util/endian.js";
 import { vec3 } from "#src/util/geom.js";
 import {
@@ -182,7 +182,7 @@ registerRPC(
 export class SkeletonChunk extends Chunk implements SkeletonChunkData {
   objectId: bigint = 0n;
   vertexPositions: Float32Array | null = null;
-  vertexAttributes: TypedNumberArray[] | null = null;
+  vertexAttributes: TypedArray[] | null = null;
   indices: Uint32Array | null = null;
 
   initializeSkeletonChunk(key: string, objectId: bigint) {
@@ -295,12 +295,12 @@ export class SpatiallyIndexedSkeletonChunk
   implements SkeletonChunkData
 {
   vertexPositions: Float32Array | null = null;
-  vertexAttributes: TypedNumberArray[] | null = null;
+  vertexAttributes: TypedArray[] | null = null;
   indices: Uint32Array | null = null;
   lod: number = 0;
   requestGeneration = -1;
   requestOwners = SpatiallyIndexedSkeletonChunkRequestOwner.NONE;
-  nodeIds: Int32Array | undefined;
+  nodeIds: BigUint64Array | undefined;
   nodeSourceStates: Array<SpatialSkeletonSourceState | undefined> | undefined;
 
   freeSystemMemory() {

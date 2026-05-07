@@ -114,7 +114,7 @@ export class CatmaidSkeletonSourceBackend extends WithParameters(
   }
 
   async download(chunk: SkeletonChunk, signal: AbortSignal) {
-    const skeletonId = Number(chunk.objectId);
+    const skeletonId = chunk.objectId;
     const nodes = await this.client.getSkeleton(skeletonId, { signal });
     const packed = packCatmaidSkeletonNodes(nodes);
 

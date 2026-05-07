@@ -316,23 +316,23 @@ describe("CatmaidClient skeleton editing methods", () => {
         {
           "afonso reviewed it": [22107946],
           "test 123 4": [
-            [22107955, "2026-03-29 10:16:00.000000+00:00"],
-            [22107955, "2026-03-29 10:15:30.000000+00:00"],
+            ["22107955", "2026-03-29 10:16:00.000000+00:00"],
+            ["22107955", "2026-03-29 10:15:30.000000+00:00"],
           ],
-          "stale description": [[22107955, "2026-03-29 10:15:45.000000+00:00"]],
-          ends: [[22107959, "2026-03-29 10:17:00.000000+00:00"]],
+          "stale description": [["22107955", "2026-03-29 10:15:45.000000+00:00"]],
+          ends: [["22107959", "2026-03-29 10:17:00.000000+00:00"]],
         },
         [],
         [],
       ]);
     (client as any).fetch = fetchMock;
 
-    await expect(client.getSkeleton(2)).resolves.toEqual([
+    await expect(client.getSkeleton(2n)).resolves.toEqual([
       {
-        nodeId: 22107946,
+        nodeId: 22107946n,
         parentNodeId: undefined,
         position: new Float32Array([23697030, 15055839, 16651262]),
-        segmentId: 2,
+        segmentId: 2n,
         radius: 2000,
         confidence: 100,
         description: "afonso reviewed it",
@@ -340,10 +340,10 @@ describe("CatmaidClient skeleton editing methods", () => {
         sourceState: testSourceState("2026-03-29T10:15:00Z"),
       },
       {
-        nodeId: 22107955,
-        parentNodeId: 22107954,
+        nodeId: 22107955n,
+        parentNodeId: 22107954n,
         position: new Float32Array([23705874, 15093672, 16682375]),
-        segmentId: 2,
+        segmentId: 2n,
         radius: 2000,
         confidence: 100,
         description: "test 123 4",
@@ -351,10 +351,10 @@ describe("CatmaidClient skeleton editing methods", () => {
         sourceState: testSourceState("2026-03-29T10:16:00Z"),
       },
       {
-        nodeId: 22107959,
-        parentNodeId: 22107958,
+        nodeId: 22107959n,
+        parentNodeId: 22107958n,
         position: new Float32Array([23704520, 15085237, 16708998]),
-        segmentId: 2,
+        segmentId: 2n,
         radius: 2000,
         confidence: 100,
         description: undefined,
@@ -392,7 +392,7 @@ describe("CatmaidClient skeleton editing methods", () => {
         ],
         [],
         {
-          ends: [[23218380, "2026-04-22 15:11:58.824455+00:00"]],
+          ends: [["23218380", "2026-04-22 15:11:58.824455+00:00"]],
         },
         [],
         [],
@@ -400,12 +400,12 @@ describe("CatmaidClient skeleton editing methods", () => {
       .mockResolvedValueOnce([[], [], {}, [], []]);
     (client as any).fetch = fetchMock;
 
-    await expect(client.getSkeleton(2974940)).resolves.toEqual([
+    await expect(client.getSkeleton(2974940n)).resolves.toEqual([
       {
-        nodeId: 23218380,
+        nodeId: 23218380n,
         parentNodeId: undefined,
         position: new Float32Array([24233266, 13917594, 15605623]),
-        segmentId: 2974940,
+        segmentId: 2974940n,
         radius: 0,
         confidence: 100,
         description: undefined,
@@ -453,7 +453,7 @@ describe("CatmaidClient skeleton editing methods", () => {
     ]);
     (client as any).fetch = fetchMock;
 
-    await expect(client.getSkeleton(1140285)).resolves.toEqual([]);
+    await expect(client.getSkeleton(1140285n)).resolves.toEqual([]);
   });
 
   it("merges skeletons using from/to treenode ids", async () => {
@@ -466,15 +466,15 @@ describe("CatmaidClient skeleton editing methods", () => {
     (client as any).fetch = fetchMock;
 
     await expect(
-      client.mergeSkeletons(101, 202, {
+      client.mergeSkeletons(101n, 202n, {
         nodes: [
-          { nodeId: 101, revisionToken: "2026-03-29T11:50:00Z" },
-          { nodeId: 202, revisionToken: "2026-03-29T11:51:00Z" },
+          { nodeId: 101n, revisionToken: "2026-03-29T11:50:00Z" },
+          { nodeId: 202n, revisionToken: "2026-03-29T11:51:00Z" },
         ],
       }),
     ).resolves.toEqual({
-      resultSegmentId: 17,
-      deletedSegmentId: 21,
+      resultSegmentId: 17n,
+      deletedSegmentId: 21n,
       directionAdjusted: false,
     });
 
@@ -485,8 +485,8 @@ describe("CatmaidClient skeleton editing methods", () => {
     expect(requestBody.get("to_id")).toBe("202");
     expect(requestBody.get("state")).toBe(
       JSON.stringify([
-        [101, "2026-03-29T11:50:00Z"],
-        [202, "2026-03-29T11:51:00Z"],
+        ["101", "2026-03-29T11:50:00Z"],
+        ["202", "2026-03-29T11:51:00Z"],
       ]),
     );
   });
@@ -513,17 +513,17 @@ describe("CatmaidClient skeleton editing methods", () => {
       }),
     ).resolves.toEqual([
       {
-        nodeId: 101,
+        nodeId: 101n,
         parentNodeId: undefined,
         position: new Float32Array([1, 2, 3]),
-        segmentId: 11,
+        segmentId: 11n,
         sourceState: testSourceState("2026-03-29T11:50:00Z"),
       },
       {
-        nodeId: 102,
-        parentNodeId: 101,
+        nodeId: 102n,
+        parentNodeId: 101n,
         position: new Float32Array([4, 5, 6]),
-        segmentId: 17,
+        segmentId: 17n,
         sourceState: testSourceState("2026-03-29T11:51:00Z"),
       },
     ]);
@@ -564,8 +564,8 @@ describe("CatmaidClient skeleton editing methods", () => {
     });
     (client as any).fetch = fetchMock;
 
-    await expect(client.getSkeletonRootNode(17)).resolves.toEqual({
-      nodeId: 303,
+    await expect(client.getSkeletonRootNode(17n)).resolves.toEqual({
+      nodeId: 303n,
       position: [1, 2, 3],
     });
 
@@ -578,8 +578,8 @@ describe("CatmaidClient skeleton editing methods", () => {
     (client as any).fetch = fetchMock;
 
     await expect(
-      client.mergeSkeletons(101, 202, {
-        nodes: [{ nodeId: 101, revisionToken: "2026-03-29T11:50:00Z" }],
+      client.mergeSkeletons(101n, 202n, {
+        nodes: [{ nodeId: 101n, revisionToken: "2026-03-29T11:50:00Z" }],
       }),
     ).rejects.toThrow(
       "CATMAID merge-skeleton node state does not match the requested node ids.",
@@ -599,21 +599,21 @@ describe("CatmaidClient skeleton editing methods", () => {
     (client as any).fetch = fetchMock;
 
     await expect(
-      client.addNode(13, 1, 2, 3, 7, {
+      client.addNode(13n, 1, 2, 3, 7n, {
         node: {
-          nodeId: 7,
+          nodeId: 7n,
           revisionToken: "2026-03-29T11:59:00Z",
         },
       }),
     ).resolves.toEqual({
-      nodeId: 88,
-      segmentId: 13,
+      nodeId: 88n,
+      segmentId: 13n,
       sourceState: testSourceState("2026-03-29T12:00:00Z"),
       parentSourceState: testSourceState("2026-03-29T12:00:01Z"),
     });
 
     expect(getFetchBody(fetchMock).get("state")).toBe(
-      JSON.stringify({ parent: [7, "2026-03-29T11:59:00Z"] }),
+      JSON.stringify({ parent: ["7", "2026-03-29T11:59:00Z"] }),
     );
   });
 
@@ -626,9 +626,9 @@ describe("CatmaidClient skeleton editing methods", () => {
     });
     (client as any).fetch = fetchMock;
 
-    await expect(client.addNode(13, 1, 2, 3)).resolves.toEqual({
-      nodeId: 88,
-      segmentId: 13,
+    await expect(client.addNode(13n, 1, 2, 3)).resolves.toEqual({
+      nodeId: 88n,
+      segmentId: 13n,
       sourceState: testSourceState("2026-03-29T12:00:00Z"),
       parentSourceState: undefined,
     });
@@ -646,31 +646,31 @@ describe("CatmaidClient skeleton editing methods", () => {
       edition_time: "2026-03-29T12:01:00Z",
       parent_edition_time: "2026-03-29T12:01:01Z",
       child_edition_times: [
-        [11, "2026-03-29T12:01:02Z"],
-        [12, "2026-03-29T12:01:03Z"],
+        ["11", "2026-03-29T12:01:02Z"],
+        ["12", "2026-03-29T12:01:03Z"],
       ],
     });
     (client as any).fetch = fetchMock;
 
     await expect(
-      client.insertNode(13, 1, 2, 3, 7, [11, 12], {
+      client.insertNode(13n, 1, 2, 3, 7n, [11n, 12n], {
         node: {
-          nodeId: 7,
+          nodeId: 7n,
           revisionToken: "2026-03-29T12:00:30Z",
         },
         children: [
-          { nodeId: 11, revisionToken: "2026-03-29T12:00:31Z" },
-          { nodeId: 12, revisionToken: "2026-03-29T12:00:32Z" },
+          { nodeId: 11n, revisionToken: "2026-03-29T12:00:31Z" },
+          { nodeId: 12n, revisionToken: "2026-03-29T12:00:32Z" },
         ],
       }),
     ).resolves.toEqual({
-      nodeId: 89,
-      segmentId: 13,
+      nodeId: 89n,
+      segmentId: 13n,
       sourceState: testSourceState("2026-03-29T12:01:00Z"),
       parentSourceState: testSourceState("2026-03-29T12:01:01Z"),
       nodeSourceStateUpdates: [
-        { nodeId: 11, sourceState: testSourceState("2026-03-29T12:01:02Z") },
-        { nodeId: 12, sourceState: testSourceState("2026-03-29T12:01:03Z") },
+        { nodeId: 11n, sourceState: testSourceState("2026-03-29T12:01:02Z") },
+        { nodeId: 12n, sourceState: testSourceState("2026-03-29T12:01:03Z") },
       ],
     });
 
@@ -684,8 +684,8 @@ describe("CatmaidClient skeleton editing methods", () => {
       JSON.stringify({
         edition_time: "2026-03-29T12:00:30Z",
         children: [
-          [11, "2026-03-29T12:00:31Z"],
-          [12, "2026-03-29T12:00:32Z"],
+          ["11", "2026-03-29T12:00:31Z"],
+          ["12", "2026-03-29T12:00:32Z"],
         ],
         links: [],
       }),
@@ -704,33 +704,33 @@ describe("CatmaidClient skeleton editing methods", () => {
     (client as any).fetch = fetchMock;
 
     await expect(
-      client.rerootSkeleton(202, {
+      client.rerootSkeleton(202n, {
         node: {
-          nodeId: 202,
-          parentNodeId: 201,
+          nodeId: 202n,
+          parentNodeId: 201n,
           revisionToken: "2026-03-29T12:05:00Z",
         },
         parent: {
-          nodeId: 201,
+          nodeId: 201n,
           revisionToken: "2026-03-29T12:04:00Z",
         },
         children: [
-          { nodeId: 203, revisionToken: "2026-03-29T12:06:00Z" },
-          { nodeId: 204, revisionToken: "2026-03-29T12:07:00Z" },
+          { nodeId: 203n, revisionToken: "2026-03-29T12:06:00Z" },
+          { nodeId: 204n, revisionToken: "2026-03-29T12:07:00Z" },
         ],
         nodes: [
-          { nodeId: 202, revisionToken: "2026-03-29T12:05:00Z" },
-          { nodeId: 201, revisionToken: "2026-03-29T12:04:00Z" },
+          { nodeId: 202n, revisionToken: "2026-03-29T12:05:00Z" },
+          { nodeId: 201n, revisionToken: "2026-03-29T12:04:00Z" },
         ],
       }),
     ).resolves.toEqual({
       nodeSourceStateUpdates: [
         {
-          nodeId: 201,
+          nodeId: 201n,
           sourceState: testSourceState("2024-03-29T11:28:31.250Z"),
         },
         {
-          nodeId: 202,
+          nodeId: 202n,
           sourceState: testSourceState("2024-03-29T11:28:32.500Z"),
         },
       ],
@@ -743,10 +743,10 @@ describe("CatmaidClient skeleton editing methods", () => {
     expect(requestBody.get("state")).toBe(
       JSON.stringify({
         edition_time: "2026-03-29T12:05:00Z",
-        parent: [201, "2026-03-29T12:04:00Z"],
+        parent: ["201", "2026-03-29T12:04:00Z"],
         children: [
-          [203, "2026-03-29T12:06:00Z"],
-          [204, "2026-03-29T12:07:00Z"],
+          ["203", "2026-03-29T12:06:00Z"],
+          ["204", "2026-03-29T12:07:00Z"],
         ],
         links: [],
       }),
@@ -763,13 +763,13 @@ describe("CatmaidClient skeleton editing methods", () => {
     (client as any).fetch = fetchMock;
 
     await expect(
-      client.rerootSkeleton(202, {
+      client.rerootSkeleton(202n, {
         node: {
-          nodeId: 202,
-          parentNodeId: 201,
+          nodeId: 202n,
+          parentNodeId: 201n,
           revisionToken: "2026-03-29T12:05:00Z",
         },
-        children: [{ nodeId: 203, revisionToken: "2026-03-29T12:06:00Z" }],
+        children: [{ nodeId: 203n, revisionToken: "2026-03-29T12:06:00Z" }],
       }),
     ).rejects.toThrow(
       "CATMAID reroot-skeleton parent state does not match the cached skeleton neighborhood.",
@@ -787,21 +787,21 @@ describe("CatmaidClient skeleton editing methods", () => {
     (client as any).fetch = fetchMock;
 
     await expect(
-      client.splitSkeleton(202, {
+      client.splitSkeleton(202n, {
         node: {
-          nodeId: 202,
-          parentNodeId: 201,
+          nodeId: 202n,
+          parentNodeId: 201n,
           revisionToken: "2026-03-29T12:05:00Z",
         },
         parent: {
-          nodeId: 201,
+          nodeId: 201n,
           revisionToken: "2026-03-29T12:04:00Z",
         },
-        children: [{ nodeId: 203, revisionToken: "2026-03-29T12:06:00Z" }],
+        children: [{ nodeId: 203n, revisionToken: "2026-03-29T12:06:00Z" }],
       }),
     ).resolves.toEqual({
-      existingSegmentId: 17,
-      newSegmentId: 21,
+      existingSegmentId: 17n,
+      newSegmentId: 21n,
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -811,8 +811,8 @@ describe("CatmaidClient skeleton editing methods", () => {
     expect(requestBody.get("state")).toBe(
       JSON.stringify({
         edition_time: "2026-03-29T12:05:00Z",
-        parent: [201, "2026-03-29T12:04:00Z"],
-        children: [[203, "2026-03-29T12:06:00Z"]],
+        parent: ["201", "2026-03-29T12:04:00Z"],
+        children: [["203", "2026-03-29T12:06:00Z"]],
         links: [],
       }),
     );
@@ -829,19 +829,19 @@ describe("CatmaidClient skeleton editing methods", () => {
     (client as any).fetch = fetchMock;
 
     await expect(
-      client.rerootSkeleton(202, {
+      client.rerootSkeleton(202n, {
         node: {
-          nodeId: 202,
-          parentNodeId: 201,
+          nodeId: 202n,
+          parentNodeId: 201n,
           revisionToken: "2026-03-29T12:05:00Z",
         },
         parent: {
-          nodeId: 201,
+          nodeId: 201n,
           revisionToken: "2026-03-29T12:04:00Z",
         },
         nodes: [
-          { nodeId: 202, revisionToken: "2026-03-29T12:05:00Z" },
-          { nodeId: 201, revisionToken: "2026-03-29T12:04:00Z" },
+          { nodeId: 202n, revisionToken: "2026-03-29T12:05:00Z" },
+          { nodeId: 201n, revisionToken: "2026-03-29T12:04:00Z" },
         ],
       }),
     ).rejects.toThrow(
@@ -859,9 +859,9 @@ describe("CatmaidClient skeleton editing methods", () => {
     (client as any).fetch = fetchMock;
 
     await expect(
-      client.moveNode(42, 10, 11, 12, {
+      client.moveNode(42n, 10, 11, 12, {
         node: {
-          nodeId: 42,
+          nodeId: 42n,
           revisionToken: "2026-03-29T12:00:00Z",
         },
       }),
@@ -870,7 +870,7 @@ describe("CatmaidClient skeleton editing methods", () => {
     });
 
     expect(getFetchBody(fetchMock).get("state")).toBe(
-      JSON.stringify([[42, "2026-03-29T12:00:00Z"]]),
+      JSON.stringify([["42", "2026-03-29T12:00:00Z"]]),
     );
   });
 
@@ -879,45 +879,45 @@ describe("CatmaidClient skeleton editing methods", () => {
     const fetchMock = vi.fn().mockResolvedValue({
       success: "Removed treenode successfully.",
       children: [
-        [12, "2026-03-29T12:20:00Z"],
-        [13, "2026-03-29T12:20:01Z"],
+        ["12", "2026-03-29T12:20:00Z"],
+        ["13", "2026-03-29T12:20:01Z"],
       ],
     });
     (client as any).fetch = fetchMock;
 
     await expect(
-      client.deleteNode(11, {
-        childNodeIds: [12, 13],
+      client.deleteNode(11n, {
+        childNodeIds: [12n, 13n],
         editContext: {
           node: {
-            nodeId: 11,
-            parentNodeId: 7,
+            nodeId: 11n,
+            parentNodeId: 7n,
             revisionToken: "2026-03-29T12:15:00Z",
           },
           parent: {
-            nodeId: 7,
+            nodeId: 7n,
             revisionToken: "2026-03-29T12:14:00Z",
           },
           children: [
-            { nodeId: 12, revisionToken: "2026-03-29T12:13:00Z" },
-            { nodeId: 13, revisionToken: "2026-03-29T12:13:01Z" },
+            { nodeId: 12n, revisionToken: "2026-03-29T12:13:00Z" },
+            { nodeId: 13n, revisionToken: "2026-03-29T12:13:01Z" },
           ],
         },
       }),
     ).resolves.toEqual({
       nodeSourceStateUpdates: [
-        { nodeId: 12, sourceState: testSourceState("2026-03-29T12:20:00Z") },
-        { nodeId: 13, sourceState: testSourceState("2026-03-29T12:20:01Z") },
+        { nodeId: 12n, sourceState: testSourceState("2026-03-29T12:20:00Z") },
+        { nodeId: 13n, sourceState: testSourceState("2026-03-29T12:20:01Z") },
       ],
     });
 
     expect(getFetchBody(fetchMock).get("state")).toBe(
       JSON.stringify({
         edition_time: "2026-03-29T12:15:00Z",
-        parent: [7, "2026-03-29T12:14:00Z"],
+        parent: ["7", "2026-03-29T12:14:00Z"],
         children: [
-          [12, "2026-03-29T12:13:00Z"],
-          [13, "2026-03-29T12:13:01Z"],
+          ["12", "2026-03-29T12:13:00Z"],
+          ["13", "2026-03-29T12:13:01Z"],
         ],
         links: [],
       }),
@@ -932,7 +932,7 @@ describe("CatmaidClient skeleton editing methods", () => {
     (client as any).fetch = fetchMock;
 
     await expect(
-      client.updateDescription(11, "updated description"),
+      client.updateDescription(11n, "updated description"),
     ).resolves.toEqual({
       description: "updated description",
       sourceState: testSourceState("2026-03-29T13:00:00Z"),
@@ -952,7 +952,7 @@ describe("CatmaidClient skeleton editing methods", () => {
     (client as any).fetch = fetchMock;
 
     await expect(
-      client.updateDescription(11, "updated description\nends", {
+      client.updateDescription(11n, "updated description\nends", {
         isTrueEnd: true,
       }),
     ).resolves.toEqual({
@@ -973,10 +973,10 @@ describe("CatmaidClient skeleton editing methods", () => {
       .mockResolvedValueOnce({ edition_time: "2026-03-29T13:11:00Z" });
     (client as any).fetch = fetchMock;
 
-    await expect(client.toggleTrueEnd(11, true)).resolves.toEqual({
+    await expect(client.toggleTrueEnd(11n, true)).resolves.toEqual({
       sourceState: testSourceState("2026-03-29T13:10:00Z"),
     });
-    await expect(client.toggleTrueEnd(11, false)).resolves.toEqual({
+    await expect(client.toggleTrueEnd(11n, false)).resolves.toEqual({
       sourceState: testSourceState("2026-03-29T13:11:00Z"),
     });
 
@@ -997,9 +997,9 @@ describe("CatmaidClient skeleton editing methods", () => {
     (client as any).fetch = fetchMock;
 
     await expect(
-      client.updateConfidence(11, 75, {
+      client.updateConfidence(11n, 75, {
         node: {
-          nodeId: 11,
+          nodeId: 11n,
           revisionToken: "2026-03-29T13:19:00Z",
         },
       }),
@@ -1030,9 +1030,9 @@ describe("CatmaidClient skeleton editing methods", () => {
     );
 
     await expect(
-      client.moveNode(11, 1, 2, 3, {
+      client.moveNode(11n, 1, 2, 3, {
         node: {
-          nodeId: 11,
+          nodeId: 11n,
           revisionToken: "2026-03-29T13:11:00Z",
         },
       }),
@@ -1061,9 +1061,9 @@ describe("CatmaidClient skeleton editing methods", () => {
     );
 
     await expect(
-      client.moveNode(11, 1, 2, 3, {
+      client.moveNode(11n, 1, 2, 3, {
         node: {
-          nodeId: 11,
+          nodeId: 11n,
           revisionToken: "2026-03-29T13:11:00Z",
         },
       }),

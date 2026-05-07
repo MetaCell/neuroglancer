@@ -21,6 +21,7 @@ import {
 import type {
   EditableSpatiallyIndexedSkeletonSource,
   SpatialSkeletonConfidenceConfiguration,
+  SpatialSkeletonId,
   SpatiallyIndexedSkeletonNode,
   SpatialSkeletonSourceState,
   SpatiallyIndexedSkeletonSource,
@@ -29,6 +30,7 @@ import { SpatialSkeletonCommandHistory } from "#src/skeleton/command_history.js"
 import { isSpatialSkeletonEditCommandFactory } from "#src/skeleton/edit_command_source.js";
 import type { SpatiallyIndexedSkeletonLayer } from "#src/skeleton/frontend.js";
 import { WatchableValue } from "#src/trackable_value.js";
+import { compareUint64Ids, parsePositiveUint64Id } from "#src/util/bigint.js";
 import { RefCounted } from "#src/util/disposable.js";
 
 interface SpatialSkeletonSourceAccess {
@@ -206,33 +208,41 @@ export function getEditableSpatiallyIndexedSkeletonSource(
 
 export function normalizeSpatiallyIndexedSkeletonNode(
   node: SpatiallyIndexedSkeletonNode,
-  fallbackSegmentId: number,
+  fallbackSegmentId: SpatialSkeletonId,
 ): SpatiallyIndexedSkeletonNode | undefined {
-  const nodeId = Number(node.nodeId);
-  const segmentIdValue = Number(node.segmentId);
+  let nodeId: SpatialSkeletonId;
+  let segmentId: SpatialSkeletonId;
+  let parentNodeId: SpatialSkeletonId | undefined;
+  try {
+    nodeId = parsePositiveUint64Id(node.nodeId, "spatial skeleton node id");
+    segmentId = parsePositiveUint64Id(
+      node.segmentId ?? fallbackSegmentId,
+      "spatial skeleton segment id",
+    );
+    parentNodeId =
+      node.parentNodeId === undefined
+        ? undefined
+        : parsePositiveUint64Id(
+            node.parentNodeId,
+            "spatial skeleton parent node id",
+          );
+  } catch {
+    return undefined;
+  }
   const x = Number(node.position[0]);
   const y = Number(node.position[1]);
   const z = Number(node.position[2]);
   if (
-    !Number.isFinite(nodeId) ||
-    !Number.isFinite(segmentIdValue) ||
     !Number.isFinite(x) ||
     !Number.isFinite(y) ||
     !Number.isFinite(z)
   ) {
     return undefined;
   }
-  const parentNodeId =
-    node.parentNodeId === undefined ||
-    !Number.isFinite(Number(node.parentNodeId))
-      ? undefined
-      : Math.round(Number(node.parentNodeId));
   return {
     ...node,
-    nodeId: Math.round(nodeId),
-    segmentId: Math.round(
-      Number.isFinite(segmentIdValue) ? segmentIdValue : fallbackSegmentId,
-    ),
+    nodeId,
+    segmentId,
     position: new Float32Array([x, y, z]),
     parentNodeId,
     description:
@@ -274,28 +284,31 @@ export class SpatialSkeletonState extends RefCounted {
   readonly editMode = new WatchableValue(false);
   readonly mergeMode = new WatchableValue(false);
   readonly splitMode = new WatchableValue(false);
-  readonly mergeAnchorNodeId = new WatchableValue<number | undefined>(
+  readonly mergeAnchorNodeId = new WatchableValue<SpatialSkeletonId | undefined>(
     undefined,
   );
   readonly nodeDataVersion = new WatchableValue(0);
   readonly pendingNodePositionVersion = new WatchableValue(0);
 
-  private pendingNodePositions = new Map<number, Float32Array>();
+  private pendingNodePositions = new Map<SpatialSkeletonId, Float32Array>();
   private fullSkeletonCacheGeneration = 0;
   private fullSegmentNodeCache = new Map<
-    number,
+    SpatialSkeletonId,
     SpatiallyIndexedSkeletonNode[]
   >();
   private pendingFullSegmentNodeFetches = new Map<
-    number,
+    SpatialSkeletonId,
     {
       promise: Promise<SpatiallyIndexedSkeletonNode[]>;
       abortController: AbortController;
     }
   >();
-  private cachedNodesById = new Map<number, SpatiallyIndexedSkeletonNode>();
+  private cachedNodesById = new Map<
+    SpatialSkeletonId,
+    SpatiallyIndexedSkeletonNode
+  >();
 
-  setNodeRadius(nodeId: number, radius: number) {
+  setNodeRadius(nodeId: SpatialSkeletonId, radius: number) {
     const normalizedNodeId = this.normalizeNodeId(nodeId);
     radius = Number(radius);
     if (normalizedNodeId === undefined || !Number.isFinite(radius)) {
@@ -312,7 +325,7 @@ export class SpatialSkeletonState extends RefCounted {
     });
   }
 
-  setNodeConfidence(nodeId: number, confidence: number) {
+  setNodeConfidence(nodeId: SpatialSkeletonId, confidence: number) {
     const normalizedNodeId = this.normalizeNodeId(nodeId);
     confidence = Number(confidence);
     if (normalizedNodeId === undefined || !Number.isFinite(confidence)) {
@@ -333,20 +346,20 @@ export class SpatialSkeletonState extends RefCounted {
     return this.pendingNodePositions.keys();
   }
 
-  getPendingNodePosition(nodeId: number) {
+  getPendingNodePosition(nodeId: SpatialSkeletonId) {
     return this.pendingNodePositions.get(nodeId);
   }
 
-  private normalizeNodeId(nodeId: number | undefined) {
+  private normalizeNodeId(nodeId: SpatialSkeletonId | undefined) {
     if (nodeId === undefined) return undefined;
-    const normalizedNodeId = Math.round(Number(nodeId));
-    if (!Number.isSafeInteger(normalizedNodeId) || normalizedNodeId <= 0) {
+    try {
+      return parsePositiveUint64Id(nodeId, "spatial skeleton node id");
+    } catch {
       return undefined;
     }
-    return normalizedNodeId;
   }
 
-  setMergeAnchor(nodeId: number | undefined) {
+  setMergeAnchor(nodeId: SpatialSkeletonId | undefined) {
     const normalizedNodeId = this.normalizeNodeId(nodeId);
     if (this.mergeAnchorNodeId.value === normalizedNodeId) {
       return false;
@@ -359,7 +372,10 @@ export class SpatialSkeletonState extends RefCounted {
     return this.setMergeAnchor(undefined);
   }
 
-  setPendingNodePosition(nodeId: number, position: ArrayLike<number>) {
+  setPendingNodePosition(
+    nodeId: SpatialSkeletonId,
+    position: ArrayLike<number>,
+  ) {
     const normalizedNodeId = this.normalizeNodeId(nodeId);
     const x = Number(position[0]);
     const y = Number(position[1]);
@@ -390,7 +406,7 @@ export class SpatialSkeletonState extends RefCounted {
     return true;
   }
 
-  clearPendingNodePosition(nodeId: number) {
+  clearPendingNodePosition(nodeId: SpatialSkeletonId) {
     const normalizedNodeId = this.normalizeNodeId(nodeId);
     if (
       normalizedNodeId === undefined ||
@@ -438,16 +454,16 @@ export class SpatialSkeletonState extends RefCounted {
     this.nodeDataVersion.value = this.nodeDataVersion.value + 1;
   }
 
-  getCachedSegmentNodes(segmentId: number) {
+  getCachedSegmentNodes(segmentId: SpatialSkeletonId) {
     return this.fullSegmentNodeCache.get(segmentId);
   }
 
-  getCachedNode(nodeId: number) {
+  getCachedNode(nodeId: SpatialSkeletonId) {
     return this.cachedNodesById.get(nodeId);
   }
 
   private replaceCachedSegmentNodes(
-    segmentId: number,
+    segmentId: SpatialSkeletonId,
     nextSegmentNodes: readonly SpatiallyIndexedSkeletonNode[],
   ) {
     const previousSegmentNodes = this.fullSegmentNodeCache.get(segmentId);
@@ -476,7 +492,7 @@ export class SpatialSkeletonState extends RefCounted {
     return true;
   }
 
-  private deleteCachedSegment(segmentId: number) {
+  private deleteCachedSegment(segmentId: SpatialSkeletonId) {
     const previousSegmentNodes = this.fullSegmentNodeCache.get(segmentId);
     if (previousSegmentNodes === undefined) return false;
     for (const node of previousSegmentNodes) {
@@ -489,7 +505,10 @@ export class SpatialSkeletonState extends RefCounted {
     return true;
   }
 
-  private abortPendingFullSegmentNodeFetch(segmentId: number, message: string) {
+  private abortPendingFullSegmentNodeFetch(
+    segmentId: SpatialSkeletonId,
+    message: string,
+  ) {
     const pendingEntry = this.pendingFullSegmentNodeFetches.get(segmentId);
     if (pendingEntry === undefined) {
       return false;
@@ -500,7 +519,7 @@ export class SpatialSkeletonState extends RefCounted {
   }
 
   setCachedNodeSourceState(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
     sourceState: SpatialSkeletonSourceState | undefined,
   ) {
     if (sourceState === undefined) {
@@ -519,7 +538,7 @@ export class SpatialSkeletonState extends RefCounted {
 
   setCachedNodeSourceStates(
     sourceStateUpdates: readonly {
-      nodeId: number;
+      nodeId: SpatialSkeletonId;
       sourceState: SpatialSkeletonSourceState;
     }[],
   ) {
@@ -532,7 +551,7 @@ export class SpatialSkeletonState extends RefCounted {
     return changed;
   }
 
-  private getCachedSegmentIdForNode(nodeId: number) {
+  private getCachedSegmentIdForNode(nodeId: SpatialSkeletonId) {
     const normalizedNodeId = this.normalizeNodeId(nodeId);
     if (normalizedNodeId === undefined) {
       return undefined;
@@ -541,8 +560,8 @@ export class SpatialSkeletonState extends RefCounted {
   }
 
   private updateCachedNodeInSegment(
-    segmentId: number,
-    nodeId: number,
+    segmentId: SpatialSkeletonId,
+    nodeId: SpatialSkeletonId,
     update: (
       node: SpatiallyIndexedSkeletonNode,
     ) => SpatiallyIndexedSkeletonNode,
@@ -566,7 +585,7 @@ export class SpatialSkeletonState extends RefCounted {
   }
 
   private upsertCachedNodeInSegment(
-    segmentId: number,
+    segmentId: SpatialSkeletonId,
     node: SpatiallyIndexedSkeletonNode,
   ) {
     const segmentNodes = this.fullSegmentNodeCache.get(segmentId);
@@ -596,7 +615,7 @@ export class SpatialSkeletonState extends RefCounted {
   }
 
   updateCachedNode(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
     update: (
       node: SpatiallyIndexedSkeletonNode,
     ) => SpatiallyIndexedSkeletonNode,
@@ -658,7 +677,7 @@ export class SpatialSkeletonState extends RefCounted {
     );
   }
 
-  moveCachedNode(nodeId: number, position: ArrayLike<number>) {
+  moveCachedNode(nodeId: SpatialSkeletonId, position: ArrayLike<number>) {
     const x = Number(position[0]);
     const y = Number(position[1]);
     const z = Number(position[2]);
@@ -681,10 +700,10 @@ export class SpatialSkeletonState extends RefCounted {
   }
 
   removeCachedNode(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
     options: {
-      parentNodeId?: number;
-      childNodeIds?: Iterable<number>;
+      parentNodeId?: SpatialSkeletonId;
+      childNodeIds?: Iterable<SpatialSkeletonId>;
     } = {},
   ) {
     const normalizedNodeId = this.normalizeNodeId(nodeId);
@@ -694,8 +713,10 @@ export class SpatialSkeletonState extends RefCounted {
     const childNodeIds = options.childNodeIds
       ? new Set(
           [...options.childNodeIds]
-            .map((value) => this.normalizeNodeId(Number(value)))
-            .filter((value): value is number => value !== undefined),
+            .map((value) => this.normalizeNodeId(value))
+            .filter(
+              (value): value is SpatialSkeletonId => value !== undefined,
+            ),
         )
       : undefined;
     let segmentId = this.getCachedSegmentIdForNode(normalizedNodeId);
@@ -738,7 +759,10 @@ export class SpatialSkeletonState extends RefCounted {
     return true;
   }
 
-  setCachedNodeParent(nodeId: number, parentNodeId: number | undefined) {
+  setCachedNodeParent(
+    nodeId: SpatialSkeletonId,
+    parentNodeId: SpatialSkeletonId | undefined,
+  ) {
     return this.updateCachedNode(nodeId, (node) => {
       if (node.parentNodeId === parentNodeId) {
         return node;
@@ -750,7 +774,7 @@ export class SpatialSkeletonState extends RefCounted {
     });
   }
 
-  rerootCachedSegment(nodeId: number) {
+  rerootCachedSegment(nodeId: SpatialSkeletonId) {
     const normalizedNodeId = this.normalizeNodeId(nodeId);
     if (normalizedNodeId === undefined) {
       return undefined;
@@ -764,7 +788,7 @@ export class SpatialSkeletonState extends RefCounted {
       return undefined;
     }
 
-    const nodeById = new Map<number, SpatiallyIndexedSkeletonNode>();
+    const nodeById = new Map<SpatialSkeletonId, SpatiallyIndexedSkeletonNode>();
     for (const node of segmentNodes) {
       nodeById.set(node.nodeId, node);
     }
@@ -776,8 +800,8 @@ export class SpatialSkeletonState extends RefCounted {
       return [startNode.nodeId];
     }
 
-    const pathNodeIds: number[] = [];
-    const seen = new Set<number>();
+    const pathNodeIds: SpatialSkeletonId[] = [];
+    const seen = new Set<SpatialSkeletonId>();
     let currentNode: SpatiallyIndexedSkeletonNode | undefined = startNode;
     while (currentNode !== undefined) {
       if (seen.has(currentNode.nodeId)) {
@@ -795,8 +819,14 @@ export class SpatialSkeletonState extends RefCounted {
       }
     }
 
-    const nextParentByNodeId = new Map<number, number | undefined>();
-    const nextConfidenceByNodeId = new Map<number, number | undefined>();
+    const nextParentByNodeId = new Map<
+      SpatialSkeletonId,
+      SpatialSkeletonId | undefined
+    >();
+    const nextConfidenceByNodeId = new Map<
+      SpatialSkeletonId,
+      number | undefined
+    >();
     nextParentByNodeId.set(startNode.nodeId, undefined);
     nextConfidenceByNodeId.set(startNode.nodeId, 100);
 
@@ -839,14 +869,16 @@ export class SpatialSkeletonState extends RefCounted {
     return pathNodeIds;
   }
 
-  invalidateCachedSegments(segmentIds: Iterable<number>) {
+  invalidateCachedSegments(segmentIds: Iterable<SpatialSkeletonId>) {
     let changed = false;
     for (const segmentId of segmentIds) {
-      const normalizedSegmentId = Math.round(Number(segmentId));
-      if (
-        !Number.isSafeInteger(normalizedSegmentId) ||
-        normalizedSegmentId <= 0
-      ) {
+      let normalizedSegmentId: SpatialSkeletonId;
+      try {
+        normalizedSegmentId = parsePositiveUint64Id(
+          segmentId,
+          "spatial skeleton segment id",
+        );
+      } catch {
         continue;
       }
       changed = this.deleteCachedSegment(normalizedSegmentId) || changed;
@@ -858,7 +890,7 @@ export class SpatialSkeletonState extends RefCounted {
     return changed;
   }
 
-  evictInactiveSegmentNodes(activeSegmentIds: Iterable<number>) {
+  evictInactiveSegmentNodes(activeSegmentIds: Iterable<SpatialSkeletonId>) {
     const activeSegmentIdSet = new Set(activeSegmentIds);
     let changed = false;
     for (const segmentId of this.fullSegmentNodeCache.keys()) {
@@ -877,7 +909,7 @@ export class SpatialSkeletonState extends RefCounted {
 
   async getFullSegmentNodes(
     skeletonLayer: SpatiallyIndexedSkeletonLayer,
-    segmentId: number,
+    segmentId: SpatialSkeletonId,
   ): Promise<SpatiallyIndexedSkeletonNode[]> {
     const cached = this.fullSegmentNodeCache.get(segmentId);
     if (cached !== undefined) {
@@ -902,7 +934,10 @@ export class SpatialSkeletonState extends RefCounted {
       const fetchedNodes = await skeletonSource.getSkeleton(segmentId, {
         signal: abortController.signal,
       });
-      const dedupedNodes = new Map<number, SpatiallyIndexedSkeletonNode>();
+      const dedupedNodes = new Map<
+        SpatialSkeletonId,
+        SpatiallyIndexedSkeletonNode
+      >();
       for (const fetchedNode of fetchedNodes) {
         const mappedNode = normalizeSpatiallyIndexedSkeletonNode(
           fetchedNode,
@@ -913,8 +948,8 @@ export class SpatialSkeletonState extends RefCounted {
           dedupedNodes.set(mappedNode.nodeId, mappedNode);
         }
       }
-      const normalizedNodes = [...dedupedNodes.values()].sort(
-        (a, b) => a.nodeId - b.nodeId,
+      const normalizedNodes = [...dedupedNodes.values()].sort((a, b) =>
+        compareUint64Ids(a.nodeId, b.nodeId),
       );
       if (
         this.fullSkeletonCacheGeneration === fetchVersion &&

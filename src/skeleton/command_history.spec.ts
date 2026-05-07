@@ -108,50 +108,50 @@ describe("skeleton/command_history", () => {
 
   it("keeps remapped node and segment ids across undo and redo", async () => {
     const history = new SpatialSkeletonCommandHistory();
-    let nextNodeId = 100;
-    let nextSegmentId = 200;
+    let nextNodeId = 100n;
+    let nextSegmentId = 200n;
     const command: SpatialSkeletonCommand = {
       label: "Remap ids",
       execute: async ({ mappings }) => {
-        mappings.remapNodeId(11, nextNodeId++);
-        mappings.remapSegmentId(21, nextSegmentId++);
+        mappings.remapNodeId(11n, nextNodeId++);
+        mappings.remapSegmentId(21n, nextSegmentId++);
       },
       undo: async ({ mappings }) => {
-        mappings.remapNodeId(11, nextNodeId++);
-        mappings.remapSegmentId(21, nextSegmentId++);
+        mappings.remapNodeId(11n, nextNodeId++);
+        mappings.remapSegmentId(21n, nextSegmentId++);
       },
     };
 
     await history.execute(command);
-    expect(history.mappings.resolveNodeId(11)).toBe(100);
-    expect(history.mappings.resolveSegmentId(21)).toBe(200);
-    expect(history.mappings.getStableNodeId(100)).toBe(11);
-    expect(history.mappings.getStableSegmentId(200)).toBe(21);
+    expect(history.mappings.resolveNodeId(11n)).toBe(100n);
+    expect(history.mappings.resolveSegmentId(21n)).toBe(200n);
+    expect(history.mappings.getStableNodeId(100n)).toBe(11n);
+    expect(history.mappings.getStableSegmentId(200n)).toBe(21n);
 
     await history.undo();
-    expect(history.mappings.resolveNodeId(11)).toBe(101);
-    expect(history.mappings.resolveSegmentId(21)).toBe(201);
+    expect(history.mappings.resolveNodeId(11n)).toBe(101n);
+    expect(history.mappings.resolveSegmentId(21n)).toBe(201n);
 
     await history.redo();
-    expect(history.mappings.resolveNodeId(11)).toBe(102);
-    expect(history.mappings.resolveSegmentId(21)).toBe(202);
+    expect(history.mappings.resolveNodeId(11n)).toBe(102n);
+    expect(history.mappings.resolveSegmentId(21n)).toBe(202n);
   });
 
   it("restores mapping state if an operation fails", async () => {
     const history = new SpatialSkeletonCommandHistory();
-    history.mappings.remapNodeId(11, 99);
+    history.mappings.remapNodeId(11n, 99n);
 
     const failingCommand: SpatialSkeletonCommand = {
       label: "Failing command",
       execute: async ({ mappings }) => {
-        mappings.remapNodeId(11, 100);
+        mappings.remapNodeId(11n, 100n);
         throw new Error("boom");
       },
       undo: async () => {},
     };
 
     await expect(history.execute(failingCommand)).rejects.toThrow("boom");
-    expect(history.mappings.resolveNodeId(11)).toBe(99);
+    expect(history.mappings.resolveNodeId(11n)).toBe(99n);
     expect(history.canUndo.value).toBe(false);
   });
 });

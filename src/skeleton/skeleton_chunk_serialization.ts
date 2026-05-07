@@ -15,14 +15,14 @@
  */
 
 import type { SpatialSkeletonSourceState } from "#src/skeleton/api.js";
-import type { TypedNumberArray } from "#src/util/array.js";
+import type { TypedArray } from "#src/util/array.js";
 
 export interface SkeletonChunkData {
   vertexPositions: Float32Array | null;
-  vertexAttributes: TypedNumberArray[] | null;
+  vertexAttributes: TypedArray[] | null;
   indices: Uint32Array | null;
   lod?: number;
-  nodeIds?: Int32Array;
+  nodeIds?: BigUint64Array;
   nodeSourceStates?: Array<SpatialSkeletonSourceState | undefined>;
 }
 

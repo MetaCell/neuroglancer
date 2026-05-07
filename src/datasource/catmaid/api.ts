@@ -18,6 +18,7 @@ import { Unpackr } from "msgpackr";
 import { fetchOkWithCredentials } from "#src/credentials_provider/http_request.js";
 import type { CredentialsProvider } from "#src/credentials_provider/index.js";
 import type {
+  SpatialSkeletonId,
   SpatialSkeletonBounds,
   SpatialSkeletonSpatialIndexLevel,
   SpatialSkeletonSourceState,
@@ -30,6 +31,7 @@ import { SpatialSkeletonEditConflictError } from "#src/skeleton/edit_errors.js";
 import type { SpatiallyIndexedSkeletonNavigationTarget } from "#src/skeleton/navigation.js";
 import { getDefaultSpatiallyIndexedSkeletonChunkSize } from "#src/skeleton/spatial_chunk_sizing.js";
 import { HttpError } from "#src/util/http_request.js";
+import { compareUint64Ids, parsePositiveUint64Id } from "#src/util/bigint.js";
 
 interface CatmaidStackInfo {
   dimension: { x: number; y: number; z: number };
@@ -59,13 +61,13 @@ type CatmaidStatePayload = object;
 export type CatmaidNodeSourceState = { readonly revisionToken: string };
 
 export interface CatmaidEditNodeContext {
-  nodeId: number;
-  parentNodeId?: number;
+  nodeId: SpatialSkeletonId;
+  parentNodeId?: SpatialSkeletonId;
   revisionToken: string;
 }
 
 export interface CatmaidEditParentContext {
-  nodeId: number;
+  nodeId: SpatialSkeletonId;
   revisionToken: string;
 }
 
@@ -77,7 +79,7 @@ export interface CatmaidEditContext {
 }
 
 export interface CatmaidSkeletonNodeSourceStateUpdate {
-  nodeId: number;
+  nodeId: SpatialSkeletonId;
   sourceState: SpatialSkeletonSourceState;
 }
 
@@ -86,8 +88,8 @@ export interface CatmaidSkeletonEditResult {
 }
 
 export interface CatmaidAddNodeResult extends CatmaidSkeletonEditResult {
-  nodeId: number;
-  segmentId: number;
+  nodeId: SpatialSkeletonId;
+  segmentId: SpatialSkeletonId;
   sourceState?: SpatialSkeletonSourceState;
   parentSourceState?: SpatialSkeletonSourceState;
 }
@@ -113,84 +115,84 @@ export type CatmaidDeleteNodeResult = CatmaidSkeletonEditResult;
 export type CatmaidRerootResult = CatmaidSkeletonEditResult;
 
 export interface CatmaidMergeResult extends CatmaidSkeletonEditResult {
-  resultSegmentId: number | undefined;
-  deletedSegmentId: number | undefined;
+  resultSegmentId: SpatialSkeletonId | undefined;
+  deletedSegmentId: SpatialSkeletonId | undefined;
   directionAdjusted: boolean;
 }
 
 export interface CatmaidSplitResult extends CatmaidSkeletonEditResult {
-  existingSegmentId: number | undefined;
-  newSegmentId: number | undefined;
+  existingSegmentId: SpatialSkeletonId | undefined;
+  newSegmentId: SpatialSkeletonId | undefined;
 }
 
 export interface CatmaidSpatialSkeletonEditApi {
   getSkeletonRootNode(
-    skeletonId: number,
+    skeletonId: SpatialSkeletonId,
   ): Promise<SpatiallyIndexedSkeletonNavigationTarget>;
   addNode(
-    skeletonId: number,
+    skeletonId: SpatialSkeletonId,
     x: number,
     y: number,
     z: number,
-    parentId?: number,
+    parentId?: SpatialSkeletonId,
     editContext?: CatmaidEditContext,
   ): Promise<CatmaidAddNodeResult>;
   deleteNode(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
     options: CatmaidDeleteNodeOptions,
   ): Promise<CatmaidDeleteNodeResult>;
   moveNode(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
     x: number,
     y: number,
     z: number,
     editContext?: CatmaidEditContext,
   ): Promise<CatmaidNodeSourceStateResult>;
   splitSkeleton(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
     editContext?: CatmaidEditContext,
   ): Promise<CatmaidSplitResult>;
   mergeSkeletons(
-    fromNodeId: number,
-    toNodeId: number,
+    fromNodeId: SpatialSkeletonId,
+    toNodeId: SpatialSkeletonId,
     editContext?: CatmaidEditContext,
   ): Promise<CatmaidMergeResult>;
   toggleTrueEnd(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
     nextIsTrueEnd: boolean,
   ): Promise<CatmaidNodeSourceStateResult>;
   insertNode(
-    skeletonId: number,
+    skeletonId: SpatialSkeletonId,
     x: number,
     y: number,
     z: number,
-    parentId: number,
-    childNodeIds: readonly number[],
+    parentId: SpatialSkeletonId,
+    childNodeIds: readonly SpatialSkeletonId[],
     editContext?: CatmaidEditContext,
   ): Promise<CatmaidInsertNodeResult>;
   rerootSkeleton(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
     editContext?: CatmaidEditContext,
   ): Promise<CatmaidRerootResult>;
   updateDescription(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
     description: string,
     options?: CatmaidDescriptionUpdateOptions,
   ): Promise<CatmaidDescriptionUpdateResult>;
   updateRadius(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
     radius: number,
     editContext?: CatmaidEditContext,
   ): Promise<CatmaidNodeSourceStateResult>;
   updateConfidence(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
     confidence: number,
     editContext?: CatmaidEditContext,
   ): Promise<CatmaidNodeSourceStateResult>;
 }
 
 interface CatmaidDeleteNodeOptions {
-  childNodeIds?: readonly number[];
+  childNodeIds?: readonly SpatialSkeletonId[];
   editContext?: CatmaidEditContext;
 }
 
@@ -347,13 +349,17 @@ function normalizeCatmaidDescription(
 
 function parseCatmaidLabelNodeReference(entry: unknown):
   | {
-      nodeId: number;
+      nodeId: SpatialSkeletonId;
       time?: number;
     }
   | undefined {
   const rawNodeId = Array.isArray(entry) ? entry[0] : entry;
-  const nodeId = Math.round(Number(rawNodeId));
-  if (!Number.isSafeInteger(nodeId) || nodeId <= 0) return undefined;
+  let nodeId: SpatialSkeletonId;
+  try {
+    nodeId = parseCatmaidPositiveId(rawNodeId, "label node id");
+  } catch {
+    return undefined;
+  }
   const time = Array.isArray(entry)
     ? getComparableCatmaidRevisionTime(entry[1])
     : undefined;
@@ -361,8 +367,8 @@ function parseCatmaidLabelNodeReference(entry: unknown):
 }
 
 function addParsedCatmaidNodeLabel(
-  labelsByNodeId: Map<number, ParsedCatmaidNodeLabel[]>,
-  nodeId: number,
+  labelsByNodeId: Map<SpatialSkeletonId, ParsedCatmaidNodeLabel[]>,
+  nodeId: SpatialSkeletonId,
   label: ParsedCatmaidNodeLabel,
 ) {
   const existingLabels = labelsByNodeId.get(nodeId);
@@ -383,8 +389,8 @@ function addParsedCatmaidNodeLabel(
 
 function parseCatmaidNodeLabels(
   rawLabels: unknown,
-): Map<number, ParsedCatmaidNodeLabel[]> {
-  const labelsByNodeId = new Map<number, ParsedCatmaidNodeLabel[]>();
+): Map<SpatialSkeletonId, ParsedCatmaidNodeLabel[]> {
+  const labelsByNodeId = new Map<SpatialSkeletonId, ParsedCatmaidNodeLabel[]>();
   if (rawLabels === null || typeof rawLabels !== "object") {
     return labelsByNodeId;
   }
@@ -396,16 +402,17 @@ function parseCatmaidNodeLabels(
       (entry): entry is string => typeof entry === "string",
     );
     if (stringValues.length === value.length) {
-      const nodeId = Number(key);
-      if (!Number.isFinite(nodeId)) continue;
+      let nodeId: SpatialSkeletonId;
+      try {
+        nodeId = parseCatmaidPositiveId(key, "label node id");
+      } catch {
+        continue;
+      }
       const labels = stringValues
         .map((label) => label.trim())
         .filter((label) => label.length > 0);
       if (labels.length === 0) continue;
-      labelsByNodeId.set(
-        Math.round(nodeId),
-        labels.map((label) => ({ label })),
-      );
+      labelsByNodeId.set(nodeId, labels.map((label) => ({ label })));
       continue;
     }
     const nodeReferences = value.map(parseCatmaidLabelNodeReference);
@@ -425,9 +432,12 @@ function parseCatmaidNodeLabels(
 }
 
 function getCatmaidNodeDescriptions(
-  labelsByNodeId: ReadonlyMap<number, readonly ParsedCatmaidNodeLabel[]>,
+  labelsByNodeId: ReadonlyMap<
+    SpatialSkeletonId,
+    readonly ParsedCatmaidNodeLabel[]
+  >,
 ) {
-  const descriptionsByNodeId = new Map<number, string>();
+  const descriptionsByNodeId = new Map<SpatialSkeletonId, string>();
   for (const [nodeId, labels] of labelsByNodeId) {
     const description = normalizeCatmaidDescription(labels);
     if (description !== undefined) {
@@ -438,9 +448,12 @@ function getCatmaidNodeDescriptions(
 }
 
 function getCatmaidTrueEndNodes(
-  labelsByNodeId: ReadonlyMap<number, readonly ParsedCatmaidNodeLabel[]>,
+  labelsByNodeId: ReadonlyMap<
+    SpatialSkeletonId,
+    readonly ParsedCatmaidNodeLabel[]
+  >,
 ) {
-  const trueEndByNodeId = new Map<number, true>();
+  const trueEndByNodeId = new Map<SpatialSkeletonId, true>();
   for (const [nodeId, labels] of labelsByNodeId) {
     const isTrueEnd = labels.some(
       ({ label }) => label.trim().toLowerCase() === CATMAID_TRUE_END_LABEL,
@@ -612,6 +625,19 @@ function requireCatmaidNonNegativeInt(value: unknown, label: string): number {
   return numberValue;
 }
 
+function parseCatmaidPositiveId(value: unknown, label: string) {
+  return parsePositiveUint64Id(value, `CATMAID ${label}`);
+}
+
+function parseOptionalCatmaidPositiveId(
+  value: unknown,
+  label: string,
+): SpatialSkeletonId | undefined {
+  return value === undefined || value === null
+    ? undefined
+    : parseCatmaidPositiveId(value, label);
+}
+
 function parseOptionalCatmaidBoolean(
   value: unknown,
   label: string,
@@ -672,7 +698,7 @@ export function getCatmaidSpatialSkeletonGridCellBounds(
 function appendNodeUpdateRows(
   body: URLSearchParams,
   key: string,
-  rows: Array<[number, number, number, number]>,
+  rows: Array<[SpatialSkeletonId, number, number, number]>,
 ) {
   // CATMAID get_request_list parses nested lists from bracketed keys
   // (e.g. t[0][0]=id, t[0][1]=x, ...), not from a JSON string.
@@ -687,7 +713,7 @@ function appendNodeUpdateRows(
 function appendScalarList(
   body: URLSearchParams,
   key: string,
-  values: readonly number[],
+  values: readonly (number | SpatialSkeletonId)[],
 ) {
   for (let index = 0; index < values.length; ++index) {
     body.append(`${key}[${index}]`, values[index].toString());
@@ -701,7 +727,12 @@ function appendCatmaidState(
   if (state === undefined) {
     return;
   }
-  body.append("state", JSON.stringify(state));
+  body.append(
+    "state",
+    JSON.stringify(state, (_key, value) =>
+      typeof value === "bigint" ? value.toString() : value,
+    ),
+  );
 }
 
 function normalizeCatmaidRevisionToken(value: unknown): string | undefined {
@@ -770,14 +801,19 @@ function parseCatmaidSkeletonRootTarget(
   }
 
   const { root_id, x, y, z } = response as Record<string, unknown>;
-  const nodeId = Number(root_id);
+  let nodeId: SpatialSkeletonId;
+  try {
+    nodeId = parseCatmaidPositiveId(root_id, "root node id");
+  } catch {
+    throw new Error(
+      "CATMAID skeleton root endpoint returned an unexpected response format.",
+    );
+  }
   const px = Number(x);
   const py = Number(y);
   const pz = Number(z);
 
   if (
-    Number.isSafeInteger(nodeId) &&
-    nodeId > 0 &&
     Number.isFinite(px) &&
     Number.isFinite(py) &&
     Number.isFinite(pz)
@@ -806,7 +842,7 @@ function requireCatmaidRevisionToken(
 function buildCatmaidNodeState(
   operation: string,
   editContext?: CatmaidEditContext,
-  expectedNodeId?: number,
+  expectedNodeId?: SpatialSkeletonId,
 ) {
   const node = editContext?.node;
   if (node === undefined) {
@@ -829,7 +865,7 @@ function buildCatmaidNodeState(
 function buildCatmaidMultiNodeState(
   operation: string,
   editContext?: CatmaidEditContext,
-  expectedNodeIds?: readonly number[],
+  expectedNodeIds?: readonly SpatialSkeletonId[],
 ) {
   const nodes =
     editContext?.nodes ??
@@ -846,14 +882,14 @@ function buildCatmaidMultiNodeState(
       `CATMAID ${operation} node state does not match the requested node ids.`,
     );
   }
-  return nodes.map((node): [number, string] => [
+  return nodes.map((node): [SpatialSkeletonId, string] => [
     node.nodeId,
     requireCatmaidRevisionToken(node.revisionToken, operation, "node"),
   ]);
 }
 
 function buildCatmaidAddNodeState(
-  parentId: number | undefined,
+  parentId: SpatialSkeletonId | undefined,
   editContext?: CatmaidEditContext,
 ) {
   if (parentId === undefined) {
@@ -888,8 +924,8 @@ function buildCatmaidNeighborhoodState(
   operation: string,
   editContext?: CatmaidEditContext,
   options: {
-    expectedNodeId?: number;
-    expectedChildIds?: readonly number[];
+    expectedNodeId?: SpatialSkeletonId;
+    expectedChildIds?: readonly SpatialSkeletonId[];
   } = {},
 ) {
   const node = editContext?.node;
@@ -957,7 +993,7 @@ function buildCatmaidNeighborhoodState(
             ),
           ],
         }),
-    children: childStates.map((child): [number, string] => [
+    children: childStates.map((child): [SpatialSkeletonId, string] => [
       child.nodeId,
       requireCatmaidRevisionToken(child.revisionToken, operation, "child"),
     ]),
@@ -966,8 +1002,8 @@ function buildCatmaidNeighborhoodState(
 }
 
 function buildCatmaidInsertNodeState(
-  parentId: number,
-  childNodeIds: readonly number[],
+  parentId: SpatialSkeletonId,
+  childNodeIds: readonly SpatialSkeletonId[],
   editContext?: CatmaidEditContext,
 ) {
   const parentNode = editContext?.node;
@@ -998,7 +1034,7 @@ function buildCatmaidInsertNodeState(
       "insert-node",
       "parent",
     ),
-    children: childStates.map((child): [number, string] => [
+    children: childStates.map((child): [SpatialSkeletonId, string] => [
       child.nodeId,
       requireCatmaidRevisionToken(child.revisionToken, "insert-node", "child"),
     ]),
@@ -1024,11 +1060,16 @@ function parseCatmaidNodeRevisionUpdates(
   const revisionUpdates: CatmaidSkeletonNodeSourceStateUpdate[] = [];
   for (const row of rows) {
     if (!Array.isArray(row) || row.length < 9) continue;
-    const nodeId = Number(row[0]);
+    let nodeId: SpatialSkeletonId;
+    try {
+      nodeId = parseCatmaidPositiveId(row[0], "node id");
+    } catch {
+      continue;
+    }
     const revisionToken = normalizeCatmaidRevisionToken(row[8]);
-    if (!Number.isFinite(nodeId) || revisionToken === undefined) continue;
+    if (revisionToken === undefined) continue;
     revisionUpdates.push({
-      nodeId: Math.round(nodeId),
+      nodeId,
       sourceState: { revisionToken },
     });
   }
@@ -1037,13 +1078,20 @@ function parseCatmaidNodeRevisionUpdates(
 
 function parseCatmaidMoveRevisionToken(
   response: any,
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
 ): string | undefined {
   const updatedRows = Array.isArray(response?.old_treenodes)
     ? response.old_treenodes
     : [];
   for (const row of updatedRows) {
-    if (!Array.isArray(row) || Number(row[0]) !== nodeId) continue;
+    if (!Array.isArray(row)) continue;
+    let updatedNodeId: SpatialSkeletonId;
+    try {
+      updatedNodeId = parseCatmaidPositiveId(row[0], "node id");
+    } catch {
+      continue;
+    }
+    if (updatedNodeId !== nodeId) continue;
     return normalizeCatmaidRevisionToken(row[1]);
   }
   return normalizeCatmaidRevisionToken(response?.edition_time);
@@ -1051,11 +1099,13 @@ function parseCatmaidMoveRevisionToken(
 
 function parseCatmaidUpdatedNodesRevisionToken(
   response: any,
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
 ): string | undefined {
   const updatedNodes = response?.updated_nodes;
   if (updatedNodes !== null && typeof updatedNodes === "object") {
-    const directMatch = (updatedNodes as Record<string, any>)[nodeId];
+    const directMatch = (updatedNodes as Record<string, any>)[
+      nodeId.toString()
+    ];
     const directRevision = normalizeCatmaidRevisionToken(
       directMatch?.edition_time,
     );
@@ -1068,7 +1118,7 @@ function parseCatmaidUpdatedNodesRevisionToken(
 
 function parseCatmaidConfidenceRevisionToken(
   response: any,
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
 ): string | undefined {
   const directRevision = parseCatmaidUpdatedNodesRevisionToken(
     response,
@@ -1097,11 +1147,16 @@ function parseCatmaidChildRevisionUpdates(
   const children = Array.isArray(value) ? value : [];
   for (const child of children) {
     if (!Array.isArray(child) || child.length < 2) continue;
-    const nodeId = Number(child[0]);
+    let nodeId: SpatialSkeletonId;
+    try {
+      nodeId = parseCatmaidPositiveId(child[0], "child node id");
+    } catch {
+      continue;
+    }
     const revisionToken = normalizeCatmaidRevisionToken(child[1]);
-    if (!Number.isFinite(nodeId) || revisionToken === undefined) continue;
+    if (revisionToken === undefined) continue;
     revisionUpdates.push({
-      nodeId: Math.round(nodeId),
+      nodeId,
       sourceState: { revisionToken },
     });
   }
@@ -1235,8 +1290,18 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
     return isNoMatchingNodeProviderErrorPayload(payload);
   }
 
-  async listSkeletons(): Promise<number[]> {
-    return this.fetch("skeletons/");
+  async listSkeletons(): Promise<SpatialSkeletonId[]> {
+    const skeletons = await this.fetch("skeletons/");
+    if (!Array.isArray(skeletons)) return [];
+    const ids: SpatialSkeletonId[] = [];
+    for (const value of skeletons) {
+      try {
+        ids.push(parseCatmaidPositiveId(value, "skeleton id"));
+      } catch {
+        continue;
+      }
+    }
+    return ids.sort(compareUint64Ids);
   }
 
   private async listStacks(): Promise<{ id: number }[]> {
@@ -1365,7 +1430,7 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
   }
 
   async getSkeleton(
-    skeletonId: number,
+    skeletonId: SpatialSkeletonId,
     options: { signal?: AbortSignal } = {},
   ): Promise<SpatiallyIndexedSkeletonNode[]> {
     const { signal } = options;
@@ -1392,7 +1457,7 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
     const labelsByNodeId = parseCatmaidNodeLabels(currentData?.[2]);
     const descriptionByNodeId = getCatmaidNodeDescriptions(labelsByNodeId);
     const trueEndByNodeId = getCatmaidTrueEndNodes(labelsByNodeId);
-    const liveNodes = new Map<number, any[]>();
+    const liveNodes = new Map<SpatialSkeletonId, any[]>();
     for (const node of rawNodes) {
       if (
         !Array.isArray(node) ||
@@ -1401,23 +1466,26 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
       ) {
         continue;
       }
-      const nodeId = Number(node[0]);
-      if (!Number.isFinite(nodeId) || liveNodes.has(Math.round(nodeId))) {
+      let nodeId: SpatialSkeletonId;
+      try {
+        nodeId = parseCatmaidPositiveId(node[0], "node id");
+      } catch {
         continue;
       }
-      liveNodes.set(Math.round(nodeId), node);
+      if (liveNodes.has(nodeId)) continue;
+      liveNodes.set(nodeId, node);
     }
-    return [...liveNodes.values()].map((n) => ({
-      nodeId: n[0],
-      parentNodeId: n[1] ?? undefined,
+    return [...liveNodes.entries()].map(([nodeId, n]) => ({
+      nodeId,
+      parentNodeId: parseOptionalCatmaidPositiveId(n[1], "parent node id"),
       position: new Float32Array([n[3], n[4], n[5]]),
       segmentId: skeletonId,
       radius: Number.isFinite(n[6]) ? n[6] : undefined,
       confidence: Number.isFinite(n[7])
         ? mapCatmaidConfidenceToPercent(n[7])
         : undefined,
-      description: descriptionByNodeId.get(Number(n[0])),
-      isTrueEnd: trueEndByNodeId.has(Number(n[0])),
+      description: descriptionByNodeId.get(nodeId),
+      isTrueEnd: trueEndByNodeId.has(nodeId),
       sourceState: makeCatmaidNodeSourceState(
         getCatmaidHistoryRevisionToken(n),
       ),
@@ -1483,16 +1551,18 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
     }
 
     // Process first LOD level (data[0])
+    const parseNodeListRow = (n: any[]): SpatiallyIndexedSkeletonNodeBase => ({
+      nodeId: parseCatmaidPositiveId(n[0], "node id"),
+      parentNodeId: parseOptionalCatmaidPositiveId(n[1], "parent node id"),
+      position: new Float32Array([n[2], n[3], n[4]]),
+      segmentId: parseCatmaidPositiveId(n[7], "segment id"),
+      sourceState: makeCatmaidNodeSourceState(
+        normalizeCatmaidRevisionToken(n[8]),
+      ),
+    });
+
     const nodes: SpatiallyIndexedSkeletonNodeBase[] = data[0].map(
-      (n: any[]) => ({
-        nodeId: n[0],
-        parentNodeId: n[1] ?? undefined,
-        position: new Float32Array([n[2], n[3], n[4]]),
-        segmentId: n[7],
-        sourceState: makeCatmaidNodeSourceState(
-          normalizeCatmaidRevisionToken(n[8]),
-        ),
-      }),
+      parseNodeListRow,
     );
 
     // Process additional LOD levels.
@@ -1507,15 +1577,7 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
         const treenodes = lodLevel[0];
         if (Array.isArray(treenodes)) {
           for (const n of treenodes) {
-            nodes.push({
-              nodeId: n[0],
-              parentNodeId: n[1] ?? undefined,
-              position: new Float32Array([n[2], n[3], n[4]]),
-              segmentId: n[7],
-              sourceState: makeCatmaidNodeSourceState(
-                normalizeCatmaidRevisionToken(n[8]),
-              ),
-            });
+            nodes.push(parseNodeListRow(n));
           }
         }
       }
@@ -1525,7 +1587,7 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
   }
 
   async moveNode(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
     x: number,
     y: number,
     z: number,
@@ -1548,14 +1610,14 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
   }
 
   async getSkeletonRootNode(
-    skeletonId: number,
+    skeletonId: SpatialSkeletonId,
   ): Promise<SpatiallyIndexedSkeletonNavigationTarget> {
     const response = await this.fetch(`skeletons/${skeletonId}/root`);
     return parseCatmaidSkeletonRootTarget(response);
   }
 
   async rerootSkeleton(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
     editContext?: CatmaidEditContext,
   ): Promise<CatmaidRerootResult> {
     const body = new URLSearchParams({
@@ -1571,11 +1633,7 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
       method: "POST",
       body,
     });
-    const rerootedNodeIds =
-      editContext?.nodes
-        ?.map((value) => Number(value.nodeId))
-        .filter((value) => Number.isFinite(value))
-        .map((value) => Math.round(value)) ?? [];
+    const rerootedNodeIds = editContext?.nodes?.map((value) => value.nodeId) ?? [];
     return {
       nodeSourceStateUpdates:
         await this.fetchNodeRevisionUpdates(rerootedNodeIds),
@@ -1583,16 +1641,9 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
   }
 
   private async fetchNodeRevisionUpdates(
-    nodeIds: readonly number[],
+    nodeIds: readonly SpatialSkeletonId[],
   ): Promise<readonly CatmaidSkeletonNodeSourceStateUpdate[]> {
-    const normalizedNodeIds = [
-      ...new Set(
-        nodeIds
-          .map((value) => Number(value))
-          .filter((value) => Number.isFinite(value))
-          .map((value) => Math.round(value)),
-      ),
-    ].sort((a, b) => a - b);
+    const normalizedNodeIds = [...new Set(nodeIds)].sort(compareUint64Ids);
     if (normalizedNodeIds.length === 0) {
       return [];
     }
@@ -1618,18 +1669,13 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
   }
 
   async deleteNode(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
     options: CatmaidDeleteNodeOptions = {},
   ): Promise<CatmaidDeleteNodeResult> {
     const { childNodeIds = [], editContext } = options;
-    const normalizedChildIds = [
-      ...new Set(
-        childNodeIds
-          .map((value) => Number(value))
-          .filter((value) => Number.isFinite(value))
-          .map((value) => Math.round(value)),
-      ),
-    ].sort((a, b) => a - b);
+    const normalizedChildIds = [...new Set(childNodeIds)].sort(
+      compareUint64Ids,
+    );
     const body = new URLSearchParams({
       treenode_id: nodeId.toString(),
     });
@@ -1653,20 +1699,20 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
   }
 
   async addNode(
-    skeletonId: number,
+    skeletonId: SpatialSkeletonId,
     x: number,
     y: number,
     z: number,
-    parentId?: number,
+    parentId?: SpatialSkeletonId,
     editContext?: CatmaidEditContext,
   ): Promise<CatmaidAddNodeResult> {
     const body = new URLSearchParams({
       x: x.toString(),
       y: y.toString(),
       z: z.toString(),
-      parent_id: (parentId ?? -1).toString(),
+      parent_id: parentId === undefined ? "-1" : parentId.toString(),
     });
-    if (Number.isSafeInteger(skeletonId) && skeletonId > 0) {
+    if (skeletonId > 0n) {
       body.append("skeleton_id", skeletonId.toString());
     }
     appendCatmaidState(body, buildCatmaidAddNodeState(parentId, editContext));
@@ -1675,21 +1721,25 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
       method: "POST",
       body: body,
     });
-    const treenodeId = Number(res?.treenode_id);
-    const nextSkeletonId = Number(res?.skeleton_id);
-    if (!Number.isFinite(treenodeId)) {
+    let treenodeId: SpatialSkeletonId;
+    let nextSkeletonId: SpatialSkeletonId;
+    try {
+      treenodeId = parseCatmaidPositiveId(res?.treenode_id, "treenode_id");
+    } catch {
       throw new Error(
         "CATMAID treenode/create did not return a valid treenode_id.",
       );
     }
-    if (!Number.isFinite(nextSkeletonId)) {
+    try {
+      nextSkeletonId = parseCatmaidPositiveId(res?.skeleton_id, "skeleton_id");
+    } catch {
       throw new Error(
         "CATMAID treenode/create did not return a valid skeleton_id.",
       );
     }
     return {
-      nodeId: Math.round(treenodeId),
-      segmentId: Math.round(nextSkeletonId),
+      nodeId: treenodeId,
+      segmentId: nextSkeletonId,
       sourceState: makeCatmaidNodeSourceState(
         normalizeCatmaidRevisionToken(res?.edition_time),
       ),
@@ -1700,22 +1750,17 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
   }
 
   async insertNode(
-    skeletonId: number,
+    skeletonId: SpatialSkeletonId,
     x: number,
     y: number,
     z: number,
-    parentId: number,
-    childNodeIds: readonly number[],
+    parentId: SpatialSkeletonId,
+    childNodeIds: readonly SpatialSkeletonId[],
     editContext?: CatmaidEditContext,
   ): Promise<CatmaidInsertNodeResult> {
-    const normalizedChildIds = [
-      ...new Set(
-        childNodeIds
-          .map((value) => Number(value))
-          .filter((value) => Number.isFinite(value))
-          .map((value) => Math.round(value)),
-      ),
-    ].sort((a, b) => a - b);
+    const normalizedChildIds = [...new Set(childNodeIds)].sort(
+      compareUint64Ids,
+    );
     if (normalizedChildIds.length === 0) {
       throw new Error(
         "CATMAID insert-node requires at least one child node to reattach.",
@@ -1728,7 +1773,7 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
       parent_id: parentId.toString(),
       child_id: normalizedChildIds[0].toString(),
     });
-    if (Number.isSafeInteger(skeletonId) && skeletonId > 0) {
+    if (skeletonId > 0n) {
       body.append("skeleton_id", skeletonId.toString());
     }
     appendScalarList(body, "takeover_child_ids", normalizedChildIds.slice(1));
@@ -1741,21 +1786,28 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
       method: "POST",
       body,
     });
-    const treenodeId = Number(response?.treenode_id);
-    const nextSkeletonId = Number(response?.skeleton_id);
-    if (!Number.isFinite(treenodeId)) {
+    let treenodeId: SpatialSkeletonId;
+    let nextSkeletonId: SpatialSkeletonId;
+    try {
+      treenodeId = parseCatmaidPositiveId(response?.treenode_id, "treenode_id");
+    } catch {
       throw new Error(
         "CATMAID treenode/insert did not return a valid treenode_id.",
       );
     }
-    if (!Number.isFinite(nextSkeletonId)) {
+    try {
+      nextSkeletonId = parseCatmaidPositiveId(
+        response?.skeleton_id,
+        "skeleton_id",
+      );
+    } catch {
       throw new Error(
         "CATMAID treenode/insert did not return a valid skeleton_id.",
       );
     }
     return {
-      nodeId: Math.round(treenodeId),
-      segmentId: Math.round(nextSkeletonId),
+      nodeId: treenodeId,
+      segmentId: nextSkeletonId,
       sourceState: makeCatmaidNodeSourceState(
         normalizeCatmaidRevisionToken(response?.edition_time),
       ),
@@ -1769,7 +1821,7 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
   }
 
   private async updateNodeLabel(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
     endpoint: "update" | "remove",
     body: URLSearchParams,
   ) {
@@ -1807,7 +1859,10 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
     );
   }
 
-  private async replaceNodeLabels(nodeId: number, labels: readonly string[]) {
+  private async replaceNodeLabels(
+    nodeId: SpatialSkeletonId,
+    labels: readonly string[],
+  ) {
     const normalizedLabels = this.normalizeNodeLabels(labels);
     return this.updateNodeLabel(
       nodeId,
@@ -1819,7 +1874,7 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
     );
   }
 
-  private async addNodeLabel(nodeId: number, label: string) {
+  private async addNodeLabel(nodeId: SpatialSkeletonId, label: string) {
     const normalizedLabel = label.trim();
     if (normalizedLabel.length === 0) {
       throw new Error("Node label must not be empty.");
@@ -1834,7 +1889,7 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
     );
   }
 
-  private async removeNodeLabel(nodeId: number, label: string) {
+  private async removeNodeLabel(nodeId: SpatialSkeletonId, label: string) {
     const normalizedLabel = label.trim();
     if (normalizedLabel.length === 0) {
       throw new Error("Node label must not be empty.");
@@ -1847,7 +1902,7 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
   }
 
   async updateDescription(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
     description: string,
     options: CatmaidDescriptionUpdateOptions = {},
   ): Promise<CatmaidDescriptionUpdateResult> {
@@ -1867,7 +1922,7 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
   }
 
   private async addTrueEndLabel(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
   ): Promise<CatmaidNodeSourceStateResult> {
     const response = await this.addNodeLabel(nodeId, CATMAID_TRUE_END_LABEL);
     return getCatmaidSingleNodeRevisionResult(
@@ -1876,7 +1931,7 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
   }
 
   private async removeTrueEndLabel(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
   ): Promise<CatmaidNodeSourceStateResult> {
     const response = await this.removeNodeLabel(nodeId, CATMAID_TRUE_END_LABEL);
     return getCatmaidSingleNodeRevisionResult(
@@ -1885,7 +1940,7 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
   }
 
   toggleTrueEnd(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
     nextIsTrueEnd: boolean,
   ): Promise<CatmaidNodeSourceStateResult> {
     return nextIsTrueEnd
@@ -1894,7 +1949,7 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
   }
 
   async updateRadius(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
     radius: number,
     editContext?: CatmaidEditContext,
   ): Promise<CatmaidNodeSourceStateResult> {
@@ -1918,7 +1973,7 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
   }
 
   async updateConfidence(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
     confidence: number,
     editContext?: CatmaidEditContext,
   ): Promise<CatmaidNodeSourceStateResult> {
@@ -1942,8 +1997,8 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
   }
 
   async mergeSkeletons(
-    fromNodeId: number,
-    toNodeId: number,
+    fromNodeId: SpatialSkeletonId,
+    toNodeId: SpatialSkeletonId,
     editContext?: CatmaidEditContext,
   ): Promise<CatmaidMergeResult> {
     const body = new URLSearchParams({
@@ -1961,21 +2016,21 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
       method: "POST",
       body,
     });
-    const resultSkeletonId = Number(response?.result_skeleton_id);
-    const deletedSkeletonId = Number(response?.deleted_skeleton_id);
     return {
-      resultSegmentId: Number.isFinite(resultSkeletonId)
-        ? Math.round(resultSkeletonId)
-        : undefined,
-      deletedSegmentId: Number.isFinite(deletedSkeletonId)
-        ? Math.round(deletedSkeletonId)
-        : undefined,
+      resultSegmentId: parseOptionalCatmaidPositiveId(
+        response?.result_skeleton_id,
+        "result skeleton id",
+      ),
+      deletedSegmentId: parseOptionalCatmaidPositiveId(
+        response?.deleted_skeleton_id,
+        "deleted skeleton id",
+      ),
       directionAdjusted: Boolean(response?.stable_annotation_swap),
     };
   }
 
   async splitSkeleton(
-    nodeId: number,
+    nodeId: SpatialSkeletonId,
     editContext?: CatmaidEditContext,
   ): Promise<CatmaidSplitResult> {
     const body = new URLSearchParams({
@@ -1991,15 +2046,15 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
       method: "POST",
       body,
     });
-    const existingSkeletonId = Number(response?.existing_skeleton_id);
-    const newSkeletonId = Number(response?.new_skeleton_id);
     return {
-      existingSegmentId: Number.isFinite(existingSkeletonId)
-        ? Math.round(existingSkeletonId)
-        : undefined,
-      newSegmentId: Number.isFinite(newSkeletonId)
-        ? Math.round(newSkeletonId)
-        : undefined,
+      existingSegmentId: parseOptionalCatmaidPositiveId(
+        response?.existing_skeleton_id,
+        "existing skeleton id",
+      ),
+      newSegmentId: parseOptionalCatmaidPositiveId(
+        response?.new_skeleton_id,
+        "new skeleton id",
+      ),
     };
   }
 }

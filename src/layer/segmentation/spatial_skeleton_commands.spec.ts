@@ -44,9 +44,9 @@ function cloneNodes(
 }
 
 function setSegmentNodes(
-  cacheBySegment: Map<number, SpatiallyIndexedSkeletonNode[]>,
-  cacheByNode: Map<number, SpatiallyIndexedSkeletonNode>,
-  segmentId: number,
+  cacheBySegment: Map<bigint, SpatiallyIndexedSkeletonNode[]>,
+  cacheByNode: Map<bigint, SpatiallyIndexedSkeletonNode>,
+  segmentId: bigint,
   nodes: readonly SpatiallyIndexedSkeletonNode[],
 ) {
   if (nodes.length === 0) {
@@ -180,8 +180,8 @@ describe("spatial_skeleton_commands", () => {
       }),
     };
     const node: SpatiallyIndexedSkeletonNode = {
-      nodeId: 17,
-      segmentId: 23,
+      nodeId: 17n,
+      segmentId: 23n,
       position: new Float32Array([1, 2, 3]),
     };
     const nextPositionInModelSpace = new Float32Array([7, 8, 9]);
@@ -221,8 +221,8 @@ describe("spatial_skeleton_commands", () => {
     expect(() =>
       executeSpatialSkeletonNodeDescriptionUpdate(layer as any, {
         node: {
-          nodeId: 17,
-          segmentId: 23,
+          nodeId: 17n,
+          segmentId: 23n,
           position: new Float32Array([1, 2, 3]),
         },
         nextDescription: "next",
@@ -247,8 +247,8 @@ describe("spatial_skeleton_commands", () => {
       }),
     };
     const node: SpatiallyIndexedSkeletonNode = {
-      nodeId: 17,
-      segmentId: 23,
+      nodeId: 17n,
+      segmentId: 23n,
       position: new Float32Array([1, 2, 3]),
     };
 
@@ -285,8 +285,8 @@ describe("spatial_skeleton_commands", () => {
       },
     };
     const node: SpatiallyIndexedSkeletonNode = {
-      nodeId: 17,
-      segmentId: 23,
+      nodeId: 17n,
+      segmentId: 23n,
       position: new Float32Array([1, 2, 3]),
     };
 
@@ -318,8 +318,8 @@ describe("spatial_skeleton_commands", () => {
     suppressStatusMessages();
 
     const node: SpatiallyIndexedSkeletonNode = {
-      nodeId: 17,
-      segmentId: 23,
+      nodeId: 17n,
+      segmentId: 23n,
       position: new Float32Array([1, 2, 3]),
       radius: 4,
       confidence: 50,
@@ -334,24 +334,24 @@ describe("spatial_skeleton_commands", () => {
     });
     const skeletonLayer = {
       source: makeEditableSkeletonSource({ updateRadius, updateConfidence }),
-      getNode: vi.fn((nodeId: number) =>
+      getNode: vi.fn((nodeId: bigint) =>
         nodeId === cachedNode.nodeId ? cachedNode : undefined,
       ),
       invalidateSourceCaches: vi.fn(),
     };
     const commandHistory = new SpatialSkeletonCommandHistory();
-    const setNodeRadius = vi.fn((nodeId: number, radius: number) => {
+    const setNodeRadius = vi.fn((nodeId: bigint, radius: number) => {
       if (nodeId === cachedNode.nodeId) {
         cachedNode = { ...cachedNode, radius };
       }
     });
-    const setNodeConfidence = vi.fn((nodeId: number, confidence: number) => {
+    const setNodeConfidence = vi.fn((nodeId: bigint, confidence: number) => {
       if (nodeId === cachedNode.nodeId) {
         cachedNode = { ...cachedNode, confidence };
       }
     });
     const setCachedNodeSourceState = vi.fn(
-      (nodeId: number, sourceState: unknown) => {
+      (nodeId: bigint, sourceState: unknown) => {
         if (nodeId === cachedNode.nodeId) {
           cachedNode = { ...cachedNode, sourceState: sourceState as any };
         }
@@ -361,10 +361,10 @@ describe("spatial_skeleton_commands", () => {
     const layer = {
       spatialSkeletonState: {
         commandHistory,
-        getCachedNode: vi.fn((nodeId: number) =>
+        getCachedNode: vi.fn((nodeId: bigint) =>
           nodeId === cachedNode.nodeId ? cachedNode : undefined,
         ),
-        getCachedSegmentNodes: vi.fn((segmentId: number) =>
+        getCachedSegmentNodes: vi.fn((segmentId: bigint) =>
           segmentId === cachedNode.segmentId ? [cachedNode] : undefined,
         ),
         setNodeRadius,
@@ -385,27 +385,27 @@ describe("spatial_skeleton_commands", () => {
     });
 
     expect(updateRadius).toHaveBeenCalledWith(
-      17,
+      17n,
       6,
       expect.objectContaining({
-        node: expect.objectContaining({ nodeId: 17 }),
+        node: expect.objectContaining({ nodeId: 17n }),
       }),
     );
     expect(updateConfidence).toHaveBeenCalledWith(
-      17,
+      17n,
       75,
       expect.objectContaining({
-        node: expect.objectContaining({ nodeId: 17 }),
+        node: expect.objectContaining({ nodeId: 17n }),
       }),
     );
-    expect(setNodeRadius).toHaveBeenCalledWith(17, 6);
-    expect(setNodeConfidence).toHaveBeenCalledWith(17, 75);
+    expect(setNodeRadius).toHaveBeenCalledWith(17n, 6);
+    expect(setNodeConfidence).toHaveBeenCalledWith(17n, 75);
     expect(setCachedNodeSourceState).toHaveBeenCalledWith(
-      17,
+      17n,
       testSourceState("after-radius"),
     );
     expect(setCachedNodeSourceState).toHaveBeenCalledWith(
-      17,
+      17n,
       testSourceState("after-confidence"),
     );
     expect(markSpatialSkeletonNodeDataChanged).toHaveBeenCalledTimes(2);
@@ -415,8 +415,8 @@ describe("spatial_skeleton_commands", () => {
     suppressStatusMessages();
 
     const node: SpatiallyIndexedSkeletonNode = {
-      nodeId: 17,
-      segmentId: 23,
+      nodeId: 17n,
+      segmentId: 23n,
       position: new Float32Array([1, 2, 3]),
       isTrueEnd: false,
       sourceState: testSourceState("before"),
@@ -427,7 +427,7 @@ describe("spatial_skeleton_commands", () => {
     });
     const skeletonLayer = {
       source: makeEditableSkeletonSource({ moveNode }),
-      getNode: vi.fn((nodeId: number) =>
+      getNode: vi.fn((nodeId: bigint) =>
         nodeId === node.nodeId ? node : undefined,
       ),
       retainOverlaySegment: vi.fn(),
@@ -440,10 +440,10 @@ describe("spatial_skeleton_commands", () => {
     const layer = {
       spatialSkeletonState: {
         commandHistory,
-        getCachedNode: vi.fn((nodeId: number) =>
+        getCachedNode: vi.fn((nodeId: bigint) =>
           nodeId === node.nodeId ? node : undefined,
         ),
-        getCachedSegmentNodes: vi.fn((segmentId: number) =>
+        getCachedSegmentNodes: vi.fn((segmentId: bigint) =>
           segmentId === node.segmentId ? [node] : undefined,
         ),
         moveCachedNode,
@@ -459,21 +459,21 @@ describe("spatial_skeleton_commands", () => {
     });
 
     expect(moveNode).toHaveBeenCalledWith(
-      17,
+      17n,
       7,
       8,
       9,
       expect.objectContaining({
-        node: expect.objectContaining({ nodeId: 17 }),
+        node: expect.objectContaining({ nodeId: 17n }),
       }),
     );
-    expect(skeletonLayer.retainOverlaySegment).toHaveBeenCalledWith(23);
+    expect(skeletonLayer.retainOverlaySegment).toHaveBeenCalledWith(23n);
     expect(moveCachedNode).toHaveBeenCalledWith(
-      17,
+      17n,
       new Float32Array([7, 8, 9]),
     );
     expect(setCachedNodeSourceState).toHaveBeenCalledWith(
-      17,
+      17n,
       testSourceState("after"),
     );
     expect(markSpatialSkeletonNodeDataChanged).toHaveBeenCalledWith({
@@ -486,8 +486,8 @@ describe("spatial_skeleton_commands", () => {
     suppressStatusMessages();
 
     let cachedNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 17,
-      segmentId: 23,
+      nodeId: 17n,
+      segmentId: 23n,
       position: new Float32Array([1, 2, 3]),
       description: "before",
       isTrueEnd: true,
@@ -500,7 +500,7 @@ describe("spatial_skeleton_commands", () => {
     const toggleTrueEnd = vi.fn();
     const skeletonLayer = {
       source: makeEditableSkeletonSource({ updateDescription, toggleTrueEnd }),
-      getNode: vi.fn((nodeId: number) =>
+      getNode: vi.fn((nodeId: bigint) =>
         nodeId === cachedNode.nodeId ? cachedNode : undefined,
       ),
       invalidateSourceCaches: vi.fn(),
@@ -508,7 +508,7 @@ describe("spatial_skeleton_commands", () => {
     const commandHistory = new SpatialSkeletonCommandHistory();
     const updateCachedNode = vi.fn(
       (
-        nodeId: number,
+        nodeId: bigint,
         updater: (
           candidate: SpatiallyIndexedSkeletonNode,
         ) => SpatiallyIndexedSkeletonNode,
@@ -519,7 +519,7 @@ describe("spatial_skeleton_commands", () => {
       },
     );
     const setCachedNodeSourceState = vi.fn(
-      (nodeId: number, sourceState: unknown) => {
+      (nodeId: bigint, sourceState: unknown) => {
         if (nodeId === cachedNode.nodeId) {
           cachedNode = { ...cachedNode, sourceState: sourceState as any };
         }
@@ -529,10 +529,10 @@ describe("spatial_skeleton_commands", () => {
     const layer = {
       spatialSkeletonState: {
         commandHistory,
-        getCachedNode: vi.fn((nodeId: number) =>
+        getCachedNode: vi.fn((nodeId: bigint) =>
           nodeId === cachedNode.nodeId ? cachedNode : undefined,
         ),
-        getCachedSegmentNodes: vi.fn((segmentId: number) =>
+        getCachedSegmentNodes: vi.fn((segmentId: bigint) =>
           segmentId === cachedNode.segmentId ? [cachedNode] : undefined,
         ),
         updateCachedNode,
@@ -547,7 +547,7 @@ describe("spatial_skeleton_commands", () => {
       nextDescription: "after",
     });
 
-    expect(updateDescription).toHaveBeenCalledWith(17, "after", {
+    expect(updateDescription).toHaveBeenCalledWith(17n, "after", {
       isTrueEnd: true,
     });
     expect(toggleTrueEnd).not.toHaveBeenCalled();
@@ -564,16 +564,16 @@ describe("spatial_skeleton_commands", () => {
   it("moves to the parent node when undoing an add-node command", async () => {
     suppressStatusMessages();
 
-    const segmentId = 23;
+    const segmentId = 23n;
     const parentNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 1,
+      nodeId: 1n,
       segmentId,
       position: new Float32Array([4, 5, 6]),
       isTrueEnd: false,
       sourceState: testSourceState("parent-before-add"),
     };
     const addNode = vi.fn().mockResolvedValue({
-      nodeId: 2,
+      nodeId: 2n,
       segmentId,
       sourceState: testSourceState("added-after-add"),
       parentSourceState: testSourceState("parent-after-add"),
@@ -596,7 +596,7 @@ describe("spatial_skeleton_commands", () => {
     });
     const skeletonLayer = {
       source: skeletonSource,
-      getNode: vi.fn((nodeId: number) =>
+      getNode: vi.fn((nodeId: bigint) =>
         spatialSkeletonState.getCachedNode(nodeId),
       ),
       retainOverlaySegment: vi.fn(),
@@ -672,14 +672,14 @@ describe("spatial_skeleton_commands", () => {
 
     await undoSpatialSkeletonCommand(layer as any);
 
-    expect(deleteNode).toHaveBeenCalledWith(2, {
+    expect(deleteNode).toHaveBeenCalledWith(2n, {
       childNodeIds: [],
       editContext: expect.objectContaining({
-        node: expect.objectContaining({ nodeId: 2 }),
+        node: expect.objectContaining({ nodeId: 2n }),
         parent: expect.objectContaining({ nodeId: parentNode.nodeId }),
       }),
     });
-    expect(spatialSkeletonState.getCachedNode(2)).toBeUndefined();
+    expect(spatialSkeletonState.getCachedNode(2n)).toBeUndefined();
     expect(layer.selectAndMoveToSpatialSkeletonNode).toHaveBeenCalledWith(
       {
         ...parentNode,
@@ -694,16 +694,16 @@ describe("spatial_skeleton_commands", () => {
   it("restores internal-node delete undo as an insertion in the local cache", async () => {
     suppressStatusMessages();
 
-    const segmentId = 23;
+    const segmentId = 23n;
     const rootNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 1,
+      nodeId: 1n,
       segmentId,
       position: new Float32Array([1, 2, 3]),
       isTrueEnd: false,
       sourceState: testSourceState("root-before-delete"),
     };
     const deletedNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 2,
+      nodeId: 2n,
       segmentId,
       parentNodeId: rootNode.nodeId,
       position: new Float32Array([4, 5, 6]),
@@ -711,7 +711,7 @@ describe("spatial_skeleton_commands", () => {
       sourceState: testSourceState("deleted-before-delete"),
     };
     const firstChildNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 3,
+      nodeId: 3n,
       segmentId,
       parentNodeId: deletedNode.nodeId,
       position: new Float32Array([7, 8, 9]),
@@ -719,7 +719,7 @@ describe("spatial_skeleton_commands", () => {
       sourceState: testSourceState("first-child-before-delete"),
     };
     const secondChildNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 4,
+      nodeId: 4n,
       segmentId,
       parentNodeId: deletedNode.nodeId,
       position: new Float32Array([10, 11, 12]),
@@ -745,7 +745,7 @@ describe("spatial_skeleton_commands", () => {
     });
     const addNode = vi.fn();
     const insertNode = vi.fn().mockResolvedValue({
-      nodeId: 20,
+      nodeId: 20n,
       segmentId,
       sourceState: testSourceState("restored-after-undo"),
       parentSourceState: testSourceState("root-after-undo"),
@@ -778,7 +778,7 @@ describe("spatial_skeleton_commands", () => {
     spatialSkeletonState.upsertCachedNode(deletedNode);
     spatialSkeletonState.upsertCachedNode(firstChildNode);
     spatialSkeletonState.upsertCachedNode(secondChildNode);
-    skeletonLayer.getNode.mockImplementation((nodeId: number) =>
+    skeletonLayer.getNode.mockImplementation((nodeId: bigint) =>
       spatialSkeletonState.getCachedNode(nodeId),
     );
 
@@ -808,7 +808,7 @@ describe("spatial_skeleton_commands", () => {
       spatialSkeletonState,
       getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
       getCachedSpatialSkeletonSegmentNodesForEdit: (
-        requestedSegmentId: number,
+        requestedSegmentId: bigint,
       ) => spatialSkeletonState.getCachedSegmentNodes(requestedSegmentId) ?? [],
       async getSpatialSkeletonDeleteOperationContext(
         node: SpatiallyIndexedSkeletonNode,
@@ -876,9 +876,9 @@ describe("spatial_skeleton_commands", () => {
       }),
     );
 
-    const restoredNode = spatialSkeletonState.getCachedNode(20);
+    const restoredNode = spatialSkeletonState.getCachedNode(20n);
     expect(restoredNode).toMatchObject({
-      nodeId: 20,
+      nodeId: 20n,
       parentNodeId: rootNode.nodeId,
       segmentId,
     });
@@ -901,17 +901,17 @@ describe("spatial_skeleton_commands", () => {
   it("suppresses and clears the deleted segment when undoing a split", async () => {
     suppressStatusMessages();
 
-    const originalSegmentId = 2973964;
-    const splitSegmentId = 2973946;
+    const originalSegmentId = 2973964n;
+    const splitSegmentId = 2973946n;
     const formerParentNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 21893039,
+      nodeId: 21893039n,
       segmentId: originalSegmentId,
       position: new Float32Array([10, 20, 30]),
       isTrueEnd: false,
       sourceState: testSourceState("parent-before"),
     };
     const splitNodeBefore: SpatiallyIndexedSkeletonNode = {
-      nodeId: 21893038,
+      nodeId: 21893038n,
       segmentId: originalSegmentId,
       parentNodeId: formerParentNode.nodeId,
       position: new Float32Array([11, 21, 31]),
@@ -929,11 +929,11 @@ describe("spatial_skeleton_commands", () => {
       sourceState: testSourceState("split-merged-back"),
     };
 
-    const serverSegments = new Map<number, SpatiallyIndexedSkeletonNode[]>();
-    const cacheBySegment = new Map<number, SpatiallyIndexedSkeletonNode[]>();
-    const cacheByNode = new Map<number, SpatiallyIndexedSkeletonNode>();
+    const serverSegments = new Map<bigint, SpatiallyIndexedSkeletonNode[]>();
+    const cacheBySegment = new Map<bigint, SpatiallyIndexedSkeletonNode[]>();
+    const cacheByNode = new Map<bigint, SpatiallyIndexedSkeletonNode>();
 
-    const syncCacheFromServer = (segmentId: number) => {
+    const syncCacheFromServer = (segmentId: bigint) => {
       setSegmentNodes(
         cacheBySegment,
         cacheByNode,
@@ -975,18 +975,18 @@ describe("spatial_skeleton_commands", () => {
     });
 
     const deleteSegmentColor = vi.fn();
-    const invalidateCachedSegments = vi.fn((segmentIds: Iterable<number>) => {
+    const invalidateCachedSegments = vi.fn((segmentIds: Iterable<bigint>) => {
       for (const segmentId of segmentIds) {
         setSegmentNodes(cacheBySegment, cacheByNode, segmentId, []);
       }
     });
     const getFullSegmentNodes = vi.fn(
-      async (_skeletonLayer: unknown, segmentId: number) =>
+      async (_skeletonLayer: unknown, segmentId: bigint) =>
         syncCacheFromServer(segmentId),
     );
     const skeletonLayer = {
       source: skeletonSource,
-      getNode: vi.fn((nodeId: number) => cacheByNode.get(nodeId)),
+      getNode: vi.fn((nodeId: bigint) => cacheByNode.get(nodeId)),
       invalidateSourceCaches: vi.fn(),
       suppressBrowseSegment: vi.fn(),
     };
@@ -1020,14 +1020,14 @@ describe("spatial_skeleton_commands", () => {
       },
       spatialSkeletonState: {
         commandHistory: new SpatialSkeletonCommandHistory(),
-        getCachedNode: (nodeId: number) => cacheByNode.get(nodeId),
-        getCachedSegmentNodes: (segmentId: number) =>
+        getCachedNode: (nodeId: bigint) => cacheByNode.get(nodeId),
+        getCachedSegmentNodes: (segmentId: bigint) =>
           cacheBySegment.get(segmentId),
         getFullSegmentNodes,
         invalidateCachedSegments,
       },
       getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
-      getCachedSpatialSkeletonSegmentNodesForEdit: (segmentId: number) =>
+      getCachedSpatialSkeletonSegmentNodesForEdit: (segmentId: bigint) =>
         cacheBySegment.get(segmentId) ?? [],
       selectSegment: vi.fn(),
       selectSpatialSkeletonNode: vi.fn(),
@@ -1092,17 +1092,17 @@ describe("spatial_skeleton_commands", () => {
   it("uses the original skeleton side as the join winner when undoing a split", async () => {
     suppressStatusMessages();
 
-    const originalSegmentId = 2973964;
-    const splitSegmentId = 2973946;
+    const originalSegmentId = 2973964n;
+    const splitSegmentId = 2973946n;
     const originalRootNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 21893001,
+      nodeId: 21893001n,
       segmentId: originalSegmentId,
       position: new Float32Array([1, 2, 3]),
       isTrueEnd: false,
       sourceState: testSourceState("root-before"),
     };
     const formerParentNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 21893039,
+      nodeId: 21893039n,
       segmentId: originalSegmentId,
       parentNodeId: originalRootNode.nodeId,
       position: new Float32Array([10, 20, 30]),
@@ -1110,7 +1110,7 @@ describe("spatial_skeleton_commands", () => {
       sourceState: testSourceState("parent-before"),
     };
     const splitNodeBefore: SpatiallyIndexedSkeletonNode = {
-      nodeId: 21893038,
+      nodeId: 21893038n,
       segmentId: originalSegmentId,
       parentNodeId: formerParentNode.nodeId,
       position: new Float32Array([11, 21, 31]),
@@ -1142,11 +1142,11 @@ describe("spatial_skeleton_commands", () => {
       },
     ];
 
-    const serverSegments = new Map<number, SpatiallyIndexedSkeletonNode[]>();
-    const cacheBySegment = new Map<number, SpatiallyIndexedSkeletonNode[]>();
-    const cacheByNode = new Map<number, SpatiallyIndexedSkeletonNode>();
+    const serverSegments = new Map<bigint, SpatiallyIndexedSkeletonNode[]>();
+    const cacheBySegment = new Map<bigint, SpatiallyIndexedSkeletonNode[]>();
+    const cacheByNode = new Map<bigint, SpatiallyIndexedSkeletonNode>();
 
-    const syncCacheFromServer = (segmentId: number) => {
+    const syncCacheFromServer = (segmentId: bigint) => {
       setSegmentNodes(
         cacheBySegment,
         cacheByNode,
@@ -1190,18 +1190,18 @@ describe("spatial_skeleton_commands", () => {
       rerootSkeleton,
     });
 
-    const invalidateCachedSegments = vi.fn((segmentIds: Iterable<number>) => {
+    const invalidateCachedSegments = vi.fn((segmentIds: Iterable<bigint>) => {
       for (const segmentId of segmentIds) {
         setSegmentNodes(cacheBySegment, cacheByNode, segmentId, []);
       }
     });
     const getFullSegmentNodes = vi.fn(
-      async (_skeletonLayer: unknown, segmentId: number) =>
+      async (_skeletonLayer: unknown, segmentId: bigint) =>
         syncCacheFromServer(segmentId),
     );
     const skeletonLayer = {
       source: skeletonSource,
-      getNode: vi.fn((nodeId: number) => cacheByNode.get(nodeId)),
+      getNode: vi.fn((nodeId: bigint) => cacheByNode.get(nodeId)),
       invalidateSourceCaches: vi.fn(),
       suppressBrowseSegment: vi.fn(),
     };
@@ -1235,14 +1235,14 @@ describe("spatial_skeleton_commands", () => {
       },
       spatialSkeletonState: {
         commandHistory: new SpatialSkeletonCommandHistory(),
-        getCachedNode: (nodeId: number) => cacheByNode.get(nodeId),
-        getCachedSegmentNodes: (segmentId: number) =>
+        getCachedNode: (nodeId: bigint) => cacheByNode.get(nodeId),
+        getCachedSegmentNodes: (segmentId: bigint) =>
           cacheBySegment.get(segmentId),
         getFullSegmentNodes,
         invalidateCachedSegments,
       },
       getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
-      getCachedSpatialSkeletonSegmentNodesForEdit: (segmentId: number) =>
+      getCachedSpatialSkeletonSegmentNodesForEdit: (segmentId: bigint) =>
         cacheBySegment.get(segmentId) ?? [],
       selectSegment: vi.fn(),
       selectSpatialSkeletonNode: vi.fn(),
@@ -1302,17 +1302,17 @@ describe("spatial_skeleton_commands", () => {
   it("preserves full merge undo behavior for a hidden second pick", async () => {
     suppressStatusMessages();
 
-    const visibleSegmentId = 11;
-    const hiddenSegmentId = 17;
+    const visibleSegmentId = 11n;
+    const hiddenSegmentId = 17n;
     const visibleRootNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 101,
+      nodeId: 101n,
       segmentId: visibleSegmentId,
       position: new Float32Array([1, 2, 3]),
       isTrueEnd: false,
       sourceState: testSourceState("visible-root-before"),
     };
     const visibleAnchorNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 102,
+      nodeId: 102n,
       segmentId: visibleSegmentId,
       parentNodeId: visibleRootNode.nodeId,
       position: new Float32Array([4, 5, 6]),
@@ -1320,14 +1320,14 @@ describe("spatial_skeleton_commands", () => {
       sourceState: testSourceState("visible-anchor-before"),
     };
     const hiddenRootNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 201,
+      nodeId: 201n,
       segmentId: hiddenSegmentId,
       position: new Float32Array([7, 8, 9]),
       isTrueEnd: false,
       sourceState: testSourceState("hidden-root-before"),
     };
     const hiddenAttachNodeBefore: SpatiallyIndexedSkeletonNode = {
-      nodeId: 202,
+      nodeId: 202n,
       segmentId: hiddenSegmentId,
       parentNodeId: hiddenRootNode.nodeId,
       position: new Float32Array([10, 11, 12]),
@@ -1373,12 +1373,12 @@ describe("spatial_skeleton_commands", () => {
       },
     ];
 
-    const serverSegments = new Map<number, SpatiallyIndexedSkeletonNode[]>();
-    const cacheBySegment = new Map<number, SpatiallyIndexedSkeletonNode[]>();
-    const cacheByNode = new Map<number, SpatiallyIndexedSkeletonNode>();
+    const serverSegments = new Map<bigint, SpatiallyIndexedSkeletonNode[]>();
+    const cacheBySegment = new Map<bigint, SpatiallyIndexedSkeletonNode[]>();
+    const cacheByNode = new Map<bigint, SpatiallyIndexedSkeletonNode>();
     const hiddenSegmentVisibleDuringFetches: boolean[] = [];
 
-    const syncCacheFromServer = (segmentId: number) => {
+    const syncCacheFromServer = (segmentId: bigint) => {
       setSegmentNodes(
         cacheBySegment,
         cacheByNode,
@@ -1435,13 +1435,13 @@ describe("spatial_skeleton_commands", () => {
       rerootSkeleton,
     });
 
-    const invalidateCachedSegments = vi.fn((segmentIds: Iterable<number>) => {
+    const invalidateCachedSegments = vi.fn((segmentIds: Iterable<bigint>) => {
       for (const segmentId of segmentIds) {
         setSegmentNodes(cacheBySegment, cacheByNode, segmentId, []);
       }
     });
     const getFullSegmentNodes = vi.fn(
-      async (_skeletonLayer: unknown, segmentId: number) => {
+      async (_skeletonLayer: unknown, segmentId: bigint) => {
         if (segmentId === hiddenSegmentId) {
           hiddenSegmentVisibleDuringFetches.push(
             layer.displayState.segmentationGroupState.value.visibleSegments.has(
@@ -1454,7 +1454,7 @@ describe("spatial_skeleton_commands", () => {
     );
     const skeletonLayer = {
       source: skeletonSource,
-      getNode: vi.fn((nodeId: number) => cacheByNode.get(nodeId)),
+      getNode: vi.fn((nodeId: bigint) => cacheByNode.get(nodeId)),
       invalidateSourceCaches: vi.fn(),
       suppressBrowseSegment: vi.fn(),
     };
@@ -1488,8 +1488,8 @@ describe("spatial_skeleton_commands", () => {
       },
       spatialSkeletonState: {
         commandHistory: new SpatialSkeletonCommandHistory(),
-        getCachedNode: (nodeId: number) => cacheByNode.get(nodeId),
-        getCachedSegmentNodes: (segmentId: number) =>
+        getCachedNode: (nodeId: bigint) => cacheByNode.get(nodeId),
+        getCachedSegmentNodes: (segmentId: bigint) =>
           cacheBySegment.get(segmentId),
         getFullSegmentNodes,
         invalidateCachedSegments,
@@ -1578,17 +1578,17 @@ describe("spatial_skeleton_commands", () => {
         (_message: string, _closeAfter?: number) => fakeStatusMessage,
       );
 
-    const visibleSegmentId = 11;
-    const hiddenSegmentId = 17;
+    const visibleSegmentId = 11n;
+    const hiddenSegmentId = 17n;
     const visibleRootNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 101,
+      nodeId: 101n,
       segmentId: visibleSegmentId,
       position: new Float32Array([1, 2, 3]),
       isTrueEnd: false,
       sourceState: testSourceState("visible-root-before"),
     };
     const visibleAnchorNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 102,
+      nodeId: 102n,
       segmentId: visibleSegmentId,
       parentNodeId: visibleRootNode.nodeId,
       position: new Float32Array([4, 5, 6]),
@@ -1596,14 +1596,14 @@ describe("spatial_skeleton_commands", () => {
       sourceState: testSourceState("visible-anchor-before"),
     };
     const hiddenRootNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 201,
+      nodeId: 201n,
       segmentId: hiddenSegmentId,
       position: new Float32Array([7, 8, 9]),
       isTrueEnd: false,
       sourceState: testSourceState("hidden-root-before"),
     };
     const hiddenAttachNodeBefore: SpatiallyIndexedSkeletonNode = {
-      nodeId: 202,
+      nodeId: 202n,
       segmentId: hiddenSegmentId,
       parentNodeId: hiddenRootNode.nodeId,
       position: new Float32Array([10, 11, 12]),
@@ -1637,11 +1637,11 @@ describe("spatial_skeleton_commands", () => {
       },
     ];
 
-    const serverSegments = new Map<number, SpatiallyIndexedSkeletonNode[]>();
-    const cacheBySegment = new Map<number, SpatiallyIndexedSkeletonNode[]>();
-    const cacheByNode = new Map<number, SpatiallyIndexedSkeletonNode>();
+    const serverSegments = new Map<bigint, SpatiallyIndexedSkeletonNode[]>();
+    const cacheBySegment = new Map<bigint, SpatiallyIndexedSkeletonNode[]>();
+    const cacheByNode = new Map<bigint, SpatiallyIndexedSkeletonNode>();
 
-    const syncCacheFromServer = (segmentId: number) => {
+    const syncCacheFromServer = (segmentId: bigint) => {
       setSegmentNodes(
         cacheBySegment,
         cacheByNode,
@@ -1698,7 +1698,7 @@ describe("spatial_skeleton_commands", () => {
     });
 
     const getFullSegmentNodes = vi.fn(
-      async (_skeletonLayer: unknown, segmentId: number) =>
+      async (_skeletonLayer: unknown, segmentId: bigint) =>
         syncCacheFromServer(segmentId),
     );
     const layer = {
@@ -1731,11 +1731,11 @@ describe("spatial_skeleton_commands", () => {
       },
       spatialSkeletonState: {
         commandHistory: new SpatialSkeletonCommandHistory(),
-        getCachedNode: (nodeId: number) => cacheByNode.get(nodeId),
-        getCachedSegmentNodes: (segmentId: number) =>
+        getCachedNode: (nodeId: bigint) => cacheByNode.get(nodeId),
+        getCachedSegmentNodes: (segmentId: bigint) =>
           cacheBySegment.get(segmentId),
         getFullSegmentNodes,
-        invalidateCachedSegments: vi.fn((segmentIds: Iterable<number>) => {
+        invalidateCachedSegments: vi.fn((segmentIds: Iterable<bigint>) => {
           for (const segmentId of segmentIds) {
             setSegmentNodes(cacheBySegment, cacheByNode, segmentId, []);
           }
@@ -1743,7 +1743,7 @@ describe("spatial_skeleton_commands", () => {
       },
       getSpatiallyIndexedSkeletonLayer: () => ({
         source: skeletonSource,
-        getNode: vi.fn((nodeId: number) => cacheByNode.get(nodeId)),
+        getNode: vi.fn((nodeId: bigint) => cacheByNode.get(nodeId)),
         invalidateSourceCaches: vi.fn(),
         suppressBrowseSegment: vi.fn(),
       }),
@@ -1806,17 +1806,17 @@ describe("spatial_skeleton_commands", () => {
   it("falls back to full resolution for an uncached second node without revision metadata", async () => {
     suppressStatusMessages();
 
-    const firstSegmentId = 11;
-    const secondSegmentId = 17;
+    const firstSegmentId = 11n;
+    const secondSegmentId = 17n;
     const firstRootNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 101,
+      nodeId: 101n,
       segmentId: firstSegmentId,
       position: new Float32Array([1, 2, 3]),
       isTrueEnd: false,
       sourceState: testSourceState("first-root-before"),
     };
     const firstAnchorNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 102,
+      nodeId: 102n,
       segmentId: firstSegmentId,
       parentNodeId: firstRootNode.nodeId,
       position: new Float32Array([4, 5, 6]),
@@ -1824,14 +1824,14 @@ describe("spatial_skeleton_commands", () => {
       sourceState: testSourceState("first-anchor-before"),
     };
     const secondRootNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 201,
+      nodeId: 201n,
       segmentId: secondSegmentId,
       position: new Float32Array([7, 8, 9]),
       isTrueEnd: false,
       sourceState: testSourceState("second-root-before"),
     };
     const secondAttachNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 202,
+      nodeId: 202n,
       segmentId: secondSegmentId,
       parentNodeId: secondRootNode.nodeId,
       position: new Float32Array([10, 11, 12]),
@@ -1839,11 +1839,11 @@ describe("spatial_skeleton_commands", () => {
       sourceState: testSourceState("second-attach-before"),
     };
 
-    const serverSegments = new Map<number, SpatiallyIndexedSkeletonNode[]>();
-    const cacheBySegment = new Map<number, SpatiallyIndexedSkeletonNode[]>();
-    const cacheByNode = new Map<number, SpatiallyIndexedSkeletonNode>();
+    const serverSegments = new Map<bigint, SpatiallyIndexedSkeletonNode[]>();
+    const cacheBySegment = new Map<bigint, SpatiallyIndexedSkeletonNode[]>();
+    const cacheByNode = new Map<bigint, SpatiallyIndexedSkeletonNode>();
 
-    const syncCacheFromServer = (segmentId: number) => {
+    const syncCacheFromServer = (segmentId: bigint) => {
       setSegmentNodes(
         cacheBySegment,
         cacheByNode,
@@ -1877,7 +1877,7 @@ describe("spatial_skeleton_commands", () => {
     });
 
     const getFullSegmentNodes = vi.fn(
-      async (_skeletonLayer: unknown, segmentId: number) =>
+      async (_skeletonLayer: unknown, segmentId: bigint) =>
         syncCacheFromServer(segmentId),
     );
     const layer = {
@@ -1910,11 +1910,11 @@ describe("spatial_skeleton_commands", () => {
       },
       spatialSkeletonState: {
         commandHistory: new SpatialSkeletonCommandHistory(),
-        getCachedNode: (nodeId: number) => cacheByNode.get(nodeId),
-        getCachedSegmentNodes: (segmentId: number) =>
+        getCachedNode: (nodeId: bigint) => cacheByNode.get(nodeId),
+        getCachedSegmentNodes: (segmentId: bigint) =>
           cacheBySegment.get(segmentId),
         getFullSegmentNodes,
-        invalidateCachedSegments: vi.fn((segmentIds: Iterable<number>) => {
+        invalidateCachedSegments: vi.fn((segmentIds: Iterable<bigint>) => {
           for (const segmentId of segmentIds) {
             setSegmentNodes(cacheBySegment, cacheByNode, segmentId, []);
           }
@@ -1922,7 +1922,7 @@ describe("spatial_skeleton_commands", () => {
       },
       getSpatiallyIndexedSkeletonLayer: () => ({
         source: skeletonSource,
-        getNode: vi.fn((nodeId: number) => cacheByNode.get(nodeId)),
+        getNode: vi.fn((nodeId: bigint) => cacheByNode.get(nodeId)),
         invalidateSourceCaches: vi.fn(),
         suppressBrowseSegment: vi.fn(),
       }),
@@ -1974,38 +1974,38 @@ describe("spatial_skeleton_commands", () => {
 
     let resolveMerge:
       | ((value: {
-          resultSegmentId: number;
-          deletedSegmentId: number;
+          resultSegmentId: bigint;
+          deletedSegmentId: bigint;
           directionAdjusted: boolean;
         }) => void)
       | undefined;
     const mergeSkeletons = vi.fn(
       () =>
         new Promise<{
-          resultSegmentId: number;
-          deletedSegmentId: number;
+          resultSegmentId: bigint;
+          deletedSegmentId: bigint;
           directionAdjusted: boolean;
         }>((resolve) => {
           resolveMerge = resolve;
         }),
     );
     const firstNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 101,
-      segmentId: 11,
+      nodeId: 101n,
+      segmentId: 11n,
       position: new Float32Array([1, 2, 3]),
       isTrueEnd: false,
       sourceState: testSourceState("first-before"),
     };
     const secondNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 202,
-      segmentId: 17,
+      nodeId: 202n,
+      segmentId: 17n,
       position: new Float32Array([4, 5, 6]),
       isTrueEnd: false,
       sourceState: testSourceState("second-before"),
     };
     const skeletonLayer = {
       source: makeEditableSkeletonSource({ mergeSkeletons }),
-      getNode: vi.fn((nodeId: number) => {
+      getNode: vi.fn((nodeId: bigint) => {
         if (nodeId === firstNode.nodeId) return firstNode;
         if (nodeId === secondNode.nodeId) return secondNode;
         return undefined;
@@ -2034,12 +2034,12 @@ describe("spatial_skeleton_commands", () => {
       },
       spatialSkeletonState: {
         commandHistory: new SpatialSkeletonCommandHistory(),
-        getCachedNode: vi.fn((nodeId: number) => {
+        getCachedNode: vi.fn((nodeId: bigint) => {
           if (nodeId === firstNode.nodeId) return firstNode;
           if (nodeId === secondNode.nodeId) return secondNode;
           return undefined;
         }),
-        getCachedSegmentNodes: vi.fn((segmentId: number) => {
+        getCachedSegmentNodes: vi.fn((segmentId: bigint) => {
           if (segmentId === firstNode.segmentId) return [firstNode];
           if (segmentId === secondNode.segmentId) return [secondNode];
           return undefined;

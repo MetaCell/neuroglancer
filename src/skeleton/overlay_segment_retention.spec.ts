@@ -9,26 +9,29 @@ import {
 describe("mergeSpatiallyIndexedSkeletonOverlaySegmentIds", () => {
   it("dedupes and sorts active and retained segment ids", () => {
     expect(
-      mergeSpatiallyIndexedSkeletonOverlaySegmentIds([7, 3, 7], [9, 3, 5]),
-    ).toEqual([3, 5, 7, 9]);
+      mergeSpatiallyIndexedSkeletonOverlaySegmentIds(
+        [7n, 3n, 7n],
+        [9n, 3n, 5n],
+      ),
+    ).toEqual([3n, 5n, 7n, 9n]);
   });
 
   it("ignores invalid segment ids", () => {
     expect(
-      mergeSpatiallyIndexedSkeletonOverlaySegmentIds([1, 0, -2], [NaN, 4]),
-    ).toEqual([1, 4]);
+      mergeSpatiallyIndexedSkeletonOverlaySegmentIds([1n, 0n], [4n]),
+    ).toEqual([1n, 4n]);
   });
 });
 
 describe("retainSpatiallyIndexedSkeletonOverlaySegment", () => {
   it("moves retained segments to the most recent position", () => {
-    expect(retainSpatiallyIndexedSkeletonOverlaySegment([2, 4, 6], 4)).toEqual([
-      2, 6, 4,
-    ]);
+    expect(
+      retainSpatiallyIndexedSkeletonOverlaySegment([2n, 4n, 6n], 4n),
+    ).toEqual([2n, 6n, 4n]);
   });
 
   it("keeps only the most recent retained segments", () => {
-    const retained: number[] = [];
+    const retained: bigint[] = [];
     for (
       let segmentId = 1;
       segmentId <= DEFAULT_MAX_RETAINED_OVERLAY_SEGMENTS + 2;
@@ -37,14 +40,17 @@ describe("retainSpatiallyIndexedSkeletonOverlaySegment", () => {
       retained.splice(
         0,
         retained.length,
-        ...retainSpatiallyIndexedSkeletonOverlaySegment(retained, segmentId),
+        ...retainSpatiallyIndexedSkeletonOverlaySegment(
+          retained,
+          BigInt(segmentId),
+        ),
       );
     }
-    const firstRetainedSegmentId = 3;
+    const firstRetainedSegmentId = 3n;
     expect(retained).toEqual(
       Array.from(
         { length: DEFAULT_MAX_RETAINED_OVERLAY_SEGMENTS },
-        (_, index) => firstRetainedSegmentId + index,
+        (_, index) => firstRetainedSegmentId + BigInt(index),
       ),
     );
   });

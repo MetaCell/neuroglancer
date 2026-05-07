@@ -29,6 +29,7 @@ import type {
 } from "#src/skeleton/edit_command_source.js";
 
 export type SpatialSkeletonVector = ArrayLike<number>;
+export type SpatialSkeletonId = bigint;
 
 // Provider-specific node state that crosses the worker boundary must remain structured-cloneable.
 export type SpatialSkeletonSourceState =
@@ -55,10 +56,10 @@ export interface SpatialSkeletonSpatialIndexLevel {
 }
 
 export interface SpatiallyIndexedSkeletonNodeBase {
-  nodeId: number;
-  segmentId: number;
+  nodeId: SpatialSkeletonId;
+  segmentId: SpatialSkeletonId;
   position: SpatialSkeletonVector;
-  parentNodeId?: number;
+  parentNodeId?: SpatialSkeletonId;
   sourceState?: SpatialSkeletonSourceState;
 }
 
@@ -82,9 +83,9 @@ export interface SpatialSkeletonConfidenceConfiguration {
 
 export interface SpatiallyIndexedSkeletonSource {
   readonly readonly: boolean;
-  listSkeletons(): Promise<number[]>;
+  listSkeletons(): Promise<SpatialSkeletonId[]>;
   getSkeleton(
-    skeletonId: number,
+    skeletonId: SpatialSkeletonId,
     options?: { signal?: AbortSignal },
   ): Promise<SpatiallyIndexedSkeletonNode[]>;
   getSpatialIndexMetadata(): Promise<SpatiallyIndexedSkeletonMetadata | null>;

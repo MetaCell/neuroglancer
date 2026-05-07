@@ -1,18 +1,20 @@
+import type { SpatialSkeletonId } from "#src/skeleton/api.js";
+
 export interface SpatiallyIndexedSkeletonOverlayNodeLike {
-  nodeId: number;
-  segmentId: number;
+  nodeId: SpatialSkeletonId;
+  segmentId: SpatialSkeletonId;
   position: ArrayLike<number>;
-  parentNodeId?: number;
+  parentNodeId?: SpatialSkeletonId;
 }
 
 export interface SpatiallyIndexedSkeletonOverlayGeometry {
   positions: Float32Array;
-  segmentIds: Uint32Array;
+  segmentIds: BigUint64Array;
   selected: Float32Array;
-  nodeIds: Int32Array;
+  nodeIds: BigUint64Array;
   nodePositions: Float32Array;
-  pickSegmentIds: Uint32Array;
-  pickEdgeSegmentIds: Uint32Array;
+  pickSegmentIds: BigUint64Array;
+  pickEdgeSegmentIds: BigUint64Array;
   indices: Uint32Array;
   numVertices: number;
 }
@@ -20,12 +22,14 @@ export interface SpatiallyIndexedSkeletonOverlayGeometry {
 export function buildSpatiallyIndexedSkeletonOverlayGeometry(
   segmentNodeSets: readonly (readonly SpatiallyIndexedSkeletonOverlayNodeLike[])[],
   options: {
-    selectedNodeId?: number;
-    getPendingNodePosition?: (nodeId: number) => ArrayLike<number> | undefined;
+    selectedNodeId?: SpatialSkeletonId;
+    getPendingNodePosition?: (
+      nodeId: SpatialSkeletonId,
+    ) => ArrayLike<number> | undefined;
   } = {},
 ): SpatiallyIndexedSkeletonOverlayGeometry {
   const { selectedNodeId, getPendingNodePosition } = options;
-  const nodeIndex = new Map<number, number>();
+  const nodeIndex = new Map<SpatialSkeletonId, number>();
   const orderedNodes: SpatiallyIndexedSkeletonOverlayNodeLike[] = [];
 
   for (const segmentNodes of segmentNodeSets) {
@@ -38,13 +42,13 @@ export function buildSpatiallyIndexedSkeletonOverlayGeometry(
 
   const numVertices = orderedNodes.length;
   const positions = new Float32Array(numVertices * 3);
-  const segmentIds = new Uint32Array(numVertices);
+  const segmentIds = new BigUint64Array(numVertices);
   const selected = new Float32Array(numVertices);
-  const nodeIds = new Int32Array(numVertices);
+  const nodeIds = new BigUint64Array(numVertices);
   const nodePositions = new Float32Array(numVertices * 3);
-  const pickSegmentIds = new Uint32Array(numVertices);
+  const pickSegmentIds = new BigUint64Array(numVertices);
   const indices: number[] = [];
-  const pickEdgeSegmentIds: number[] = [];
+  const pickEdgeSegmentIds: bigint[] = [];
 
   orderedNodes.forEach((node, index) => {
     const position = getPendingNodePosition?.(node.nodeId) ?? node.position;
@@ -55,9 +59,9 @@ export function buildSpatiallyIndexedSkeletonOverlayGeometry(
     nodePositions[baseOffset] = positions[baseOffset];
     nodePositions[baseOffset + 1] = positions[baseOffset + 1];
     nodePositions[baseOffset + 2] = positions[baseOffset + 2];
-    segmentIds[index] = Math.max(0, Math.round(Number(node.segmentId)));
+    segmentIds[index] = node.segmentId;
     pickSegmentIds[index] = segmentIds[index];
-    nodeIds[index] = Math.round(Number(node.nodeId));
+    nodeIds[index] = node.nodeId;
     selected[index] =
       selectedNodeId !== undefined && node.nodeId === selectedNodeId ? 1 : 0;
   });
@@ -66,17 +70,17 @@ export function buildSpatiallyIndexedSkeletonOverlayGeometry(
     const childIndex = nodeIndex.get(node.nodeId);
     if (childIndex === undefined) return;
     const parentNodeId = node.parentNodeId;
-    if (
-      parentNodeId === undefined ||
-      !Number.isSafeInteger(parentNodeId) ||
-      parentNodeId <= 0
-    ) {
+    if (parentNodeId === undefined || parentNodeId <= 0n) {
       return;
     }
     const parentIndex = nodeIndex.get(parentNodeId);
     if (parentIndex === undefined) return;
     indices.push(childIndex, parentIndex);
-    pickEdgeSegmentIds.push(segmentIds[childIndex] || segmentIds[parentIndex]);
+    pickEdgeSegmentIds.push(
+      segmentIds[childIndex] !== 0n
+        ? segmentIds[childIndex]
+        : segmentIds[parentIndex],
+    );
   });
 
   return {
@@ -86,7 +90,7 @@ export function buildSpatiallyIndexedSkeletonOverlayGeometry(
     nodeIds,
     nodePositions,
     pickSegmentIds,
-    pickEdgeSegmentIds: new Uint32Array(pickEdgeSegmentIds),
+    pickEdgeSegmentIds: new BigUint64Array(pickEdgeSegmentIds),
     indices: new Uint32Array(indices),
     numVertices,
   };

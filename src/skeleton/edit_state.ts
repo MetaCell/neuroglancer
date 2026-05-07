@@ -1,19 +1,23 @@
-import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
+import type {
+  SpatialSkeletonId,
+  SpatiallyIndexedSkeletonNode,
+} from "#src/skeleton/api.js";
+import { compareUint64Ids } from "#src/util/bigint.js";
 
 export function findSpatiallyIndexedSkeletonNode(
   segmentNodes: readonly SpatiallyIndexedSkeletonNode[],
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
 ) {
   return segmentNodes.find((node) => node.nodeId === nodeId);
 }
 
 export function getSpatiallyIndexedSkeletonDirectChildren(
   segmentNodes: readonly SpatiallyIndexedSkeletonNode[],
-  nodeId: number,
+  nodeId: SpatialSkeletonId,
 ) {
   return segmentNodes
     .filter((node) => node.parentNodeId === nodeId)
-    .sort((a, b) => a.nodeId - b.nodeId);
+    .sort((a, b) => compareUint64Ids(a.nodeId, b.nodeId));
 }
 
 export function getSpatiallyIndexedSkeletonNodeParent(
@@ -31,7 +35,7 @@ export function getSpatiallyIndexedSkeletonPathToRoot(
   node: SpatiallyIndexedSkeletonNode,
 ) {
   const path = [node];
-  const visited = new Set<number>([node.nodeId]);
+  const visited = new Set<SpatialSkeletonId>([node.nodeId]);
   let currentNode = node;
   while (true) {
     const parentNode = getSpatiallyIndexedSkeletonNodeParent(

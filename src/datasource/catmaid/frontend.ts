@@ -46,6 +46,7 @@ import {
   normalizeInlineSegmentPropertyMap,
 } from "#src/segmentation_display_state/property_map.js";
 import type {
+  SpatialSkeletonId,
   SpatialSkeletonConfidenceConfiguration,
   SpatialSkeletonGridCellIndex,
   SpatiallyIndexedSkeletonMetadata,
@@ -154,13 +155,13 @@ export class CatmaidSpatiallyIndexedSkeletonSource extends WithParameters(
   }
 
   getSkeleton(
-    skeletonId: number,
+    skeletonId: SpatialSkeletonId,
     options?: { signal?: AbortSignal },
   ): Promise<SpatiallyIndexedSkeletonNode[]> {
     return this.client.getSkeleton(skeletonId, options);
   }
 
-  listSkeletons(): Promise<number[]> {
+  listSkeletons(): Promise<SpatialSkeletonId[]> {
     return this.client.listSkeletons();
   }
 
@@ -188,7 +189,7 @@ export class CatmaidSpatiallyIndexedSkeletonSource extends WithParameters(
     );
   }
 
-  getSkeletonRootNode(skeletonId: number) {
+  getSkeletonRootNode(skeletonId: SpatialSkeletonId) {
     return this.client.getSkeletonRootNode(skeletonId);
   }
 }
@@ -469,7 +470,7 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
     // Create SegmentPropertyMap
     const ids = new BigUint64Array(skeletonIds.length);
     for (let i = 0; i < skeletonIds.length; ++i) {
-      ids[i] = BigInt(skeletonIds[i]);
+      ids[i] = skeletonIds[i];
     }
 
     const propertyMap = new SegmentPropertyMap({

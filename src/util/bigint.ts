@@ -42,10 +42,57 @@ export function bigintMax(a: bigint, b: bigint): bigint {
 
 export const UINT64_MAX = 0xffffffffffffffffn;
 
+function describeIntegerValue(value: unknown) {
+  return typeof value === "bigint" ? value.toString() : JSON.stringify(value);
+}
+
 export function clampToUint64(x: bigint): bigint {
   if (x < 0n) return 0n;
   if (x > UINT64_MAX) return UINT64_MAX;
   return x;
+}
+
+export function parsePositiveUint64Id(value: unknown, label = "id"): bigint {
+  let id: bigint;
+  switch (typeof value) {
+    case "bigint":
+      id = value;
+      break;
+    case "number":
+      if (!Number.isSafeInteger(value)) {
+        throw new Error(
+          `Expected ${label} to be a safe integer number, but received: ${describeIntegerValue(value)}.`,
+        );
+      }
+      id = BigInt(value);
+      break;
+    case "string":
+      if (!/^(?:0|[1-9][0-9]*)$/.test(value)) {
+        throw new Error(
+          `Expected ${label} to be a base-10 uint64 string, but received: ${JSON.stringify(value)}.`,
+        );
+      }
+      id = BigInt(value);
+      break;
+    default:
+      throw new Error(
+        `Expected ${label} to be a uint64 id, but received: ${describeIntegerValue(value)}.`,
+      );
+  }
+  if (id <= 0n || id > UINT64_MAX) {
+    throw new Error(
+      `Expected ${label} to be in range [1, ${UINT64_MAX}], but received: ${id}.`,
+    );
+  }
+  return id;
+}
+
+export function compareUint64Ids(a: bigint, b: bigint) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+export function stringifySpatialSkeletonId(id: bigint) {
+  return id.toString();
 }
 
 export function bigintAbs(x: bigint): bigint {

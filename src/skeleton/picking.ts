@@ -1,6 +1,6 @@
 export function resolveSpatiallyIndexedSkeletonSegmentPick(
   chunk: { indices: Uint32Array; numVertices: number },
-  segmentIds: Uint32Array,
+  segmentIds: BigUint64Array,
   pickedOffset: number,
   kind: "node" | "edge",
 ) {
@@ -13,9 +13,7 @@ export function resolveSpatiallyIndexedSkeletonSegmentPick(
       return undefined;
     }
     const segmentId = segmentIds[pickedOffset];
-    return Number.isSafeInteger(segmentId) && segmentId > 0
-      ? segmentId
-      : undefined;
+    return segmentId > 0n ? segmentId : undefined;
   }
   const indexOffset = pickedOffset * 2;
   if (indexOffset + 1 >= chunk.indices.length) {
@@ -24,10 +22,8 @@ export function resolveSpatiallyIndexedSkeletonSegmentPick(
   const vertexA = chunk.indices[indexOffset];
   const vertexB = chunk.indices[indexOffset + 1];
   let segmentId = segmentIds[vertexA];
-  if (!Number.isSafeInteger(segmentId) || segmentId <= 0) {
+  if (segmentId <= 0n) {
     segmentId = segmentIds[vertexB];
   }
-  return Number.isSafeInteger(segmentId) && segmentId > 0
-    ? segmentId
-    : undefined;
+  return segmentId > 0n ? segmentId : undefined;
 }

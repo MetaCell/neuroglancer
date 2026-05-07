@@ -160,21 +160,21 @@ describe("spatial_skeleton_edit_tool", () => {
     const moveViewToSpatialSkeletonNodePosition = vi.fn();
     const getFullSegmentNodes = vi.fn();
     const parentNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 5,
-      segmentId: 11,
+      nodeId: 5n,
+      segmentId: 11n,
       position: new Float32Array([8, 9, 10]),
       isTrueEnd: false,
       sourceState: testSourceState("parent-before"),
     };
     const addNode = vi.fn().mockResolvedValue({
-      nodeId: 17,
-      segmentId: 11,
+      nodeId: 17n,
+      segmentId: 11n,
       sourceState: testSourceState("node-after"),
       parentSourceState: testSourceState("parent-after"),
     });
     const skeletonLayer = {
       source: makeEditableSkeletonSource({ addNode }),
-      getNode: vi.fn((nodeId: number) =>
+      getNode: vi.fn((nodeId: bigint) =>
         nodeId === parentNode.nodeId ? parentNode : undefined,
       ),
       retainOverlaySegment: vi.fn(),
@@ -190,10 +190,10 @@ describe("spatial_skeleton_edit_tool", () => {
       },
       spatialSkeletonState: {
         commandHistory,
-        getCachedNode: vi.fn((nodeId: number) =>
+        getCachedNode: vi.fn((nodeId: bigint) =>
           nodeId === parentNode.nodeId ? parentNode : undefined,
         ),
-        getCachedSegmentNodes: vi.fn((segmentId: number) =>
+        getCachedSegmentNodes: vi.fn((segmentId: bigint) =>
           segmentId === parentNode.segmentId ? [parentNode] : undefined,
         ),
         getFullSegmentNodes,
@@ -218,46 +218,46 @@ describe("spatial_skeleton_edit_tool", () => {
     const position = new Float32Array([1, 2, 3]);
 
     await executeSpatialSkeletonAddNode(layer as any, {
-      skeletonId: 11,
-      parentNodeId: 5,
+      skeletonId: 11n,
+      parentNodeId: 5n,
       positionInModelSpace: position,
     });
 
     expect(addNode).toHaveBeenCalledWith(
-      11,
+      11n,
       1,
       2,
       3,
-      5,
+      5n,
       expect.objectContaining({
-        node: expect.objectContaining({ nodeId: 5 }),
+        node: expect.objectContaining({ nodeId: 5n }),
       }),
     );
     expect(upsertCachedNode).toHaveBeenCalledWith(
       {
-        nodeId: 17,
-        segmentId: 11,
+        nodeId: 17n,
+        segmentId: 11n,
         position: new Float32Array([1, 2, 3]),
-        parentNodeId: 5,
+        parentNodeId: 5n,
         isTrueEnd: false,
         sourceState: testSourceState("node-after"),
       },
       { allowUncachedSegment: false },
     );
     expect(setCachedNodeSourceState).toHaveBeenCalledWith(
-      5,
+      5n,
       testSourceState("parent-after"),
     );
     expect(visibleSegmentsState.visibleSegments.has(11n)).toBe(true);
     expect(selectSegment).toHaveBeenCalledWith(11n, true);
-    expect(selectSpatialSkeletonNode).toHaveBeenCalledWith(17, true, {
-      segmentId: 11,
+    expect(selectSpatialSkeletonNode).toHaveBeenCalledWith(17n, true, {
+      segmentId: 11n,
       position: new Float32Array([1, 2, 3]),
     });
     expect(moveViewToSpatialSkeletonNodePosition).toHaveBeenCalledWith(
       new Float32Array([1, 2, 3]),
     );
-    expect(skeletonLayer.retainOverlaySegment).toHaveBeenCalledWith(11);
+    expect(skeletonLayer.retainOverlaySegment).toHaveBeenCalledWith(11n);
     expect(markSpatialSkeletonNodeDataChanged).toHaveBeenCalledWith({
       invalidateFullSkeletonCache: false,
     });
@@ -275,8 +275,8 @@ describe("spatial_skeleton_edit_tool", () => {
     const moveViewToSpatialSkeletonNodePosition = vi.fn();
     const getFullSegmentNodes = vi.fn();
     const addNode = vi.fn().mockResolvedValue({
-      nodeId: 29,
-      segmentId: 13,
+      nodeId: 29n,
+      segmentId: 13n,
       sourceState: testSourceState("root-after"),
     });
     const skeletonLayer = {
@@ -319,16 +319,16 @@ describe("spatial_skeleton_edit_tool", () => {
     const position = new Float32Array([4, 5, 6]);
 
     await executeSpatialSkeletonAddNode(layer as any, {
-      skeletonId: 13,
+      skeletonId: 13n,
       parentNodeId: undefined,
       positionInModelSpace: position,
     });
 
-    expect(addNode).toHaveBeenCalledWith(13, 4, 5, 6, undefined, undefined);
+    expect(addNode).toHaveBeenCalledWith(13n, 4, 5, 6, undefined, undefined);
     expect(upsertCachedNode).toHaveBeenCalledWith(
       {
-        nodeId: 29,
-        segmentId: 13,
+        nodeId: 29n,
+        segmentId: 13n,
         position: new Float32Array([4, 5, 6]),
         parentNodeId: undefined,
         isTrueEnd: false,
@@ -339,8 +339,8 @@ describe("spatial_skeleton_edit_tool", () => {
     expect(setCachedNodeSourceState).not.toHaveBeenCalled();
     expect(visibleSegmentsState.visibleSegments.has(13n)).toBe(true);
     expect(selectSegment).toHaveBeenCalledWith(13n, true);
-    expect(selectSpatialSkeletonNode).toHaveBeenCalledWith(29, false, {
-      segmentId: 13,
+    expect(selectSpatialSkeletonNode).toHaveBeenCalledWith(29n, false, {
+      segmentId: 13n,
       position: new Float32Array([4, 5, 6]),
     });
     expect(moveViewToSpatialSkeletonNodePosition).toHaveBeenCalledWith(
@@ -360,13 +360,13 @@ describe("spatial_skeleton_edit_tool", () => {
     ).getAddNodeBlockedReason as (
       this: any,
       skeletonLayer: any,
-      parentNodeId: number | undefined,
+      parentNodeId: bigint | undefined,
     ) => string | undefined;
-    const getCachedNode = vi.fn((nodeId: number) =>
-      nodeId === 17
+    const getCachedNode = vi.fn((nodeId: bigint) =>
+      nodeId === 17n
         ? {
-            nodeId: 17,
-            segmentId: 11,
+            nodeId: 17n,
+            segmentId: 11n,
             position: new Float32Array([1, 2, 3]),
             isTrueEnd: true,
           }
@@ -384,36 +384,36 @@ describe("spatial_skeleton_edit_tool", () => {
       ).getSelectedParentNodeForAdd,
     };
 
-    expect(getAddNodeBlockedReason.call(tool, { getNode }, 17)).toBe(
+    expect(getAddNodeBlockedReason.call(tool, { getNode }, 17n)).toBe(
       "Node 17 is marked as a true end. Clear the true end state before appending a child node.",
     );
-    expect(getAddNodeBlockedReason.call(tool, { getNode }, 18)).toBe(undefined);
+    expect(getAddNodeBlockedReason.call(tool, { getNode }, 18n)).toBe(undefined);
     expect(getAddNodeBlockedReason.call(tool, { getNode }, undefined)).toBe(
       undefined,
     );
     expect(getNode).toHaveBeenCalledTimes(1);
-    expect(getNode).toHaveBeenCalledWith(18);
+    expect(getNode).toHaveBeenCalledWith(18n);
   });
 
   it("suppresses the deleted merge segment while keeping the surviving result selected", async () => {
     suppressStatusMessages();
     const firstNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 101,
-      segmentId: 11,
+      nodeId: 101n,
+      segmentId: 11n,
       position: new Float32Array([1, 2, 3]),
       isTrueEnd: false,
       sourceState: testSourceState("first-before"),
     };
     const secondNode: SpatiallyIndexedSkeletonNode = {
-      nodeId: 202,
-      segmentId: 17,
+      nodeId: 202n,
+      segmentId: 17n,
       position: new Float32Array([4, 5, 6]),
       isTrueEnd: false,
       sourceState: testSourceState("second-before"),
     };
     const mergeSkeletons = vi.fn().mockResolvedValue({
-      resultSegmentId: 17,
-      deletedSegmentId: 11,
+      resultSegmentId: 17n,
+      deletedSegmentId: 11n,
       directionAdjusted: true,
     });
     const invalidateCachedSegments = vi.fn();
@@ -425,7 +425,7 @@ describe("spatial_skeleton_edit_tool", () => {
     const deleteSegmentColor = vi.fn();
     const skeletonLayer = {
       source: makeEditableSkeletonSource({ mergeSkeletons }),
-      getNode: vi.fn((nodeId: number) => {
+      getNode: vi.fn((nodeId: bigint) => {
         if (nodeId === firstNode.nodeId) return firstNode;
         if (nodeId === secondNode.nodeId) return secondNode;
         return undefined;
@@ -448,12 +448,12 @@ describe("spatial_skeleton_edit_tool", () => {
       },
       spatialSkeletonState: {
         commandHistory,
-        getCachedNode: vi.fn((nodeId: number) => {
+        getCachedNode: vi.fn((nodeId: bigint) => {
           if (nodeId === firstNode.nodeId) return firstNode;
           if (nodeId === secondNode.nodeId) return secondNode;
           return undefined;
         }),
-        getCachedSegmentNodes: vi.fn((segmentId: number) => {
+        getCachedSegmentNodes: vi.fn((segmentId: bigint) => {
           if (segmentId === firstNode.segmentId) return [firstNode];
           if (segmentId === secondNode.segmentId) return [secondNode];
           return undefined;
@@ -479,28 +479,28 @@ describe("spatial_skeleton_edit_tool", () => {
 
     await executeSpatialSkeletonMerge(
       layer as any,
-      { nodeId: 101, segmentId: 11 },
-      { nodeId: 202, segmentId: 17 },
+      { nodeId: 101n, segmentId: 11n },
+      { nodeId: 202n, segmentId: 17n },
     );
 
     expect(mergeSkeletons).toHaveBeenCalledWith(
-      101,
-      202,
+      101n,
+      202n,
       expect.objectContaining({
         nodes: expect.arrayContaining([
-          expect.objectContaining({ nodeId: 101 }),
-          expect.objectContaining({ nodeId: 202 }),
+          expect.objectContaining({ nodeId: 101n }),
+          expect.objectContaining({ nodeId: 202n }),
         ]),
       }),
     );
-    expect(invalidateCachedSegments).toHaveBeenCalledWith([17, 11]);
+    expect(invalidateCachedSegments).toHaveBeenCalledWith([17n, 11n]);
     expect(getFullSegmentNodes).toHaveBeenCalledTimes(2);
     expect(selectSegment).toHaveBeenCalledWith(17n, false);
-    expect(selectSpatialSkeletonNode).toHaveBeenCalledWith(101, true, {
-      segmentId: 17,
+    expect(selectSpatialSkeletonNode).toHaveBeenCalledWith(101n, true, {
+      segmentId: 17n,
     });
     expect(deleteSegmentColor).toHaveBeenCalledWith(11n);
-    expect(skeletonLayer.suppressBrowseSegment).toHaveBeenCalledWith(11);
+    expect(skeletonLayer.suppressBrowseSegment).toHaveBeenCalledWith(11n);
     expect(markSpatialSkeletonNodeDataChanged).toHaveBeenCalledWith({
       invalidateFullSkeletonCache: false,
     });
@@ -530,7 +530,7 @@ describe("spatial_skeleton_edit_tool", () => {
       layer: {
         selectedSpatialSkeletonNodeId: { value: undefined },
         spatialSkeletonState: {
-          mergeAnchorNodeId: { value: 101 },
+          mergeAnchorNodeId: { value: 101n },
         },
         clearSpatialSkeletonNodeSelection,
         clearSpatialSkeletonMergeAnchor,
