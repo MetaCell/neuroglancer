@@ -25,8 +25,7 @@ export class CatmaidDataSourceParameters {
 
 export class CatmaidSkeletonSourceParameters extends SkeletonSourceParameters {
   catmaidParameters!: CatmaidDataSourceParameters;
-  gridIndex?: number;
-  catmaidLod?: number;
+  spatialIndexChunkSizes!: number[][];
   static RPC_ID = "catmaid/SkeletonSource";
 }
 

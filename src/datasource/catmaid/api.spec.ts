@@ -18,6 +18,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   CatmaidClient,
+  getCatmaidNodeListLodForChunkSize,
   getCatmaidSpatialSkeletonGridCellBounds,
   makeCatmaidNodeSourceState,
 } from "#src/datasource/catmaid/api.js";
@@ -507,10 +508,20 @@ describe("CatmaidClient skeleton editing methods", () => {
     (client as any).fetch = fetchMock;
 
     await expect(
-      client.fetchNodesInBoundingBox({
-        lowerBounds: [0, 0, 0],
-        upperBounds: [10, 10, 10],
-      }),
+      client.fetchNodesInBoundingBox(
+        {
+          lowerBounds: [0, 0, 0],
+          upperBounds: [10, 10, 10],
+        },
+        {
+          chunkSize: [10, 10, 10],
+          spatialIndexChunkSizes: [
+            [100, 100, 100],
+            [50, 50, 50],
+            [10, 10, 10],
+          ],
+        },
+      ),
     ).resolves.toEqual([
       {
         nodeId: 101,
@@ -528,7 +539,102 @@ describe("CatmaidClient skeleton editing methods", () => {
       },
     ]);
 
-    expect(getFetchPath(fetchMock)).toMatch(/^node\/list\?/);
+    const fetchPath = getFetchPath(fetchMock);
+    expect(fetchPath).toMatch(/^node\/list\?/);
+    const params = new URLSearchParams(fetchPath.split("?")[1]);
+    expect(params.get("lod")).toBe("1");
+    expect(params.get("lod_type")).toBe("percent");
+  });
+
+  it("merges browse node/list rows from extra LOD levels", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue([
+        [[101, null, 1, 2, 3, 5, 2000, 11, "2026-03-29T11:50:00Z", 2]],
+        [],
+        {},
+        false,
+        [],
+        [
+          [
+            [[202, 101, 4, 5, 6, 5, 2000, 17, "2026-03-29T11:51:00Z", 2]],
+            [],
+            {},
+            false,
+            [],
+            [],
+          ],
+        ],
+      ]);
+    (client as any).fetch = fetchMock;
+
+    await expect(
+      client.fetchNodesInBoundingBox({
+        lowerBounds: [0, 0, 0],
+        upperBounds: [10, 10, 10],
+      }),
+    ).resolves.toEqual([
+      {
+        nodeId: 101,
+        parentNodeId: undefined,
+        position: new Float32Array([1, 2, 3]),
+        segmentId: 11,
+        sourceState: testSourceState("2026-03-29T11:50:00Z"),
+      },
+      {
+        nodeId: 202,
+        parentNodeId: 101,
+        position: new Float32Array([4, 5, 6]),
+        segmentId: 17,
+        sourceState: testSourceState("2026-03-29T11:51:00Z"),
+      },
+    ]);
+  });
+
+  it("infers browse node/list lod from spatial index chunk size", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const fetchMock = vi.fn().mockResolvedValue([[], [], {}, false, [], []]);
+    (client as any).fetch = fetchMock;
+
+    await client.fetchNodesInBoundingBox(
+      {
+        lowerBounds: [0, 0, 0],
+        upperBounds: [50, 50, 50],
+      },
+      {
+        chunkSize: [50, 50, 50],
+        spatialIndexChunkSizes: [
+          [10, 10, 10],
+          [100, 100, 100],
+          [50, 50, 50],
+        ],
+      },
+    );
+
+    const fetchPath = getFetchPath(fetchMock);
+    const params = new URLSearchParams(fetchPath.split("?")[1]);
+    expect(params.get("lod")).toBe("0.5");
+    expect(params.get("lod_type")).toBe("percent");
+  });
+
+  it("maps spatial index chunk sizes from coarsest lod 0 to finest lod 1", () => {
+    const chunkSizes = [
+      [10, 10, 10],
+      [100, 100, 100],
+      [50, 50, 50],
+    ];
+
+    expect(getCatmaidNodeListLodForChunkSize([100, 100, 100], chunkSizes)).toBe(
+      0,
+    );
+    expect(getCatmaidNodeListLodForChunkSize([50, 50, 50], chunkSizes)).toBe(
+      0.5,
+    );
+    expect(getCatmaidNodeListLodForChunkSize([10, 10, 10], chunkSizes)).toBe(1);
+    expect(
+      getCatmaidNodeListLodForChunkSize([10, 10, 10], [[10, 10, 10]]),
+    ).toBe(1);
   });
 
   it("converts spatial skeleton grid cell indices to CATMAID bounds", () => {

@@ -647,6 +647,42 @@ function normalizeBoundingBoxForNodeList(bounds: SpatialSkeletonBounds) {
   return { left, top, z1, right, bottom, z2 };
 }
 
+function getSpatialIndexChunkSizeSpacing(chunkSize: ArrayLike<number>) {
+  return Math.min(
+    Number(chunkSize[0]),
+    Number(chunkSize[1]),
+    Number(chunkSize[2]),
+  );
+}
+
+function chunkSizesEqual(a: ArrayLike<number>, b: ArrayLike<number>): boolean {
+  for (let i = 0; i < 3; ++i) {
+    if (Number(a[i]) !== Number(b[i])) return false;
+  }
+  return true;
+}
+
+export function getCatmaidNodeListLodForChunkSize(
+  chunkSize: ArrayLike<number> | undefined,
+  spatialIndexChunkSizes: readonly ArrayLike<number>[] | undefined,
+) {
+  if (chunkSize === undefined || spatialIndexChunkSizes === undefined) {
+    return 1;
+  }
+  const sortedChunkSizes = [...spatialIndexChunkSizes].sort(
+    (a, b) =>
+      getSpatialIndexChunkSizeSpacing(b) - getSpatialIndexChunkSizeSpacing(a),
+  );
+  const matchedIndex = sortedChunkSizes.findIndex((candidate) =>
+    chunkSizesEqual(candidate, chunkSize),
+  );
+  if (matchedIndex === -1) {
+    return 1;
+  }
+  const lastIndex = sortedChunkSizes.length - 1;
+  return lastIndex <= 0 ? 1 : matchedIndex / lastIndex;
+}
+
 export function getCatmaidSpatialSkeletonGridCellBounds(
   cellIndex: SpatialSkeletonVector,
   chunkSize: SpatialSkeletonVector,
@@ -716,6 +752,18 @@ function normalizeCatmaidRevisionToken(value: unknown): string | undefined {
     }
   }
   return undefined;
+}
+
+function parseCatmaidNodeListRow(n: any[]): SpatiallyIndexedSkeletonNodeBase {
+  return {
+    nodeId: n[0],
+    parentNodeId: n[1] ?? undefined,
+    position: new Float32Array([n[2], n[3], n[4]]),
+    segmentId: n[7],
+    sourceState: makeCatmaidNodeSourceState(
+      normalizeCatmaidRevisionToken(n[8]),
+    ),
+  };
 }
 
 const CATMAID_TIMESTAMP_WITH_SPACE_PATTERN =
@@ -1426,13 +1474,18 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
 
   async fetchNodesInBoundingBox(
     bounds: SpatialSkeletonBounds,
-    lod: number = 0,
     options: {
       cacheProvider?: string;
       signal?: AbortSignal;
+      chunkSize?: ArrayLike<number>;
+      spatialIndexChunkSizes?: readonly ArrayLike<number>[];
     } = {},
   ): Promise<SpatiallyIndexedSkeletonNodeBase[]> {
     const { cacheProvider, signal } = options;
+    const lod = getCatmaidNodeListLodForChunkSize(
+      options.chunkSize,
+      options.spatialIndexChunkSizes,
+    );
     const normalizedBoundingBox = normalizeBoundingBoxForNodeList(bounds);
     const params = new URLSearchParams({
       left: normalizedBoundingBox.left.toString(),
@@ -1475,47 +1528,27 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
       );
     }
 
-    // Check if limit was reached for the first LOD level
     if (data[3]) {
       console.warn(
         "CATMAID node/list endpoint returned limit_reached=true. Some nodes may be missing.",
       );
     }
 
-    // Process first LOD level (data[0])
     const nodes: SpatiallyIndexedSkeletonNodeBase[] = data[0].map(
-      (n: any[]) => ({
-        nodeId: n[0],
-        parentNodeId: n[1] ?? undefined,
-        position: new Float32Array([n[2], n[3], n[4]]),
-        segmentId: n[7],
-        sourceState: makeCatmaidNodeSourceState(
-          normalizeCatmaidRevisionToken(n[8]),
-        ),
-      }),
+      parseCatmaidNodeListRow,
     );
-
-    // Process additional LOD levels.
     const extraNodes = data[5];
     if (Array.isArray(extraNodes)) {
       for (const lodLevel of extraNodes) {
-        if (lodLevel[3]) {
+        if (lodLevel?.[3]) {
           console.warn(
             "CATMAID node/list endpoint returned limit_reached=true for an extra LOD level. Some nodes may be missing.",
           );
         }
-        const treenodes = lodLevel[0];
+        const treenodes = lodLevel?.[0];
         if (Array.isArray(treenodes)) {
           for (const n of treenodes) {
-            nodes.push({
-              nodeId: n[0],
-              parentNodeId: n[1] ?? undefined,
-              position: new Float32Array([n[2], n[3], n[4]]),
-              segmentId: n[7],
-              sourceState: makeCatmaidNodeSourceState(
-                normalizeCatmaidRevisionToken(n[8]),
-              ),
-            });
+            nodes.push(parseCatmaidNodeListRow(n));
           }
         }
       }

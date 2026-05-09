@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { getSpatiallyIndexedSkeletonChunkPriority } from "#src/skeleton/backend.js";
+import {
+  getSpatiallyIndexedSkeletonChunkPriority,
+  SpatiallyIndexedSkeletonChunk,
+  SpatiallyIndexedSkeletonSourceBackend,
+} from "#src/skeleton/backend.js";
 
 describe("skeleton/backend chunk priority", () => {
   it("uses the standard chunk-origin distance rule for 3d chunks", () => {
@@ -32,5 +36,36 @@ describe("skeleton/backend chunk priority", () => {
         farChunk,
       ),
     );
+  });
+
+  it("keys spatial chunks by source grid position", () => {
+    const source = Object.assign(
+      Object.create(SpatiallyIndexedSkeletonSourceBackend.prototype),
+      {
+        chunks: new Map<string, SpatiallyIndexedSkeletonChunk>(),
+        chunkConstructor: SpatiallyIndexedSkeletonChunk,
+        getNewChunk_(
+          this: SpatiallyIndexedSkeletonSourceBackend,
+          ChunkType: typeof SpatiallyIndexedSkeletonChunk,
+        ) {
+          const chunk = new ChunkType();
+          chunk.source = this;
+          return chunk;
+        },
+        addChunk(
+          this: SpatiallyIndexedSkeletonSourceBackend,
+          chunk: SpatiallyIndexedSkeletonChunk,
+        ) {
+          this.chunks.set(chunk.key!, chunk);
+        },
+      },
+    ) as SpatiallyIndexedSkeletonSourceBackend;
+
+    const first = source.getChunk(Float32Array.of(1, 2, 3));
+    const second = source.getChunk(Float32Array.of(1, 2, 3));
+
+    expect(second).toBe(first);
+    expect(first.key).toBe("1,2,3");
+    expect(source.chunks.has("1,2,3:0")).toBe(false);
   });
 });

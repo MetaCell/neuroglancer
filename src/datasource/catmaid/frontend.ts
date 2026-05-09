@@ -179,14 +179,12 @@ export class CatmaidSpatiallyIndexedSkeletonSource extends WithParameters(
       cellIndex.cell,
       this.spec.chunkDataSize,
     );
-    return this.client.fetchNodesInBoundingBox(
-      bounds,
-      this.parameters.catmaidLod ?? 0,
-      {
-        cacheProvider: this.parameters.catmaidParameters.cacheProvider,
-        signal: options.signal,
-      },
-    );
+    return this.client.fetchNodesInBoundingBox(bounds, {
+      cacheProvider: this.parameters.catmaidParameters.cacheProvider,
+      signal: options.signal,
+      chunkSize: this.spec.chunkDataSize,
+      spatialIndexChunkSizes: this.parameters.spatialIndexChunkSizes,
+    });
   }
 
   getSkeletonRootNode(skeletonId: number) {
@@ -203,12 +201,26 @@ export class CatmaidSkeletonSource extends WithParameters(
   }
 }
 
+interface CatmaidSpatialSkeletonLevel {
+  x: number;
+  y: number;
+  z: number;
+  limit: number;
+}
+
+function getCatmaidSpatialSkeletonLevelSpacing(
+  level: Pick<CatmaidSpatialSkeletonLevel, "x" | "y" | "z">,
+) {
+  return Math.min(level.x, level.y, level.z);
+}
+
 export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleSpatiallyIndexedSkeletonSource {
   get rank(): number {
     return 3;
   }
 
-  private sortedGridCellSizes: Array<{ x: number; y: number; z: number }>;
+  private sortedSpatialIndexLevels: CatmaidSpatialSkeletonLevel[];
+  private spatialIndexChunkSizes: number[][];
 
   constructor(
     chunkManager: Borrowed<ChunkManager>,
@@ -218,18 +230,26 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
     private coordinateScaleFactorsInMeters: Float32Array,
     private lowerBoundsInNanometers: Float32Array,
     private upperBoundsInNanometers: Float32Array,
-    gridCellSizes: Array<{ x: number; y: number; z: number }>,
+    spatialIndexLevels: Array<{
+      x: number;
+      y: number;
+      z: number;
+      limit: number;
+    }>,
     private cacheProvider?: string,
     private sourceReadonly = true,
   ) {
     super(chunkManager);
-    this.sortedGridCellSizes = [...gridCellSizes].sort(
-      (a, b) => Math.min(b.x, b.y, b.z) - Math.min(a.x, a.y, a.z),
+    this.sortedSpatialIndexLevels = [...spatialIndexLevels].sort(
+      (a, b) =>
+        getCatmaidSpatialSkeletonLevelSpacing(a) -
+        getCatmaidSpatialSkeletonLevelSpacing(b),
     );
-  }
-
-  getSpatialSkeletonGridSizes(): Array<{ x: number; y: number; z: number }> {
-    return this.sortedGridCellSizes;
+    this.spatialIndexChunkSizes = spatialIndexLevels.map((level) => [
+      level.x,
+      level.y,
+      level.z,
+    ]);
   }
 
   getPerspectiveSources(): SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>[] {
@@ -247,15 +267,13 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
     const sources: SliceViewSingleResolutionSource<SpatiallyIndexedSkeletonSource>[] =
       [];
 
-    // Sorted by minimum dimension (Descending: Large/Coarse -> Small/Fine)
-    const sortedGridSizes = this.sortedGridCellSizes;
-
-    const lastGridIndex = sortedGridSizes.length - 1;
-    for (const [gridIndex, gridCellSize] of sortedGridSizes.entries()) {
+    // Sorted by minimum dimension (Ascending: Fine -> Coarse), matching
+    // annotation-style traversal which walks sources from the end.
+    for (const spatialIndexLevel of this.sortedSpatialIndexLevels) {
       const chunkDataSize = Uint32Array.from([
-        gridCellSize.x,
-        gridCellSize.y,
-        gridCellSize.z,
+        spatialIndexLevel.x,
+        spatialIndexLevel.y,
+        spatialIndexLevel.z,
       ]);
 
       const chunkLayoutTransform = mat4.create();
@@ -282,6 +300,7 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
           upperVoxelBound: this.upperBoundsInNanometers,
         }),
         chunkLayout,
+        limit: spatialIndexLevel.limit,
       };
 
       const parameters = new CatmaidSkeletonSourceParameters();
@@ -290,9 +309,7 @@ export class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleS
       parameters.catmaidParameters.projectId = this.projectId;
       parameters.catmaidParameters.cacheProvider = this.cacheProvider;
       parameters.catmaidParameters.readonly = this.sourceReadonly;
-      parameters.gridIndex = gridIndex;
-      parameters.catmaidLod =
-        lastGridIndex <= 0 ? 0 : gridIndex / lastGridIndex;
+      parameters.spatialIndexChunkSizes = this.spatialIndexChunkSizes;
       parameters.metadata = {
         transform: mat4.create(),
         vertexAttributes: new Map([
@@ -394,10 +411,11 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
       spatial,
       readonly: sourceReadonly,
     } = spatialIndexMetadata;
-    const gridCellSizes = spatial.map(({ chunkSize }) => ({
+    const spatialIndexLevels = spatial.map(({ chunkSize, limit }) => ({
       x: Number(chunkSize[0]),
       y: Number(chunkSize[1]),
       z: Number(chunkSize[2]),
+      limit: Number(limit),
     }));
 
     // The model-space coordinates we emit are in nanometers, converted to meters for Neuroglancer.
@@ -441,7 +459,7 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
         new Float32Array(coordinateScaleFactors),
         lowerCoordinateBound,
         upperCoordinateBound,
-        gridCellSizes,
+        spatialIndexLevels,
         cacheProvider,
         sourceReadonly,
       );
