@@ -112,8 +112,22 @@
 .neuroglancer-layer-item-prefetch-progress {
   position: absolute;
   left: 0px;
-  height: 2px;
+  height: 4px;
   background-color: #666;
+}
+
+.neuroglancer-layer-item[data-gpu-memory-pressure="warning"]
+  .neuroglancer-layer-item-visible-progress,
+.neuroglancer-layer-item[data-gpu-memory-pressure="warning"]
+  .neuroglancer-layer-item-prefetch-progress {
+  background-color: #d79b22;
+}
+
+.neuroglancer-layer-item[data-gpu-memory-pressure="critical"]
+  .neuroglancer-layer-item-visible-progress,
+.neuroglancer-layer-item[data-gpu-memory-pressure="critical"]
+  .neuroglancer-layer-item-prefetch-progress {
+  background-color: #e0523f;
 }
 
 .neuroglancer-layer-item-visible-progress {

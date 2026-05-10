@@ -17,11 +17,18 @@
 import "#src/noselect.css";
 import "#src/ui/layer_bar.css";
 import svg_plus from "ikonate/icons/plus.svg?raw";
+import { throttle } from "lodash-es";
 import type { ManagedUserLayer } from "#src/layer/index.js";
 import { addNewLayer, deleteLayer, makeLayer } from "#src/layer/index.js";
 import type { LayerGroupViewer } from "#src/layer_group_viewer.js";
 import { NavigationLinkType } from "#src/navigation_state.js";
 import type { WatchableValueInterface } from "#src/trackable_value.js";
+import {
+  computeGpuMemoryBytes,
+  getGpuMemoryPressure,
+  getLayerGpuMemoryPressure,
+  type GpuMemoryPressure,
+} from "#src/ui/layer_bar_gpu_memory_pressure.js";
 import type { DropLayers } from "#src/ui/layer_drag_and_drop.js";
 import {
   registerLayerBarDragLeaveHandler,
@@ -41,6 +48,8 @@ import { makeCloseButton } from "#src/widget/close_button.js";
 import { makeDeleteButton } from "#src/widget/delete_button.js";
 import { makeIcon } from "#src/widget/icon.js";
 import { PositionWidget } from "#src/widget/position_widget.js";
+
+const GPU_MEMORY_PRESSURE_UPDATE_INTERVAL_MS = 1000;
 
 class LayerWidget extends RefCounted {
   element = document.createElement("div");
@@ -252,6 +261,8 @@ export class LayerBar extends RefCounted {
   element = document.createElement("div");
   private layerUpdateNeeded = true;
   private valueUpdateNeeded = false;
+  private gpuMemoryPressure: GpuMemoryPressure = "normal";
+  private gpuMemoryPressureUpdatePending = false;
   dropZone: HTMLDivElement;
   private layerWidgetInsertionPoint = document.createElement("div");
   private positionWidget: PositionWidget;
@@ -373,6 +384,7 @@ export class LayerBar extends RefCounted {
 
     this.update();
     this.updateChunkStatistics();
+    this.scheduleGpuMemoryPressureUpdate();
 
     registerLayerBarDragLeaveHandler(this);
     registerLayerBarDropHandlers(this, dropZone, undefined);
@@ -386,8 +398,13 @@ export class LayerBar extends RefCounted {
     this.registerDisposer(
       manager.chunkManager.layerChunkStatisticsUpdated.add(
         this.registerCancellable(
-          animationFrameDebounce(() => this.updateChunkStatistics()),
+          animationFrameDebounce(() => this.handleChunkStatisticsUpdated()),
         ),
+      ),
+    );
+    this.registerDisposer(
+      manager.chunkManager.chunkQueueManager.capacities.gpuMemory.sizeLimit.changed.add(
+        () => this.scheduleGpuMemoryPressureUpdate(),
       ),
     );
   }
@@ -449,6 +466,46 @@ export class LayerBar extends RefCounted {
     }
   }
 
+  private handleChunkStatisticsUpdated() {
+    this.updateChunkStatistics();
+    this.scheduleGpuMemoryPressureUpdate();
+  }
+
+  private scheduleGpuMemoryPressureUpdate = this.registerCancellable(
+    throttle(
+      () => {
+        void this.updateGpuMemoryPressure();
+      },
+      GPU_MEMORY_PRESSURE_UPDATE_INTERVAL_MS,
+      { leading: true, trailing: true },
+    ),
+  );
+
+  private async updateGpuMemoryPressure() {
+    if (this.gpuMemoryPressureUpdatePending || this.wasDisposed) {
+      return;
+    }
+    this.gpuMemoryPressureUpdatePending = true;
+    let pressure: GpuMemoryPressure = "normal";
+    try {
+      const chunkQueueManager = this.manager.chunkManager.chunkQueueManager;
+      const statistics = await chunkQueueManager.getStatistics();
+      pressure = getGpuMemoryPressure(
+        computeGpuMemoryBytes(statistics.values()),
+        chunkQueueManager.capacities.gpuMemory.sizeLimit.value,
+      );
+    } catch {
+      pressure = "normal";
+    } finally {
+      this.gpuMemoryPressureUpdatePending = false;
+    }
+    if (this.wasDisposed || pressure === this.gpuMemoryPressure) {
+      return;
+    }
+    this.gpuMemoryPressure = pressure;
+    this.updateChunkStatistics();
+  }
+
   private updateChunkStatistics() {
     for (const [layer, widget] of this.layerWidgets) {
       let numVisibleChunksNeeded = 0;
@@ -475,6 +532,11 @@ export class LayerBar extends RefCounted {
         (numPrefetchChunksAvailable / Math.max(1, numPrefetchChunksNeeded)) *
         100
       }%`;
+      widget.element.dataset.gpuMemoryPressure = getLayerGpuMemoryPressure(
+        this.gpuMemoryPressure,
+        numVisibleChunksNeeded,
+        numVisibleChunksAvailable,
+      );
     }
   }
 
