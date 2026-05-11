@@ -15,7 +15,9 @@
  */
 
 import {
+  cancelChunkDownload,
   Chunk,
+  type ChunkManager,
   ChunkRenderLayerBackend,
   ChunkSource,
   withChunkManager,
@@ -95,6 +97,33 @@ export function getSpatiallyIndexedSkeletonChunkPriority(
   return -Math.sqrt(sum);
 }
 
+export function markSpatiallyIndexedSkeletonChunkRequested(
+  chunk: SpatiallyIndexedSkeletonChunk,
+  generation: number,
+) {
+  chunk.requestGeneration = generation;
+}
+
+export function cancelStaleSpatiallyIndexedSkeletonDownloads(
+  chunkManager: ChunkManager,
+  sources: Iterable<SpatiallyIndexedSkeletonSourceBackend>,
+  currentGeneration: number,
+) {
+  for (const source of sources) {
+    for (const chunk of source.chunks.values()) {
+      if (
+        chunk.state !== ChunkState.DOWNLOADING ||
+        chunk.requestGeneration === currentGeneration ||
+        chunk.downloadAbortController === undefined
+      ) {
+        continue;
+      }
+      cancelChunkDownload(chunk, "stale spatial skeleton request");
+      chunkManager.queueManager.updateChunkState(chunk, ChunkState.QUEUED);
+    }
+  }
+}
+
 registerRPC(
   SPATIALLY_INDEXED_SKELETON_RENDER_LAYER_UPDATE_SOURCES_RPC_ID,
   function (x) {
@@ -108,12 +137,15 @@ registerRPC(
       RenderedViewBackend,
       SpatiallyIndexedSkeletonRenderLayerAttachmentState
     >;
+    const previousTransformedSources = attachment.state?.transformedSources;
     attachment.state!.transformedSources = deserializeTransformedSources<
       SpatiallyIndexedSkeletonSourceBackend,
       SpatiallyIndexedSkeletonRenderLayerBackend
     >(this, x.sources, layer);
     attachment.state!.displayDimensionRenderInfo = x.displayDimensionRenderInfo;
-    layer.chunkManager.scheduleUpdateChunkPriorities();
+    layer.scheduleUpdateChunkPrioritiesForSpatialSkeletonChange(
+      previousTransformedSources,
+    );
   },
 );
 
@@ -238,6 +270,7 @@ export class SpatiallyIndexedSkeletonChunk
   indices: Uint32Array | null = null;
   nodeIds: Int32Array | undefined;
   nodeSourceStates: Array<SpatialSkeletonSourceState | undefined> | undefined;
+  requestGeneration = -1;
 
   freeSystemMemory() {
     freeSkeletonChunkSystemMemory(this);
@@ -270,6 +303,7 @@ export class SpatiallyIndexedSkeletonSourceBackend extends SliceViewChunkSourceB
         this.chunkConstructor,
       ) as SpatiallyIndexedSkeletonChunk;
       chunk.initializeVolumeChunk(key, chunkGridPosition);
+      chunk.requestGeneration = -1;
       this.addChunk(chunk);
     }
     return chunk;
@@ -291,6 +325,8 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
   localPosition: SharedWatchableValue<Float32Array>;
   renderScaleTarget: SharedWatchableValue<number>;
   renderScaleTarget2d: SharedWatchableValue<number>;
+  private pendingDownloadCleanupSources =
+    new Set<SpatiallyIndexedSkeletonSourceBackend>();
 
   constructor(rpc: RPC, options: any) {
     super(rpc, options);
@@ -298,7 +334,7 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
     this.renderScaleTarget2d = rpc.get(options.renderScaleTarget2d);
     this.localPosition = rpc.get(options.localPosition);
     const scheduleUpdateChunkPriorities = () =>
-      this.chunkManager.scheduleUpdateChunkPriorities();
+      this.scheduleUpdateChunkPrioritiesForSpatialSkeletonChange();
     this.registerDisposer(
       this.localPosition.changed.add(scheduleUpdateChunkPriorities),
     );
@@ -313,6 +349,58 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
         this.recomputeChunkPriorities(),
       ),
     );
+    this.registerDisposer(
+      this.chunkManager.recomputeChunkPrioritiesLate.add(() =>
+        this.cancelStaleDownloads(),
+      ),
+    );
+  }
+
+  private addPendingDownloadCleanupSources(
+    transformedSources:
+      | TransformedSource<
+          SpatiallyIndexedSkeletonRenderLayerBackend,
+          SpatiallyIndexedSkeletonSourceBackend
+        >[][]
+      | undefined,
+  ) {
+    if (transformedSources === undefined) {
+      return;
+    }
+    const { pendingDownloadCleanupSources } = this;
+    for (const scales of transformedSources) {
+      for (const tsource of scales) {
+        pendingDownloadCleanupSources.add(
+          tsource.source as SpatiallyIndexedSkeletonSourceBackend,
+        );
+      }
+    }
+  }
+
+  private addCurrentSourcesForDownloadCleanup() {
+    for (const attachment of this.attachments.values()) {
+      this.addPendingDownloadCleanupSources(
+        (
+          attachment.state as
+            | SpatiallyIndexedSkeletonRenderLayerAttachmentState
+            | undefined
+        )?.transformedSources,
+      );
+    }
+  }
+
+  scheduleUpdateChunkPrioritiesForSpatialSkeletonChange(
+    transformedSources?: TransformedSource<
+      SpatiallyIndexedSkeletonRenderLayerBackend,
+      SpatiallyIndexedSkeletonSourceBackend
+    >[][],
+  ) {
+    if (transformedSources === undefined) {
+      this.addCurrentSourcesForDownloadCleanup();
+    } else {
+      this.addPendingDownloadCleanupSources(transformedSources);
+    }
+    this.chunkManager.scheduleUpdateChunkPriorities();
   }
 
   attach(
@@ -322,7 +410,9 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
     >,
   ) {
     const scheduleUpdateChunkPriorities = () =>
-      this.chunkManager.scheduleUpdateChunkPriorities();
+      this.scheduleUpdateChunkPrioritiesForSpatialSkeletonChange(
+        attachment.state?.transformedSources,
+      );
     const { view } = attachment;
     attachment.registerDisposer(scheduleUpdateChunkPriorities);
     attachment.registerDisposer(
@@ -336,6 +426,19 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
         view.projectionParameters.value.displayDimensionRenderInfo,
       transformedSources: [],
     };
+  }
+
+  private cancelStaleDownloads() {
+    const { pendingDownloadCleanupSources } = this;
+    if (pendingDownloadCleanupSources.size === 0) {
+      return;
+    }
+    cancelStaleSpatiallyIndexedSkeletonDownloads(
+      this.chunkManager,
+      pendingDownloadCleanupSources,
+      this.chunkManager.recomputeChunkPriorities.count,
+    );
+    pendingDownloadCleanupSources.clear();
   }
 
   private recomputeChunkPriorities() {
@@ -362,6 +465,7 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
       const basePriority = getBasePriority(visibility) + BASE_PRIORITY;
       const projectionParameters = view.projectionParameters.value;
       const { chunkManager } = this;
+      const currentGeneration = chunkManager.recomputeChunkPriorities.count;
       const localCenter = tempCenter;
       const chunkSize = tempChunkSize;
       const centerDataPosition = tempCenterDataPosition;
@@ -408,11 +512,14 @@ export class SpatiallyIndexedSkeletonRenderLayerBackend extends withChunkManager
               chunkSize,
               tsource.curPositionInChunks,
             );
-            chunkManager.requestChunk(
-              chunk,
-              priorityTier,
-              sourceBasePriority + priority,
-            );
+            const combinedPriority = sourceBasePriority + priority;
+            if (!Number.isNaN(combinedPriority)) {
+              markSpatiallyIndexedSkeletonChunkRequested(
+                chunk,
+                currentGeneration,
+              );
+            }
+            chunkManager.requestChunk(chunk, priorityTier, combinedPriority);
           },
         );
       }

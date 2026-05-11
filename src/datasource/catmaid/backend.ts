@@ -77,7 +77,9 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
       chunkSize: chunkDataSize,
       spatialIndexChunkSizes: this.parameters.spatialIndexChunkSizes,
     });
+    signal.throwIfAborted();
     const packed = packCatmaidSkeletonNodes(nodes);
+    signal.throwIfAborted();
 
     chunk.vertexPositions = packed.vertexPositions;
     chunk.indices = packed.indices;

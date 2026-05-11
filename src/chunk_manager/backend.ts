@@ -457,10 +457,13 @@ function startChunkDownload(chunk: Chunk) {
   );
 }
 
-function cancelChunkDownload(chunk: Chunk) {
+export function cancelChunkDownload(
+  chunk: Chunk,
+  reason = "chunk download cancelled",
+) {
   const controller = chunk.downloadAbortController!;
   chunk.downloadAbortController = undefined;
-  controller.abort(new DOMException("chunk download cancelled", "AbortError"));
+  controller.abort(new DOMException(reason, "AbortError"));
 }
 
 class ChunkPriorityQueue {
