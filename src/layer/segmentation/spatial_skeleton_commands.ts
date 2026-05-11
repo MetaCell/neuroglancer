@@ -79,6 +79,10 @@ export function getSpatialSkeletonEditCommandFactory(
       return source.mergeSkeletonsCommand;
     case SpatialSkeletonActions.splitSkeletons:
       return source.splitSkeletonsCommand;
+    case SpatialSkeletonActions.deleteSkeleton:
+      return source.deleteSkeletonCommand;
+    case SpatialSkeletonActions.deleteSubtree:
+      return source.deleteSubtreeCommand;
     case SpatialSkeletonActions.inspect:
       return undefined;
   }
@@ -282,6 +286,38 @@ export function executeSpatialSkeletonMerge(
   return executeCommandWithPendingMessage(
     executeCommand(layer, command),
     "Merging skeletons...",
+  );
+}
+
+export function executeSpatialSkeletonDeleteSkeleton(
+  layer: SegmentationUserLayer,
+  segmentId: number,
+) {
+  const command = createSpatialSkeletonCommand(
+    layer,
+    SpatialSkeletonActions.deleteSkeleton,
+    { skeletonId: segmentId },
+    "The active skeleton source does not support skeleton deletion.",
+  );
+  return executeCommandWithPendingMessage(
+    executeCommand(layer, command),
+    "Deleting skeleton...",
+  );
+}
+
+export function executeSpatialSkeletonDeleteSubtree(
+  layer: SegmentationUserLayer,
+  node: SpatialSkeletonCommandPayload,
+) {
+  const command = createSpatialSkeletonCommand(
+    layer,
+    SpatialSkeletonActions.deleteSubtree,
+    node,
+    "The active skeleton source does not support subtree deletion.",
+  );
+  return executeCommandWithPendingMessage(
+    executeCommand(layer, command),
+    "Deleting subtree...",
   );
 }
 

@@ -104,6 +104,32 @@ export interface CatmaidSpatialSkeletonRerootRequest {
 export type CatmaidSpatialSkeletonRerootResult =
   CatmaidSpatialSkeletonEditResult;
 
+export interface CatmaidSpatialSkeletonDeleteSkeletonRequest {
+  skeletonId: number;
+}
+
+export interface CatmaidSpatialSkeletonDeleteSkeletonResult
+  extends CatmaidSpatialSkeletonEditResult {
+  alreadyDeleted: boolean;
+}
+
+export interface CatmaidSpatialSkeletonRestoreSkeletonRequest {
+  skeletonId: number;
+}
+
+export type CatmaidSpatialSkeletonRestoreSkeletonResult =
+  CatmaidSpatialSkeletonEditResult;
+
+export interface CatmaidSpatialSkeletonDeleteSubtreeRequest {
+  node: SpatiallyIndexedSkeletonNode;
+  segmentNodes: readonly SpatiallyIndexedSkeletonNode[];
+}
+
+export interface CatmaidSpatialSkeletonDeleteSubtreeResult
+  extends CatmaidSpatialSkeletonEditResult {
+  deletedSkeletonId: number | undefined;
+}
+
 export interface CatmaidSpatialSkeletonDescriptionUpdateRequest {
   node: SpatiallyIndexedSkeletonNode;
   description: string;

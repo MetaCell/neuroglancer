@@ -90,3 +90,9 @@ export type SpatialSkeletonSplitSkeletonsCommandFactory =
   SpatialSkeletonEditCommandFactory<
     typeof SpatialSkeletonActions.splitSkeletons
   >;
+export type SpatialSkeletonDeleteSkeletonCommandFactory =
+  SpatialSkeletonEditCommandFactory<
+    typeof SpatialSkeletonActions.deleteSkeleton
+  >;
+export type SpatialSkeletonDeleteSubtreeCommandFactory =
+  SpatialSkeletonEditCommandFactory<typeof SpatialSkeletonActions.deleteSubtree>;

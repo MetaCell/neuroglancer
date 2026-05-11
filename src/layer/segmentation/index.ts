@@ -20,6 +20,7 @@ import svg_circle from "ikonate/icons/circle.svg?raw";
 import svg_flag from "ikonate/icons/flag.svg?raw";
 import svg_minus from "ikonate/icons/minus.svg?raw";
 import svg_origin from "ikonate/icons/origin.svg?raw";
+import svg_remove from "ikonate/icons/remove.svg?raw";
 import svg_share_android from "ikonate/icons/share-android.svg?raw";
 import type { CoordinateTransformSpecification } from "#src/coordinate_transform.js";
 import { emptyValidCoordinateSpace } from "#src/coordinate_transform.js";
@@ -52,6 +53,7 @@ import {
 } from "#src/layer/segmentation/selection.js";
 import {
   executeSpatialSkeletonDeleteNode,
+  executeSpatialSkeletonDeleteSubtree,
   executeSpatialSkeletonNodeConfidenceUpdate,
   executeSpatialSkeletonNodeDescriptionUpdate,
   executeSpatialSkeletonNodeRadiusUpdate,
@@ -171,6 +173,7 @@ import { SegmentDisplayTab } from "#src/ui/segment_list.js";
 import { registerSegmentSelectTools } from "#src/ui/segment_select_tools.js";
 import { registerSegmentSplitMergeTools } from "#src/ui/segment_split_merge_tools.js";
 import { DisplayOptionsTab } from "#src/ui/segmentation_display_options_tab.js";
+import { confirmSpatialSkeletonDeletion } from "#src/ui/spatial_skeleton_delete_confirmation.js";
 import { SpatialSkeletonEditTab } from "#src/ui/spatial_skeleton_edit_tab.js";
 import { registerSpatialSkeletonEditModeTool } from "#src/ui/spatial_skeleton_edit_tool.js";
 import { Uint64Map } from "#src/uint64_map.js";
@@ -1615,6 +1618,10 @@ export class SegmentationUserLayer extends Base {
           source.editNodeConfidenceCommand !== undefined &&
           source.spatialSkeletonConfidenceConfiguration !== undefined
         );
+      case SpatialSkeletonActions.deleteSkeleton:
+        return source.deleteSkeletonCommand !== undefined;
+      case SpatialSkeletonActions.deleteSubtree:
+        return source.deleteSubtreeCommand !== undefined;
     }
   }
 
@@ -2609,8 +2616,76 @@ export class SegmentationUserLayer extends Base {
         }
       })();
     });
+    const deleteSubtreeDisabledReason =
+      editSource === undefined
+        ? "Unable to resolve editable skeleton source for the active layer."
+        : segmentNodes === undefined
+          ? "Load the active skeleton in the Skeleton tab before deleting a subtree from Selection."
+          : this.getSpatialSkeletonActionsDisabledReason(
+              SpatialSkeletonActions.deleteSubtree,
+            );
+    const deleteSubtreeButton = document.createElement("button");
+    deleteSubtreeButton.type = "button";
+    deleteSubtreeButton.className =
+      "neuroglancer-spatial-skeleton-selection-action";
+    deleteSubtreeButton.disabled = deleteSubtreeDisabledReason !== undefined;
+    deleteSubtreeButton.title =
+      deleteSubtreeDisabledReason ?? "Delete subtree";
+    deleteSubtreeButton.appendChild(
+      makeIcon({
+        svg: svg_remove,
+        title: deleteSubtreeButton.title,
+        clickable: false,
+      }),
+    );
+    let deleteSubtreePending = false;
+    let deleteSubtreeDialogOpen = false;
+    deleteSubtreeButton.addEventListener("click", () => {
+      if (
+        deleteSubtreeButton.disabled ||
+        editSource === undefined ||
+        completeNodeInfo === undefined ||
+        deleteSubtreePending ||
+        deleteSubtreeDialogOpen
+      ) {
+        return;
+      }
+      deleteSubtreeDialogOpen = true;
+      void (async () => {
+        const confirmed = await confirmSpatialSkeletonDeletion({
+          kind: "subtree",
+          segmentId: completeNodeInfo.segmentId,
+          nodeId: completeNodeInfo.nodeId,
+        });
+        deleteSubtreeDialogOpen = false;
+        const disabledReason = this.getSpatialSkeletonActionsDisabledReason(
+          SpatialSkeletonActions.deleteSubtree,
+        );
+        if (
+          !confirmed ||
+          deleteSubtreePending ||
+          disabledReason !== undefined
+        ) {
+          if (confirmed && disabledReason !== undefined) {
+            StatusMessage.showTemporaryMessage(disabledReason);
+          }
+          return;
+        }
+        deleteSubtreePending = true;
+        deleteSubtreeButton.disabled = true;
+        try {
+          await executeSpatialSkeletonDeleteSubtree(this, completeNodeInfo);
+        } catch (error) {
+          showSpatialSkeletonActionError("delete subtree", error);
+        } finally {
+          deleteSubtreePending = false;
+          context.redraw();
+        }
+      })();
+    });
     summaryRow.appendChild(rerootButton);
     summaryRow.appendChild(deleteButton);
+    summaryRow.appendChild(deleteSubtreeButton);
 
     const icon = document.createElement("span");
     icon.className = "neuroglancer-spatial-skeleton-selection-summary-icon";

@@ -35,6 +35,8 @@ function makeEditableSpatialSkeletonSource(
   options: {
     confidenceConfiguration?: boolean;
     rerootCommand?: boolean;
+    deleteSkeletonCommand?: boolean;
+    deleteSubtreeCommand?: boolean;
   } = {},
 ) {
   const createCommand = () => ({
@@ -82,6 +84,20 @@ function makeEditableSpatialSkeletonSource(
       ? {}
       : {
           rerootCommand: makeCommand(SpatialSkeletonActions.reroot),
+        }),
+    ...(options.deleteSkeletonCommand !== true
+      ? {}
+      : {
+          deleteSkeletonCommand: makeCommand(
+            SpatialSkeletonActions.deleteSkeleton,
+          ),
+        }),
+    ...(options.deleteSubtreeCommand !== true
+      ? {}
+      : {
+          deleteSubtreeCommand: makeCommand(
+            SpatialSkeletonActions.deleteSubtree,
+          ),
         }),
   };
 }
@@ -254,6 +270,55 @@ describe("layer/segmentation spatial skeleton action gating", () => {
     expect(
       layer.getSpatialSkeletonActionsDisabledReason(
         SpatialSkeletonActions.editNodeConfidence,
+      ),
+    ).toBeUndefined();
+  });
+
+  it("uses optional skeleton and subtree delete command support for delete gates", () => {
+    const layer = Object.assign(
+      Object.create(SegmentationUserLayer.prototype),
+      {
+        getSpatiallyIndexedSkeletonLayer: () =>
+          makeSpatialSkeletonLayerWithSource(
+            makeEditableSpatialSkeletonSource(),
+          ),
+        spatialSkeletonVisibleChunksLoaded: new WatchableValue(true),
+        spatialSkeletonVisibleChunksNeeded: new WatchableValue(0),
+        spatialSkeletonVisibleChunksAvailable: new WatchableValue(0),
+      },
+    );
+
+    expect(
+      layer.getSpatialSkeletonActionsDisabledReason(
+        SpatialSkeletonActions.deleteSkeleton,
+      ),
+    ).toBe(
+      "The active spatial skeleton source does not support skeleton soft deletion.",
+    );
+    expect(
+      layer.getSpatialSkeletonActionsDisabledReason(
+        SpatialSkeletonActions.deleteSubtree,
+      ),
+    ).toBe(
+      "The active spatial skeleton source does not support skeleton subtree soft deletion.",
+    );
+
+    layer.getSpatiallyIndexedSkeletonLayer = () =>
+      makeSpatialSkeletonLayerWithSource(
+        makeEditableSpatialSkeletonSource({
+          deleteSkeletonCommand: true,
+          deleteSubtreeCommand: true,
+        }),
+      );
+
+    expect(
+      layer.getSpatialSkeletonActionsDisabledReason(
+        SpatialSkeletonActions.deleteSkeleton,
+      ),
+    ).toBeUndefined();
+    expect(
+      layer.getSpatialSkeletonActionsDisabledReason(
+        SpatialSkeletonActions.deleteSubtree,
       ),
     ).toBeUndefined();
   });

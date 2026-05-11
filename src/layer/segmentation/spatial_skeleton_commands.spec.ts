@@ -6,6 +6,8 @@ import { CatmaidSpatialSkeletonEditCommands } from "#src/datasource/catmaid/spat
 import {
   executeSpatialSkeletonAddNode,
   executeSpatialSkeletonDeleteNode,
+  executeSpatialSkeletonDeleteSkeleton,
+  executeSpatialSkeletonDeleteSubtree,
   executeSpatialSkeletonMerge,
   executeSpatialSkeletonMoveNode,
   executeSpatialSkeletonNodeConfidenceUpdate,
@@ -74,6 +76,8 @@ const catmaidEditClientMethodNames = new Set([
   "updateConfidence",
   "mergeSkeletons",
   "splitSkeleton",
+  "softDeleteSkeleton",
+  "restoreSoftDeletedSkeleton",
 ]);
 
 function makeCatmaidClient(overrides: Record<string, unknown> = {}) {
@@ -89,6 +93,8 @@ function makeCatmaidClient(overrides: Record<string, unknown> = {}) {
     updateConfidence: vi.fn(),
     mergeSkeletons: vi.fn(),
     splitSkeleton: vi.fn(),
+    softDeleteSkeleton: vi.fn(),
+    restoreSoftDeletedSkeleton: vi.fn(),
     ...overrides,
   };
 }
@@ -123,6 +129,8 @@ function makeEditableSkeletonSource(overrides: Record<string, unknown> = {}) {
     editNodeConfidenceCommand: commands.editNodeConfidenceCommand,
     mergeSkeletonsCommand: commands.mergeSkeletonsCommand,
     splitSkeletonsCommand: commands.splitSkeletonsCommand,
+    deleteSkeletonCommand: commands.deleteSkeletonCommand,
+    deleteSubtreeCommand: commands.deleteSubtreeCommand,
     listSkeletons: vi.fn(),
     getSkeleton: vi.fn(),
     fetchNodes: vi.fn(),
@@ -180,6 +188,33 @@ function makePinnedManager() {
         },
       },
     },
+  };
+}
+
+function makeSegmentCache(
+  initialSegments: readonly [number, readonly SpatiallyIndexedSkeletonNode[]][],
+) {
+  const serverSegments = new Map<number, SpatiallyIndexedSkeletonNode[]>();
+  const cacheBySegment = new Map<number, SpatiallyIndexedSkeletonNode[]>();
+  const cacheByNode = new Map<number, SpatiallyIndexedSkeletonNode>();
+  const syncCacheFromServer = (segmentId: number) => {
+    setSegmentNodes(
+      cacheBySegment,
+      cacheByNode,
+      segmentId,
+      serverSegments.get(segmentId) ?? [],
+    );
+    return cacheBySegment.get(segmentId) ?? [];
+  };
+  for (const [segmentId, nodes] of initialSegments) {
+    serverSegments.set(segmentId, nodes.map(cloneNode));
+    syncCacheFromServer(segmentId);
+  }
+  return {
+    serverSegments,
+    cacheBySegment,
+    cacheByNode,
+    syncCacheFromServer,
   };
 }
 
@@ -941,6 +976,447 @@ describe("spatial_skeleton_commands", () => {
       firstChildNode.nodeId,
       secondChildNode.nodeId,
     ]);
+  });
+
+  it("soft-deletes skeletons, hides them, and restores them on undo", async () => {
+    suppressStatusMessages();
+
+    const segmentId = 23;
+    const rootNode: SpatiallyIndexedSkeletonNode = {
+      nodeId: 1,
+      segmentId,
+      position: new Float32Array([1, 2, 3]),
+      isTrueEnd: false,
+      sourceState: testSourceState("root-before"),
+    };
+    const childNode: SpatiallyIndexedSkeletonNode = {
+      nodeId: 2,
+      segmentId,
+      parentNodeId: rootNode.nodeId,
+      position: new Float32Array([4, 5, 6]),
+      isTrueEnd: false,
+      sourceState: testSourceState("child-before"),
+    };
+    const softDeletedSkeletonIds = new Set<number>();
+    const { cacheByNode, cacheBySegment, syncCacheFromServer } =
+      makeSegmentCache([[segmentId, [rootNode, childNode]]]);
+    const softDeleteSkeleton = vi.fn(async (skeletonId: number) => {
+      softDeletedSkeletonIds.add(skeletonId);
+    });
+    const restoreSoftDeletedSkeleton = vi.fn(async (skeletonId: number) => {
+      softDeletedSkeletonIds.delete(skeletonId);
+    });
+    const skeletonSource = makeEditableSkeletonSource({
+      softDeleteSkeleton,
+      restoreSoftDeletedSkeleton,
+    });
+    const invalidateCachedSegments = vi.fn((segmentIds: Iterable<number>) => {
+      for (const currentSegmentId of segmentIds) {
+        setSegmentNodes(cacheBySegment, cacheByNode, currentSegmentId, []);
+      }
+    });
+    const getFullSegmentNodes = vi.fn(
+      async (_skeletonLayer: unknown, currentSegmentId: number) =>
+        softDeletedSkeletonIds.has(currentSegmentId)
+          ? []
+          : syncCacheFromServer(currentSegmentId),
+    );
+    const skeletonLayer = {
+      source: skeletonSource,
+      getNode: vi.fn((nodeId: number) => cacheByNode.get(nodeId)),
+      invalidateSourceCellsForPositions: vi.fn(),
+      suppressBrowseSegment: vi.fn(),
+    };
+    const layer = {
+      displayState: makeDisplayState([segmentId]),
+      manager: makePinnedManager(),
+      selectedSpatialSkeletonNodeId: { value: childNode.nodeId },
+      spatialSkeletonState: {
+        commandHistory: new SpatialSkeletonCommandHistory(),
+        getCachedNode: (nodeId: number) => cacheByNode.get(nodeId),
+        getCachedSegmentNodes: (currentSegmentId: number) =>
+          cacheBySegment.get(currentSegmentId),
+        getFullSegmentNodes,
+        invalidateCachedSegments,
+      },
+      getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
+      selectSegment: vi.fn(),
+      selectSpatialSkeletonNode: vi.fn(),
+      clearSpatialSkeletonNodeSelection: vi.fn(),
+      markSpatialSkeletonNodeDataChanged: vi.fn(),
+    };
+
+    await executeSpatialSkeletonDeleteSkeleton(layer as any, segmentId);
+
+    expect(softDeleteSkeleton).toHaveBeenCalledWith(segmentId);
+    expect(layer.clearSpatialSkeletonNodeSelection).toHaveBeenCalledWith(true);
+    expect(skeletonLayer.suppressBrowseSegment).toHaveBeenCalledWith(segmentId);
+    expect(invalidateCachedSegments).toHaveBeenCalledWith([segmentId]);
+    expect(
+      layer.displayState.segmentationGroupState.value.visibleSegments.has(
+        BigInt(segmentId),
+      ),
+    ).toBe(false);
+    expect(
+      skeletonLayer.invalidateSourceCellsForPositions,
+    ).toHaveBeenCalledWith([rootNode.position, childNode.position]);
+
+    await undoSpatialSkeletonCommand(layer as any);
+
+    expect(restoreSoftDeletedSkeleton).toHaveBeenCalledWith(segmentId);
+    expect(
+      layer.displayState.segmentationGroupState.value.visibleSegments.has(
+        BigInt(segmentId),
+      ),
+    ).toBe(true);
+    expect(cacheBySegment.get(segmentId)?.map((node) => node.nodeId)).toEqual([
+      rootNode.nodeId,
+      childNode.nodeId,
+    ]);
+    expect(layer.selectSpatialSkeletonNode).toHaveBeenLastCalledWith(
+      rootNode.nodeId,
+      true,
+      { segmentId, position: rootNode.position },
+    );
+
+    await redoSpatialSkeletonCommand(layer as any);
+
+    expect(softDeleteSkeleton).toHaveBeenCalledTimes(2);
+  });
+
+  it("deletes non-root subtrees by splitting and soft-deleting the split skeleton", async () => {
+    suppressStatusMessages();
+
+    const originalSegmentId = 11;
+    const splitSegmentId = 17;
+    const rootNode: SpatiallyIndexedSkeletonNode = {
+      nodeId: 1,
+      segmentId: originalSegmentId,
+      position: new Float32Array([1, 0, 0]),
+      isTrueEnd: false,
+      sourceState: testSourceState("root-before"),
+    };
+    const formerParentNode: SpatiallyIndexedSkeletonNode = {
+      nodeId: 2,
+      segmentId: originalSegmentId,
+      parentNodeId: rootNode.nodeId,
+      position: new Float32Array([2, 0, 0]),
+      isTrueEnd: false,
+      sourceState: testSourceState("parent-before"),
+    };
+    const subtreeRootBefore: SpatiallyIndexedSkeletonNode = {
+      nodeId: 3,
+      segmentId: originalSegmentId,
+      parentNodeId: formerParentNode.nodeId,
+      position: new Float32Array([3, 0, 0]),
+      isTrueEnd: false,
+      sourceState: testSourceState("subtree-before"),
+    };
+    const subtreeChildBefore: SpatiallyIndexedSkeletonNode = {
+      nodeId: 4,
+      segmentId: originalSegmentId,
+      parentNodeId: subtreeRootBefore.nodeId,
+      position: new Float32Array([4, 0, 0]),
+      isTrueEnd: false,
+      sourceState: testSourceState("subtree-child-before"),
+    };
+    const originalNodes = [
+      rootNode,
+      formerParentNode,
+      subtreeRootBefore,
+      subtreeChildBefore,
+    ];
+    const survivingNodes = [rootNode, formerParentNode];
+    const splitNodes = [
+      {
+        ...subtreeRootBefore,
+        segmentId: splitSegmentId,
+        parentNodeId: undefined,
+      },
+      { ...subtreeChildBefore, segmentId: splitSegmentId },
+    ];
+    const softDeletedSkeletonIds = new Set<number>();
+    const { serverSegments, cacheByNode, cacheBySegment, syncCacheFromServer } =
+      makeSegmentCache([[originalSegmentId, originalNodes]]);
+    const splitSkeleton = vi.fn(async () => {
+      serverSegments.set(originalSegmentId, survivingNodes.map(cloneNode));
+      serverSegments.set(splitSegmentId, splitNodes.map(cloneNode));
+      return {
+        existingSegmentId: originalSegmentId,
+        newSegmentId: splitSegmentId,
+      };
+    });
+    const softDeleteSkeleton = vi.fn(async (skeletonId: number) => {
+      softDeletedSkeletonIds.add(skeletonId);
+    });
+    const restoreSoftDeletedSkeleton = vi.fn(async (skeletonId: number) => {
+      softDeletedSkeletonIds.delete(skeletonId);
+    });
+    const mergeSkeletons = vi.fn(async () => {
+      serverSegments.set(originalSegmentId, originalNodes.map(cloneNode));
+      serverSegments.delete(splitSegmentId);
+      return {
+        resultSegmentId: originalSegmentId,
+        deletedSegmentId: splitSegmentId,
+        directionAdjusted: false,
+      };
+    });
+    const skeletonSource = makeEditableSkeletonSource({
+      splitSkeleton,
+      softDeleteSkeleton,
+      restoreSoftDeletedSkeleton,
+      mergeSkeletons,
+    });
+    const invalidateCachedSegments = vi.fn((segmentIds: Iterable<number>) => {
+      for (const currentSegmentId of segmentIds) {
+        setSegmentNodes(cacheBySegment, cacheByNode, currentSegmentId, []);
+      }
+    });
+    const getFullSegmentNodes = vi.fn(
+      async (_skeletonLayer: unknown, currentSegmentId: number) =>
+        softDeletedSkeletonIds.has(currentSegmentId)
+          ? []
+          : syncCacheFromServer(currentSegmentId),
+    );
+    const skeletonLayer = {
+      source: skeletonSource,
+      getNode: vi.fn((nodeId: number) => cacheByNode.get(nodeId)),
+      invalidateSourceCellsForPositions: vi.fn(),
+      suppressBrowseSegment: vi.fn(),
+    };
+    const layer = {
+      displayState: makeDisplayState([originalSegmentId]),
+      manager: makePinnedManager(),
+      selectedSpatialSkeletonNodeId: { value: subtreeRootBefore.nodeId },
+      spatialSkeletonState: {
+        commandHistory: new SpatialSkeletonCommandHistory(),
+        getCachedNode: (nodeId: number) => cacheByNode.get(nodeId),
+        getCachedSegmentNodes: (currentSegmentId: number) =>
+          cacheBySegment.get(currentSegmentId),
+        getFullSegmentNodes,
+        invalidateCachedSegments,
+      },
+      getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
+      getCachedSpatialSkeletonSegmentNodesForEdit: (segmentId: number) =>
+        cacheBySegment.get(segmentId) ?? [],
+      selectSegment: vi.fn(),
+      selectSpatialSkeletonNode: vi.fn(),
+      clearSpatialSkeletonNodeSelection: vi.fn(),
+      markSpatialSkeletonNodeDataChanged: vi.fn(),
+    };
+
+    await executeSpatialSkeletonDeleteSubtree(layer as any, subtreeRootBefore);
+
+    expect(splitSkeleton).toHaveBeenCalledWith(
+      subtreeRootBefore.nodeId,
+      expect.objectContaining({
+        node: expect.objectContaining({ nodeId: subtreeRootBefore.nodeId }),
+      }),
+    );
+    expect(softDeleteSkeleton).toHaveBeenCalledWith(splitSegmentId);
+    expect(layer.clearSpatialSkeletonNodeSelection).toHaveBeenCalledWith(true);
+    expect(skeletonLayer.suppressBrowseSegment).toHaveBeenCalledWith(
+      splitSegmentId,
+    );
+    expect(
+      cacheBySegment.get(originalSegmentId)?.map((node) => node.nodeId),
+    ).toEqual([rootNode.nodeId, formerParentNode.nodeId]);
+
+    await undoSpatialSkeletonCommand(layer as any);
+
+    expect(restoreSoftDeletedSkeleton).toHaveBeenCalledWith(splitSegmentId);
+    expect(mergeSkeletons).toHaveBeenCalledWith(
+      formerParentNode.nodeId,
+      subtreeRootBefore.nodeId,
+      expect.objectContaining({
+        nodes: expect.arrayContaining([
+          expect.objectContaining({ nodeId: formerParentNode.nodeId }),
+          expect.objectContaining({ nodeId: subtreeRootBefore.nodeId }),
+        ]),
+      }),
+    );
+    expect(cacheBySegment.get(splitSegmentId)).toBeUndefined();
+    expect(
+      cacheBySegment.get(originalSegmentId)?.map((node) => node.nodeId),
+    ).toEqual([
+      rootNode.nodeId,
+      formerParentNode.nodeId,
+      subtreeRootBefore.nodeId,
+      subtreeChildBefore.nodeId,
+    ]);
+  });
+
+  it("deletes a root subtree as a skeleton soft-delete without splitting", async () => {
+    suppressStatusMessages();
+
+    const segmentId = 31;
+    const rootNode: SpatiallyIndexedSkeletonNode = {
+      nodeId: 1,
+      segmentId,
+      position: new Float32Array([1, 2, 3]),
+      isTrueEnd: false,
+      sourceState: testSourceState("root-before"),
+    };
+    const childNode: SpatiallyIndexedSkeletonNode = {
+      nodeId: 2,
+      segmentId,
+      parentNodeId: rootNode.nodeId,
+      position: new Float32Array([4, 5, 6]),
+      isTrueEnd: false,
+      sourceState: testSourceState("child-before"),
+    };
+    const { cacheByNode, cacheBySegment, syncCacheFromServer } =
+      makeSegmentCache([[segmentId, [rootNode, childNode]]]);
+    const splitSkeleton = vi.fn();
+    const softDeleteSkeleton = vi.fn();
+    const restoreSoftDeletedSkeleton = vi.fn();
+    const skeletonSource = makeEditableSkeletonSource({
+      splitSkeleton,
+      softDeleteSkeleton,
+      restoreSoftDeletedSkeleton,
+    });
+    const invalidateCachedSegments = vi.fn((segmentIds: Iterable<number>) => {
+      for (const currentSegmentId of segmentIds) {
+        setSegmentNodes(cacheBySegment, cacheByNode, currentSegmentId, []);
+      }
+    });
+    const skeletonLayer = {
+      source: skeletonSource,
+      getNode: vi.fn((nodeId: number) => cacheByNode.get(nodeId)),
+      invalidateSourceCellsForPositions: vi.fn(),
+      suppressBrowseSegment: vi.fn(),
+    };
+    const layer = {
+      displayState: makeDisplayState([segmentId]),
+      manager: makePinnedManager(),
+      spatialSkeletonState: {
+        commandHistory: new SpatialSkeletonCommandHistory(),
+        getCachedNode: (nodeId: number) => cacheByNode.get(nodeId),
+        getCachedSegmentNodes: (currentSegmentId: number) =>
+          cacheBySegment.get(currentSegmentId),
+        getFullSegmentNodes: vi.fn(
+          async (_skeletonLayer: unknown, currentSegmentId: number) =>
+            syncCacheFromServer(currentSegmentId),
+        ),
+        invalidateCachedSegments,
+      },
+      getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
+      getCachedSpatialSkeletonSegmentNodesForEdit: (
+        requestedSegmentId: number,
+      ) => cacheBySegment.get(requestedSegmentId) ?? [],
+      selectSpatialSkeletonNode: vi.fn(),
+      clearSpatialSkeletonNodeSelection: vi.fn(),
+      markSpatialSkeletonNodeDataChanged: vi.fn(),
+    };
+
+    await executeSpatialSkeletonDeleteSubtree(layer as any, rootNode);
+
+    expect(splitSkeleton).not.toHaveBeenCalled();
+    expect(softDeleteSkeleton).toHaveBeenCalledWith(segmentId);
+    expect(skeletonLayer.suppressBrowseSegment).toHaveBeenCalledWith(segmentId);
+    expect(
+      layer.displayState.segmentationGroupState.value.visibleSegments.has(
+        BigInt(segmentId),
+      ),
+    ).toBe(false);
+  });
+
+  it("reapplies the deleted label when subtree undo fails after restoring", async () => {
+    suppressStatusMessages();
+
+    const originalSegmentId = 41;
+    const splitSegmentId = 47;
+    const parentNode: SpatiallyIndexedSkeletonNode = {
+      nodeId: 1,
+      segmentId: originalSegmentId,
+      position: new Float32Array([1, 0, 0]),
+      isTrueEnd: false,
+      sourceState: testSourceState("parent-before"),
+    };
+    const subtreeNode: SpatiallyIndexedSkeletonNode = {
+      nodeId: 2,
+      segmentId: originalSegmentId,
+      parentNodeId: parentNode.nodeId,
+      position: new Float32Array([2, 0, 0]),
+      isTrueEnd: false,
+      sourceState: testSourceState("subtree-before"),
+    };
+    const splitNode = {
+      ...subtreeNode,
+      segmentId: splitSegmentId,
+      parentNodeId: undefined,
+    };
+    const softDeletedSkeletonIds = new Set<number>();
+    const { serverSegments, cacheByNode, cacheBySegment, syncCacheFromServer } =
+      makeSegmentCache([[originalSegmentId, [parentNode, subtreeNode]]]);
+    const splitSkeleton = vi.fn(async () => {
+      serverSegments.set(originalSegmentId, [cloneNode(parentNode)]);
+      serverSegments.set(splitSegmentId, [cloneNode(splitNode)]);
+      return {
+        existingSegmentId: originalSegmentId,
+        newSegmentId: splitSegmentId,
+      };
+    });
+    const softDeleteSkeleton = vi.fn(async (skeletonId: number) => {
+      softDeletedSkeletonIds.add(skeletonId);
+    });
+    const restoreSoftDeletedSkeleton = vi.fn(async (skeletonId: number) => {
+      softDeletedSkeletonIds.delete(skeletonId);
+    });
+    const mergeSkeletons = vi.fn(async () => {
+      throw new Error("merge failed");
+    });
+    const skeletonSource = makeEditableSkeletonSource({
+      splitSkeleton,
+      softDeleteSkeleton,
+      restoreSoftDeletedSkeleton,
+      mergeSkeletons,
+    });
+    const invalidateCachedSegments = vi.fn((segmentIds: Iterable<number>) => {
+      for (const currentSegmentId of segmentIds) {
+        setSegmentNodes(cacheBySegment, cacheByNode, currentSegmentId, []);
+      }
+    });
+    const getFullSegmentNodes = vi.fn(
+      async (_skeletonLayer: unknown, currentSegmentId: number) =>
+        softDeletedSkeletonIds.has(currentSegmentId)
+          ? []
+          : syncCacheFromServer(currentSegmentId),
+    );
+    const skeletonLayer = {
+      source: skeletonSource,
+      getNode: vi.fn((nodeId: number) => cacheByNode.get(nodeId)),
+      invalidateSourceCellsForPositions: vi.fn(),
+      suppressBrowseSegment: vi.fn(),
+    };
+    const layer = {
+      displayState: makeDisplayState([originalSegmentId]),
+      manager: makePinnedManager(),
+      spatialSkeletonState: {
+        commandHistory: new SpatialSkeletonCommandHistory(),
+        getCachedNode: (nodeId: number) => cacheByNode.get(nodeId),
+        getCachedSegmentNodes: (currentSegmentId: number) =>
+          cacheBySegment.get(currentSegmentId),
+        getFullSegmentNodes,
+        invalidateCachedSegments,
+      },
+      getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
+      getCachedSpatialSkeletonSegmentNodesForEdit: (segmentId: number) =>
+        cacheBySegment.get(segmentId) ?? [],
+      selectSegment: vi.fn(),
+      selectSpatialSkeletonNode: vi.fn(),
+      clearSpatialSkeletonNodeSelection: vi.fn(),
+      markSpatialSkeletonNodeDataChanged: vi.fn(),
+    };
+
+    await executeSpatialSkeletonDeleteSubtree(layer as any, subtreeNode);
+
+    await expect(undoSpatialSkeletonCommand(layer as any)).rejects.toThrow(
+      "merge failed",
+    );
+    expect(restoreSoftDeletedSkeleton).toHaveBeenCalledWith(splitSegmentId);
+    expect(softDeleteSkeleton).toHaveBeenLastCalledWith(splitSegmentId);
+    expect(softDeletedSkeletonIds.has(splitSegmentId)).toBe(true);
   });
 
   it("invalidates only the split subtree and former parent when splitting and redoing", async () => {

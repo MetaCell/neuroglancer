@@ -542,6 +542,185 @@ describe("CatmaidClient skeleton editing methods", () => {
     expect(getFetchInit(fetchMock).priority).toBe("low");
   });
 
+  it("queries CATMAID soft-deleted skeleton annotations", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const fetchMock = vi.fn().mockResolvedValue({
+      entities: [
+        { skeleton_ids: [11, "17", "not-a-number"] },
+        { skeleton_ids: [23] },
+      ],
+    });
+    (client as any).fetch = fetchMock;
+
+    await expect(client.getSoftDeletedSkeletonIds()).resolves.toEqual(
+      new Set([11, 17, 23]),
+    );
+
+    expect(getFetchPath(fetchMock)).toBe("annotations/query-targets");
+    const requestBody = getFetchBody(fetchMock);
+    expect(requestBody.get("annotated_with[0]")).toBe("deleted");
+    expect(requestBody.get("annotation_reference")).toBe("name");
+    expect(requestBody.get("types[0]")).toBe("neuron");
+    expect(requestBody.get("ignore_nonexisting")).toBe("true");
+  });
+
+  it("soft-deletes skeletons by annotating modeled neurons through skeleton ids", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const fetchMock = vi.fn().mockResolvedValue({});
+    (client as any).fetch = fetchMock;
+
+    await client.softDeleteSkeleton(2973946);
+
+    expect(getFetchPath(fetchMock)).toBe("annotations/add");
+    const requestBody = getFetchBody(fetchMock);
+    expect(requestBody.get("skeleton_ids[0]")).toBe("2973946");
+    expect(requestBody.get("annotations[0]")).toBe("deleted");
+  });
+
+  it("restores soft-deleted skeletons by replacing the deleted neuron annotation", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ "2973946": 991 })
+      .mockResolvedValueOnce({});
+    (client as any).fetch = fetchMock;
+
+    await client.restoreSoftDeletedSkeleton(2973946);
+
+    expect(getFetchPath(fetchMock, 0)).toBe("neurons/from-models");
+    expect(getFetchBody(fetchMock, 0).get("model_ids[0]")).toBe("2973946");
+    expect(getFetchPath(fetchMock, 1)).toBe("annotations/replace");
+    const replaceBody = getFetchBody(fetchMock, 1);
+    expect(replaceBody.get("target_ids[0]")).toBe("991");
+    expect(replaceBody.get("to_remove[0]")).toBe("deleted");
+    expect(replaceBody.get("to_add[0]")).toBeNull();
+  });
+
+  it("filters soft-deleted skeletons from lists, browse chunks, and full skeleton reads", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const listFetch = vi
+      .fn()
+      .mockResolvedValueOnce([11, 17, 23])
+      .mockResolvedValueOnce({
+        entities: [{ skeleton_ids: [17] }],
+      });
+    (client as any).fetch = listFetch;
+
+    await expect(client.listSkeletons()).resolves.toEqual([11, 23]);
+
+    const nodeListFetch = vi
+      .fn()
+      .mockResolvedValueOnce([
+        [
+          [101, null, 1, 2, 3, 5, 2000, 11, "2026-03-29T11:50:00Z", 2],
+          [102, 101, 4, 5, 6, 5, 2000, 17, "2026-03-29T11:51:00Z", 2],
+        ],
+        [],
+        {},
+        false,
+        [],
+        [
+          [
+            [[103, 102, 7, 8, 9, 5, 2000, 17, "2026-03-29T11:52:00Z", 2]],
+            [],
+            {},
+            false,
+          ],
+        ],
+      ])
+      .mockResolvedValueOnce({
+        entities: [{ skeleton_ids: [17] }],
+      });
+    (client as any).fetch = nodeListFetch;
+
+    await expect(
+      client.fetchNodesInBoundingBox({
+        lowerBounds: [0, 0, 0],
+        upperBounds: [10, 10, 10],
+      }),
+    ).resolves.toEqual([
+      {
+        nodeId: 101,
+        parentNodeId: undefined,
+        position: new Float32Array([1, 2, 3]),
+        segmentId: 11,
+        sourceState: testSourceState("2026-03-29T11:50:00Z"),
+      },
+    ]);
+
+    const skeletonFetch = vi
+      .fn()
+      .mockResolvedValueOnce([
+        [
+          [
+            201,
+            null,
+            1,
+            1,
+            2,
+            3,
+            0,
+            5,
+            "2026-03-29T11:50:00Z",
+            "2026-03-29T11:50:00Z",
+          ],
+        ],
+        [],
+        {},
+        [],
+        [],
+      ])
+      .mockResolvedValueOnce([[], [], {}, [], []])
+      .mockResolvedValueOnce({
+        entities: [{ skeleton_ids: [17] }],
+      });
+    (client as any).fetch = skeletonFetch;
+
+    await expect(client.getSkeleton(17)).resolves.toEqual([]);
+
+    const includeDeletedFetch = vi
+      .fn()
+      .mockResolvedValueOnce([
+        [
+          [
+            201,
+            null,
+            1,
+            1,
+            2,
+            3,
+            0,
+            5,
+            "2026-03-29T11:50:00Z",
+            "2026-03-29T11:50:00Z",
+          ],
+        ],
+        [],
+        {},
+        [],
+        [],
+      ])
+      .mockResolvedValueOnce([[], [], {}, [], []]);
+    (client as any).fetch = includeDeletedFetch;
+
+    await expect(
+      client.getSkeleton(17, { includeSoftDeleted: true }),
+    ).resolves.toEqual([
+      {
+        nodeId: 201,
+        parentNodeId: undefined,
+        position: new Float32Array([1, 2, 3]),
+        segmentId: 17,
+        radius: 0,
+        confidence: 100,
+        description: undefined,
+        isTrueEnd: false,
+        sourceState: testSourceState("2026-03-29T11:50:00Z"),
+      },
+    ]);
+    expect(includeDeletedFetch).toHaveBeenCalledTimes(2);
+  });
+
   it("converts spatial skeleton grid cell indices to CATMAID bounds", () => {
     expect(
       getCatmaidSpatialSkeletonGridCellBounds([2, 3, 4], [10, 20, 30]),

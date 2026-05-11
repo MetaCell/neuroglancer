@@ -27,6 +27,8 @@ export const SpatialSkeletonActions = {
   editNodeConfidence: "editNodeConfidence",
   mergeSkeletons: "mergeSkeletons",
   splitSkeletons: "splitSkeletons",
+  deleteSkeleton: "deleteSkeleton",
+  deleteSubtree: "deleteSubtree",
 } as const;
 
 export type SpatialSkeletonAction =
@@ -66,5 +68,9 @@ export function getSpatialSkeletonActionSupportLabel(
       return "skeleton merging";
     case SpatialSkeletonActions.splitSkeletons:
       return "skeleton splitting";
+    case SpatialSkeletonActions.deleteSkeleton:
+      return "skeleton soft deletion";
+    case SpatialSkeletonActions.deleteSubtree:
+      return "skeleton subtree soft deletion";
   }
 }

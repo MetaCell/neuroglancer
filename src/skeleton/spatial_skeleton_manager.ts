@@ -176,6 +176,16 @@ export function isEditableSpatiallyIndexedSkeletonSource(
       "editNodeConfidenceCommand",
       SpatialSkeletonActions.editNodeConfidence,
     ) &&
+    hasOptionalCommandFactory(
+      value,
+      "deleteSkeletonCommand",
+      SpatialSkeletonActions.deleteSkeleton,
+    ) &&
+    hasOptionalCommandFactory(
+      value,
+      "deleteSubtreeCommand",
+      SpatialSkeletonActions.deleteSubtree,
+    ) &&
     hasOptionalConfidenceConfiguration(value)
   );
 }
