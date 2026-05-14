@@ -24,6 +24,13 @@ export class SpatialSkeletonEditConflictError extends Error {
   }
 }
 
+export class SpatialSkeletonEditCancelledError extends Error {
+  constructor(detail?: string) {
+    super(detail ?? "The skeleton edit was cancelled.");
+    this.name = "SpatialSkeletonEditCancelledError";
+  }
+}
+
 function formatError(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
@@ -32,18 +39,31 @@ export function isSpatialSkeletonOutdatedStateError(error: unknown) {
   return error instanceof SpatialSkeletonEditConflictError;
 }
 
+export function isSpatialSkeletonEditCancelledError(error: unknown) {
+  return error instanceof SpatialSkeletonEditCancelledError;
+}
+
 export function getSpatialSkeletonActionErrorMessage(
   action: string,
   error: unknown,
 ) {
+  if (isSpatialSkeletonEditCancelledError(error)) {
+    return {
+      message: "",
+      requiresDismissal: false,
+      cancelled: true,
+    };
+  }
   if (isSpatialSkeletonOutdatedStateError(error)) {
     return {
       message: `Failed to ${action} due to outdated state. Refresh the page to sync.`,
       requiresDismissal: true,
+      cancelled: false,
     };
   }
   return {
     message: `Failed to ${action}: ${formatError(error)}`,
     requiresDismissal: false,
+    cancelled: false,
   };
 }

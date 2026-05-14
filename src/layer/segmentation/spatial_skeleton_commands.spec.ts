@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("#src/ui/spatial_skeleton_soft_delete_conflict.js", () => ({
+  confirmSpatialSkeletonSoftDeleteConflict: vi.fn(),
+}));
+
 import { makeCatmaidNodeSourceState } from "#src/datasource/catmaid/api.js";
 import { buildCatmaidNeighborhoodEditContext } from "#src/datasource/catmaid/edit_state.js";
 import { CatmaidSpatialSkeletonEditCommands } from "#src/datasource/catmaid/spatial_skeleton_commands.js";
@@ -27,6 +31,7 @@ import {
 } from "#src/skeleton/edit_state.js";
 import { SpatialSkeletonState } from "#src/skeleton/spatial_skeleton_manager.js";
 import { StatusMessage } from "#src/status.js";
+import { confirmSpatialSkeletonSoftDeleteConflict } from "#src/ui/spatial_skeleton_soft_delete_conflict.js";
 
 function cloneNode(
   node: SpatiallyIndexedSkeletonNode,
@@ -115,7 +120,8 @@ function makeEditableSkeletonSource(overrides: Record<string, unknown> = {}) {
       sourceOverrides[key] = value;
     }
   }
-  const commands = makeCatmaidEditCommands(makeCatmaidClient(clientOverrides));
+  const client = makeCatmaidClient(clientOverrides);
+  const commands = makeCatmaidEditCommands(client);
   return {
     readonly: false,
     addNodesCommand: commands.addNodesCommand,
@@ -136,6 +142,11 @@ function makeEditableSkeletonSource(overrides: Record<string, unknown> = {}) {
     fetchNodes: vi.fn(),
     getSpatialIndexMetadata: vi.fn(),
     getSkeletonRootNode: vi.fn(),
+    isSkeletonSoftDeleted: vi.fn().mockResolvedValue(false),
+    restoreSoftDeletedSkeleton: vi.fn((skeletonId: number) =>
+      client.restoreSoftDeletedSkeleton(skeletonId),
+    ),
+    noteSoftDeletedSkeletonState: vi.fn(),
     ...sourceOverrides,
   };
 }
@@ -552,6 +563,139 @@ describe("spatial_skeleton_commands", () => {
     expect(
       skeletonLayer.invalidateSourceCellsForPositions,
     ).not.toHaveBeenCalled();
+  });
+
+  it("restores externally soft-deleted skeletons before proceeding with an edit", async () => {
+    suppressStatusMessages();
+    vi.mocked(confirmSpatialSkeletonSoftDeleteConflict).mockResolvedValue(
+      "restore",
+    );
+
+    const node: SpatiallyIndexedSkeletonNode = {
+      nodeId: 17,
+      segmentId: 23,
+      position: new Float32Array([1, 2, 3]),
+      isTrueEnd: false,
+      sourceState: testSourceState("before"),
+    };
+    const nextPositionInModelSpace = new Float32Array([7, 8, 9]);
+    const moveNode = vi.fn().mockResolvedValue({
+      sourceState: testSourceState("after"),
+    });
+    const isSkeletonSoftDeleted = vi
+      .fn()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValue(false);
+    const restoreSoftDeletedSkeleton = vi.fn().mockResolvedValue(undefined);
+    const source = makeEditableSkeletonSource({
+      moveNode,
+      isSkeletonSoftDeleted,
+    });
+    source.restoreSoftDeletedSkeleton = restoreSoftDeletedSkeleton;
+    const skeletonLayer = {
+      source,
+      getNode: vi.fn((nodeId: number) =>
+        nodeId === node.nodeId ? node : undefined,
+      ),
+      retainOverlaySegment: vi.fn(),
+      unsuppressBrowseSegment: vi.fn(),
+      invalidateSourceCellsForPositions: vi.fn(),
+    };
+    const commandHistory = new SpatialSkeletonCommandHistory();
+    const layer = {
+      spatialSkeletonState: {
+        commandHistory,
+        getCachedNode: vi.fn((nodeId: number) =>
+          nodeId === node.nodeId ? node : undefined,
+        ),
+        getCachedSegmentNodes: vi.fn((segmentId: number) =>
+          segmentId === node.segmentId ? [node] : undefined,
+        ),
+        moveCachedNode: vi.fn(),
+        setCachedNodeSourceState: vi.fn(),
+      },
+      getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
+      markSpatialSkeletonNodeDataChanged: vi.fn(),
+    };
+
+    await executeSpatialSkeletonMoveNode(layer as any, {
+      node,
+      nextPositionInModelSpace,
+    });
+    await undoSpatialSkeletonCommand(layer as any);
+
+    expect(confirmSpatialSkeletonSoftDeleteConflict).toHaveBeenCalledWith(23);
+    expect(restoreSoftDeletedSkeleton).toHaveBeenCalledWith(23);
+    expect(skeletonLayer.unsuppressBrowseSegment).toHaveBeenCalledWith(23);
+    expect(moveNode).toHaveBeenCalledTimes(2);
+    expect(restoreSoftDeletedSkeleton).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels and hides externally soft-deleted skeletons without recording history", async () => {
+    suppressStatusMessages();
+    vi.mocked(confirmSpatialSkeletonSoftDeleteConflict).mockResolvedValue(
+      "hide",
+    );
+
+    const node: SpatiallyIndexedSkeletonNode = {
+      nodeId: 17,
+      segmentId: 23,
+      position: new Float32Array([1, 2, 3]),
+      isTrueEnd: false,
+      sourceState: testSourceState("before"),
+    };
+    const moveNode = vi.fn();
+    const noteSoftDeletedSkeletonState = vi.fn();
+    const source = makeEditableSkeletonSource({
+      moveNode,
+      isSkeletonSoftDeleted: vi.fn().mockResolvedValue(true),
+      noteSoftDeletedSkeletonState,
+    });
+    const skeletonLayer = {
+      source,
+      getNode: vi.fn((nodeId: number) =>
+        nodeId === node.nodeId ? node : undefined,
+      ),
+      retainOverlaySegment: vi.fn(),
+      suppressBrowseSegment: vi.fn(),
+      invalidateSourceCellsForPositions: vi.fn(),
+    };
+    const commandHistory = new SpatialSkeletonCommandHistory();
+    const invalidateCachedSegments = vi.fn();
+    const displayState = makeDisplayState([23]);
+    const layer = {
+      spatialSkeletonState: {
+        commandHistory,
+        getCachedNode: vi.fn((nodeId: number) =>
+          nodeId === node.nodeId ? node : undefined,
+        ),
+        getCachedSegmentNodes: vi.fn((segmentId: number) =>
+          segmentId === node.segmentId ? [node] : undefined,
+        ),
+        invalidateCachedSegments,
+      },
+      displayState,
+      manager: makePinnedManager(),
+      getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
+      clearSpatialSkeletonNodeSelection: vi.fn(),
+      markSpatialSkeletonNodeDataChanged: vi.fn(),
+    };
+
+    await expect(
+      executeSpatialSkeletonMoveNode(layer as any, {
+        node,
+        nextPositionInModelSpace: new Float32Array([7, 8, 9]),
+      }),
+    ).rejects.toThrow("The skeleton edit was cancelled.");
+
+    expect(moveNode).not.toHaveBeenCalled();
+    expect(noteSoftDeletedSkeletonState).toHaveBeenCalledWith(23, true);
+    expect(skeletonLayer.suppressBrowseSegment).toHaveBeenCalledWith(23);
+    expect(invalidateCachedSegments).toHaveBeenCalledWith([23]);
+    expect(
+      displayState.segmentationGroupState.value.visibleSegments.has(23n),
+    ).toBe(false);
+    await expect(undoSpatialSkeletonCommand(layer as any)).resolves.toBe(false);
   });
 
   it("preserves CATMAID true-end labels when editing node descriptions", async () => {

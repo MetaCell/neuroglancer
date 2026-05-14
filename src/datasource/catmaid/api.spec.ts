@@ -546,8 +546,10 @@ describe("CatmaidClient skeleton editing methods", () => {
     const client = new CatmaidClient("https://example.invalid", 1);
     const fetchMock = vi.fn().mockResolvedValue({
       entities: [
-        { skeleton_ids: [11, "17", "not-a-number"] },
-        { skeleton_ids: [23] },
+        { id: 11, type: "skeleton" },
+        { id: "17", type: "skeleton" },
+        { id: "not-a-number", type: "skeleton" },
+        { id: 23, type: "skeleton" },
       ],
     });
     (client as any).fetch = fetchMock;
@@ -560,11 +562,30 @@ describe("CatmaidClient skeleton editing methods", () => {
     const requestBody = getFetchBody(fetchMock);
     expect(requestBody.get("annotated_with[0]")).toBe("deleted");
     expect(requestBody.get("annotation_reference")).toBe("name");
-    expect(requestBody.get("types[0]")).toBe("neuron");
+    expect(requestBody.get("types[0]")).toBe("skeleton");
     expect(requestBody.get("ignore_nonexisting")).toBe("true");
   });
 
-  it("soft-deletes skeletons by annotating modeled neurons through skeleton ids", async () => {
+  it("checks whether an individual skeleton is soft-deleted", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const fetchMock = vi.fn().mockResolvedValue({
+      entities: {
+        "2973946": [{ id: 12, uid: 7 }],
+      },
+      annotations: {
+        "12": "deleted",
+      },
+    });
+    (client as any).fetch = fetchMock;
+
+    await expect(client.isSkeletonSoftDeleted(2973946)).resolves.toBe(true);
+
+    expect(getFetchPath(fetchMock)).toBe("annotations/query");
+    const requestBody = getFetchBody(fetchMock);
+    expect(requestBody.get("object_ids[0]")).toBe("2973946");
+  });
+
+  it("soft-deletes skeletons by annotating skeleton entities directly", async () => {
     const client = new CatmaidClient("https://example.invalid", 1);
     const fetchMock = vi.fn().mockResolvedValue({});
     (client as any).fetch = fetchMock;
@@ -573,25 +594,20 @@ describe("CatmaidClient skeleton editing methods", () => {
 
     expect(getFetchPath(fetchMock)).toBe("annotations/add");
     const requestBody = getFetchBody(fetchMock);
-    expect(requestBody.get("skeleton_ids[0]")).toBe("2973946");
+    expect(requestBody.get("entity_ids[0]")).toBe("2973946");
     expect(requestBody.get("annotations[0]")).toBe("deleted");
   });
 
-  it("restores soft-deleted skeletons by replacing the deleted neuron annotation", async () => {
+  it("restores soft-deleted skeletons by replacing the deleted skeleton annotation", async () => {
     const client = new CatmaidClient("https://example.invalid", 1);
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce({ "2973946": 991 })
-      .mockResolvedValueOnce({});
+    const fetchMock = vi.fn().mockResolvedValue({});
     (client as any).fetch = fetchMock;
 
     await client.restoreSoftDeletedSkeleton(2973946);
 
-    expect(getFetchPath(fetchMock, 0)).toBe("neurons/from-models");
-    expect(getFetchBody(fetchMock, 0).get("model_ids[0]")).toBe("2973946");
-    expect(getFetchPath(fetchMock, 1)).toBe("annotations/replace");
-    const replaceBody = getFetchBody(fetchMock, 1);
-    expect(replaceBody.get("target_ids[0]")).toBe("991");
+    expect(getFetchPath(fetchMock)).toBe("annotations/replace");
+    const replaceBody = getFetchBody(fetchMock);
+    expect(replaceBody.get("target_ids[0]")).toBe("2973946");
     expect(replaceBody.get("to_remove[0]")).toBe("deleted");
     expect(replaceBody.get("to_add[0]")).toBeNull();
   });
@@ -602,7 +618,7 @@ describe("CatmaidClient skeleton editing methods", () => {
       .fn()
       .mockResolvedValueOnce([11, 17, 23])
       .mockResolvedValueOnce({
-        entities: [{ skeleton_ids: [17] }],
+        entities: [{ id: 17, type: "skeleton" }],
       });
     (client as any).fetch = listFetch;
 
@@ -629,7 +645,7 @@ describe("CatmaidClient skeleton editing methods", () => {
         ],
       ])
       .mockResolvedValueOnce({
-        entities: [{ skeleton_ids: [17] }],
+        entities: [{ id: 17, type: "skeleton" }],
       });
     (client as any).fetch = nodeListFetch;
 
@@ -672,7 +688,7 @@ describe("CatmaidClient skeleton editing methods", () => {
       ])
       .mockResolvedValueOnce([[], [], {}, [], []])
       .mockResolvedValueOnce({
-        entities: [{ skeleton_ids: [17] }],
+        entities: [{ id: 17, type: "skeleton" }],
       });
     (client as any).fetch = skeletonFetch;
 

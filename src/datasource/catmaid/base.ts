@@ -16,6 +16,9 @@
 
 import { SkeletonSourceParameters } from "#src/datasource/precomputed/base.js";
 
+export const CATMAID_SPATIAL_SKELETON_SOFT_DELETED_STATE_RPC_ID =
+  "catmaid/SpatialSkeletonSource.softDeletedSkeletonState";
+
 export class CatmaidDataSourceParameters {
   url!: string;
   projectId!: number;

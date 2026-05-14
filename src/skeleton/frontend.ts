@@ -2111,6 +2111,20 @@ export class SpatiallyIndexedSkeletonLayer
     return true;
   }
 
+  unsuppressBrowseSegment(segmentId: number) {
+    const normalizedSegmentId = Math.round(Number(segmentId));
+    if (
+      !Number.isSafeInteger(normalizedSegmentId) ||
+      normalizedSegmentId <= 0 ||
+      !this.suppressedBrowseSegmentIds.delete(normalizedSegmentId)
+    ) {
+      return false;
+    }
+    this.browseExcludedSegmentsKey = undefined;
+    this.redrawNeeded.dispatch();
+    return true;
+  }
+
   private getOverlayRenderSegmentIds() {
     return mergeSpatiallyIndexedSkeletonOverlaySegmentIds(
       this.getActiveEditableSegmentIds(),

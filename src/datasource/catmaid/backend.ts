@@ -24,6 +24,7 @@ import {
 import {
   CatmaidSkeletonSourceParameters,
   CatmaidCompleteSkeletonSourceParameters,
+  CATMAID_SPATIAL_SKELETON_SOFT_DELETED_STATE_RPC_ID,
 } from "#src/datasource/catmaid/base.js";
 import { packCatmaidSkeletonNodes } from "#src/datasource/catmaid/skeleton_packing.js";
 import type {
@@ -34,7 +35,7 @@ import {
   SpatiallyIndexedSkeletonSourceBackend,
   SkeletonSource,
 } from "#src/skeleton/backend.js";
-import { registerSharedObject } from "#src/worker_rpc.js";
+import { registerRPC, registerSharedObject } from "#src/worker_rpc.js";
 
 @registerSharedObject()
 export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters(
@@ -87,6 +88,16 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
     chunk.nodeSourceStates = packed.sourceStates;
   }
 }
+
+registerRPC(
+  CATMAID_SPATIAL_SKELETON_SOFT_DELETED_STATE_RPC_ID,
+  function (x: { id: number; skeletonId: number; deleted: boolean }) {
+    const source = this.get(
+      x.id,
+    ) as CatmaidSpatiallyIndexedSkeletonSourceBackend;
+    source.client.noteSoftDeletedSkeletonState(x.skeletonId, x.deleted);
+  },
+);
 
 @registerSharedObject()
 export class CatmaidSkeletonSourceBackend extends WithParameters(

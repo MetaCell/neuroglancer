@@ -74,9 +74,11 @@ import {
   getSpatiallyIndexedSkeletonPathToRoot,
   getSpatiallyIndexedSkeletonSubtreeNodes,
 } from "#src/skeleton/edit_state.js";
+import { SpatialSkeletonEditCancelledError } from "#src/skeleton/edit_errors.js";
 import type { SpatiallyIndexedSkeletonLayer } from "#src/skeleton/frontend.js";
 import { getEditableSpatiallyIndexedSkeletonSource } from "#src/skeleton/spatial_skeleton_manager.js";
 import { StatusMessage } from "#src/status.js";
+import { confirmSpatialSkeletonSoftDeleteConflict } from "#src/ui/spatial_skeleton_soft_delete_conflict.js";
 import { formatErrorMessage } from "#src/util/error.js";
 
 interface CatmaidSpatialSkeletonAddNodeCommandOptions {
@@ -135,6 +137,7 @@ interface CatmaidSpatialSkeletonMergeCommandPayload {
 
 export interface CatmaidSpatialSkeletonEditCommandContext {
   getClient(): CatmaidClient;
+  noteSoftDeletedSkeletonState?(skeletonId: number, deleted: boolean): void;
 }
 
 interface CatmaidSpatialSkeletonEditOperations {
@@ -603,6 +606,12 @@ interface ResolvedSpatialSkeletonEditNodeContext {
 
 type CatmaidSkeletonRootNodeSource = Pick<CatmaidClient, "getSkeletonRootNode">;
 
+interface CatmaidSoftDeletedSkeletonStateSource {
+  isSkeletonSoftDeleted(skeletonId: number): Promise<boolean>;
+  restoreSoftDeletedSkeleton(skeletonId: number): Promise<void>;
+  noteSoftDeletedSkeletonState(skeletonId: number, deleted: boolean): void;
+}
+
 function collectUniqueNodePositions(
   ...nodeSets: readonly (readonly (
     | SpatiallyIndexedSkeletonNode
@@ -688,6 +697,81 @@ function getCatmaidSkeletonRootNodeSource(
     : undefined;
 }
 
+function getCatmaidSoftDeletedSkeletonStateSource(
+  skeletonLayer: SpatiallyIndexedSkeletonLayer,
+): CatmaidSoftDeletedSkeletonStateSource | undefined {
+  const skeletonSource = getEditableSpatiallyIndexedSkeletonSource(
+    skeletonLayer,
+  ) as Partial<CatmaidSoftDeletedSkeletonStateSource> | undefined;
+  return typeof skeletonSource?.isSkeletonSoftDeleted === "function" &&
+    typeof skeletonSource.restoreSoftDeletedSkeleton === "function" &&
+    typeof skeletonSource.noteSoftDeletedSkeletonState === "function"
+    ? (skeletonSource as CatmaidSoftDeletedSkeletonStateSource)
+    : undefined;
+}
+
+function hideExternallySoftDeletedSegment(
+  layer: SegmentationUserLayer,
+  skeletonLayer: SpatiallyIndexedSkeletonLayer,
+  segmentId: number,
+  segmentNodes: readonly SpatiallyIndexedSkeletonNode[],
+) {
+  clearSelectedNodeIfInSegment(layer, segmentId, segmentNodes);
+  removeVisibleSegment(layer, segmentId, { deselect: true });
+  layer.displayState.segmentStatedColors.value.delete(BigInt(segmentId));
+  skeletonLayer.suppressBrowseSegment(segmentId);
+  layer.spatialSkeletonState.invalidateCachedSegments([segmentId]);
+  layer.markSpatialSkeletonNodeDataChanged({
+    invalidateFullSkeletonCache: false,
+  });
+}
+
+function unsuppressBrowseSegmentIfSupported(
+  skeletonLayer: SpatiallyIndexedSkeletonLayer,
+  segmentId: number,
+) {
+  const candidate = skeletonLayer as {
+    unsuppressBrowseSegment?: (segmentId: number) => boolean;
+  };
+  candidate.unsuppressBrowseSegment?.(segmentId);
+}
+
+async function ensureSkeletonNotExternallySoftDeletedForEdit(
+  layer: SegmentationUserLayer,
+  skeletonLayer: SpatiallyIndexedSkeletonLayer,
+  segmentId: number,
+  segmentNodes: readonly SpatiallyIndexedSkeletonNode[],
+) {
+  const normalizedSegmentId = Math.round(Number(segmentId));
+  if (!Number.isSafeInteger(normalizedSegmentId) || normalizedSegmentId <= 0) {
+    return;
+  }
+  const skeletonSource =
+    getCatmaidSoftDeletedSkeletonStateSource(skeletonLayer);
+  if (skeletonSource === undefined) {
+    return;
+  }
+  if (!(await skeletonSource.isSkeletonSoftDeleted(normalizedSegmentId))) {
+    return;
+  }
+  const choice =
+    await confirmSpatialSkeletonSoftDeleteConflict(normalizedSegmentId);
+  if (choice === "restore") {
+    await skeletonSource.restoreSoftDeletedSkeleton(normalizedSegmentId);
+    unsuppressBrowseSegmentIfSupported(skeletonLayer, normalizedSegmentId);
+    return;
+  }
+  skeletonSource.noteSoftDeletedSkeletonState(normalizedSegmentId, true);
+  hideExternallySoftDeletedSegment(
+    layer,
+    skeletonLayer,
+    normalizedSegmentId,
+    segmentNodes,
+  );
+  StatusMessage.showTemporaryMessage(`Hid skeleton ${normalizedSegmentId}.`);
+  throw new SpatialSkeletonEditCancelledError();
+}
+
 function getResolvedNodeContextForEdit(
   layer: SegmentationUserLayer,
   stableNodeId: number,
@@ -725,10 +809,17 @@ async function getResolvedNodeForEdit(
   const {
     currentNodeId,
     segmentId: candidateSegmentId,
+    cachedNode,
     skeletonLayer,
   } = getResolvedNodeContextForEdit(layer, stableNodeId, stableSegmentId);
   let segmentNodes =
     layer.spatialSkeletonState.getCachedSegmentNodes(candidateSegmentId);
+  await ensureSkeletonNotExternallySoftDeletedForEdit(
+    layer,
+    skeletonLayer,
+    candidateSegmentId,
+    segmentNodes ?? (cachedNode === undefined ? [] : [cachedNode]),
+  );
   if (segmentNodes === undefined) {
     segmentNodes = await layer.spatialSkeletonState.getFullSegmentNodes(
       skeletonLayer,
@@ -906,13 +997,31 @@ async function getSegmentNodesForEdit(
   skeletonLayer: SpatiallyIndexedSkeletonLayer,
   segmentId: number,
 ) {
-  return (
-    layer.spatialSkeletonState.getCachedSegmentNodes(segmentId) ??
-    (await layer.spatialSkeletonState.getFullSegmentNodes(
+  let segmentNodes =
+    layer.spatialSkeletonState.getCachedSegmentNodes(segmentId);
+  let checkedSoftDelete = false;
+  if (segmentNodes === undefined) {
+    await ensureSkeletonNotExternallySoftDeletedForEdit(
+      layer,
       skeletonLayer,
       segmentId,
-    ))
-  );
+      [],
+    );
+    checkedSoftDelete = true;
+    segmentNodes = await layer.spatialSkeletonState.getFullSegmentNodes(
+      skeletonLayer,
+      segmentId,
+    );
+  }
+  if (!checkedSoftDelete) {
+    await ensureSkeletonNotExternallySoftDeletedForEdit(
+      layer,
+      skeletonLayer,
+      segmentId,
+      segmentNodes,
+    );
+  }
+  return segmentNodes;
 }
 
 function getSelectedSpatialSkeletonNodeId(
@@ -987,12 +1096,13 @@ async function refreshRestoredSkeleton(
     normalizedSegmentId,
     layer.manager.root.selectionState.pin.value,
   );
+  const { skeletonLayer } = getEditableSkeletonSourceForLayer(layer);
+  unsuppressBrowseSegmentIfSupported(skeletonLayer, normalizedSegmentId);
   await refreshTopologySegments(
     layer,
     [normalizedSegmentId],
     affectedPositions,
   );
-  const { skeletonLayer } = getEditableSkeletonSourceForLayer(layer);
   const segmentNodes = await getSegmentNodesForEdit(
     layer,
     skeletonLayer,
@@ -1140,6 +1250,13 @@ class AddNodeCommand implements SpatialSkeletonCommand {
         )
       ).node;
       resolvedSkeletonId = parentNode.segmentId;
+    } else {
+      await ensureSkeletonNotExternallySoftDeletedForEdit(
+        this.layer,
+        skeletonLayer,
+        resolvedSkeletonId,
+        [],
+      );
     }
     const result = await this.editOperations.commitAddNode({
       segmentId: resolvedSkeletonId,
@@ -3020,6 +3137,7 @@ export class CatmaidSpatialSkeletonEditCommands {
     request: CatmaidSpatialSkeletonDeleteSkeletonRequest,
   ): Promise<CatmaidSpatialSkeletonDeleteSkeletonResult> {
     await this.client.softDeleteSkeleton(request.skeletonId);
+    this.editContext.noteSoftDeletedSkeletonState?.(request.skeletonId, true);
     return { alreadyDeleted: false };
   }
 
@@ -3027,6 +3145,7 @@ export class CatmaidSpatialSkeletonEditCommands {
     request: CatmaidSpatialSkeletonRestoreSkeletonRequest,
   ): Promise<CatmaidSpatialSkeletonRestoreSkeletonResult> {
     await this.client.restoreSoftDeletedSkeleton(request.skeletonId);
+    this.editContext.noteSoftDeletedSkeletonState?.(request.skeletonId, false);
     return {};
   }
 

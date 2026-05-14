@@ -190,6 +190,7 @@ export interface CatmaidSpatialSkeletonEditApi {
     editContext?: CatmaidEditContext,
   ): Promise<CatmaidNodeSourceStateResult>;
   getSoftDeletedSkeletonIds(): Promise<ReadonlySet<number>>;
+  isSkeletonSoftDeleted(skeletonId: number): Promise<boolean>;
   softDeleteSkeleton(skeletonId: number): Promise<void>;
   restoreSoftDeletedSkeleton(skeletonId: number): Promise<void>;
 }
@@ -1152,6 +1153,12 @@ function parseCatmaidSoftDeletedSkeletonIds(response: unknown): Set<number> {
       : [];
   for (const entity of entities) {
     if (entity === null || typeof entity !== "object") continue;
+    const entityId = normalizeCatmaidPositiveId(
+      (entity as { id?: unknown }).id,
+    );
+    if (entityId !== undefined) {
+      deletedSkeletonIds.add(entityId);
+    }
     const skeletonIds = (entity as { skeleton_ids?: unknown }).skeleton_ids;
     if (!Array.isArray(skeletonIds)) continue;
     for (const skeletonId of skeletonIds) {
@@ -1162,6 +1169,48 @@ function parseCatmaidSoftDeletedSkeletonIds(response: unknown): Set<number> {
     }
   }
   return deletedSkeletonIds;
+}
+
+function parseCatmaidEntityAnnotationNames(
+  response: unknown,
+  entityId: number,
+): Set<string> {
+  if (response === null || typeof response !== "object") {
+    return new Set();
+  }
+  const responseObject = response as {
+    entities?: unknown;
+    annotations?: unknown;
+  };
+  const entities =
+    responseObject.entities !== null &&
+    typeof responseObject.entities === "object"
+      ? (responseObject.entities as Record<string, unknown>)
+      : {};
+  const annotations =
+    responseObject.annotations !== null &&
+    typeof responseObject.annotations === "object"
+      ? (responseObject.annotations as Record<string, unknown>)
+      : {};
+  const entityAnnotations = entities[entityId.toString()];
+  if (!Array.isArray(entityAnnotations)) {
+    return new Set();
+  }
+  const names = new Set<string>();
+  for (const entityAnnotation of entityAnnotations) {
+    if (entityAnnotation === null || typeof entityAnnotation !== "object") {
+      continue;
+    }
+    const annotationId = normalizeCatmaidPositiveId(
+      (entityAnnotation as { id?: unknown }).id,
+    );
+    if (annotationId === undefined) continue;
+    const annotationName = annotations[annotationId.toString()];
+    if (typeof annotationName === "string") {
+      names.add(annotationName);
+    }
+  }
+  return names;
 }
 
 function isSoftDeletedSkeletonId(
@@ -1207,6 +1256,11 @@ function fetchWithCatmaidCredentials(
 
 export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
   private metadataInfoPromise: Promise<CatmaidStackInfo | null> | undefined;
+  private softDeletedSkeletonIds: Set<number> | undefined;
+  private softDeletedSkeletonIdsPromise:
+    | Promise<ReadonlySet<number>>
+    | undefined;
+  private softDeletedSkeletonIdsGeneration = 0;
   private readonly msgpackUnpackr = new Unpackr({
     mapsAsObjects: false,
     int64AsType: "number",
@@ -1610,7 +1664,7 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
     );
   }
 
-  async getSoftDeletedSkeletonIds(): Promise<ReadonlySet<number>> {
+  private async fetchSoftDeletedSkeletonIds(): Promise<ReadonlySet<number>> {
     const body = new URLSearchParams({
       annotation_reference: "name",
       ignore_nonexisting: "true",
@@ -1618,12 +1672,72 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
     appendStringList(body, "annotated_with", [
       CATMAID_SOFT_DELETED_SKELETON_ANNOTATION,
     ]);
-    appendStringList(body, "types", ["neuron"]);
+    appendStringList(body, "types", ["skeleton"]);
     const response = await this.fetch("annotations/query-targets", {
       method: "POST",
       body,
     });
     return parseCatmaidSoftDeletedSkeletonIds(response);
+  }
+
+  async getSoftDeletedSkeletonIds(): Promise<ReadonlySet<number>> {
+    if (this.softDeletedSkeletonIds !== undefined) {
+      return this.softDeletedSkeletonIds;
+    }
+    let promise = this.softDeletedSkeletonIdsPromise;
+    if (promise === undefined) {
+      const generation = this.softDeletedSkeletonIdsGeneration;
+      promise = this.fetchSoftDeletedSkeletonIds().then((ids) => {
+        if (this.softDeletedSkeletonIdsGeneration !== generation) {
+          return this.softDeletedSkeletonIds ?? ids;
+        }
+        const cachedIds = new Set(ids);
+        this.softDeletedSkeletonIds = cachedIds;
+        return cachedIds;
+      });
+      this.softDeletedSkeletonIdsPromise = promise;
+      promise.catch(() => {
+        if (this.softDeletedSkeletonIdsPromise === promise) {
+          this.softDeletedSkeletonIdsPromise = undefined;
+        }
+      });
+    }
+    return promise;
+  }
+
+  noteSoftDeletedSkeletonState(skeletonId: number, isDeleted: boolean) {
+    const normalizedSkeletonId = normalizeCatmaidPositiveId(skeletonId);
+    if (normalizedSkeletonId === undefined) {
+      return;
+    }
+    const cachedIds = (this.softDeletedSkeletonIds ??= new Set<number>());
+    if (isDeleted) {
+      cachedIds.add(normalizedSkeletonId);
+    } else {
+      cachedIds.delete(normalizedSkeletonId);
+    }
+    this.softDeletedSkeletonIdsGeneration++;
+  }
+
+  async isSkeletonSoftDeleted(skeletonId: number): Promise<boolean> {
+    const normalizedSkeletonId = normalizeCatmaidPositiveId(skeletonId);
+    if (normalizedSkeletonId === undefined) {
+      throw new Error(
+        "CATMAID soft-delete check requires a valid skeleton id.",
+      );
+    }
+    const body = new URLSearchParams();
+    appendScalarList(body, "object_ids", [normalizedSkeletonId]);
+    const response = await this.fetch("annotations/query", {
+      method: "POST",
+      body,
+    });
+    const isDeleted = parseCatmaidEntityAnnotationNames(
+      response,
+      normalizedSkeletonId,
+    ).has(CATMAID_SOFT_DELETED_SKELETON_ANNOTATION);
+    this.noteSoftDeletedSkeletonState(normalizedSkeletonId, isDeleted);
+    return isDeleted;
   }
 
   async softDeleteSkeleton(skeletonId: number): Promise<void> {
@@ -1632,7 +1746,7 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
       throw new Error("CATMAID soft-delete requires a valid skeleton id.");
     }
     const body = new URLSearchParams();
-    appendScalarList(body, "skeleton_ids", [normalizedSkeletonId]);
+    appendScalarList(body, "entity_ids", [normalizedSkeletonId]);
     appendStringList(body, "annotations", [
       CATMAID_SOFT_DELETED_SKELETON_ANNOTATION,
     ]);
@@ -1640,6 +1754,7 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
       method: "POST",
       body,
     });
+    this.noteSoftDeletedSkeletonState(normalizedSkeletonId, true);
   }
 
   async restoreSoftDeletedSkeleton(skeletonId: number): Promise<void> {
@@ -1647,24 +1762,8 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
     if (normalizedSkeletonId === undefined) {
       throw new Error("CATMAID restore requires a valid skeleton id.");
     }
-    const modelBody = new URLSearchParams();
-    appendScalarList(modelBody, "model_ids", [normalizedSkeletonId]);
-    const models = await this.fetch("neurons/from-models", {
-      method: "POST",
-      body: modelBody,
-    });
-    const rawNeuronId =
-      models !== null && typeof models === "object"
-        ? (models as Record<string, unknown>)[normalizedSkeletonId.toString()]
-        : undefined;
-    const neuronId = normalizeCatmaidPositiveId(rawNeuronId);
-    if (neuronId === undefined) {
-      throw new Error(
-        `CATMAID neurons/from-models did not return a modeled neuron for skeleton ${normalizedSkeletonId}.`,
-      );
-    }
     const replaceBody = new URLSearchParams();
-    appendScalarList(replaceBody, "target_ids", [neuronId]);
+    appendScalarList(replaceBody, "target_ids", [normalizedSkeletonId]);
     appendStringList(replaceBody, "to_remove", [
       CATMAID_SOFT_DELETED_SKELETON_ANNOTATION,
     ]);
@@ -1673,6 +1772,7 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
       method: "POST",
       body: replaceBody,
     });
+    this.noteSoftDeletedSkeletonState(normalizedSkeletonId, false);
   }
 
   async moveNode(

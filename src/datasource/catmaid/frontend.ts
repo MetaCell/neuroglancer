@@ -34,6 +34,7 @@ import {
   CatmaidSkeletonSourceParameters,
   CatmaidCompleteSkeletonSourceParameters,
   CatmaidDataSourceParameters,
+  CATMAID_SPATIAL_SKELETON_SOFT_DELETED_STATE_RPC_ID,
 } from "#src/datasource/catmaid/base.js";
 import { CatmaidSpatialSkeletonEditCommands } from "#src/datasource/catmaid/spatial_skeleton_commands.js";
 import type {
@@ -78,6 +79,8 @@ export class CatmaidSpatiallyIndexedSkeletonSource extends WithParameters(
   private readonly spatialSkeletonEditCommands =
     new CatmaidSpatialSkeletonEditCommands({
       getClient: () => this.client,
+      noteSoftDeletedSkeletonState: (skeletonId, deleted) =>
+        this.noteSoftDeletedSkeletonState(skeletonId, deleted),
     });
   private client_?: CatmaidClient;
 
@@ -199,6 +202,24 @@ export class CatmaidSpatiallyIndexedSkeletonSource extends WithParameters(
 
   getSkeletonRootNode(skeletonId: number) {
     return this.client.getSkeletonRootNode(skeletonId);
+  }
+
+  isSkeletonSoftDeleted(skeletonId: number) {
+    return this.client.isSkeletonSoftDeleted(skeletonId);
+  }
+
+  async restoreSoftDeletedSkeleton(skeletonId: number) {
+    await this.client.restoreSoftDeletedSkeleton(skeletonId);
+    this.noteSoftDeletedSkeletonState(skeletonId, false);
+  }
+
+  noteSoftDeletedSkeletonState(skeletonId: number, deleted: boolean) {
+    this.client.noteSoftDeletedSkeletonState(skeletonId, deleted);
+    this.rpc?.invoke(CATMAID_SPATIAL_SKELETON_SOFT_DELETED_STATE_RPC_ID, {
+      id: this.rpcId,
+      skeletonId,
+      deleted,
+    });
   }
 }
 

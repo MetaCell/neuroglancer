@@ -188,4 +188,23 @@ describe("SpatiallyIndexedSkeletonLayer browse exclusions", () => {
     expect(excludedSegments).toBeInstanceOf(Uint64Set);
     expect([...excludedSegments]).toEqual([29n]);
   });
+
+  it("removes restored segments from browse suppression", () => {
+    const layer = Object.assign(
+      Object.create(SpatiallyIndexedSkeletonLayer.prototype),
+      {
+        suppressedBrowseSegmentIds: new Set<number>([29]),
+        browseExcludedSegments: new Uint64Set(),
+        browseExcludedSegmentsKey: "29",
+        redrawNeeded: { dispatch: vi.fn() },
+        getLoadedOverlaySegmentIds: () => [],
+      },
+    );
+
+    expect(layer.unsuppressBrowseSegment(29)).toBe(true);
+    expect(layer.redrawNeeded.dispatch).toHaveBeenCalledTimes(1);
+
+    const excludedSegments = (layer as any).getBrowsePassExcludedSegments();
+    expect(excludedSegments).toBeUndefined();
+  });
 });

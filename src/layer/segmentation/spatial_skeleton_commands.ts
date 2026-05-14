@@ -104,10 +104,9 @@ function executeCommandWithPendingMessage<T>(
 }
 
 export function showSpatialSkeletonActionError(action: string, error: unknown) {
-  const { message, requiresDismissal } = getSpatialSkeletonActionErrorMessage(
-    action,
-    error,
-  );
+  const { message, requiresDismissal, cancelled } =
+    getSpatialSkeletonActionErrorMessage(action, error);
+  if (cancelled) return undefined;
   return requiresDismissal
     ? StatusMessage.showErrorMessage(message)
     : StatusMessage.showTemporaryMessage(message);
