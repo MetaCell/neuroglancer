@@ -62,12 +62,12 @@ import {
   type SpatiallyIndexedSkeletonNavigationTarget,
   type SpatiallyIndexedSkeletonOpenLeaf,
   type SpatiallyIndexedSkeletonNavigationGraph,
-} from "#src/skeleton/navigation.js";
+} from "#src/skeleton/navigation_graph.js";
 import {
   getSpatialSkeletonNodeFilterLabel,
   getSpatialSkeletonNodeIconFilterType,
+  SpatialSkeletonDisplayNodeType,
   SpatialSkeletonNodeFilterType,
-  type SpatialSkeletonDisplayNodeType as SkeletonNodeType,
 } from "#src/skeleton/node_types.js";
 import { StatusMessage } from "#src/status.js";
 import { observeWatchable, registerNested } from "#src/trackable_value.js";
@@ -75,7 +75,7 @@ import {
   buildSpatialSkeletonSegmentRenderState,
   type SpatialSkeletonSegmentRenderRow,
   type SpatialSkeletonSegmentRenderState,
-} from "#src/ui/spatial_skeleton_edit_tab_render_state.js";
+} from "#src/ui/spatial_skeleton_edit_tab_render.js";
 import { confirmSpatialSkeletonDeletion } from "#src/ui/spatial_skeleton_delete_confirmation.js";
 import {
   SPATIAL_SKELETON_EDIT_MODE_TOOL_ID,
@@ -145,18 +145,18 @@ interface SpatiallyIndexedSkeletonNavigationApi {
   ): Promise<SpatiallyIndexedSkeletonNavigationTarget | undefined>;
 }
 
-const NODE_TYPE_ICONS: Record<SkeletonNodeType, string> = {
-  root: svg_origin,
-  branchStart: svg_share_android,
-  regular: svg_minus,
-  virtualEnd: svg_circle,
+const NODE_TYPE_ICONS: Record<SpatialSkeletonDisplayNodeType, string> = {
+  [SpatialSkeletonDisplayNodeType.ROOT]: svg_origin,
+  [SpatialSkeletonDisplayNodeType.BRANCH_START]: svg_share_android,
+  [SpatialSkeletonDisplayNodeType.REGULAR]: svg_minus,
+  [SpatialSkeletonDisplayNodeType.VIRTUAL_END]: svg_circle,
 };
 
-const NODE_TYPE_LABELS: Record<SkeletonNodeType, string> = {
-  root: "root",
-  branchStart: "branch start",
-  regular: "regular",
-  virtualEnd: "virtual end",
+const NODE_TYPE_LABELS: Record<SpatialSkeletonDisplayNodeType, string> = {
+  [SpatialSkeletonDisplayNodeType.ROOT]: "root",
+  [SpatialSkeletonDisplayNodeType.BRANCH_START]: "branch start",
+  [SpatialSkeletonDisplayNodeType.REGULAR]: "regular",
+  [SpatialSkeletonDisplayNodeType.VIRTUAL_END]: "virtual end",
 };
 
 export class SpatialSkeletonEditTab extends Tab {

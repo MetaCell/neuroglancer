@@ -1,3 +1,19 @@
+/**
+ * @license
+ * Copyright 2026 Google Inc.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import { describe, expect, it } from "vitest";
 
 import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
@@ -6,6 +22,7 @@ import {
   getSpatialSkeletonNodeFilterLabel,
   getSpatialSkeletonNodeIconFilterType,
   matchesSpatialSkeletonNodeFilter,
+  SpatialSkeletonDisplayNodeType,
   SpatialSkeletonNodeFilterType,
 } from "#src/skeleton/node_types.js";
 
@@ -52,25 +69,25 @@ describe("skeleton node types", () => {
       isLeaf: true,
       nodeHasDescription: false,
       nodeIsTrueEnd: false,
-      nodeType: "root" as const,
+      nodeType: SpatialSkeletonDisplayNodeType.ROOT,
     };
     const virtualEnd = {
       isLeaf: true,
       nodeHasDescription: false,
       nodeIsTrueEnd: false,
-      nodeType: "virtualEnd" as const,
+      nodeType: SpatialSkeletonDisplayNodeType.VIRTUAL_END,
     };
     const trueEnd = {
       isLeaf: true,
       nodeHasDescription: false,
       nodeIsTrueEnd: true,
-      nodeType: "virtualEnd" as const,
+      nodeType: SpatialSkeletonDisplayNodeType.VIRTUAL_END,
     };
     const describedNode = {
       isLeaf: false,
       nodeHasDescription: true,
       nodeIsTrueEnd: false,
-      nodeType: "regular" as const,
+      nodeType: SpatialSkeletonDisplayNodeType.REGULAR,
     };
 
     expect(
@@ -121,19 +138,19 @@ describe("skeleton node types", () => {
     expect(
       getSpatialSkeletonNodeIconFilterType({
         nodeIsTrueEnd: false,
-        nodeType: "virtualEnd",
+        nodeType: SpatialSkeletonDisplayNodeType.VIRTUAL_END,
       }),
     ).toBe(SpatialSkeletonNodeFilterType.VIRTUAL_END);
     expect(
       getSpatialSkeletonNodeIconFilterType({
         nodeIsTrueEnd: true,
-        nodeType: "regular",
+        nodeType: SpatialSkeletonDisplayNodeType.REGULAR,
       }),
     ).toBe(SpatialSkeletonNodeFilterType.TRUE_END);
     expect(
       getSpatialSkeletonNodeIconFilterType({
         nodeIsTrueEnd: false,
-        nodeType: "root",
+        nodeType: SpatialSkeletonDisplayNodeType.ROOT,
       }),
     ).toBeUndefined();
     expect(
