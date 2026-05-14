@@ -241,6 +241,36 @@ export function getCatmaidRevisionToken(
   return undefined;
 }
 
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getObjectProperty(value: unknown, property: string): unknown {
+  return isObjectRecord(value) ? value[property] : undefined;
+}
+
+function getOptionalObjectRecord(
+  value: unknown,
+  property: string,
+): Record<string, unknown> | undefined {
+  const propertyValue = getObjectProperty(value, property);
+  return isObjectRecord(propertyValue) ? propertyValue : undefined;
+}
+
+function getArrayPropertyOrEmpty(
+  value: unknown,
+  property: string,
+): readonly unknown[] {
+  const propertyValue = getObjectProperty(value, property);
+  return Array.isArray(propertyValue) ? propertyValue : [];
+}
+
+function getEditionTimeRevisionToken(value: unknown) {
+  return normalizeCatmaidRevisionToken(
+    getObjectProperty(value, "edition_time"),
+  );
+}
+
 export const CATMAID_SPATIAL_SKELETON_CONFIDENCE_VALUES = [
   0, 25, 50, 75, 100,
 ] as const;
@@ -771,15 +801,18 @@ function getCatmaidHistoryRevisionToken(
 }
 
 function parseCatmaidSkeletonRootTarget(
-  response: any,
+  response: unknown,
 ): SpatiallyIndexedSkeletonNavigationTarget {
-  if (!response || typeof response !== "object" || Array.isArray(response)) {
+  if (!isObjectRecord(response)) {
     throw new Error(
       "CATMAID skeleton root endpoint returned an unexpected response format.",
     );
   }
 
-  const { root_id, x, y, z } = response as Record<string, unknown>;
+  const root_id = getObjectProperty(response, "root_id");
+  const x = getObjectProperty(response, "x");
+  const y = getObjectProperty(response, "y");
+  const z = getObjectProperty(response, "z");
   const nodeId = Number(root_id);
   const px = Number(x);
   const py = Number(y);
@@ -1046,38 +1079,35 @@ function parseCatmaidNodeRevisionUpdates(
 }
 
 function parseCatmaidMoveRevisionToken(
-  response: any,
+  response: unknown,
   nodeId: number,
 ): string | undefined {
-  const updatedRows = Array.isArray(response?.old_treenodes)
-    ? response.old_treenodes
-    : [];
+  const updatedRows = getArrayPropertyOrEmpty(response, "old_treenodes");
   for (const row of updatedRows) {
     if (!Array.isArray(row) || Number(row[0]) !== nodeId) continue;
     return normalizeCatmaidRevisionToken(row[1]);
   }
-  return normalizeCatmaidRevisionToken(response?.edition_time);
+  return getEditionTimeRevisionToken(response);
 }
 
 function parseCatmaidUpdatedNodesRevisionToken(
-  response: any,
+  response: unknown,
   nodeId: number,
 ): string | undefined {
-  const updatedNodes = response?.updated_nodes;
-  if (updatedNodes !== null && typeof updatedNodes === "object") {
-    const directMatch = (updatedNodes as Record<string, any>)[nodeId];
-    const directRevision = normalizeCatmaidRevisionToken(
-      directMatch?.edition_time,
+  const updatedNodes = getOptionalObjectRecord(response, "updated_nodes");
+  if (updatedNodes !== undefined) {
+    const directRevision = getEditionTimeRevisionToken(
+      updatedNodes[nodeId.toString()],
     );
     if (directRevision !== undefined) {
       return directRevision;
     }
   }
-  return normalizeCatmaidRevisionToken(response?.edition_time);
+  return getEditionTimeRevisionToken(response);
 }
 
 function parseCatmaidConfidenceRevisionToken(
-  response: any,
+  response: unknown,
   nodeId: number,
 ): string | undefined {
   const directRevision = parseCatmaidUpdatedNodesRevisionToken(
@@ -1087,12 +1117,12 @@ function parseCatmaidConfidenceRevisionToken(
   if (directRevision !== undefined) {
     return directRevision;
   }
-  const updatedPartners = response?.updated_partners;
-  if (updatedPartners === null || typeof updatedPartners !== "object") {
+  const updatedPartners = getOptionalObjectRecord(response, "updated_partners");
+  if (updatedPartners === undefined) {
     return undefined;
   }
-  for (const value of Object.values(updatedPartners as Record<string, any>)) {
-    const revisionToken = normalizeCatmaidRevisionToken(value?.edition_time);
+  for (const value of Object.values(updatedPartners)) {
+    const revisionToken = getEditionTimeRevisionToken(value);
     if (revisionToken !== undefined) {
       return revisionToken;
     }
@@ -1119,9 +1149,11 @@ function parseCatmaidChildRevisionUpdates(
 }
 
 function parseCatmaidDeleteRevisionUpdates(
-  response: any,
+  response: unknown,
 ): readonly CatmaidSkeletonNodeSourceStateUpdate[] {
-  return parseCatmaidChildRevisionUpdates(response?.children);
+  return parseCatmaidChildRevisionUpdates(
+    getObjectProperty(response, "children"),
+  );
 }
 
 function fetchWithCatmaidCredentials(
@@ -1879,18 +1911,24 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
   private async addTrueEndLabel(
     nodeId: number,
   ): Promise<CatmaidNodeSourceStateResult> {
-    const response = await this.addNodeLabel(nodeId, CATMAID_TRUE_END_LABEL);
+    const response: unknown = await this.addNodeLabel(
+      nodeId,
+      CATMAID_TRUE_END_LABEL,
+    );
     return getCatmaidSingleNodeRevisionResult(
-      normalizeCatmaidRevisionToken((response as any)?.edition_time),
+      getEditionTimeRevisionToken(response),
     );
   }
 
   private async removeTrueEndLabel(
     nodeId: number,
   ): Promise<CatmaidNodeSourceStateResult> {
-    const response = await this.removeNodeLabel(nodeId, CATMAID_TRUE_END_LABEL);
+    const response: unknown = await this.removeNodeLabel(
+      nodeId,
+      CATMAID_TRUE_END_LABEL,
+    );
     return getCatmaidSingleNodeRevisionResult(
-      normalizeCatmaidRevisionToken((response as any)?.edition_time),
+      getEditionTimeRevisionToken(response),
     );
   }
 

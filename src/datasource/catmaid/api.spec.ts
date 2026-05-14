@@ -583,6 +583,22 @@ describe("CatmaidClient skeleton editing methods", () => {
     expect(getFetchPath(fetchMock)).toBe("skeletons/17/root");
   });
 
+  it("rejects invalid skeleton root target responses", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ root_id: "not-a-node", x: 1, y: 2, z: 3 });
+    (client as any).fetch = fetchMock;
+
+    await expect(client.getSkeletonRootNode(17)).rejects.toThrow(
+      "CATMAID skeleton root endpoint returned an unexpected response format.",
+    );
+    await expect(client.getSkeletonRootNode(17)).rejects.toThrow(
+      "CATMAID skeleton root endpoint returned an unexpected response format.",
+    );
+  });
+
   it("rejects merge state when the provided node ids do not match the request", async () => {
     const client = new CatmaidClient("https://example.invalid", 1);
     const fetchMock = vi.fn();
@@ -885,6 +901,26 @@ describe("CatmaidClient skeleton editing methods", () => {
     );
   });
 
+  it("uses edition_time as the move revision fallback", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const fetchMock = vi.fn().mockResolvedValue({
+      updated: 1,
+      edition_time: "2026-03-29T12:10:30Z",
+    });
+    (client as any).fetch = fetchMock;
+
+    await expect(
+      client.moveNode(42, 10, 11, 12, {
+        node: {
+          nodeId: 42,
+          revisionToken: "2026-03-29T12:00:00Z",
+        },
+      }),
+    ).resolves.toEqual({
+      sourceState: testSourceState("2026-03-29T12:10:30Z"),
+    });
+  });
+
   it("deletes nodes using neighborhood state and returns child revisions", async () => {
     const client = new CatmaidClient("https://example.invalid", 1);
     const fetchMock = vi.fn().mockResolvedValue({
@@ -933,6 +969,28 @@ describe("CatmaidClient skeleton editing methods", () => {
         links: [],
       }),
     );
+  });
+
+  it("treats missing delete child revisions as an empty update list", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const fetchMock = vi.fn().mockResolvedValue({
+      success: "Removed treenode successfully.",
+    });
+    (client as any).fetch = fetchMock;
+
+    await expect(
+      client.deleteNode(11, {
+        childNodeIds: [],
+        editContext: {
+          node: {
+            nodeId: 11,
+            revisionToken: "2026-03-29T12:15:00Z",
+          },
+        },
+      }),
+    ).resolves.toEqual({
+      nodeSourceStateUpdates: [],
+    });
   });
 
   it("updates descriptions without CATMAID node state", async () => {
@@ -998,6 +1056,42 @@ describe("CatmaidClient skeleton editing methods", () => {
     expect(addTagRequestBody.get("tags")).toBe("ends");
     expect(addTagRequestBody.get("delete_existing")).toBe("false");
     expect(removeTagRequestBody.get("tag")).toBe("ends");
+  });
+
+  it("parses direct and fallback node update revision responses", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        updated_nodes: {
+          "11": { edition_time: "2026-03-29T13:15:00Z" },
+        },
+      })
+      .mockResolvedValueOnce({
+        edition_time: "2026-03-29T13:16:00Z",
+      });
+    (client as any).fetch = fetchMock;
+
+    await expect(
+      client.updateRadius(11, 4, {
+        node: {
+          nodeId: 11,
+          revisionToken: "2026-03-29T13:14:00Z",
+        },
+      }),
+    ).resolves.toEqual({
+      sourceState: testSourceState("2026-03-29T13:15:00Z"),
+    });
+    await expect(
+      client.updateRadius(11, 5, {
+        node: {
+          nodeId: 11,
+          revisionToken: "2026-03-29T13:14:30Z",
+        },
+      }),
+    ).resolves.toEqual({
+      sourceState: testSourceState("2026-03-29T13:16:00Z"),
+    });
   });
 
   it("maps generic confidence percentages to CATMAID confidence levels", async () => {

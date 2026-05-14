@@ -527,6 +527,22 @@ describe("spatial_skeleton_commands", () => {
     ).toThrow("CATMAID move-node command received an invalid payload.");
   });
 
+  it("keeps coordinate validation in CATMAID position normalization", () => {
+    const commandSource = makeCatmaidEditCommands();
+    const layer = {
+      spatialSkeletonState: {
+        commandHistory: new SpatialSkeletonCommandHistory(),
+      },
+    };
+
+    expect(() =>
+      commandSource.addNodesCommand.createCommand(layer as any, {
+        skeletonId: 23,
+        positionInModelSpace: [Number.NaN, 2, 3],
+      }),
+    ).toThrow("CATMAID add-node position coordinates must be finite.");
+  });
+
   it("commits radius and confidence commands independently", async () => {
     suppressStatusMessages();
 

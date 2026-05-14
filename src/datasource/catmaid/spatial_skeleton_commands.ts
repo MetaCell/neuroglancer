@@ -168,75 +168,99 @@ interface CatmaidSpatialSkeletonEditOperations {
   ): Promise<CatmaidSpatialSkeletonSplitResult>;
 }
 
-function isFiniteNumber(value: number | undefined) {
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isFiniteNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-function isOptionalFiniteNumber(value: number | undefined) {
+function isOptionalFiniteNumber(value: unknown) {
   return value === undefined || isFiniteNumber(value);
 }
 
 function isSpatialSkeletonVector(
-  value: object | undefined,
+  value: unknown,
 ): value is SpatialSkeletonVector {
   return (
     value !== undefined && isFiniteNumber((value as { length?: number }).length)
   );
 }
 
-function areFiniteNumbers(values: readonly number[] | undefined) {
-  return values !== undefined && values.every((value) => isFiniteNumber(value));
+function isFiniteNumberArray(value: unknown): value is readonly number[] {
+  return Array.isArray(value) && value.every((entry) => isFiniteNumber(entry));
+}
+
+function hasFiniteNumber(value: Record<string, unknown>, property: string) {
+  return isFiniteNumber(value[property]);
+}
+
+function hasOptionalFiniteNumber(
+  value: Record<string, unknown>,
+  property: string,
+) {
+  return isOptionalFiniteNumber(value[property]);
+}
+
+function hasSpatialSkeletonVector(
+  value: Record<string, unknown>,
+  property: string,
+) {
+  return isSpatialSkeletonVector(value[property]);
+}
+
+function hasFiniteNumberArray(
+  value: Record<string, unknown>,
+  property: string,
+) {
+  return isFiniteNumberArray(value[property]);
+}
+
+function hasOptionalString(value: Record<string, unknown>, property: string) {
+  return value[property] === undefined || typeof value[property] === "string";
+}
+
+function hasBoolean(value: Record<string, unknown>, property: string) {
+  return typeof value[property] === "boolean";
+}
+
+function hasOptionalBoolean(value: Record<string, unknown>, property: string) {
+  return value[property] === undefined || hasBoolean(value, property);
 }
 
 function isSpatiallyIndexedSkeletonNodePayload(
-  value: object | undefined,
+  value: unknown,
 ): value is SpatiallyIndexedSkeletonNode {
-  if (value === undefined) return false;
-  const candidate = value as {
-    nodeId?: number;
-    segmentId?: number;
-    position?: object;
-    parentNodeId?: number;
-    radius?: number;
-    confidence?: number;
-    description?: string;
-    isTrueEnd?: boolean;
-  };
+  if (!isObjectRecord(value)) return false;
   return (
-    isFiniteNumber(candidate.nodeId) &&
-    isFiniteNumber(candidate.segmentId) &&
-    isSpatialSkeletonVector(candidate.position) &&
-    isOptionalFiniteNumber(candidate.parentNodeId) &&
-    isOptionalFiniteNumber(candidate.radius) &&
-    isOptionalFiniteNumber(candidate.confidence) &&
-    (candidate.description === undefined ||
-      typeof candidate.description === "string") &&
-    (candidate.isTrueEnd === undefined ||
-      typeof candidate.isTrueEnd === "boolean")
+    hasFiniteNumber(value, "nodeId") &&
+    hasFiniteNumber(value, "segmentId") &&
+    hasSpatialSkeletonVector(value, "position") &&
+    hasOptionalFiniteNumber(value, "parentNodeId") &&
+    hasOptionalFiniteNumber(value, "radius") &&
+    hasOptionalFiniteNumber(value, "confidence") &&
+    hasOptionalString(value, "description") &&
+    hasOptionalBoolean(value, "isTrueEnd")
   );
 }
 
 function isCatmaidMergeEndpoint(
-  value: object | undefined,
+  value: unknown,
 ): value is CatmaidSpatialSkeletonMergeEndpoint {
-  if (value === undefined) return false;
-  const candidate = value as {
-    nodeId?: number;
-    segmentId?: number;
-    position?: object;
-  };
+  if (!isObjectRecord(value)) return false;
   return (
-    isFiniteNumber(candidate.nodeId) &&
-    isFiniteNumber(candidate.segmentId) &&
-    (candidate.position === undefined ||
-      isSpatialSkeletonVector(candidate.position))
+    hasFiniteNumber(value, "nodeId") &&
+    hasFiniteNumber(value, "segmentId") &&
+    (value.position === undefined ||
+      hasSpatialSkeletonVector(value, "position"))
   );
 }
 
 function requireCatmaidCommandPayload<T extends object>(
-  payload: object,
+  payload: unknown,
   label: string,
-  isValid: (payload: object) => payload is T,
+  isValid: (payload: unknown) => payload is T,
 ) {
   if (!isValid(payload)) {
     throw new Error(`CATMAID ${label} command received an invalid payload.`);
@@ -249,15 +273,11 @@ function requireCatmaidAddNodeCommandOptions(payload: object) {
     payload,
     "add-node",
     (candidate): candidate is CatmaidSpatialSkeletonAddNodeCommandOptions => {
-      const options = candidate as {
-        skeletonId?: number;
-        parentNodeId?: number;
-        positionInModelSpace?: object;
-      };
       return (
-        isFiniteNumber(options.skeletonId) &&
-        isOptionalFiniteNumber(options.parentNodeId) &&
-        isSpatialSkeletonVector(options.positionInModelSpace)
+        isObjectRecord(candidate) &&
+        hasFiniteNumber(candidate, "skeletonId") &&
+        hasOptionalFiniteNumber(candidate, "parentNodeId") &&
+        hasSpatialSkeletonVector(candidate, "positionInModelSpace")
       );
     },
   );
@@ -270,17 +290,12 @@ function requireCatmaidInsertNodeCommandOptions(payload: object) {
     (
       candidate,
     ): candidate is CatmaidSpatialSkeletonInsertNodeCommandOptions => {
-      const options = candidate as {
-        skeletonId?: number;
-        parentNodeId?: number;
-        childNodeIds?: readonly number[];
-        positionInModelSpace?: object;
-      };
       return (
-        isFiniteNumber(options.skeletonId) &&
-        isFiniteNumber(options.parentNodeId) &&
-        areFiniteNumbers(options.childNodeIds) &&
-        isSpatialSkeletonVector(options.positionInModelSpace)
+        isObjectRecord(candidate) &&
+        hasFiniteNumber(candidate, "skeletonId") &&
+        hasFiniteNumber(candidate, "parentNodeId") &&
+        hasFiniteNumberArray(candidate, "childNodeIds") &&
+        hasSpatialSkeletonVector(candidate, "positionInModelSpace")
       );
     },
   );
@@ -291,13 +306,10 @@ function requireCatmaidMoveNodeCommandOptions(payload: object) {
     payload,
     "move-node",
     (candidate): candidate is CatmaidSpatialSkeletonMoveNodeCommandOptions => {
-      const options = candidate as {
-        node?: object;
-        nextPositionInModelSpace?: object;
-      };
       return (
-        isSpatiallyIndexedSkeletonNodePayload(options.node) &&
-        isSpatialSkeletonVector(options.nextPositionInModelSpace)
+        isObjectRecord(candidate) &&
+        isSpatiallyIndexedSkeletonNodePayload(candidate.node) &&
+        hasSpatialSkeletonVector(candidate, "nextPositionInModelSpace")
       );
     },
   );
@@ -318,14 +330,10 @@ function requireCatmaidNodeDescriptionCommandOptions(payload: object) {
     (
       candidate,
     ): candidate is CatmaidSpatialSkeletonNodeDescriptionCommandOptions => {
-      const options = candidate as {
-        node?: object;
-        nextDescription?: string;
-      };
       return (
-        isSpatiallyIndexedSkeletonNodePayload(options.node) &&
-        (options.nextDescription === undefined ||
-          typeof options.nextDescription === "string")
+        isObjectRecord(candidate) &&
+        isSpatiallyIndexedSkeletonNodePayload(candidate.node) &&
+        hasOptionalString(candidate, "nextDescription")
       );
     },
   );
@@ -338,13 +346,10 @@ function requireCatmaidNodeTrueEndCommandOptions(payload: object) {
     (
       candidate,
     ): candidate is CatmaidSpatialSkeletonNodeTrueEndCommandOptions => {
-      const options = candidate as {
-        node?: object;
-        nextIsTrueEnd?: boolean;
-      };
       return (
-        isSpatiallyIndexedSkeletonNodePayload(options.node) &&
-        typeof options.nextIsTrueEnd === "boolean"
+        isObjectRecord(candidate) &&
+        isSpatiallyIndexedSkeletonNodePayload(candidate.node) &&
+        hasBoolean(candidate, "nextIsTrueEnd")
       );
     },
   );
@@ -357,13 +362,10 @@ function requireCatmaidNodeRadiusCommandOptions(payload: object) {
     (
       candidate,
     ): candidate is CatmaidSpatialSkeletonNodeRadiusCommandOptions => {
-      const options = candidate as {
-        node?: object;
-        nextRadius?: number;
-      };
       return (
-        isSpatiallyIndexedSkeletonNodePayload(options.node) &&
-        isFiniteNumber(options.nextRadius)
+        isObjectRecord(candidate) &&
+        isSpatiallyIndexedSkeletonNodePayload(candidate.node) &&
+        hasFiniteNumber(candidate, "nextRadius")
       );
     },
   );
@@ -376,13 +378,10 @@ function requireCatmaidNodeConfidenceCommandOptions(payload: object) {
     (
       candidate,
     ): candidate is CatmaidSpatialSkeletonNodeConfidenceCommandOptions => {
-      const options = candidate as {
-        node?: object;
-        nextConfidence?: number;
-      };
       return (
-        isSpatiallyIndexedSkeletonNodePayload(options.node) &&
-        isFiniteNumber(options.nextConfidence)
+        isObjectRecord(candidate) &&
+        isSpatiallyIndexedSkeletonNodePayload(candidate.node) &&
+        hasFiniteNumber(candidate, "nextConfidence")
       );
     },
   );
@@ -398,15 +397,11 @@ function requireCatmaidRerootCommandPayload(payload: object) {
       SpatiallyIndexedSkeletonNode,
       "nodeId" | "segmentId" | "parentNodeId"
     > => {
-      const node = candidate as {
-        nodeId?: number;
-        segmentId?: number;
-        parentNodeId?: number;
-      };
       return (
-        isFiniteNumber(node.nodeId) &&
-        isFiniteNumber(node.segmentId) &&
-        isOptionalFiniteNumber(node.parentNodeId)
+        isObjectRecord(candidate) &&
+        hasFiniteNumber(candidate, "nodeId") &&
+        hasFiniteNumber(candidate, "segmentId") &&
+        hasOptionalFiniteNumber(candidate, "parentNodeId")
       );
     },
   );
@@ -422,11 +417,11 @@ function requireCatmaidSplitCommandPayload(payload: object) {
       SpatiallyIndexedSkeletonNode,
       "nodeId" | "segmentId"
     > => {
-      const node = candidate as {
-        nodeId?: number;
-        segmentId?: number;
-      };
-      return isFiniteNumber(node.nodeId) && isFiniteNumber(node.segmentId);
+      return (
+        isObjectRecord(candidate) &&
+        hasFiniteNumber(candidate, "nodeId") &&
+        hasFiniteNumber(candidate, "segmentId")
+      );
     },
   );
 }
@@ -436,13 +431,10 @@ function requireCatmaidMergeCommandPayload(payload: object) {
     payload,
     "merge",
     (candidate): candidate is CatmaidSpatialSkeletonMergeCommandPayload => {
-      const options = candidate as {
-        firstNode?: object;
-        secondNode?: object;
-      };
       return (
-        isCatmaidMergeEndpoint(options.firstNode) &&
-        isCatmaidMergeEndpoint(options.secondNode)
+        isObjectRecord(candidate) &&
+        isCatmaidMergeEndpoint(candidate.firstNode) &&
+        isCatmaidMergeEndpoint(candidate.secondNode)
       );
     },
   );
@@ -2253,23 +2245,129 @@ function getCatmaidEditPosition(
   return [values[0], values[1], values[2]];
 }
 
+function commitWithCatmaidPosition<T>(
+  position: SpatialSkeletonVector,
+  label: string,
+  commit: (x: number, y: number, z: number) => Promise<T>,
+) {
+  const [x, y, z] = getCatmaidEditPosition(position, label);
+  return commit(x, y, z);
+}
+
+function getNodeIds(
+  nodes: readonly Pick<SpatiallyIndexedSkeletonNode, "nodeId">[],
+) {
+  return nodes.map((node) => node.nodeId);
+}
+
+function getOptionalNodeEditContext(
+  node: SpatiallyIndexedSkeletonNode | undefined,
+) {
+  return node === undefined ? undefined : buildCatmaidNodeEditContext(node);
+}
+
+function getNeighborhoodEditContextOptions(
+  request: CatmaidSpatialSkeletonDeleteNodeRequest,
+) {
+  return {
+    childNodeIds: getNodeIds(request.childNodes),
+    editContext: buildCatmaidNeighborhoodEditContext(
+      request.node,
+      request.segmentNodes,
+    ),
+  };
+}
+
 export class CatmaidSpatialSkeletonEditCommands {
   constructor(
     private readonly editContext: CatmaidSpatialSkeletonEditCommandContext,
   ) {}
 
   private readonly editOperations: CatmaidSpatialSkeletonEditOperations = {
-    commitAddNode: (request) => this.commitAddNode(request),
-    commitInsertNode: (request) => this.commitInsertNode(request),
-    commitMoveNode: (request) => this.commitMoveNode(request),
-    commitDeleteNode: (request) => this.commitDeleteNode(request),
-    commitReroot: (request) => this.commitReroot(request),
-    commitDescription: (request) => this.commitDescription(request),
-    commitTrueEnd: (request) => this.commitTrueEnd(request),
-    commitRadius: (request) => this.commitRadius(request),
-    commitConfidence: (request) => this.commitConfidence(request),
-    commitMerge: (request) => this.commitMerge(request),
-    commitSplit: (request) => this.commitSplit(request),
+    commitAddNode: (request) =>
+      commitWithCatmaidPosition(
+        request.position,
+        "add-node position",
+        (x, y, z) =>
+          this.client.addNode(
+            request.segmentId,
+            x,
+            y,
+            z,
+            request.parentNode?.nodeId,
+            getOptionalNodeEditContext(request.parentNode),
+          ),
+      ),
+    commitInsertNode: (request) =>
+      commitWithCatmaidPosition(
+        request.position,
+        "insert-node position",
+        (x, y, z) =>
+          this.client.insertNode(
+            request.segmentId,
+            x,
+            y,
+            z,
+            request.parentNode.nodeId,
+            getNodeIds(request.childNodes),
+            buildCatmaidInsertEditContext(
+              request.parentNode,
+              request.childNodes,
+            ),
+          ),
+      ),
+    commitMoveNode: (request) =>
+      commitWithCatmaidPosition(
+        request.position,
+        "move-node position",
+        (x, y, z) =>
+          this.client.moveNode(
+            request.node.nodeId,
+            x,
+            y,
+            z,
+            buildCatmaidNodeEditContext(request.node),
+          ),
+      ),
+    commitDeleteNode: (request) =>
+      this.client.deleteNode(
+        request.node.nodeId,
+        getNeighborhoodEditContextOptions(request),
+      ),
+    commitReroot: (request) =>
+      this.client.rerootSkeleton(
+        request.node.nodeId,
+        buildCatmaidRerootEditContext(request.node, request.segmentNodes),
+      ),
+    commitDescription: (request) =>
+      this.client.updateDescription(request.node.nodeId, request.description, {
+        isTrueEnd: request.isTrueEnd ?? request.node.isTrueEnd === true,
+      }),
+    commitTrueEnd: (request) =>
+      this.client.toggleTrueEnd(request.node.nodeId, request.isTrueEnd),
+    commitRadius: (request) =>
+      this.client.updateRadius(
+        request.node.nodeId,
+        request.radius,
+        buildCatmaidNodeEditContext(request.node),
+      ),
+    commitConfidence: (request) =>
+      this.client.updateConfidence(
+        request.node.nodeId,
+        request.confidence,
+        buildCatmaidNodeEditContext(request.node),
+      ),
+    commitMerge: (request) =>
+      this.client.mergeSkeletons(
+        request.fromNode.nodeId,
+        request.toNode.nodeId,
+        buildCatmaidMultiNodeEditContext(request.fromNode, request.toNode),
+      ),
+    commitSplit: (request) =>
+      this.client.splitSkeleton(
+        request.node.nodeId,
+        buildCatmaidNeighborhoodEditContext(request.node, request.segmentNodes),
+      ),
   };
 
   readonly addNodesCommand = makeCatmaidCommandFactory(
@@ -2376,137 +2474,6 @@ export class CatmaidSpatialSkeletonEditCommands {
 
   private get client() {
     return this.editContext.getClient();
-  }
-
-  private commitAddNode(
-    request: CatmaidSpatialSkeletonAddNodeRequest,
-  ): Promise<CatmaidSpatialSkeletonAddNodeResult> {
-    const [x, y, z] = getCatmaidEditPosition(
-      request.position,
-      "add-node position",
-    );
-    return this.client.addNode(
-      request.segmentId,
-      x,
-      y,
-      z,
-      request.parentNode?.nodeId,
-      request.parentNode === undefined
-        ? undefined
-        : buildCatmaidNodeEditContext(request.parentNode),
-    );
-  }
-
-  private commitInsertNode(
-    request: CatmaidSpatialSkeletonInsertNodeRequest,
-  ): Promise<CatmaidSpatialSkeletonInsertNodeResult> {
-    const [x, y, z] = getCatmaidEditPosition(
-      request.position,
-      "insert-node position",
-    );
-    return this.client.insertNode(
-      request.segmentId,
-      x,
-      y,
-      z,
-      request.parentNode.nodeId,
-      request.childNodes.map((child) => child.nodeId),
-      buildCatmaidInsertEditContext(request.parentNode, request.childNodes),
-    );
-  }
-
-  private commitMoveNode(
-    request: CatmaidSpatialSkeletonMoveNodeRequest,
-  ): Promise<CatmaidSpatialSkeletonNodeSourceStateResult> {
-    const [x, y, z] = getCatmaidEditPosition(
-      request.position,
-      "move-node position",
-    );
-    return this.client.moveNode(
-      request.node.nodeId,
-      x,
-      y,
-      z,
-      buildCatmaidNodeEditContext(request.node),
-    );
-  }
-
-  private commitDeleteNode(
-    request: CatmaidSpatialSkeletonDeleteNodeRequest,
-  ): Promise<CatmaidSpatialSkeletonDeleteNodeResult> {
-    return this.client.deleteNode(request.node.nodeId, {
-      childNodeIds: request.childNodes.map((child) => child.nodeId),
-      editContext: buildCatmaidNeighborhoodEditContext(
-        request.node,
-        request.segmentNodes,
-      ),
-    });
-  }
-
-  private commitReroot(
-    request: CatmaidSpatialSkeletonRerootRequest,
-  ): Promise<CatmaidSpatialSkeletonRerootResult> {
-    return this.client.rerootSkeleton(
-      request.node.nodeId,
-      buildCatmaidRerootEditContext(request.node, request.segmentNodes),
-    );
-  }
-
-  private commitDescription(
-    request: CatmaidSpatialSkeletonDescriptionUpdateRequest,
-  ): Promise<CatmaidSpatialSkeletonDescriptionUpdateResult> {
-    return this.client.updateDescription(
-      request.node.nodeId,
-      request.description,
-      {
-        isTrueEnd: request.isTrueEnd ?? request.node.isTrueEnd === true,
-      },
-    );
-  }
-
-  private commitTrueEnd(
-    request: CatmaidSpatialSkeletonTrueEndUpdateRequest,
-  ): Promise<CatmaidSpatialSkeletonNodeSourceStateResult> {
-    return this.client.toggleTrueEnd(request.node.nodeId, request.isTrueEnd);
-  }
-
-  private commitRadius(
-    request: CatmaidSpatialSkeletonRadiusUpdateRequest,
-  ): Promise<CatmaidSpatialSkeletonNodeSourceStateResult> {
-    return this.client.updateRadius(
-      request.node.nodeId,
-      request.radius,
-      buildCatmaidNodeEditContext(request.node),
-    );
-  }
-
-  private commitConfidence(
-    request: CatmaidSpatialSkeletonConfidenceUpdateRequest,
-  ): Promise<CatmaidSpatialSkeletonNodeSourceStateResult> {
-    return this.client.updateConfidence(
-      request.node.nodeId,
-      request.confidence,
-      buildCatmaidNodeEditContext(request.node),
-    );
-  }
-
-  private commitMerge(
-    request: CatmaidSpatialSkeletonMergeRequest,
-  ): Promise<CatmaidSpatialSkeletonMergeResult> {
-    return this.client.mergeSkeletons(
-      request.fromNode.nodeId,
-      request.toNode.nodeId,
-      buildCatmaidMultiNodeEditContext(request.fromNode, request.toNode),
-    );
-  }
-
-  private commitSplit(
-    request: CatmaidSpatialSkeletonSplitRequest,
-  ): Promise<CatmaidSpatialSkeletonSplitResult> {
-    return this.client.splitSkeleton(
-      request.node.nodeId,
-      buildCatmaidNeighborhoodEditContext(request.node, request.segmentNodes),
-    );
   }
 
   private createAddNodeCommand(
