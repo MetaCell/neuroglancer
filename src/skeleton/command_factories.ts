@@ -61,6 +61,7 @@ export type SpatialSkeletonEditCommandProperty =
   | "insertNodesCommand"
   | "moveNodesCommand"
   | "deleteNodesCommand"
+  | "deleteSubtreesCommand"
   | "rerootCommand"
   | "editNodeDescriptionCommand"
   | "editNodeTrueEndCommand"
@@ -96,6 +97,11 @@ export const SPATIAL_SKELETON_EDIT_COMMAND_METADATA = [
     action: SpatialSkeletonActions.deleteNodes,
     commandProperty: "deleteNodesCommand",
     required: true,
+  },
+  {
+    action: SpatialSkeletonActions.deleteSubtrees,
+    commandProperty: "deleteSubtreesCommand",
+    required: false,
   },
   {
     action: SpatialSkeletonActions.reroot,
@@ -173,6 +179,10 @@ export type SpatialSkeletonMoveNodesCommandFactory =
   SpatialSkeletonEditCommandFactory<typeof SpatialSkeletonActions.moveNodes>;
 export type SpatialSkeletonDeleteNodesCommandFactory =
   SpatialSkeletonEditCommandFactory<typeof SpatialSkeletonActions.deleteNodes>;
+export type SpatialSkeletonDeleteSubtreesCommandFactory =
+  SpatialSkeletonEditCommandFactory<
+    typeof SpatialSkeletonActions.deleteSubtrees
+  >;
 export type SpatialSkeletonRerootCommandFactory =
   SpatialSkeletonEditCommandFactory<typeof SpatialSkeletonActions.reroot>;
 export type SpatialSkeletonEditNodeDescriptionCommandFactory =

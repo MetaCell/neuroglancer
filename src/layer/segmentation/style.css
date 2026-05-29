@@ -242,7 +242,7 @@
 }
 
 .neuroglancer-spatial-skeleton-section {
-  --neuroglancer-skeleton-actions-width: 44px;
+  --neuroglancer-skeleton-actions-width: 66px;
   --neuroglancer-skeleton-type-width: 21px;
   border: 1px solid #2f2f2f;
   display: flex;

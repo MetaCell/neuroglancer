@@ -31,6 +31,8 @@ import type {
   CatmaidSpatialSkeletonConfidenceUpdateRequest,
   CatmaidSpatialSkeletonDeleteNodeRequest,
   CatmaidSpatialSkeletonDeleteNodeResult,
+  CatmaidSpatialSkeletonDeleteSkeletonRequest,
+  CatmaidSpatialSkeletonDeleteSkeletonResult,
   CatmaidSpatialSkeletonDescriptionUpdateRequest,
   CatmaidSpatialSkeletonDescriptionUpdateResult,
   CatmaidSpatialSkeletonInsertNodeRequest,
@@ -41,6 +43,8 @@ import type {
   CatmaidSpatialSkeletonNodeSourceStateResult,
   CatmaidSpatialSkeletonNodeSourceStateUpdate,
   CatmaidSpatialSkeletonRadiusUpdateRequest,
+  CatmaidSpatialSkeletonRestoreSkeletonRequest,
+  CatmaidSpatialSkeletonRestoreSkeletonResult,
   CatmaidSpatialSkeletonRerootRequest,
   CatmaidSpatialSkeletonRerootResult,
   CatmaidSpatialSkeletonSplitRequest,
@@ -145,6 +149,12 @@ interface CatmaidSpatialSkeletonEditOperations {
   commitDeleteNode(
     request: CatmaidSpatialSkeletonDeleteNodeRequest,
   ): Promise<CatmaidSpatialSkeletonDeleteNodeResult>;
+  commitDeleteSkeleton(
+    request: CatmaidSpatialSkeletonDeleteSkeletonRequest,
+  ): Promise<CatmaidSpatialSkeletonDeleteSkeletonResult>;
+  commitRestoreSkeleton(
+    request: CatmaidSpatialSkeletonRestoreSkeletonRequest,
+  ): Promise<CatmaidSpatialSkeletonRestoreSkeletonResult>;
   commitReroot(
     request: CatmaidSpatialSkeletonRerootRequest,
   ): Promise<CatmaidSpatialSkeletonRerootResult>;
@@ -308,6 +318,25 @@ function requireCatmaidDeleteNodeCommandPayload(payload: object) {
     payload,
     "delete-node",
     isSpatiallyIndexedSkeletonNodePayload,
+  );
+}
+
+function requireCatmaidDeleteSubtreeCommandPayload(payload: object) {
+  return requireCatmaidCommandPayload(
+    payload,
+    "delete-subtree",
+    (
+      candidate,
+    ): candidate is Pick<
+      SpatiallyIndexedSkeletonNode,
+      "nodeId" | "segmentId"
+    > => {
+      const node = candidate as {
+        nodeId?: number;
+        segmentId?: number;
+      };
+      return isFiniteNumber(node.nodeId) && isFiniteNumber(node.segmentId);
+    },
   );
 }
 
@@ -591,6 +620,23 @@ function getSplitAffectedNodes(resolvedNode: ResolvedSpatialSkeletonEditNode) {
   ];
 }
 
+function getDeleteSubtreeAffectedNodes(
+  node: SpatiallyIndexedSkeletonNode,
+  segmentNodes: readonly SpatiallyIndexedSkeletonNode[],
+) {
+  if (node.parentNodeId === undefined) {
+    return segmentNodes;
+  }
+  const subtreeNodes = getSpatiallyIndexedSkeletonSubtreeNodes(
+    segmentNodes,
+    node.nodeId,
+  );
+  return [
+    ...subtreeNodes,
+    getSpatiallyIndexedSkeletonNodeParent(segmentNodes, node),
+  ];
+}
+
 function getSegmentNodesBySegmentId(
   segmentId: number | undefined,
   ...resolvedNodes: readonly ResolvedSpatialSkeletonEditNode[]
@@ -726,6 +772,58 @@ async function refreshTopologySegments(
       layer.spatialSkeletonState.getFullSegmentNodes(skeletonLayer, segmentId),
     ),
   );
+}
+
+function clearSpatialSkeletonSelectionIfDeleted(
+  layer: SegmentationUserLayer,
+  stableDeletedNodeIds: ReadonlySet<number>,
+) {
+  const selectedNodeId = layer.selectedSpatialSkeletonNodeId.value;
+  if (selectedNodeId === undefined) {
+    return;
+  }
+  const stableSelectedNodeId =
+    layer.spatialSkeletonState.commandHistory.mappings.getStableNodeId(
+      selectedNodeId,
+    ) ?? selectedNodeId;
+  if (!stableDeletedNodeIds.has(stableSelectedNodeId)) {
+    return;
+  }
+  layer.clearSpatialSkeletonNodeSelection(
+    layer.manager.root.selectionState.pin.value,
+  );
+}
+
+function applyDeletedSkeletonSegmentsToCache(
+  layer: SegmentationUserLayer,
+  skeletonLayer: SpatiallyIndexedSkeletonLayer,
+  deletedSegmentIds: readonly number[],
+  affectedPositions: Iterable<ArrayLike<number>>,
+  stableDeletedNodeIds: ReadonlySet<number>,
+) {
+  const normalizedDeletedSegmentIds = [
+    ...new Set(
+      deletedSegmentIds
+        .map(normalizePositiveSegmentId)
+        .filter((value): value is number => value !== undefined),
+    ),
+  ];
+  if (normalizedDeletedSegmentIds.length === 0) {
+    return;
+  }
+  skeletonLayer.invalidateSourceCellsForPositions([...affectedPositions]);
+  layer.spatialSkeletonState.invalidateCachedSegments(
+    normalizedDeletedSegmentIds,
+  );
+  for (const segmentId of normalizedDeletedSegmentIds) {
+    removeVisibleSegment(layer, segmentId, { deselect: true });
+    layer.displayState.segmentStatedColors.value.delete(BigInt(segmentId));
+    skeletonLayer.suppressBrowseSegment(segmentId);
+  }
+  clearSpatialSkeletonSelectionIfDeleted(layer, stableDeletedNodeIds);
+  layer.markSpatialSkeletonNodeDataChanged({
+    invalidateFullSkeletonCache: false,
+  });
 }
 
 function applyCreatedNodeToCache(
@@ -1936,6 +2034,401 @@ class SplitCommand implements SpatialSkeletonCommand {
   }
 }
 
+class DeleteSubtreeCommand implements SpatialSkeletonCommand {
+  readonly label: string;
+  private readonly deleteWholeSkeleton: boolean;
+  private readonly stableNodeId: number;
+  private readonly stableSegmentId: number | undefined;
+  private readonly stableFormerParentNodeId: number | undefined;
+  private stableDeletedSegmentId: number | undefined;
+  private readonly affectedPositions: ArrayLike<number>[];
+  private readonly stableDeletedNodeIds = new Set<number>();
+  private undoLeftRestoredSplit = false;
+
+  constructor(
+    private layer: SegmentationUserLayer,
+    node: SpatiallyIndexedSkeletonNode,
+    segmentNodes: readonly SpatiallyIndexedSkeletonNode[],
+    private editOperations: CatmaidSpatialSkeletonEditOperations,
+  ) {
+    const commandMappings = layer.spatialSkeletonState.commandHistory.mappings;
+    this.deleteWholeSkeleton = node.parentNodeId === undefined;
+    this.label = this.deleteWholeSkeleton
+      ? "Delete skeleton"
+      : "Delete subskeleton";
+    this.stableNodeId = commandMappings.getStableOrCurrentNodeId(node.nodeId)!;
+    this.stableSegmentId = commandMappings.getStableOrCurrentSegmentId(
+      node.segmentId,
+    );
+    this.stableFormerParentNodeId = commandMappings.getStableOrCurrentNodeId(
+      node.parentNodeId,
+    );
+    this.stableDeletedSegmentId = this.deleteWholeSkeleton
+      ? this.stableSegmentId
+      : undefined;
+
+    const deletedNodes = this.deleteWholeSkeleton
+      ? segmentNodes
+      : getSpatiallyIndexedSkeletonSubtreeNodes(segmentNodes, node.nodeId);
+    for (const deletedNode of deletedNodes.length === 0
+      ? [node]
+      : deletedNodes) {
+      const stableDeletedNodeId = commandMappings.getStableOrCurrentNodeId(
+        deletedNode.nodeId,
+      );
+      if (stableDeletedNodeId !== undefined) {
+        this.stableDeletedNodeIds.add(stableDeletedNodeId);
+      }
+    }
+    this.affectedPositions = collectUniqueNodePositions(
+      getDeleteSubtreeAffectedNodes(node, segmentNodes),
+    );
+  }
+
+  private getCurrentDeletedSegmentId() {
+    const stableDeletedSegmentId = this.stableDeletedSegmentId;
+    if (stableDeletedSegmentId === undefined) {
+      throw new Error(
+        "Delete-subtree command is missing the deleted skeleton id.",
+      );
+    }
+    const currentDeletedSegmentId =
+      this.layer.spatialSkeletonState.commandHistory.mappings.resolveSegmentId(
+        stableDeletedSegmentId,
+      ) ?? stableDeletedSegmentId;
+    if (normalizePositiveSegmentId(currentDeletedSegmentId) === undefined) {
+      throw new Error(
+        `Unable to resolve deleted skeleton ${stableDeletedSegmentId}.`,
+      );
+    }
+    return currentDeletedSegmentId;
+  }
+
+  private async deleteSkeletonSegment(
+    skeletonLayer: SpatiallyIndexedSkeletonLayer,
+    segmentId: number,
+    statusPrefix: string,
+  ) {
+    const result = await this.editOperations.commitDeleteSkeleton({
+      segmentId,
+      deleteMultiSkeletonNeurons: false,
+    });
+    const deletedSegmentIds =
+      result.skeletonIds.length === 0 ? [segmentId] : result.skeletonIds;
+    applyDeletedSkeletonSegmentsToCache(
+      this.layer,
+      skeletonLayer,
+      deletedSegmentIds,
+      this.affectedPositions,
+      this.stableDeletedNodeIds,
+    );
+    StatusMessage.showTemporaryMessage(
+      `${statusPrefix} skeleton ${segmentId}.`,
+    );
+  }
+
+  private async deleteWhole(statusPrefix: string) {
+    const resolvedNode = await getResolvedNodeForEdit(
+      this.layer,
+      this.stableNodeId,
+      this.stableSegmentId,
+    );
+    await this.deleteSkeletonSegment(
+      resolvedNode.skeletonLayer,
+      resolvedNode.node.segmentId,
+      statusPrefix,
+    );
+  }
+
+  private async restoreWhole(statusPrefix: string) {
+    const deletedSegmentId = this.getCurrentDeletedSegmentId();
+    const { skeletonLayer } = getEditableSkeletonSourceForLayer(this.layer);
+    const result = await this.editOperations.commitRestoreSkeleton({
+      segmentId: deletedSegmentId,
+    });
+    const restoredSegmentId = result.skeletonId;
+    if (this.stableSegmentId !== undefined) {
+      this.layer.spatialSkeletonState.commandHistory.mappings.remapSegmentId(
+        this.stableSegmentId,
+        restoredSegmentId,
+      );
+    }
+    ensureVisibleSegment(this.layer, restoredSegmentId);
+    selectSegment(this.layer, restoredSegmentId, true);
+    await refreshTopologySegments(
+      this.layer,
+      [restoredSegmentId],
+      this.affectedPositions,
+    );
+    const restoredNodes =
+      this.layer.spatialSkeletonState.getCachedSegmentNodes(
+        restoredSegmentId,
+      ) ?? [];
+    const restoredNode = findSpatiallyIndexedSkeletonNode(
+      restoredNodes,
+      this.layer.spatialSkeletonState.commandHistory.mappings.resolveNodeId(
+        this.stableNodeId,
+      ) ?? this.stableNodeId,
+    );
+    const selectionNode = restoredNode ?? findRootNode(restoredNodes);
+    if (selectionNode !== undefined) {
+      this.layer.selectSpatialSkeletonNode(
+        selectionNode.nodeId,
+        this.layer.manager.root.selectionState.pin.value,
+        {
+          segmentId: selectionNode.segmentId,
+          position: selectionNode.position,
+        },
+      );
+    }
+    skeletonLayer.retainOverlaySegment(restoredSegmentId);
+    StatusMessage.showTemporaryMessage(
+      `${statusPrefix} skeleton ${restoredSegmentId}.`,
+    );
+  }
+
+  private async mergeRestoredSubtree(statusPrefix: string) {
+    if (this.stableFormerParentNodeId === undefined) {
+      throw new Error("Delete-subtree undo is missing the former parent node.");
+    }
+    const splitNode = await getResolvedNodeForEdit(
+      this.layer,
+      this.stableNodeId,
+      this.stableDeletedSegmentId ?? this.stableSegmentId,
+    );
+    const formerParent = await getResolvedNodeForEdit(
+      this.layer,
+      this.stableFormerParentNodeId,
+      this.stableSegmentId,
+    );
+    let result: CatmaidSpatialSkeletonMergeResult;
+    try {
+      result = await this.editOperations.commitMerge({
+        fromNode: formerParent.node,
+        toNode: splitNode.node,
+      });
+    } catch (error) {
+      await refreshTopologySegments(
+        this.layer,
+        [splitNode.node.segmentId, formerParent.node.segmentId],
+        collectUniqueNodePositions(
+          splitNode.segmentNodes,
+          formerParent.segmentNodes,
+        ),
+      );
+      throw error;
+    }
+    const resultSkeletonId =
+      result.resultSegmentId ?? formerParent.node.segmentId;
+    const deletedSkeletonId =
+      result.deletedSegmentId ??
+      (resultSkeletonId === splitNode.node.segmentId
+        ? formerParent.node.segmentId
+        : splitNode.node.segmentId);
+    if (this.stableSegmentId !== undefined) {
+      this.layer.spatialSkeletonState.commandHistory.mappings.remapSegmentId(
+        this.stableSegmentId,
+        resultSkeletonId,
+      );
+    }
+    if (this.stableDeletedSegmentId !== undefined) {
+      this.layer.spatialSkeletonState.commandHistory.mappings.remapSegmentId(
+        this.stableDeletedSegmentId,
+        resultSkeletonId,
+      );
+    }
+    ensureVisibleSegment(this.layer, resultSkeletonId);
+    if (deletedSkeletonId !== resultSkeletonId) {
+      removeVisibleSegment(this.layer, deletedSkeletonId, { deselect: true });
+      this.layer.displayState.segmentStatedColors.value.delete(
+        BigInt(deletedSkeletonId),
+      );
+      splitNode.skeletonLayer.suppressBrowseSegment(deletedSkeletonId);
+    }
+    this.layer.selectSpatialSkeletonNode(
+      splitNode.node.nodeId,
+      this.layer.manager.root.selectionState.pin.value,
+      {
+        segmentId: resultSkeletonId,
+      },
+    );
+    await refreshTopologySegments(
+      this.layer,
+      [resultSkeletonId, deletedSkeletonId],
+      getMergeAffectedPositions(
+        result.deletedSegmentId,
+        splitNode,
+        formerParent,
+      ),
+    );
+    StatusMessage.showTemporaryMessage(
+      `${statusPrefix} subskeleton rooted at node ${splitNode.node.nodeId}.`,
+    );
+  }
+
+  private async splitAndDelete(statusPrefix: string) {
+    const resolvedNode = await getResolvedNodeForEdit(
+      this.layer,
+      this.stableNodeId,
+      this.stableSegmentId,
+    );
+    let result: CatmaidSpatialSkeletonSplitResult;
+    try {
+      result = await this.editOperations.commitSplit({
+        node: resolvedNode.node,
+        segmentNodes: resolvedNode.segmentNodes,
+      });
+    } catch (error) {
+      await refreshTopologySegments(
+        this.layer,
+        [resolvedNode.node.segmentId],
+        collectUniqueNodePositions(resolvedNode.segmentNodes),
+      );
+      throw error;
+    }
+    const newSkeletonId = result.newSegmentId;
+    const existingSkeletonId =
+      result.existingSegmentId ?? resolvedNode.node.segmentId;
+    if (newSkeletonId === undefined) {
+      throw new Error(
+        "The active skeleton source did not return a new skeleton id for the split.",
+      );
+    }
+    if (this.stableDeletedSegmentId === undefined) {
+      this.stableDeletedSegmentId = newSkeletonId;
+    } else {
+      this.layer.spatialSkeletonState.commandHistory.mappings.remapSegmentId(
+        this.stableDeletedSegmentId,
+        newSkeletonId,
+      );
+    }
+    if (this.stableSegmentId !== undefined) {
+      this.layer.spatialSkeletonState.commandHistory.mappings.remapSegmentId(
+        this.stableSegmentId,
+        existingSkeletonId,
+      );
+    }
+    ensureVisibleSegment(this.layer, existingSkeletonId);
+    ensureVisibleSegment(this.layer, newSkeletonId);
+    await refreshTopologySegments(
+      this.layer,
+      [existingSkeletonId, newSkeletonId],
+      collectUniqueNodePositions(getSplitAffectedNodes(resolvedNode)),
+    );
+    try {
+      await this.deleteSkeletonSegment(
+        resolvedNode.skeletonLayer,
+        newSkeletonId,
+        statusPrefix,
+      );
+    } catch (error) {
+      try {
+        await this.mergeRestoredSubtree("Rolled back deletion of");
+      } catch (rollbackError) {
+        StatusMessage.showTemporaryMessage(
+          `Failed to roll back split after delete failure. ${formatErrorMessage(
+            rollbackError,
+          )}`,
+        );
+      }
+      throw error;
+    }
+    if (this.stableFormerParentNodeId !== undefined) {
+      const formerParent = await getResolvedNodeForEdit(
+        this.layer,
+        this.stableFormerParentNodeId,
+        this.stableSegmentId,
+      ).catch(() => undefined);
+      if (formerParent !== undefined) {
+        this.layer.selectSpatialSkeletonNode(
+          formerParent.node.nodeId,
+          this.layer.manager.root.selectionState.pin.value,
+          {
+            segmentId: formerParent.node.segmentId,
+            position: formerParent.node.position,
+          },
+        );
+      }
+    }
+    this.undoLeftRestoredSplit = false;
+  }
+
+  private async restoreAndMerge(statusPrefix: string) {
+    const deletedSegmentId = this.getCurrentDeletedSegmentId();
+    const result = await this.editOperations.commitRestoreSkeleton({
+      segmentId: deletedSegmentId,
+    });
+    const restoredSegmentId = result.skeletonId;
+    if (this.stableDeletedSegmentId !== undefined) {
+      this.layer.spatialSkeletonState.commandHistory.mappings.remapSegmentId(
+        this.stableDeletedSegmentId,
+        restoredSegmentId,
+      );
+    }
+    ensureVisibleSegment(this.layer, restoredSegmentId);
+    selectSegment(this.layer, restoredSegmentId, false);
+    await refreshTopologySegments(
+      this.layer,
+      [restoredSegmentId],
+      this.affectedPositions,
+    );
+    try {
+      await this.mergeRestoredSubtree(statusPrefix);
+      this.undoLeftRestoredSplit = false;
+    } catch (error) {
+      this.undoLeftRestoredSplit = true;
+      ensureVisibleSegment(this.layer, restoredSegmentId);
+      await refreshTopologySegments(
+        this.layer,
+        [
+          restoredSegmentId,
+          this.layer.spatialSkeletonState.commandHistory.mappings.resolveSegmentId(
+            this.stableSegmentId,
+          ) ?? restoredSegmentId,
+        ],
+        this.affectedPositions,
+      );
+      StatusMessage.showTemporaryMessage(
+        `Restored subskeleton ${restoredSegmentId}, but failed to merge it back. ${formatErrorMessage(
+          error,
+        )}`,
+      );
+    }
+  }
+
+  private async deleteRestoredSplit(statusPrefix: string) {
+    const deletedSegmentId = this.getCurrentDeletedSegmentId();
+    const { skeletonLayer } = getEditableSkeletonSourceForLayer(this.layer);
+    await this.deleteSkeletonSegment(
+      skeletonLayer,
+      deletedSegmentId,
+      statusPrefix,
+    );
+    this.undoLeftRestoredSplit = false;
+  }
+
+  execute() {
+    return this.deleteWholeSkeleton
+      ? this.deleteWhole("Deleted")
+      : this.splitAndDelete("Deleted");
+  }
+
+  undo() {
+    return this.deleteWholeSkeleton
+      ? this.restoreWhole("Restored")
+      : this.restoreAndMerge("Restored");
+  }
+
+  redo() {
+    if (this.deleteWholeSkeleton) {
+      return this.deleteWhole("Redid deletion of");
+    }
+    return this.undoLeftRestoredSplit
+      ? this.deleteRestoredSplit("Redid deletion of")
+      : this.splitAndDelete("Redid deletion of");
+  }
+}
+
 class MergeCommand implements SpatialSkeletonCommand {
   readonly label = "Merge skeletons";
   private stableResultSegmentId: number | undefined;
@@ -2263,6 +2756,8 @@ export class CatmaidSpatialSkeletonEditCommands {
     commitInsertNode: (request) => this.commitInsertNode(request),
     commitMoveNode: (request) => this.commitMoveNode(request),
     commitDeleteNode: (request) => this.commitDeleteNode(request),
+    commitDeleteSkeleton: (request) => this.commitDeleteSkeleton(request),
+    commitRestoreSkeleton: (request) => this.commitRestoreSkeleton(request),
     commitReroot: (request) => this.commitReroot(request),
     commitDescription: (request) => this.commitDescription(request),
     commitTrueEnd: (request) => this.commitTrueEnd(request),
@@ -2305,6 +2800,15 @@ export class CatmaidSpatialSkeletonEditCommands {
       this.createDeleteNodeCommand(
         layer,
         requireCatmaidDeleteNodeCommandPayload(payload),
+      ),
+  );
+
+  readonly deleteSubtreesCommand = makeCatmaidCommandFactory(
+    SpatialSkeletonActions.deleteSubtrees,
+    (layer, payload) =>
+      this.createDeleteSubtreeCommand(
+        layer,
+        requireCatmaidDeleteSubtreeCommandPayload(payload),
       ),
   );
 
@@ -2441,6 +2945,20 @@ export class CatmaidSpatialSkeletonEditCommands {
         request.segmentNodes,
       ),
     });
+  }
+
+  private commitDeleteSkeleton(
+    request: CatmaidSpatialSkeletonDeleteSkeletonRequest,
+  ): Promise<CatmaidSpatialSkeletonDeleteSkeletonResult> {
+    return this.client.deleteSkeleton(request.segmentId, {
+      deleteMultiSkeletonNeurons: request.deleteMultiSkeletonNeurons ?? false,
+    });
+  }
+
+  private commitRestoreSkeleton(
+    request: CatmaidSpatialSkeletonRestoreSkeletonRequest,
+  ): Promise<CatmaidSpatialSkeletonRestoreSkeletonResult> {
+    return this.client.restoreSkeleton(request.segmentId);
   }
 
   private commitReroot(
@@ -2593,6 +3111,30 @@ export class CatmaidSpatialSkeletonEditCommands {
       layer,
       refreshedNode,
       childNodes,
+      this.editOperations,
+    );
+  }
+
+  private createDeleteSubtreeCommand(
+    layer: SegmentationUserLayer,
+    node: Pick<SpatiallyIndexedSkeletonNode, "nodeId" | "segmentId">,
+  ) {
+    const segmentNodes = layer.getCachedSpatialSkeletonSegmentNodesForEdit(
+      node.segmentId,
+    );
+    const subtreeRoot = findSpatiallyIndexedSkeletonNode(
+      segmentNodes,
+      node.nodeId,
+    );
+    if (subtreeRoot === undefined) {
+      throw new Error(
+        `Node ${node.nodeId} is not available in the inspected skeleton cache.`,
+      );
+    }
+    return new DeleteSubtreeCommand(
+      layer,
+      subtreeRoot,
+      segmentNodes,
       this.editOperations,
     );
   }

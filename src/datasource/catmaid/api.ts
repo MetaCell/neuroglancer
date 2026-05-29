@@ -120,6 +120,18 @@ export interface CatmaidDescriptionUpdateOptions {
 
 export type CatmaidDeleteNodeResult = CatmaidSkeletonEditResult;
 
+export interface CatmaidDeleteSkeletonOptions {
+  deleteMultiSkeletonNeurons?: boolean;
+}
+
+export interface CatmaidDeleteSkeletonResult {
+  skeletonIds: number[];
+}
+
+export interface CatmaidRestoreSkeletonResult {
+  skeletonId: number;
+}
+
 export type CatmaidRerootResult = CatmaidSkeletonEditResult;
 
 export interface CatmaidMergeResult extends CatmaidSkeletonEditResult {
@@ -149,6 +161,11 @@ export interface CatmaidSpatialSkeletonEditApi {
     nodeId: number,
     options: CatmaidDeleteNodeOptions,
   ): Promise<CatmaidDeleteNodeResult>;
+  deleteSkeleton(
+    skeletonId: number,
+    options?: CatmaidDeleteSkeletonOptions,
+  ): Promise<CatmaidDeleteSkeletonResult>;
+  restoreSkeleton(skeletonId: number): Promise<CatmaidRestoreSkeletonResult>;
   moveNode(
     nodeId: number,
     x: number,
@@ -2062,6 +2079,47 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
       newSegmentId: Number.isFinite(newSkeletonId)
         ? Math.round(newSkeletonId)
         : undefined,
+    };
+  }
+
+  async deleteSkeleton(
+    skeletonId: number,
+    options: CatmaidDeleteSkeletonOptions = {},
+  ): Promise<CatmaidDeleteSkeletonResult> {
+    const body = new URLSearchParams({
+      delete_multi_skeleton_neurons: String(
+        options.deleteMultiSkeletonNeurons ?? false,
+      ),
+    });
+    const response = await this.fetchProjectEndpoint(
+      `skeletons/${skeletonId}/delete`,
+      {
+        method: "POST",
+        body,
+      },
+    );
+    const skeletonIds = Array.isArray(response?.skeleton_ids)
+      ? response.skeleton_ids
+          .map((value: unknown) => Math.round(Number(value)))
+          .filter((value: number) => Number.isSafeInteger(value) && value > 0)
+      : [];
+    return { skeletonIds };
+  }
+
+  async restoreSkeleton(
+    skeletonId: number,
+  ): Promise<CatmaidRestoreSkeletonResult> {
+    const response = await this.fetchProjectEndpoint(
+      `skeletons/${skeletonId}/restore`,
+      {
+        method: "POST",
+      },
+    );
+    const restoredSkeletonId = Number(response?.skeleton_id);
+    return {
+      skeletonId: Number.isFinite(restoredSkeletonId)
+        ? Math.round(restoredSkeletonId)
+        : skeletonId,
     };
   }
 }

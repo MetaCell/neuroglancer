@@ -17,6 +17,7 @@
 import type {
   SpatialSkeletonAddNodesCommandFactory,
   SpatialSkeletonDeleteNodesCommandFactory,
+  SpatialSkeletonDeleteSubtreesCommandFactory,
   SpatialSkeletonEditNodeDescriptionCommandFactory,
   SpatialSkeletonEditNodeConfidenceCommandFactory,
   SpatialSkeletonEditNodeRadiusCommandFactory,
@@ -105,6 +106,7 @@ export interface EditableSpatiallyIndexedSkeletonSource
   readonly splitSkeletonsCommand: SpatialSkeletonSplitSkeletonsCommandFactory;
   readonly mergeSkeletonsCommand: SpatialSkeletonMergeSkeletonsCommandFactory;
   readonly insertNodesCommand?: SpatialSkeletonInsertNodesCommandFactory;
+  readonly deleteSubtreesCommand?: SpatialSkeletonDeleteSubtreesCommandFactory;
   readonly rerootCommand?: SpatialSkeletonRerootCommandFactory;
   readonly editNodeDescriptionCommand?: SpatialSkeletonEditNodeDescriptionCommandFactory;
   readonly editNodeTrueEndCommand?: SpatialSkeletonEditNodeTrueEndCommandFactory;

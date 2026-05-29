@@ -21,6 +21,7 @@ import svg_chevron_right from "ikonate/icons/chevron-right.svg?raw";
 import svg_chevrons_left from "ikonate/icons/chevrons-left.svg?raw";
 import svg_chevrons_right from "ikonate/icons/chevrons-right.svg?raw";
 import svg_circle from "ikonate/icons/circle.svg?raw";
+import svg_cut from "ikonate/icons/cut.svg?raw";
 import svg_flag from "ikonate/icons/flag.svg?raw";
 import svg_minus from "ikonate/icons/minus.svg?raw";
 import svg_origin from "ikonate/icons/origin.svg?raw";
@@ -32,6 +33,7 @@ import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import { getSegmentIdFromLayerSelectionValue } from "#src/layer/segmentation/selection.js";
 import {
   executeSpatialSkeletonDeleteNode,
+  executeSpatialSkeletonDeleteSubtree,
   executeSpatialSkeletonNodeTrueEndUpdate,
   redoSpatialSkeletonCommand,
   showSpatialSkeletonActionError,
@@ -310,12 +312,14 @@ export class SpatialSkeletonEditTab extends Tab {
     let navigationAllowed = false;
     let trueEndEditingAllowed = false;
     let nodeDeletionAllowed = false;
+    let subtreeDeletionAllowed = false;
     let nodeRerootAllowed = false;
     let pendingScrollToSelectedNode = false;
     let loadedNodeSummarySuffix = "";
     let hoveredViewerNodeId: number | undefined;
     let hoveredListNodeId: number | undefined;
     const pendingDeleteNodes = new Set<number>();
+    const pendingDeleteSubtreeNodes = new Set<number>();
     const pendingRerootNodes = new Set<number>();
     const pendingTrueEndNodes = new Set<number>();
     const listIndexByNodeId = new Map<number, number>();
@@ -827,6 +831,37 @@ export class SpatialSkeletonEditTab extends Tab {
           updateDisplay();
         } finally {
           pendingDeleteNodes.delete(node.nodeId);
+          updateDisplay();
+        }
+      })();
+    };
+
+    const deleteSubtree = (node: SpatiallyIndexedSkeletonNode) => {
+      if (!ensureActionsAllowed(SpatialSkeletonActions.deleteSubtrees)) return;
+      if (pendingDeleteSubtreeNodes.has(node.nodeId)) {
+        return;
+      }
+      const isWholeSkeleton = node.parentNodeId === undefined;
+      const confirmMessage = isWholeSkeleton
+        ? `Delete skeleton ${node.segmentId}? This can be undone.`
+        : `Delete subskeleton rooted at node ${node.nodeId}? This can be undone.`;
+      if (!globalThis.confirm(confirmMessage)) {
+        return;
+      }
+      pendingDeleteSubtreeNodes.add(node.nodeId);
+      updateDisplay();
+      void (async () => {
+        try {
+          await executeSpatialSkeletonDeleteSubtree(layer, node);
+          refreshNodes();
+        } catch (error) {
+          showSpatialSkeletonActionError(
+            isWholeSkeleton ? "delete skeleton" : "delete subskeleton",
+            error,
+          );
+          updateDisplay();
+        } finally {
+          pendingDeleteSubtreeNodes.delete(node.nodeId);
           updateDisplay();
         }
       })();
@@ -1358,6 +1393,24 @@ export class SpatialSkeletonEditTab extends Tab {
           !nodeDeletionAllowed || pendingDeleteNodes.has(node.nodeId),
         ),
       );
+      let deleteSubtreeActionTitle =
+        node.parentNodeId === undefined
+          ? "delete skeleton"
+          : "delete subskeleton";
+      if (pendingDeleteSubtreeNodes.has(node.nodeId)) {
+        deleteSubtreeActionTitle =
+          node.parentNodeId === undefined
+            ? "deleting skeleton"
+            : "deleting subskeleton";
+      }
+      actions.appendChild(
+        makeRowActionButton(
+          svg_cut,
+          deleteSubtreeActionTitle,
+          () => deleteSubtree(node),
+          !subtreeDeletionAllowed || pendingDeleteSubtreeNodes.has(node.nodeId),
+        ),
+      );
 
       row.appendChild(actions);
       row.appendChild(typeIcon);
@@ -1563,6 +1616,10 @@ export class SpatialSkeletonEditTab extends Tab {
         layer.getSpatialSkeletonActionsDisabledReason(
           SpatialSkeletonActions.deleteNodes,
         ) === undefined;
+      const nextSubtreeDeletionAllowed =
+        layer.getSpatialSkeletonActionsDisabledReason(
+          SpatialSkeletonActions.deleteSubtrees,
+        ) === undefined;
       const nextNodeRerootAllowed =
         layer.getSpatialSkeletonActionsDisabledReason(
           SpatialSkeletonActions.reroot,
@@ -1575,12 +1632,14 @@ export class SpatialSkeletonEditTab extends Tab {
         navigationAllowed !== nextNavigationAllowed ||
         trueEndEditingAllowed !== nextTrueEndEditingAllowed ||
         nodeDeletionAllowed !== nextNodeDeletionAllowed ||
+        subtreeDeletionAllowed !== nextSubtreeDeletionAllowed ||
         nodeRerootAllowed !== nextNodeRerootAllowed;
 
       inspectionAllowed = nextInspectionAllowed;
       navigationAllowed = nextNavigationAllowed;
       trueEndEditingAllowed = nextTrueEndEditingAllowed;
       nodeDeletionAllowed = nextNodeDeletionAllowed;
+      subtreeDeletionAllowed = nextSubtreeDeletionAllowed;
       nodeRerootAllowed = nextNodeRerootAllowed;
 
       filterInput.disabled = !inspectionAllowed;
