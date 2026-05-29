@@ -62,9 +62,8 @@ After setting this up, enter ``catmaid:<your-catmaid-server-url>/<your-catmaid-p
 Layer Subsources
 ----------------
 
-The data source exposes two skeleton subsources. The first is a spatially indexed
-skeleton source, which is required for editing. The second is the regular skeleton
-subsource from the pre-existing pipeline for rendering precomputed format skeletons.
+The data source exposes one skeleton subsource: a spatially indexed skeleton
+source, which is required for editing.
 
 In the **Render** tab you can adjust:
 

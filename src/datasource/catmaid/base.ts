@@ -38,11 +38,6 @@ export class CatmaidSkeletonSourceParameters extends SkeletonSourceParameters {
   static RPC_ID = "catmaid/SkeletonSource";
 }
 
-export class CatmaidCompleteSkeletonSourceParameters extends SkeletonSourceParameters {
-  catmaidParameters!: CatmaidDataSourceParameters;
-  static RPC_ID = "catmaid/CompleteSkeletonSource";
-}
-
 export function makeCatmaidClient(
   parameters: CatmaidDataSourceParameters,
   credentialsProvider?: CredentialsProvider<CatmaidToken>,

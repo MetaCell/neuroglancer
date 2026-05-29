@@ -34,7 +34,6 @@ import {
 } from "#src/datasource/catmaid/api.js";
 import {
   CatmaidSkeletonSourceParameters,
-  CatmaidCompleteSkeletonSourceParameters,
   CatmaidDataSourceParameters,
   makeCatmaidClient,
   makeCatmaidSkeletonMetadata,
@@ -58,7 +57,6 @@ import type {
 } from "#src/skeleton/api.js";
 import {
   SpatiallyIndexedSkeletonSource,
-  SkeletonSource,
   MultiscaleSpatiallyIndexedSkeletonSource,
   SPATIAL_SKELETON_SOURCE_OPTIONS,
 } from "#src/skeleton/frontend.js";
@@ -187,15 +185,6 @@ export class CatmaidSpatiallyIndexedSkeletonSource extends WithParameters(
 
   getSkeletonRootNode(skeletonId: number) {
     return this.client.getSkeletonRootNode(skeletonId);
-  }
-}
-
-export class CatmaidSkeletonSource extends WithParameters(
-  WithCredentialsProvider<CatmaidToken>()(SkeletonSource),
-  CatmaidCompleteSkeletonSourceParameters,
-) {
-  get vertexAttributes() {
-    return this.parameters.metadata.vertexAttributes;
   }
 }
 
@@ -434,21 +423,6 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
         cacheProvider,
         sourceReadonly,
       );
-    // Create complete skeleton source (non-chunked)
-    const completeSkeletonParameters =
-      new CatmaidCompleteSkeletonSourceParameters();
-    completeSkeletonParameters.catmaidParameters =
-      new CatmaidDataSourceParameters();
-    completeSkeletonParameters.catmaidParameters.url = baseUrl;
-    completeSkeletonParameters.catmaidParameters.projectId = projectId;
-    completeSkeletonParameters.url = providerUrl;
-    completeSkeletonParameters.metadata = makeCatmaidSkeletonMetadata();
-
-    const completeSkeletonSource = options.registry.chunkManager.getChunkSource(
-      CatmaidSkeletonSource,
-      { parameters: completeSkeletonParameters, credentialsProvider },
-    );
-
     // Create SegmentPropertyMap
     const ids = new BigUint64Array(skeletonIds.length);
     for (let i = 0; i < skeletonIds.length; ++i) {
@@ -467,11 +441,6 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
         id: "skeletons-chunked",
         default: true,
         subsource: { mesh: multiscaleSource },
-      },
-      {
-        id: "skeletons",
-        default: false,
-        subsource: { mesh: completeSkeletonSource },
       },
       {
         id: "properties",
