@@ -844,6 +844,40 @@ describe("CatmaidClient skeleton editing methods", () => {
     );
   });
 
+  it("deletes skeletons without allowing multi-skeleton neuron deletion", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const fetchMock = vi.fn().mockResolvedValue({
+      skeleton_ids: ["17", 21.2, "invalid"],
+    });
+    (client as any).fetchProjectEndpoint = fetchMock;
+
+    await expect(client.deleteSkeleton(17)).resolves.toEqual({
+      skeletonIds: [17, 21],
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getFetchPath(fetchMock)).toBe("skeletons/17/delete");
+    expect(getFetchBody(fetchMock).get("delete_multi_skeleton_neurons")).toBe(
+      "false",
+    );
+  });
+
+  it("restores deleted skeletons", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const fetchMock = vi.fn().mockResolvedValue({
+      skeleton_id: "17",
+    });
+    (client as any).fetchProjectEndpoint = fetchMock;
+
+    await expect(client.restoreSkeleton(17)).resolves.toEqual({
+      skeletonId: 17,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getFetchPath(fetchMock)).toBe("skeletons/17/restore");
+    expect(getFetchInit(fetchMock).method).toBe("POST");
+  });
+
   it("rejects reroot when the response is missing edition_time", async () => {
     const client = new CatmaidClient("https://example.invalid", 1);
     const fetchMock = vi.fn().mockResolvedValue({

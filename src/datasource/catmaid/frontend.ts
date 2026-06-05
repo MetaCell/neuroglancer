@@ -119,6 +119,10 @@ export class CatmaidSpatiallyIndexedSkeletonSource extends WithParameters(
     return this.editableSpatialSkeletonEditCommands?.deleteNodesCommand;
   }
 
+  get deleteSubtreesCommand() {
+    return this.editableSpatialSkeletonEditCommands?.deleteSubtreesCommand;
+  }
+
   get rerootCommand() {
     return this.editableSpatialSkeletonEditCommands?.rerootCommand;
   }

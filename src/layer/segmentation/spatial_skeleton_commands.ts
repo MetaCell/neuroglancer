@@ -145,6 +145,14 @@ const spatialSkeletonExecutionMetadata = new Map<
     },
   ],
   [
+    SpatialSkeletonActions.deleteSubtrees,
+    {
+      unsupportedMessage:
+        "The active skeleton source does not support skeleton/subskeleton deletion.",
+      pendingMessage: "Deleting skeleton...",
+    },
+  ],
+  [
     SpatialSkeletonActions.editNodeDescription,
     {
       unsupportedMessage:
@@ -258,6 +266,17 @@ export function executeSpatialSkeletonDeleteNode(
   return executeSpatialSkeletonAction(
     layer,
     SpatialSkeletonActions.deleteNodes,
+    node,
+  );
+}
+
+export function executeSpatialSkeletonDeleteSubtree(
+  layer: SegmentationUserLayer,
+  node: SpatiallyIndexedSkeletonNode,
+) {
+  return executeSpatialSkeletonAction(
+    layer,
+    SpatialSkeletonActions.deleteSubtrees,
     node,
   );
 }

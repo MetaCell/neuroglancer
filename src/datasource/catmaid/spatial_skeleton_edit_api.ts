@@ -17,10 +17,12 @@
 import type {
   CatmaidAddNodeResult,
   CatmaidDeleteNodeResult,
+  CatmaidDeleteSkeletonResult,
   CatmaidDescriptionUpdateResult,
   CatmaidInsertNodeResult,
   CatmaidMergeResult,
   CatmaidNodeSourceStateResult,
+  CatmaidRestoreSkeletonResult,
   CatmaidRerootResult,
   CatmaidSkeletonEditResult,
   CatmaidSkeletonNodeSourceStateUpdate,
@@ -69,6 +71,21 @@ export interface CatmaidSpatialSkeletonDeleteNodeRequest {
 }
 
 export type CatmaidSpatialSkeletonDeleteNodeResult = CatmaidDeleteNodeResult;
+
+export interface CatmaidSpatialSkeletonDeleteSkeletonRequest {
+  segmentId: number;
+  deleteMultiSkeletonNeurons?: boolean;
+}
+
+export type CatmaidSpatialSkeletonDeleteSkeletonResult =
+  CatmaidDeleteSkeletonResult;
+
+export interface CatmaidSpatialSkeletonRestoreSkeletonRequest {
+  segmentId: number;
+}
+
+export type CatmaidSpatialSkeletonRestoreSkeletonResult =
+  CatmaidRestoreSkeletonResult;
 
 export interface CatmaidSpatialSkeletonSplitRequest {
   node: SpatiallyIndexedSkeletonNode;

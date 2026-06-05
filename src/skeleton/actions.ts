@@ -20,6 +20,7 @@ export const SpatialSkeletonActions = {
   insertNodes: "insertNodes",
   moveNodes: "moveNodes",
   deleteNodes: "deleteNodes",
+  deleteSubtrees: "deleteSubtrees",
   reroot: "rerootSkeletons",
   editNodeDescription: "editNodeDescription",
   editNodeTrueEnd: "editNodeTrueEnd",
@@ -56,6 +57,8 @@ export function getSpatialSkeletonActionSupportLabel(
       return "node movement";
     case SpatialSkeletonActions.deleteNodes:
       return "node deletion";
+    case SpatialSkeletonActions.deleteSubtrees:
+      return "skeleton/subskeleton deletion";
     case SpatialSkeletonActions.reroot:
       return "skeleton rerooting";
     case SpatialSkeletonActions.editNodeDescription:

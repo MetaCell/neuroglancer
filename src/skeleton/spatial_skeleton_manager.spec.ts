@@ -116,6 +116,9 @@ describe("skeleton/spatial_skeleton_manager", () => {
       insertNodesCommand: makeCommandFactory(
         SpatialSkeletonActions.insertNodes,
       ),
+      deleteSubtreesCommand: makeCommandFactory(
+        SpatialSkeletonActions.deleteSubtrees,
+      ),
       rerootCommand: makeCommandFactory(SpatialSkeletonActions.reroot),
       readonly: false,
       listSkeletons: async () => [],
@@ -136,6 +139,12 @@ describe("skeleton/spatial_skeleton_manager", () => {
         SpatialSkeletonActions.insertNodes,
       ),
     ).toBe(source.insertNodesCommand);
+    expect(
+      getSpatialSkeletonEditCommandFactoryForAction(
+        source as any,
+        SpatialSkeletonActions.deleteSubtrees,
+      ),
+    ).toBe(source.deleteSubtreesCommand);
     expect(
       getSpatialSkeletonEditCommandFactoryForAction(
         source as any,
