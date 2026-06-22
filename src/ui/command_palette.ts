@@ -320,11 +320,14 @@ export class CommandCatalog extends RefCounted {
       const toolMatches = getMatchingTools(globalToolBinder, toolQueryResult.query);
 
       // Build a reverse lookup from palette-JSON key to letter for currently-bound tools.
+      // Keys must include getCommonToolProperties() to match the keys produced by
+      // getMatchingTools, which merges commonProperties into every yielded tool JSON.
       const boundByJsonKey = new Map<string, string>();
       for (const [letter, tool] of globalToolBinder.bindings) {
-        const paletteJson = tool.localBinder.convertLocalJSONToPaletteJSON(
-          tool.toJSON(),
-        );
+        const paletteJson = {
+          ...tool.localBinder.convertLocalJSONToPaletteJSON(tool.toJSON()),
+          ...tool.localBinder.getCommonToolProperties(),
+        };
         boundByJsonKey.set(JSON.stringify(paletteJson), letter);
       }
 
