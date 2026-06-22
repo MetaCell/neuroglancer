@@ -223,6 +223,21 @@ function activateUnboundTool(viewer: Viewer, toolJson: unknown): void {
 
   viewer.globalToolBinder.set(targetKey, tool);
   viewer.globalToolBinder.activate(targetKey);
+
+  // Eagerly clean up the temp binding when the tool deactivates, rather than
+  // waiting for the next palette open.
+  const capturedKey = targetKey;
+  const capturedTool = tool as object;
+  const removeListener = viewer.globalToolBinder.changed.add(() => {
+    const active = viewer.globalToolBinder.activeTool_?.tool;
+    if (
+      viewer.globalToolBinder.bindings.get(capturedKey) !== capturedTool ||
+      active !== capturedTool
+    ) {
+      sweepPaletteActivatedKeys(viewer);
+      removeListener();
+    }
+  });
 }
 
 /**
@@ -675,4 +690,39 @@ export class CommandPalette extends Overlay {
       );
     }
   }
+}
+
+/**
+ * Binds the command palette to a viewer: registers the "open-command-palette"
+ * action and a document-level Ctrl+P capture listener so the palette opens
+ * regardless of where focus currently sits.
+ *
+ * Call from the standalone setup (e.g. setupDefaultViewer). Embedders who do
+ * not want the document-level key capture simply omit this call.
+ */
+export function bindCommandPalette(viewer: Viewer): void {
+  // Guard prevents double-open when both the element-level action listener and
+  // the document capture listener fire for the same keypress.
+  let openPalette: CommandPalette | undefined;
+  const openCommandPalette = () => {
+    if (openPalette !== undefined && !openPalette.wasDisposed) return;
+    const prevFocused = document.activeElement;
+    const dispatchTarget =
+      prevFocused instanceof HTMLElement && viewer.element.contains(prevFocused)
+        ? prevFocused
+        : viewer.element;
+    openPalette = new CommandPalette(viewer, dispatchTarget);
+  };
+  viewer.bindAction("open-command-palette", openCommandPalette);
+  viewer.registerEventListener(
+    document,
+    "keydown",
+    (event: KeyboardEvent) => {
+      if (event.code === "KeyP" && event.ctrlKey) {
+        event.preventDefault();
+        openCommandPalette();
+      }
+    },
+    { capture: true },
+  );
 }

@@ -15,6 +15,7 @@
  */
 
 import { StatusMessage } from "#src/status.js";
+import { bindCommandPalette } from "#src/ui/command_palette.js";
 import {
   bindDefaultCopyHandler,
   bindDefaultPasteHandler,
@@ -62,6 +63,7 @@ export function setupDefaultViewer(options?: Partial<MinimalViewerOptions>) {
 
   bindDefaultCopyHandler(viewer);
   bindDefaultPasteHandler(viewer);
+  bindCommandPalette(viewer);
 
   return viewer;
 }
