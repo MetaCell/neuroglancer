@@ -117,7 +117,10 @@ import {
 } from "#src/trackable_value.js";
 import { Uint64Set } from "#src/uint64_set.js";
 import { gatherUpdate } from "#src/util/array.js";
-import { computeHighVisibilityContrastColor } from "#src/util/color.js";
+import {
+  computeDistinctHighVisibilityContrastColor,
+  computeHighVisibilityContrastColor,
+} from "#src/util/color.js";
 import { hsvToRgb } from "#src/util/colorspace.js";
 import { DataType } from "#src/util/data_type.js";
 import { RefCounted } from "#src/util/disposable.js";
@@ -196,10 +199,14 @@ const DEFAULT_FRAGMENT_MAIN = `void main() {
 `;
 
 const SELECTED_NODE_OUTLINE_FALLBACK_COLOR = vec3.fromValues(1.0, 0.95, 0.35);
-const SELECTED_NODE_OUTLINE_MIN_WIDTH_2D = "1.75";
-const SELECTED_NODE_OUTLINE_MAX_WIDTH_2D = "3.0";
-const SELECTED_NODE_OUTLINE_MIN_WIDTH_3D = "1.5";
-const SELECTED_NODE_OUTLINE_MAX_WIDTH_3D = "2.5";
+const SELECTED_NODE_OUTLINE_MIN_WIDTH_2D = "3.5";
+const SELECTED_NODE_OUTLINE_MAX_WIDTH_2D = "8.0";
+const SELECTED_NODE_OUTLINE_MIN_WIDTH_3D = "3.0";
+const SELECTED_NODE_OUTLINE_MAX_WIDTH_3D = "7.0";
+// Fraction of the node diameter used as the highlight outline width before
+// clamping to the min/max above. Nodes are small (~5-6px), so this mostly hits
+// the min for typical nodes and scales up the ring for larger nodes.
+const SELECTED_NODE_OUTLINE_DIAMETER_FRACTION = "0.5";
 
 interface VertexAttributeRenderInfo extends VertexAttributeInfo {
   name: string;
@@ -764,13 +771,16 @@ void emitDefault() {
             builder.addUniform("highp vec3", "uSelectedNodeOutlineColor");
             builder.addUniform("highp int", "uSelectedNodeId");
             builder.addVarying("highp float", "vSelectedNode", "flat");
+            builder.addUniform("highp vec3", "uHighlightedNodeOutlineColor");
+            builder.addUniform("highp int", "uHighlightedNodeId");
+            builder.addVarying("highp float", "vHighlightedNode", "flat");
             const selectedOutlineMinWidth = this.targetIsSliceView
               ? SELECTED_NODE_OUTLINE_MIN_WIDTH_2D
               : SELECTED_NODE_OUTLINE_MIN_WIDTH_3D;
             const selectedOutlineMaxWidth = this.targetIsSliceView
               ? SELECTED_NODE_OUTLINE_MAX_WIDTH_2D
               : SELECTED_NODE_OUTLINE_MAX_WIDTH_3D;
-            selectedOutlineWidthExpression = `(vSelectedNode * clamp(0.25 * uNodeDiameter, ${selectedOutlineMinWidth}, ${selectedOutlineMaxWidth}))`;
+            selectedOutlineWidthExpression = `(max(vSelectedNode, vHighlightedNode) * clamp(${SELECTED_NODE_OUTLINE_DIAMETER_FRACTION} * uNodeDiameter, ${selectedOutlineMinWidth}, ${selectedOutlineMaxWidth}))`;
           }
           let vertexMain = `
 highp uint vertexIndex = uint(gl_InstanceID);
@@ -783,6 +793,7 @@ highp vec3 vertexPosition = readAttribute0(vertexIndex);
           }
           if (this.nodeIdAttributeIndex !== undefined) {
             vertexMain += `vSelectedNode = float(readAttribute${this.nodeIdAttributeIndex}(vertexIndex).value == uSelectedNodeId);\n`;
+            vertexMain += `vHighlightedNode = float(readAttribute${this.nodeIdAttributeIndex}(vertexIndex).value == uHighlightedNodeId);\n`;
           }
           if (
             skeletonParams.dynamicSegmentAppearance &&
@@ -807,8 +818,10 @@ emitCircle(
             // getSegmentAppearance(). uColor is unused in this path.
             const segmentExpression = `vSegmentValue`;
             const hasNodeIdSelection = this.nodeIdAttributeIndex !== undefined;
+            // Apply the selected outline first, then the hovered outline, so the
+            // hovered color wins when a node is both selected and hovered.
             const borderColorExpression = hasNodeIdSelection
-              ? `mix(renderColor, vec4(uSelectedNodeOutlineColor, renderColor.a), vSelectedNode)`
+              ? `mix(mix(renderColor, vec4(uSelectedNodeOutlineColor, renderColor.a), vSelectedNode), vec4(uHighlightedNodeOutlineColor, renderColor.a), vHighlightedNode)`
               : "renderColor";
             builder.addFragmentCode(`
 vec4 segmentColor() {
@@ -853,8 +866,10 @@ void emitDefault() {
             // Per-vertex color attribute path: color comes from a per-vertex
             // attribute; alpha is taken from the attribute's alpha component.
             const hasNodeIdSelection = this.nodeIdAttributeIndex !== undefined;
+            // Apply the selected outline first, then the hovered outline, so the
+            // hovered color wins when a node is both selected and hovered.
             const borderColorExpression = hasNodeIdSelection
-              ? `mix(renderColor, vec4(uSelectedNodeOutlineColor, renderColor.a), vSelectedNode)`
+              ? `mix(mix(renderColor, vec4(uSelectedNodeOutlineColor, renderColor.a), vSelectedNode), vec4(uHighlightedNodeOutlineColor, renderColor.a), vHighlightedNode)`
               : "renderColor";
             builder.addFragmentCode(`
 vec4 segmentColor() {
@@ -1844,6 +1859,9 @@ interface SpatiallyIndexedSkeletonLayerOptions {
   selectedNodeInfo?: WatchableValueInterface<
     SelectedSkeletonNodeInfo | undefined
   >;
+  hoveredNodeInfo?: WatchableValueInterface<
+    SelectedSkeletonNodeInfo | undefined
+  >;
   pendingNodePositionVersion?: WatchableValueInterface<number>;
   getPendingNodePosition?: (nodeId: number) => ArrayLike<number> | undefined;
   getCachedNode?: (nodeId: number) => SpatiallyIndexedSkeletonNode | undefined;
@@ -2073,6 +2091,9 @@ export class SpatiallyIndexedSkeletonLayer
   private selectedNodeInfo:
     | WatchableValueInterface<SelectedSkeletonNodeInfo | undefined>
     | undefined;
+  private hoveredNodeInfo:
+    | WatchableValueInterface<SelectedSkeletonNodeInfo | undefined>
+    | undefined;
   private pendingNodePositionVersion:
     | WatchableValueInterface<number>
     | undefined;
@@ -2096,8 +2117,13 @@ export class SpatiallyIndexedSkeletonLayer
   private readonly selectedNodeOutlineColor = vec3.clone(
     SELECTED_NODE_OUTLINE_FALLBACK_COLOR,
   );
-  private selectedNodeOutlineColorGeneration = 0;
-  private cachedSelectedNodeOutlineColorGeneration = -1;
+  private readonly highlightedNodeOutlineColor = vec3.clone(
+    SELECTED_NODE_OUTLINE_FALLBACK_COLOR,
+  );
+  // The selected and hovered outline colors are derived together from a single
+  // source segment color, so they share one cache generation.
+  private nodeOutlineColorGeneration = 0;
+  private cachedNodeOutlineColorGeneration = -1;
 
   private disposeOverlayChunk() {
     this.overlayChunk?.dispose(this.gl);
@@ -2150,27 +2176,70 @@ export class SpatiallyIndexedSkeletonLayer
     return segmentIds;
   }
 
-  private getSelectedNodeOutlineColor() {
-    const nodeInfo = this.selectedNodeInfo?.value;
-    if (nodeInfo === undefined) {
-      return SELECTED_NODE_OUTLINE_FALLBACK_COLOR;
-    }
-    const currentGeneration = this.selectedNodeOutlineColorGeneration;
-    if (this.cachedSelectedNodeOutlineColorGeneration === currentGeneration) {
-      return this.selectedNodeOutlineColor;
-    }
+  // Segment fill color a node's outline should contrast against, or undefined
+  // when no segment can be resolved. Falls back to the currently selected
+  // segment when the node carries no segment id.
+  private getNodeSegmentColor(
+    nodeInfo: SelectedSkeletonNodeInfo,
+  ): Float32Array | undefined {
     const segmentId =
       nodeInfo.segmentId !== undefined
         ? BigInt(nodeInfo.segmentId)
         : this.displayState.segmentSelectionState.baseValue;
     if (segmentId === undefined) {
-      return SELECTED_NODE_OUTLINE_FALLBACK_COLOR;
+      return undefined;
     }
-    this.cachedSelectedNodeOutlineColorGeneration = currentGeneration;
-    return computeHighVisibilityContrastColor(
-      this.selectedNodeOutlineColor,
-      getBaseObjectColor(this.displayState, segmentId),
-    );
+    return getBaseObjectColor(this.displayState, segmentId);
+  }
+
+  // Updates `selectedNodeOutlineColor` and `highlightedNodeOutlineColor` in
+  // place. Each outline is chosen for high contrast against its own node's
+  // segment color, and the hovered outline is additionally kept visually
+  // distinct from the selected outline so both rings are tellable apart even
+  // when the two nodes share a segment (e.g. during a merge).
+  private updateNodeOutlineColorPair() {
+    const currentGeneration = this.nodeOutlineColorGeneration;
+    if (this.cachedNodeOutlineColorGeneration === currentGeneration) {
+      return;
+    }
+    this.cachedNodeOutlineColorGeneration = currentGeneration;
+
+    const selectedNodeInfo = this.selectedNodeInfo?.value;
+    const selectedSegmentColor =
+      selectedNodeInfo !== undefined
+        ? this.getNodeSegmentColor(selectedNodeInfo)
+        : undefined;
+    if (selectedSegmentColor !== undefined) {
+      computeHighVisibilityContrastColor(
+        this.selectedNodeOutlineColor,
+        selectedSegmentColor,
+      );
+    } else {
+      vec3.copy(
+        this.selectedNodeOutlineColor,
+        SELECTED_NODE_OUTLINE_FALLBACK_COLOR,
+      );
+    }
+
+    const hoveredNodeInfo = this.hoveredNodeInfo?.value;
+    const hoveredSegmentColor =
+      hoveredNodeInfo !== undefined
+        ? this.getNodeSegmentColor(hoveredNodeInfo)
+        : undefined;
+    if (hoveredSegmentColor !== undefined) {
+      computeDistinctHighVisibilityContrastColor(
+        this.highlightedNodeOutlineColor,
+        hoveredSegmentColor,
+        selectedSegmentColor !== undefined
+          ? this.selectedNodeOutlineColor
+          : undefined,
+      );
+    } else {
+      vec3.copy(
+        this.highlightedNodeOutlineColor,
+        SELECTED_NODE_OUTLINE_FALLBACK_COLOR,
+      );
+    }
   }
 
   getRetainedOverlaySegmentIds() {
@@ -2372,6 +2441,7 @@ export class SpatiallyIndexedSkeletonLayer
       ),
     );
     this.selectedNodeInfo = options.selectedNodeInfo;
+    this.hoveredNodeInfo = options.hoveredNodeInfo;
     this.pendingNodePositionVersion = options.pendingNodePositionVersion;
     this.getPendingNodePositionOverride = options.getPendingNodePosition;
     this.getCachedNodeInfo = options.getCachedNode;
@@ -2384,8 +2454,8 @@ export class SpatiallyIndexedSkeletonLayer
       ),
     );
     registerRedrawWhenSegmentationDisplayState3DChanged(displayState, this);
-    const invalidateSelectedNodeOutlineColor = () => {
-      ++this.selectedNodeOutlineColorGeneration;
+    const invalidateNodeOutlineColors = () => {
+      ++this.nodeOutlineColorGeneration;
     };
     this.displayState.shaderError.value = undefined;
     const { skeletonRenderingOptions: renderingOptions } = displayState;
@@ -2437,17 +2507,17 @@ export class SpatiallyIndexedSkeletonLayer
       registerNested((context, colorGroupState) => {
         context.registerDisposer(
           colorGroupState.segmentColorHash.changed.add(
-            invalidateSelectedNodeOutlineColor,
+            invalidateNodeOutlineColors,
           ),
         );
         context.registerDisposer(
           colorGroupState.segmentStatedColors.changed.add(
-            invalidateSelectedNodeOutlineColor,
+            invalidateNodeOutlineColors,
           ),
         );
         context.registerDisposer(
           colorGroupState.segmentDefaultColor.changed.add(
-            invalidateSelectedNodeOutlineColor,
+            invalidateNodeOutlineColors,
           ),
         );
       }, this.displayState.segmentationColorGroupState),
@@ -2482,7 +2552,17 @@ export class SpatiallyIndexedSkeletonLayer
     if (this.selectedNodeInfo?.changed) {
       this.registerDisposer(
         this.selectedNodeInfo.changed.add(() => {
-          invalidateSelectedNodeOutlineColor();
+          invalidateNodeOutlineColors();
+          requestRedraw();
+        }),
+      );
+    }
+    if (this.hoveredNodeInfo?.changed) {
+      this.registerDisposer(
+        this.hoveredNodeInfo.changed.add(() => {
+          // The hovered node drives both which node is outlined and the source
+          // segment color of its outline.
+          invalidateNodeOutlineColors();
           requestRedraw();
         }),
       );
@@ -2497,7 +2577,7 @@ export class SpatiallyIndexedSkeletonLayer
     if (inspectionState !== undefined) {
       this.registerDisposer(
         inspectionState.nodeDataVersion.changed.add(() => {
-          invalidateSelectedNodeOutlineColor();
+          invalidateNodeOutlineColors();
           this.redrawNeeded.dispatch();
         }),
       );
@@ -2933,13 +3013,22 @@ export class SpatiallyIndexedSkeletonLayer
 
     if (drawNodes) {
       nodeShader.bind();
+      this.updateNodeOutlineColorPair();
       gl.uniform3fv(
         nodeShader.uniform("uSelectedNodeOutlineColor"),
-        this.getSelectedNodeOutlineColor(),
+        this.selectedNodeOutlineColor,
       );
       gl.uniform1i(
         nodeShader.uniform("uSelectedNodeId"),
         this.selectedNodeInfo?.value?.nodeId ?? -1,
+      );
+      gl.uniform3fv(
+        nodeShader.uniform("uHighlightedNodeOutlineColor"),
+        this.highlightedNodeOutlineColor,
+      );
+      gl.uniform1i(
+        nodeShader.uniform("uHighlightedNodeId"),
+        this.hoveredNodeInfo?.value?.nodeId ?? -1,
       );
     }
 
@@ -3073,13 +3162,22 @@ export class SpatiallyIndexedSkeletonLayer
 
     if (drawNodes) {
       nodeShader.bind();
+      this.updateNodeOutlineColorPair();
       gl.uniform3fv(
         nodeShader.uniform("uSelectedNodeOutlineColor"),
-        this.getSelectedNodeOutlineColor(),
+        this.selectedNodeOutlineColor,
       );
       gl.uniform1i(
         nodeShader.uniform("uSelectedNodeId"),
         this.selectedNodeInfo?.value?.nodeId ?? -1,
+      );
+      gl.uniform3fv(
+        nodeShader.uniform("uHighlightedNodeOutlineColor"),
+        this.highlightedNodeOutlineColor,
+      );
+      gl.uniform1i(
+        nodeShader.uniform("uHighlightedNodeId"),
+        this.hoveredNodeInfo?.value?.nodeId ?? -1,
       );
     }
 
