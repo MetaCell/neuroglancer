@@ -182,23 +182,78 @@ export function useWhiteBackground(foregroundColor: vec3 | vec4) {
   return getRelativeLuminance(foregroundColor) <= 0.179;
 }
 
-const yellowHighlight = vec3.fromValues(1, 0.95, 0.35);
-const redHighlight = vec3.fromValues(1, 0, 0);
-const YELLOW_HIGHLIGHT_CONTRAST_BIAS = 1.2;
+// Two disjoint palettes drive the node outline highlights. For a given segment
+// fill color, an outline is the palette entry with the highest contrast against
+// that segment. The hovered and selected colors are each computed independently
+// from their own palette, so each is fully determined by the segment color alone
+// (the same segment always yields the same hovered color and the same selected
+// color), and the two never collide since the palettes are disjoint.
 
-export function computeHighVisibilityContrastColor<T extends Float32Array>(
+// Vivid, saturated colors for the hovered node -- the actively pointed-at node,
+// drawn to stand out. Spans hue and luminance (white through blue) so a
+// high-contrast option exists for any segment color.
+const HOVERED_NODE_HIGHLIGHT_COLORS: readonly vec3[] = [
+  vec3.fromValues(1.0, 1.0, 1.0), // white
+  vec3.fromValues(1.0, 0.95, 0.0), // yellow
+  // vec3.fromValues(0.0, 0.95, 1.0), // cyan
+  // vec3.fromValues(0.1, 1.0, 0.25), // green
+  // vec3.fromValues(1.0, 0.55, 0.0), // orange
+  // vec3.fromValues(1.0, 0.1, 0.65), // pink
+  vec3.fromValues(1.0, 0.12, 0.12), // red
+  // vec3.fromValues(0.2, 0.45, 1.0), // blue
+];
+
+// Muted, lower-chroma colors for the selected (pinned) node -- a calmer,
+// persistent highlight. Spans hue and luminance like the hovered set so a
+// reasonable-contrast option exists for any segment color.
+const SELECTED_NODE_HIGHLIGHT_COLORS: readonly vec3[] = [
+  vec3.fromValues(0.1, 0.1, 0.1), // near-black
+  vec3.fromValues(0.7, 0.67, 0.6), // stone (light warm gray)
+  vec3.fromValues(0.5, 0.45, 0.15), // olive
+  // vec3.fromValues(0.15, 0.42, 0.42), // teal
+  // vec3.fromValues(0.5, 0.18, 0.18), // maroon
+  // vec3.fromValues(0.25, 0.3, 0.5), // slate blue
+  // vec3.fromValues(0.42, 0.22, 0.45), // plum
+  // vec3.fromValues(0.25, 0.42, 0.22), // moss
+  // vec3.fromValues(0.5, 0.38, 0.2), // tan
+];
+
+// Returns the palette color with the highest contrast against `sourceColor`.
+function pickHighestContrastColor(
+  palette: readonly vec3[],
+  sourceColor: ArrayLike<number>,
+): vec3 {
+  let bestColor = palette[0];
+  let bestContrast = -1;
+  for (const candidate of palette) {
+    const contrast = getContrastRatio(candidate, sourceColor);
+    if (contrast > bestContrast) {
+      bestContrast = contrast;
+      bestColor = candidate;
+    }
+  }
+  return bestColor;
+}
+
+// Writes into `out` the vivid hovered-node outline color with the highest
+// contrast against `sourceColor`.
+export function computeHoveredNodeHighlightColor<T extends Float32Array>(
   out: T,
   sourceColor: ArrayLike<number>,
-) {
-  const yellowContrast = getContrastRatio(yellowHighlight, sourceColor);
-  const redContrast = getContrastRatio(redHighlight, sourceColor);
-  const color =
-    redContrast > yellowContrast * YELLOW_HIGHLIGHT_CONTRAST_BIAS
-      ? redHighlight
-      : yellowHighlight;
-  out[0] = color[0];
-  out[1] = color[1];
-  out[2] = color[2];
+): T {
+  out.set(pickHighestContrastColor(HOVERED_NODE_HIGHLIGHT_COLORS, sourceColor));
+  return out;
+}
+
+// Writes into `out` the muted selected-node outline color with the highest
+// contrast against `sourceColor`.
+export function computeSelectedNodeHighlightColor<T extends Float32Array>(
+  out: T,
+  sourceColor: ArrayLike<number>,
+): T {
+  out.set(
+    pickHighestContrastColor(SELECTED_NODE_HIGHLIGHT_COLORS, sourceColor),
+  );
   return out;
 }
 
