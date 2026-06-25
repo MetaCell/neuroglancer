@@ -118,8 +118,8 @@ import {
 import { Uint64Set } from "#src/uint64_set.js";
 import { gatherUpdate } from "#src/util/array.js";
 import {
-  computeDistinctHighVisibilityContrastColor,
-  computeHighVisibilityContrastColor,
+  computeHoveredNodeHighlightColor,
+  computeSelectedNodeHighlightColor,
 } from "#src/util/color.js";
 import { hsvToRgb } from "#src/util/colorspace.js";
 import { DataType } from "#src/util/data_type.js";
@@ -2193,10 +2193,11 @@ export class SpatiallyIndexedSkeletonLayer
   }
 
   // Updates `selectedNodeOutlineColor` and `highlightedNodeOutlineColor` in
-  // place. Each outline is chosen for high contrast against its own node's
-  // segment color, and the hovered outline is additionally kept visually
-  // distinct from the selected outline so both rings are tellable apart even
-  // when the two nodes share a segment (e.g. during a merge).
+  // place. Each outline is chosen, independently of the other, for high contrast
+  // against its own node's segment color: the selected node uses the muted
+  // palette and the hovered node the vivid palette. Because the two are computed
+  // independently, a given segment color always yields the same selected color
+  // and the same hovered color.
   private updateNodeOutlineColorPair() {
     const currentGeneration = this.nodeOutlineColorGeneration;
     if (this.cachedNodeOutlineColorGeneration === currentGeneration) {
@@ -2210,7 +2211,7 @@ export class SpatiallyIndexedSkeletonLayer
         ? this.getNodeSegmentColor(selectedNodeInfo)
         : undefined;
     if (selectedSegmentColor !== undefined) {
-      computeHighVisibilityContrastColor(
+      computeSelectedNodeHighlightColor(
         this.selectedNodeOutlineColor,
         selectedSegmentColor,
       );
@@ -2227,12 +2228,9 @@ export class SpatiallyIndexedSkeletonLayer
         ? this.getNodeSegmentColor(hoveredNodeInfo)
         : undefined;
     if (hoveredSegmentColor !== undefined) {
-      computeDistinctHighVisibilityContrastColor(
+      computeHoveredNodeHighlightColor(
         this.highlightedNodeOutlineColor,
         hoveredSegmentColor,
-        selectedSegmentColor !== undefined
-          ? this.selectedNodeOutlineColor
-          : undefined,
       );
     } else {
       vec3.copy(
