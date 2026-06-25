@@ -16,7 +16,8 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  computeHighVisibilityContrastColor,
+  computeHoveredNodeHighlightColor,
+  computeSelectedNodeHighlightColor,
   getContrastRatio,
   parseColorSerialization,
   parseRGBColorSpecification,
@@ -115,88 +116,90 @@ describe("getContrastRatio", () => {
   });
 });
 
-describe("computeHighVisibilityContrastColor", () => {
-  it("prefers yellow for dark colors", () => {
+const REPRESENTATIVE_SEGMENT_COLORS: [number, number, number][] = [
+  [0, 0, 0], // black
+  [1, 1, 1], // white
+  [0.5, 0.5, 0.5], // gray
+  [1, 0, 0], // red
+  [0, 1, 0], // green
+  [0, 0, 1], // blue
+  [1, 1, 0], // yellow
+  [0, 1, 1], // cyan
+  [1, 0, 1], // magenta
+  [1, 0.55, 0], // orange
+];
+
+describe("computeHoveredNodeHighlightColor", () => {
+  it("picks white for dark segments", () => {
     const sourceColor = vec3.fromValues(0, 0, 0);
-    const color = computeHighVisibilityContrastColor(
-      vec3.create(),
-      sourceColor,
-    );
-
-    expectColorClose(color, [1, 0.95, 0.35]);
-    expect(getContrastRatio(color, sourceColor)).toBeGreaterThanOrEqual(3);
+    const color = computeHoveredNodeHighlightColor(vec3.create(), sourceColor);
+    expectColorClose(color, [1, 1, 1]);
+    expect(getContrastRatio(color, sourceColor)).toBeGreaterThanOrEqual(7);
   });
 
-  it("uses red for bright colors", () => {
-    const sourceColor = vec3.fromValues(1, 1, 1);
-    const color = computeHighVisibilityContrastColor(
-      vec3.create(),
-      sourceColor,
-    );
+  it("is fully determined by the segment color alone", () => {
+    for (const channels of REPRESENTATIVE_SEGMENT_COLORS) {
+      const sourceColor = vec3.fromValues(...channels);
+      const first = computeHoveredNodeHighlightColor(
+        vec3.create(),
+        sourceColor,
+      );
+      const second = computeHoveredNodeHighlightColor(
+        vec3.create(),
+        sourceColor,
+      );
+      expect([...first]).toEqual([...second]);
+    }
+  });
+});
 
-    expectColorClose(color, [1, 0, 0]);
-    expect(getContrastRatio(color, sourceColor)).toBeGreaterThanOrEqual(3);
+describe("computeSelectedNodeHighlightColor", () => {
+  it("is fully determined by the segment color alone", () => {
+    for (const channels of REPRESENTATIVE_SEGMENT_COLORS) {
+      const sourceColor = vec3.fromValues(...channels);
+      const first = computeSelectedNodeHighlightColor(
+        vec3.create(),
+        sourceColor,
+      );
+      const second = computeSelectedNodeHighlightColor(
+        vec3.create(),
+        sourceColor,
+      );
+      expect([...first]).toEqual([...second]);
+    }
+  });
+});
+
+describe("node highlight palettes", () => {
+  it("give distinct hovered and selected colors for every segment color", () => {
+    for (const channels of REPRESENTATIVE_SEGMENT_COLORS) {
+      const sourceColor = vec3.fromValues(...channels);
+      const hovered = computeHoveredNodeHighlightColor(
+        vec3.create(),
+        sourceColor,
+      );
+      const selected = computeSelectedNodeHighlightColor(
+        vec3.create(),
+        sourceColor,
+      );
+      expect([...hovered]).not.toEqual([...selected]);
+    }
   });
 
-  it("uses yellow for red segment colors", () => {
-    const sourceColor = vec3.fromValues(1, 0, 0);
-    const color = computeHighVisibilityContrastColor(
-      vec3.create(),
-      sourceColor,
-    );
-
-    expectColorClose(color, [1, 0.95, 0.35]);
-    expect(getContrastRatio(color, sourceColor)).toBeGreaterThanOrEqual(3);
-  });
-
-  it("uses yellow for low-saturation midtone colors", () => {
-    const sourceColor = vec3.fromValues(0.5, 0.5, 0.5);
-    const color = computeHighVisibilityContrastColor(
-      vec3.create(),
-      sourceColor,
-    );
-
-    expectColorClose(color, [1, 0.95, 0.35]);
-    expect(getContrastRatio(color, sourceColor)).toBeGreaterThanOrEqual(3);
-  });
-
-  it("uses yellow for near-black colors", () => {
-    const sourceColor = vec3.fromValues(0.05, 0.05, 0.05);
-    const color = computeHighVisibilityContrastColor(
-      vec3.create(),
-      sourceColor,
-    );
-
-    expectColorClose(color, [1, 0.95, 0.35]);
-  });
-
-  it("uses red for near-white colors", () => {
-    const sourceColor = vec3.fromValues(0.95, 0.95, 0.95);
-    const color = computeHighVisibilityContrastColor(
-      vec3.create(),
-      sourceColor,
-    );
-
-    expectColorClose(color, [1, 0, 0]);
-  });
-
-  it("uses red for yellow-like segment colors", () => {
-    const sourceColor = vec3.fromValues(1, 0.95, 0.35);
-    const color = computeHighVisibilityContrastColor(
-      vec3.create(),
-      sourceColor,
-    );
-
-    expectColorClose(color, [1, 0, 0]);
-  });
-
-  it("uses red when yellow would be close to the segment color", () => {
-    const sourceColor = vec3.fromValues(0.35, 1, 0.35);
-    const color = computeHighVisibilityContrastColor(
-      vec3.create(),
-      sourceColor,
-    );
-
-    expectColorClose(color, [1, 0, 0]);
+  it("never blend into their own segment", () => {
+    for (const channels of REPRESENTATIVE_SEGMENT_COLORS) {
+      const sourceColor = vec3.fromValues(...channels);
+      const hovered = computeHoveredNodeHighlightColor(
+        vec3.create(),
+        sourceColor,
+      );
+      const selected = computeSelectedNodeHighlightColor(
+        vec3.create(),
+        sourceColor,
+      );
+      // Both clear the value 1.0 that a same-color-on-same-color outline gives.
+      expect(getContrastRatio(hovered, sourceColor)).toBeGreaterThan(1.5);
+      expect(getContrastRatio(selected, sourceColor)).toBeGreaterThan(1.5);
+    }
   });
 });
