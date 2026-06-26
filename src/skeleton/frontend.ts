@@ -1468,7 +1468,11 @@ export class PerspectiveViewSkeletonLayer extends PerspectiveViewRenderLayer {
   }
 
   get isTransparent() {
-    return this.base.displayState.objectAlpha.value < 1.0;
+    return true;
+    // TODO (SKM) the below is the correct way to do this
+    // but non-transparent rendering interacts badly with the
+    // volume rendering
+    // return this.base.displayState.objectAlpha.value < 1.0;
   }
 
   draw(
@@ -3458,12 +3462,16 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
   }
 
   get isTransparent() {
-    const { objectAlpha, hiddenObjectAlpha } = this.base.displayState;
-    const opaque =
-      (objectAlpha.value == 1.0 &&
-        (hiddenObjectAlpha.value == 1.0 || hiddenObjectAlpha.value == 0.0)) ||
-      (objectAlpha.value == 0.0 && hiddenObjectAlpha.value == 1.0);
-    return !opaque;
+    return true;
+    // TODO (SKM) the below is the correct way to do this
+    // but non-transparent rendering interacts badly with the
+    // volume rendering
+    // const { objectAlpha, hiddenObjectAlpha } = this.base.displayState;
+    // const opaque =
+    //   (objectAlpha.value == 1.0 &&
+    //     (hiddenObjectAlpha.value == 1.0 || hiddenObjectAlpha.value == 0.0)) ||
+    //   (objectAlpha.value == 0.0 && hiddenObjectAlpha.value == 1.0);
+    // return !opaque;
   }
 
   getValueAt(_position: Float32Array) {
