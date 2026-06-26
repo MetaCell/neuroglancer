@@ -87,6 +87,10 @@ export class SpatialSkeletonCommandMappings {
   private nodeIdMappings = new Map<number, number>();
   private segmentIdMappings = new Map<number, number>();
 
+  get empty() {
+    return this.nodeIdMappings.size === 0 && this.segmentIdMappings.size === 0;
+  }
+
   clear() {
     this.nodeIdMappings.clear();
     this.segmentIdMappings.clear();
@@ -251,10 +255,15 @@ export class SpatialSkeletonCommandHistory extends RefCounted {
   }
 
   clear() {
+    const changed =
+      this.undoEntries.length !== 0 ||
+      this.redoEntries.length !== 0 ||
+      !this.mappings.empty;
     this.undoEntries = [];
     this.redoEntries = [];
     this.mappings.clear();
     this.updateState();
+    return changed;
   }
 
   setSource(source: unknown) {
