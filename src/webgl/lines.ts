@@ -134,7 +134,7 @@ vec4 getRoundedLineColor(vec4 interiorColor, vec4 borderColor) {
   builder.addFragmentCode(`
 float getLineAlpha() {
   if (uLineEndpointClipRadius > 0.0) {
-    float radiusFactor = 0.92;
+    float radiusFactor = 0.97;
     float distFromA = length(vec2(vLineOffsetX * vEdgeLengthInPixels, vLineCoord * vHalfTotalLineWidth));
     float distFromB = length(vec2((1.0 - vLineOffsetX) * vEdgeLengthInPixels, vLineCoord * vHalfTotalLineWidth));
     if (distFromA < uLineEndpointClipRadius * radiusFactor || distFromB < uLineEndpointClipRadius * radiusFactor) discard;
