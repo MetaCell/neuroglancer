@@ -133,6 +133,7 @@ export class ViewerSettingsPanel extends SidePanel {
       "Enable adaptive downsampling",
       viewer.enableAdaptiveDownsampling,
     );
+    addCheckbox("Show picking indicator", viewer.showPickingIndicator);
 
     const addColor = (label: string, value: WatchableValueInterface<vec3>) => {
       const labelElement = document.createElement("label");
