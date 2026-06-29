@@ -18,16 +18,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { makeCatmaidNodeSourceState } from "#src/datasource/catmaid/api.js";
 import { CatmaidSpatialSkeletonEditCommands } from "#src/datasource/catmaid/spatial_skeleton_commands.js";
-import {
-  SpatialSkeletonActions,
-  type SpatialSkeletonAction,
-} from "#src/skeleton/actions.js";
 import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
 import { SpatialSkeletonCommandHistory } from "#src/skeleton/command_history.js";
 import {
+  SpatialSkeletonActions,
+  type SpatialSkeletonAction,
+} from "#src/skeleton/command_protocol.js";
+import {
   executeSpatialSkeletonAddNode,
   executeSpatialSkeletonMerge,
-} from "#src/skeleton/spatial_skeleton_commands.js";
+} from "#src/skeleton/commands.js";
 import { StatusMessage } from "#src/status.js";
 
 if (!("WebGL2RenderingContext" in globalThis)) {
@@ -469,9 +469,8 @@ describe("spatial_skeleton_edit_tool", () => {
   });
 
   it("blocks appending a child to a selected true-end node", () => {
-    const getAddNodeBlockedReason = (
-      SpatialSkeletonEditTool.prototype as any
-    ).getAddNodeBlockedReason as (
+    const getAddNodeBlockedReason = (SpatialSkeletonEditTool.prototype as any)
+      .getAddNodeBlockedReason as (
       this: any,
       skeletonLayer: any,
       parentNodeId: number | undefined,
@@ -493,9 +492,8 @@ describe("spatial_skeleton_edit_tool", () => {
           getCachedNode,
         },
       },
-      getSelectedParentNodeForAdd: (
-        SpatialSkeletonEditTool.prototype as any
-      ).getSelectedParentNodeForAdd,
+      getSelectedParentNodeForAdd: (SpatialSkeletonEditTool.prototype as any)
+        .getSelectedParentNodeForAdd,
     };
 
     expect(getAddNodeBlockedReason.call(tool, { getNode }, 17)).toBe(
@@ -628,9 +626,8 @@ describe("spatial_skeleton_edit_tool", () => {
 
   it("clears the merge anchor when the clear-selection action runs with an active merge anchor", () => {
     suppressStatusMessages();
-    const bindClearSelectionAction = (
-      SpatialSkeletonEditTool.prototype as any
-    ).bindClearSelectionAction as (this: any, activation: any) => void;
+    const bindClearSelectionAction = (SpatialSkeletonEditTool.prototype as any)
+      .bindClearSelectionAction as (this: any, activation: any) => void;
     const clearSpatialSkeletonNodeSelection = vi.fn();
     const clearSpatialSkeletonMergeAnchor = vi.fn();
     const unpin = vi.fn();
@@ -754,7 +751,10 @@ describe("spatial_skeleton_edit_tool", () => {
       layersChanged: makeChangedSignal(),
     };
     const { activation, actions, dispose } = makeToolActivation();
-    const tool = Object.assign(Object.create(SpatialSkeletonEditTool.prototype), { layer });
+    const tool = Object.assign(
+      Object.create(SpatialSkeletonEditTool.prototype),
+      { layer },
+    );
 
     try {
       SpatialSkeletonEditTool.prototype.activate.call(tool, activation as any);
@@ -841,7 +841,10 @@ describe("spatial_skeleton_edit_tool", () => {
       layersChanged: makeChangedSignal(),
     };
     const { activation, actions, dispose } = makeToolActivation();
-    const tool = Object.assign(Object.create(SpatialSkeletonEditTool.prototype), { layer });
+    const tool = Object.assign(
+      Object.create(SpatialSkeletonEditTool.prototype),
+      { layer },
+    );
 
     try {
       SpatialSkeletonEditTool.prototype.activate.call(tool, activation as any);
@@ -910,7 +913,10 @@ describe("spatial_skeleton_edit_tool", () => {
       layersChanged: makeChangedSignal(),
     };
     const { activation, actions, dispose } = makeToolActivation();
-    const tool = Object.assign(Object.create(SpatialSkeletonEditTool.prototype), { layer });
+    const tool = Object.assign(
+      Object.create(SpatialSkeletonEditTool.prototype),
+      { layer },
+    );
 
     try {
       SpatialSkeletonEditTool.prototype.activate.call(tool, activation as any);

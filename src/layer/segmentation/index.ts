@@ -95,17 +95,26 @@ import type {
 import { SegmentationGraphSourceTab } from "#src/segmentation_graph/source.js";
 import { SharedDisjointUint64Sets } from "#src/shared_disjoint_sets.js";
 import { SharedWatchableValue } from "#src/shared_watchable_value.js";
+import type {
+  SpatiallyIndexedSkeletonNode,
+  SpatialSkeletonSourceState,
+} from "#src/skeleton/api.js";
 import {
   DEFAULT_SPATIAL_SKELETON_EDIT_ACTIONS,
   getSpatialSkeletonActionSupportLabel,
   isSpatialSkeletonEditAction,
   SpatialSkeletonActions,
   type SpatialSkeletonAction,
-} from "#src/skeleton/actions.js";
-import type {
-  SpatiallyIndexedSkeletonNode,
-  SpatialSkeletonSourceState,
-} from "#src/skeleton/api.js";
+} from "#src/skeleton/command_protocol.js";
+import {
+  executeSpatialSkeletonDeleteNode,
+  executeSpatialSkeletonNodeConfidenceUpdate,
+  executeSpatialSkeletonNodeDescriptionUpdate,
+  executeSpatialSkeletonNodeRadiusUpdate,
+  executeSpatialSkeletonReroot,
+  executeSpatialSkeletonNodeTrueEndUpdate,
+  showSpatialSkeletonActionError,
+} from "#src/skeleton/commands.js";
 import {
   PerspectiveViewSkeletonLayer,
   SkeletonLayer,
@@ -129,15 +138,6 @@ import {
   SpatialSkeletonDisplayNodeType,
   SpatialSkeletonNodeFilterType,
 } from "#src/skeleton/node_types.js";
-import {
-  executeSpatialSkeletonDeleteNode,
-  executeSpatialSkeletonNodeConfidenceUpdate,
-  executeSpatialSkeletonNodeDescriptionUpdate,
-  executeSpatialSkeletonNodeRadiusUpdate,
-  executeSpatialSkeletonReroot,
-  executeSpatialSkeletonNodeTrueEndUpdate,
-  showSpatialSkeletonActionError,
-} from "#src/skeleton/spatial_skeleton_commands.js";
 import {
   editableSpatiallyIndexedSkeletonSourceSupportsAction,
   getEditableSpatiallyIndexedSkeletonSource,
@@ -2295,12 +2295,14 @@ export class SegmentationUserLayer extends Base {
           ? "Load the active skeleton in the Skeleton tab before rerooting from Selection."
           : fullNodeInfo.parentNodeId === undefined
             ? "Selected node is already root."
-            : this.getSpatialSkeletonActionsDisabledReason(
-                SpatialSkeletonActions.reroot,
-                {
-                  requireVisibleChunks: false,
-                },
-              );
+            : (fullNodeInfo.isTrueEnd ?? false)
+              ? "True end nodes cannot be set as root. Clear the true end state first."
+              : this.getSpatialSkeletonActionsDisabledReason(
+                  SpatialSkeletonActions.reroot,
+                  {
+                    requireVisibleChunks: false,
+                  },
+                );
     const rerootButton = document.createElement("button");
     rerootButton.type = "button";
     rerootButton.className = "neuroglancer-selection-details-skeleton-action";
@@ -2319,7 +2321,8 @@ export class SegmentationUserLayer extends Base {
         rerootButton.disabled ||
         rerootPending ||
         completeNodeInfo === undefined ||
-        completeNodeInfo.parentNodeId === undefined
+        completeNodeInfo.parentNodeId === undefined ||
+        (completeNodeInfo.isTrueEnd ?? false)
       ) {
         return;
       }
