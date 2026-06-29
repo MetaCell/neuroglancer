@@ -81,6 +81,7 @@ import {
   SKELETON_GO_ROOT,
   SKELETON_GO_UNFINISHED,
   SKELETON_REDO,
+  SKELETON_TOGGLE_HIDDEN,
   SKELETON_UNDO,
 } from "#src/skeleton/actions.js";
 import { StatusMessage } from "#src/status.js";
@@ -1077,7 +1078,7 @@ export class Viewer extends RefCounted implements ViewerState {
    * Called once by the constructor to register the action listeners.
    */
   private registerActionListeners() {
-    for (const action of ["recolor", "clear-segments"]) {
+    for (const action of ["recolor", "clear-segments", SKELETON_TOGGLE_HIDDEN]) {
       this.bindAction(action, () => {
         this.layerManager.invokeAction(action);
       });
