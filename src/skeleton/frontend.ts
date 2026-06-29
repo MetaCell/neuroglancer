@@ -1793,6 +1793,46 @@ export class SpatiallyIndexedSkeletonSource extends SliceViewChunkSource<
   }
 }
 
+export interface SpatiallyIndexedSkeletonSourceRuntimeDisposalOptions {
+  invalidateCache?: boolean;
+}
+
+export function disposeSpatiallyIndexedSkeletonSourceRuntimeState(
+  sources: Iterable<SpatiallyIndexedSkeletonSource>,
+  options: SpatiallyIndexedSkeletonSourceRuntimeDisposalOptions = {},
+) {
+  const uniqueSources = new Set(sources);
+  const invalidateCache = options.invalidateCache ?? true;
+  const chunkQueueManagersWithDeletedChunks = new Set<
+    ChunkManager["chunkQueueManager"]
+  >();
+  let changed = false;
+  for (const source of uniqueSources) {
+    if (source.chunks.size !== 0) {
+      for (const chunkKey of [...source.chunks.keys()]) {
+        source.deleteChunk(chunkKey);
+      }
+      chunkQueueManagersWithDeletedChunks.add(
+        source.chunkManager.chunkQueueManager,
+      );
+      changed = true;
+    }
+    if (
+      invalidateCache &&
+      source.wasDisposed !== true &&
+      source.rpc !== null &&
+      source.rpcId !== null
+    ) {
+      source.invalidateCache();
+      changed = true;
+    }
+  }
+  for (const chunkQueueManager of chunkQueueManagersWithDeletedChunks) {
+    chunkQueueManager.visibleChunksChanged.dispatch();
+  }
+  return changed;
+}
+
 // Options are provided by the SliceView framework for scale selection,
 // but spatial skeleton sources expose all grid levels unconditionally.
 // TODO (SKM): validate if this is an ok deviation from the SliceView
@@ -2120,9 +2160,61 @@ export class SpatiallyIndexedSkeletonLayer
   private cachedNodeOutlineColorGeneration = -1;
 
   private disposeOverlayChunk() {
+    const changed =
+      this.overlayChunk !== undefined || this.overlayGeometryKey !== undefined;
     this.overlayChunk?.dispose(this.gl);
     this.overlayChunk = undefined;
     this.overlayGeometryKey = undefined;
+    return changed;
+  }
+
+  getUniqueChunkSources() {
+    const sources = new Set<SpatiallyIndexedSkeletonSource>();
+    for (const sourceEntry of [...this.sources, ...this.sources2d]) {
+      sources.add(sourceEntry.chunkSource);
+    }
+    return sources;
+  }
+
+  private clearOverlayRuntimeState() {
+    let changed = this.disposeOverlayChunk();
+    if (this.pendingOverlaySegmentLoads.size !== 0) {
+      this.pendingOverlaySegmentLoads.clear();
+      changed = true;
+    }
+    if (this.editedSegmentIds.size !== 0) {
+      this.editedSegmentIds.clear();
+      changed = true;
+    }
+    if (this.retainedOverlaySegmentIds.length !== 0) {
+      this.retainedOverlaySegmentIds = [];
+      changed = true;
+    }
+    if (this.browseExcludedSegments.size !== 0) {
+      this.browseExcludedSegments.clear();
+      changed = true;
+    }
+    if (this.browseExcludedSegmentsKey !== undefined) {
+      this.browseExcludedSegmentsKey = undefined;
+      changed = true;
+    }
+    this.overlayRebuildFrame = -1;
+    return changed;
+  }
+
+  disposeRuntimeState(
+    options: SpatiallyIndexedSkeletonSourceRuntimeDisposalOptions = {},
+  ) {
+    const overlayChanged = this.clearOverlayRuntimeState();
+    const sourceChanged = disposeSpatiallyIndexedSkeletonSourceRuntimeState(
+      this.getUniqueChunkSources(),
+      options,
+    );
+    const changed = overlayChanged || sourceChanged;
+    if (changed) {
+      this.redrawNeeded.dispatch();
+    }
+    return changed;
   }
 
   private requestOverlaySegmentLoad(segmentId: number) {
@@ -2394,7 +2486,7 @@ export class SpatiallyIndexedSkeletonLayer
   ) {
     super();
     this.registerDisposer(() => {
-      this.disposeOverlayChunk();
+      this.disposeRuntimeState();
     });
     let sources3d: SpatiallyIndexedSkeletonSourceEntry[];
     let sources2d = options.sources2d ?? [];
