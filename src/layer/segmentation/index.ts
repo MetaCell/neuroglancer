@@ -42,7 +42,10 @@ import {
   registerVolumeLayerType,
   UserLayer,
 } from "#src/layer/index.js";
-import type { LoadedDataSubsource } from "#src/layer/layer_data_source.js";
+import type {
+  LayerDataSourceChangeRuntimeDisposalContext,
+  LoadedDataSubsource,
+} from "#src/layer/layer_data_source.js";
 import { layerDataSourceSpecificationFromJson } from "#src/layer/layer_data_source.js";
 import * as json_keys from "#src/layer/segmentation/json_keys.js";
 import { registerLayerControls } from "#src/layer/segmentation/layer_controls.js";
@@ -811,6 +814,9 @@ function copyOptionalSpatialSkeletonPosition(
   return new Float32Array(Array.from(value, Number));
 }
 
+const SPATIALLY_INDEXED_SKELETON_RUNTIME_DISPOSAL_KIND =
+  "spatiallyIndexedSkeleton";
+
 const Base = UserLayerWithAnnotationsMixin(UserLayer);
 export class SegmentationUserLayer extends Base {
   sliceViewRenderScaleHistogram = new RenderScaleHistogram();
@@ -1556,6 +1562,31 @@ export class SegmentationUserLayer extends Base {
     invalidateFullSkeletonCache?: boolean;
   }) {
     this.spatialSkeletonState.markNodeDataChanged(options);
+  }
+
+  disposeLayerRuntimeStateForDataSourceChange(
+    context: LayerDataSourceChangeRuntimeDisposalContext,
+  ) {
+    if (
+      context.request.kind !== SPATIALLY_INDEXED_SKELETON_RUNTIME_DISPOSAL_KIND
+    ) {
+      return super.disposeLayerRuntimeStateForDataSourceChange(context);
+    }
+    let changed = false;
+    const spatialSkeletonLayers = new Set<SpatiallyIndexedSkeletonLayer>();
+    for (const renderLayer of context.loadedSubsource.renderLayers) {
+      if (
+        renderLayer instanceof PerspectiveViewSpatiallyIndexedSkeletonLayer ||
+        renderLayer instanceof SliceViewPanelSpatiallyIndexedSkeletonLayer
+      ) {
+        spatialSkeletonLayers.add(renderLayer.base);
+      }
+    }
+    for (const spatialSkeletonLayer of spatialSkeletonLayers) {
+      changed = spatialSkeletonLayer.disposeRuntimeState() || changed;
+    }
+    changed = this.spatialSkeletonState.clearRuntimeState() || changed;
+    return changed;
   }
 
   activateDataSubsources(subsources: Iterable<LoadedDataSubsource>) {
