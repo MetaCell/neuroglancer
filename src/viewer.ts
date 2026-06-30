@@ -1080,7 +1080,11 @@ export class Viewer extends RefCounted implements ViewerState {
    * Called once by the constructor to register the action listeners.
    */
   private registerActionListeners() {
-    for (const action of ["recolor", "clear-segments", SKELETON_TOGGLE_HIDDEN]) {
+    for (const action of [
+      "recolor",
+      "clear-segments",
+      SKELETON_TOGGLE_HIDDEN,
+    ]) {
       this.bindAction(action, () => {
         this.layerManager.invokeAction(action);
       });

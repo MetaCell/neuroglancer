@@ -117,10 +117,7 @@ import {
 } from "#src/trackable_value.js";
 import { Uint64Set } from "#src/uint64_set.js";
 import { gatherUpdate } from "#src/util/array.js";
-import {
-  computeHoveredNodeHighlightColor,
-  computeSelectedNodeHighlightColor,
-} from "#src/util/color.js";
+import { pickHighestContrastColor } from "#src/util/color.js";
 import { hsvToRgb } from "#src/util/colorspace.js";
 import { DataType } from "#src/util/data_type.js";
 import { RefCounted } from "#src/util/disposable.js";
@@ -189,15 +186,11 @@ import type { RPC } from "#src/worker_rpc.js";
 const DEBUG_SPATIAL_SKELETON_OVERLAY = false;
 const DEBUG_EXCLUDED_SEGMENTS = false;
 const DEBUG_SPATIAL_SKELETON_CHUNKS = false;
-// Used for debugging chunks via a different color for each chunk
-const tempChunkKeyToColorMap = new Map<string, Float32Array>();
 
-const tempMat4 = mat4.create();
 const DEFAULT_FRAGMENT_MAIN = `void main() {
   emitDefault();
 }
 `;
-
 const SELECTED_NODE_OUTLINE_FALLBACK_COLOR = vec3.fromValues(1.0, 0.95, 0.35);
 const SELECTED_NODE_OUTLINE_MIN_WIDTH_2D = "3.5";
 const SELECTED_NODE_OUTLINE_MAX_WIDTH_2D = "8.0";
@@ -207,12 +200,34 @@ const SELECTED_NODE_OUTLINE_MAX_WIDTH_3D = "7.0";
 // clamping to the min/max above. Nodes are small (~5-6px), so this mostly hits
 // the min for typical nodes and scales up the ring for larger nodes.
 const SELECTED_NODE_OUTLINE_DIAMETER_FRACTION = "0.5";
-
 const NODE_BORDER_OUTLINE_DIAMETER_FRACTION = "0.15";
 const NODE_BORDER_OUTLINE_MIN_WIDTH_2D = "1.0";
 const NODE_BORDER_OUTLINE_MAX_WIDTH_2D = "2.5";
 const NODE_BORDER_OUTLINE_MIN_WIDTH_3D = "1.0";
 const NODE_BORDER_OUTLINE_MAX_WIDTH_3D = "2.0";
+
+// Vivid colors for the hovered node -- the actively pointed at node,
+// drawn to stand out.
+const HOVERED_NODE_HIGHLIGHT_COLORS: readonly vec3[] = [
+  // vec3.fromValues(1.0, 1.0, 1.0), // white
+  vec3.fromValues(1.0, 0.95, 0.0), // yellow
+  vec3.fromValues(0.0, 0.95, 1.0), // cyan
+  // vec3.fromValues(0.1, 1.0, 0.25), // green
+  // vec3.fromValues(1.0, 0.55, 0.0), // orange
+  // vec3.fromValues(1.0, 0.1, 0.65), // pink
+  // vec3.fromValues(0.2, 0.45, 1.0), // blue
+];
+
+// Muted colors for the selected (pinned) node -- less vibrant.
+const SELECTED_NODE_HIGHLIGHT_COLORS: readonly vec3[] = [
+  vec3.fromValues(0.1, 0.1, 0.1), // near-black
+  vec3.fromValues(0.7, 0.67, 0.6), // stone (light warm gray)
+  vec3.fromValues(0.5, 0.45, 0.15), // olive
+];
+
+// Used for debugging chunks via a different color for each chunk
+const tempChunkKeyToColorMap = new Map<string, Float32Array>();
+const tempMat4 = mat4.create();
 
 interface VertexAttributeRenderInfo extends VertexAttributeInfo {
   name: string;
@@ -1832,7 +1847,7 @@ export function disposeSpatiallyIndexedSkeletonSourceRuntimeState(
   let changed = false;
   for (const source of uniqueSources) {
     if (source.chunks.size !== 0) {
-      for (const chunkKey of [...source.chunks.keys()]) {
+      for (const chunkKey of source.chunks.keys()) {
         source.deleteChunk(chunkKey);
       }
       chunkQueueManagersWithDeletedChunks.add(
@@ -2320,9 +2335,11 @@ export class SpatiallyIndexedSkeletonLayer
         ? this.getNodeSegmentColor(selectedNodeInfo)
         : undefined;
     if (selectedSegmentColor !== undefined) {
-      computeSelectedNodeHighlightColor(
-        this.selectedNodeOutlineColor,
-        selectedSegmentColor,
+      this.selectedNodeOutlineColor.set(
+        pickHighestContrastColor(
+          SELECTED_NODE_HIGHLIGHT_COLORS,
+          selectedSegmentColor,
+        ),
       );
     } else {
       vec3.copy(
@@ -2337,9 +2354,11 @@ export class SpatiallyIndexedSkeletonLayer
         ? this.getNodeSegmentColor(hoveredNodeInfo)
         : undefined;
     if (hoveredSegmentColor !== undefined) {
-      computeHoveredNodeHighlightColor(
-        this.highlightedNodeOutlineColor,
-        hoveredSegmentColor,
+      this.highlightedNodeOutlineColor.set(
+        pickHighestContrastColor(
+          HOVERED_NODE_HIGHLIGHT_COLORS,
+          hoveredSegmentColor,
+        ),
       );
     } else {
       vec3.copy(

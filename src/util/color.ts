@@ -142,9 +142,15 @@ export function serializeColor(x: vec3 | vec4) {
   return result;
 }
 
-// Converts an sRGB color component to the gamma-expanded ("linear") value.
-export function srgbGammaExpand(value: number) {
-  return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+// Determines whether a white background would provide higher contrast than a black background for
+// the given foreground color.
+//
+// This is determined according to the Web Content Accessibility Guidelines (WCAG) 2.0:
+// https://www.w3.org/TR/WCAG20/#contrast-ratiodef
+//
+// https://stackoverflow.com/a/3943023
+export function useWhiteBackground(foregroundColor: vec3 | vec4) {
+  return getRelativeLuminance(foregroundColor) <= 0.179;
 }
 
 // Computes the relative luminance according to Web Content Accessibility Guidelines (WCAG) 2.0
@@ -153,6 +159,11 @@ export function srgbGammaExpand(value: number) {
 //
 // @param color sRGB color
 export function getRelativeLuminance(color: ArrayLike<number>) {
+  // Converts an sRGB color component to the gamma-expanded ("linear") value.
+  function srgbGammaExpand(value: number) {
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  }
+
   return (
     0.2126 * srgbGammaExpand(color[0]) +
     0.7152 * srgbGammaExpand(color[1]) +
@@ -171,55 +182,8 @@ export function getContrastRatio(
   return (lighter + 0.05) / (darker + 0.05);
 }
 
-// Determines whether a white background would provide higher contrast than a black background for
-// the given foreground color.
-//
-// This is determined according to the Web Content Accessibility Guidelines (WCAG) 2.0:
-// https://www.w3.org/TR/WCAG20/#contrast-ratiodef
-//
-// https://stackoverflow.com/a/3943023
-export function useWhiteBackground(foregroundColor: vec3 | vec4) {
-  return getRelativeLuminance(foregroundColor) <= 0.179;
-}
-
-// Two disjoint palettes drive the node outline highlights. For a given segment
-// fill color, an outline is the palette entry with the highest contrast against
-// that segment. The hovered and selected colors are each computed independently
-// from their own palette, so each is fully determined by the segment color alone
-// (the same segment always yields the same hovered color and the same selected
-// color), and the two never collide since the palettes are disjoint.
-
-// Vivid, saturated colors for the hovered node -- the actively pointed-at node,
-// drawn to stand out. Spans hue and luminance (white through blue) so a
-// high-contrast option exists for any segment color.
-const HOVERED_NODE_HIGHLIGHT_COLORS: readonly vec3[] = [
-  vec3.fromValues(1.0, 1.0, 1.0), // white
-  vec3.fromValues(1.0, 0.95, 0.0), // yellow
-  // vec3.fromValues(0.0, 0.95, 1.0), // cyan
-  // vec3.fromValues(0.1, 1.0, 0.25), // green
-  // vec3.fromValues(1.0, 0.55, 0.0), // orange
-  // vec3.fromValues(1.0, 0.1, 0.65), // pink
-  vec3.fromValues(1.0, 0.12, 0.12), // red
-  // vec3.fromValues(0.2, 0.45, 1.0), // blue
-];
-
-// Muted, lower-chroma colors for the selected (pinned) node -- a calmer,
-// persistent highlight. Spans hue and luminance like the hovered set so a
-// reasonable-contrast option exists for any segment color.
-const SELECTED_NODE_HIGHLIGHT_COLORS: readonly vec3[] = [
-  vec3.fromValues(0.1, 0.1, 0.1), // near-black
-  vec3.fromValues(0.7, 0.67, 0.6), // stone (light warm gray)
-  vec3.fromValues(0.5, 0.45, 0.15), // olive
-  // vec3.fromValues(0.15, 0.42, 0.42), // teal
-  // vec3.fromValues(0.5, 0.18, 0.18), // maroon
-  // vec3.fromValues(0.25, 0.3, 0.5), // slate blue
-  // vec3.fromValues(0.42, 0.22, 0.45), // plum
-  // vec3.fromValues(0.25, 0.42, 0.22), // moss
-  // vec3.fromValues(0.5, 0.38, 0.2), // tan
-];
-
 // Returns the palette color with the highest contrast against `sourceColor`.
-function pickHighestContrastColor(
+export function pickHighestContrastColor(
   palette: readonly vec3[],
   sourceColor: ArrayLike<number>,
 ): vec3 {
@@ -233,28 +197,6 @@ function pickHighestContrastColor(
     }
   }
   return bestColor;
-}
-
-// Writes into `out` the vivid hovered-node outline color with the highest
-// contrast against `sourceColor`.
-export function computeHoveredNodeHighlightColor<T extends Float32Array>(
-  out: T,
-  sourceColor: ArrayLike<number>,
-): T {
-  out.set(pickHighestContrastColor(HOVERED_NODE_HIGHLIGHT_COLORS, sourceColor));
-  return out;
-}
-
-// Writes into `out` the muted selected-node outline color with the highest
-// contrast against `sourceColor`.
-export function computeSelectedNodeHighlightColor<T extends Float32Array>(
-  out: T,
-  sourceColor: ArrayLike<number>,
-): T {
-  out.set(
-    pickHighestContrastColor(SELECTED_NODE_HIGHLIGHT_COLORS, sourceColor),
-  );
-  return out;
 }
 
 export class TrackableRGB extends WatchableValue<vec3> {

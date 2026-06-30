@@ -15,11 +15,8 @@
  */
 
 import "#src/ui/command_palette.css";
-import {
-  LayerManager,
-  SelectedLayerState,
-  UserLayer,
-} from "#src/layer/index.js";
+import type { LayerManager, SelectedLayerState } from "#src/layer/index.js";
+import { UserLayer } from "#src/layer/index.js";
 import { Overlay } from "#src/overlay.js";
 import {
   getMatchingTools,
