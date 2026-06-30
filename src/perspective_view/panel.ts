@@ -29,6 +29,7 @@ import type {
   PerspectiveViewRenderContext,
 } from "#src/perspective_view/render_layer.js";
 import { PerspectiveViewRenderLayer } from "#src/perspective_view/render_layer.js";
+import { PickingIndicatorHelper } from "#src/picking_indicator.js";
 import type { ProjectionParameters } from "#src/projection_parameters.js";
 import { updateProjectionParametersFromInverseViewAndProjection } from "#src/projection_parameters.js";
 import type {
@@ -95,6 +96,7 @@ export interface PerspectiveViewerState extends RenderedDataViewerState {
   crossSectionBackgroundColor: TrackableRGB;
   perspectiveViewBackgroundColor: TrackableRGB;
   hideCrossSectionBackground3D: TrackableBoolean;
+  showPickingIndicator: WatchableValueInterface<boolean>;
   rpc: RPC;
 }
 
@@ -324,6 +326,9 @@ export class PerspectivePanel extends RenderedDataPanel {
   );
 
   private axesLineHelper = this.registerDisposer(AxesLineHelper.get(this.gl));
+  private pickingIndicatorHelper = this.registerDisposer(
+    PickingIndicatorHelper.get(this.gl),
+  );
   protected offscreenFramebuffer = this.registerDisposer(
     new FramebufferConfiguration(this.gl, {
       colorBuffers: [
@@ -574,6 +579,16 @@ export class PerspectivePanel extends RenderedDataPanel {
     );
     this.registerDisposer(
       viewer.showAxisLines.changed.add(() => this.scheduleRedraw()),
+    );
+    this.registerDisposer(
+      viewer.showPickingIndicator.changed.add(() => this.scheduleRedraw()),
+    );
+    this.registerDisposer(
+      viewer.mouseState.changed.add(() => {
+        if (this.viewer.showPickingIndicator.value) {
+          this.scheduleRedraw();
+        }
+      }),
     );
     this.registerDisposer(
       viewer.crossSectionBackgroundColor.changed.add(() =>
@@ -1421,6 +1436,9 @@ export class PerspectivePanel extends RenderedDataPanel {
       );
       gl.disable(WebGL2RenderingContext.BLEND);
     }
+    if (this.viewer.showPickingIndicator.value) {
+      this.drawPickingIndicator(renderContext);
+    }
     this.offscreenFramebuffer.unbind();
 
     // Draw the texture over the whole viewport.
@@ -1504,6 +1522,48 @@ export class PerspectivePanel extends RenderedDataPanel {
       computeAxisLineMatrix(projectionParameters, axisLength),
       /*blend=*/ false,
     );
+  }
+
+  private drawPickingIndicator(renderContext: PerspectiveViewRenderContext) {
+    const { mouseState } = this.viewer;
+    if (!mouseState.active) return;
+    const {
+      viewProjectionMat,
+      logicalWidth,
+      logicalHeight,
+      displayDimensionRenderInfo: { displayDimensionIndices },
+    } = renderContext.projectionParameters;
+    // mouseState.position is in global voxel space; extract display-space components.
+    const displayPos = tempVec3;
+    displayPos[0] =
+      displayDimensionIndices[0] >= 0
+        ? mouseState.position[displayDimensionIndices[0]]
+        : 0;
+    displayPos[1] =
+      displayDimensionIndices[1] >= 0
+        ? mouseState.position[displayDimensionIndices[1]]
+        : 0;
+    displayPos[2] =
+      displayDimensionIndices[2] >= 0
+        ? mouseState.position[displayDimensionIndices[2]]
+        : 0;
+    vec3.transformMat4(displayPos, displayPos, viewProjectionMat);
+    if (displayPos[2] < -1 || displayPos[2] > 1) return;
+    const { gl } = this;
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+    gl.disable(gl.DEPTH_TEST);
+    gl.depthMask(false);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    this.pickingIndicatorHelper.draw(
+      displayPos[0],
+      displayPos[1],
+      logicalWidth,
+      logicalHeight,
+    );
+    gl.disable(gl.BLEND);
+    gl.depthMask(true);
+    gl.enable(gl.DEPTH_TEST);
   }
 
   zoomByMouse(factor: number) {

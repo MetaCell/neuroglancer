@@ -86,6 +86,11 @@ export interface PerspectiveViewRenderContext
    * Specifies how to assign the max projection emitter
    */
   maxProjectionEmit?: (builder: ShaderBuilder) => void | undefined;
+
+  /**
+   * Specifies whether the picking indicator ring should be drawn at the cursor position.
+   */
+  showPickingIndicator?: boolean;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging

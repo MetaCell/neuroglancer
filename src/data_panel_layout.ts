@@ -101,6 +101,7 @@ export interface ViewerUIState
   crossSectionBackgroundColor: TrackableRGB;
   perspectiveViewBackgroundColor: TrackableRGB;
   hideCrossSectionBackground3D: TrackableBoolean;
+  showPickingIndicator: TrackableBoolean;
   pickRadius: TrackableValue<number>;
 }
 
@@ -184,6 +185,7 @@ export function getCommonViewerState(viewer: ViewerUIState) {
     visibility: viewer.visibility,
     scaleBarOptions: viewer.scaleBarOptions,
     hideCrossSectionBackground3D: viewer.hideCrossSectionBackground3D,
+    showPickingIndicator: viewer.showPickingIndicator,
     pickRadius: viewer.pickRadius,
   };
 }
