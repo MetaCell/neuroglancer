@@ -182,6 +182,17 @@ export function getContrastRatio(
   return (lighter + 0.05) / (darker + 0.05);
 }
 
+// Returns a copy of `color` with saturation boosted by `factor` (moves each channel
+// away from the perceptual-grey axis by the given multiplier, clamped to [0, 1]).
+export function saturateColor(color: ArrayLike<number>, factor: number): vec3 {
+  const lum = getRelativeLuminance(color);
+  return vec3.fromValues(
+    Math.min(1.0, Math.max(0.0, lum + (color[0] - lum) * factor)),
+    Math.min(1.0, Math.max(0.0, lum + (color[1] - lum) * factor)),
+    Math.min(1.0, Math.max(0.0, lum + (color[2] - lum) * factor)),
+  );
+}
+
 // Returns the palette color with the highest contrast against `sourceColor`.
 export function pickHighestContrastColor(
   palette: readonly vec3[],

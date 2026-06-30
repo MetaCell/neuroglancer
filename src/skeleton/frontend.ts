@@ -117,7 +117,7 @@ import {
 } from "#src/trackable_value.js";
 import { Uint64Set } from "#src/uint64_set.js";
 import { gatherUpdate } from "#src/util/array.js";
-import { pickHighestContrastColor } from "#src/util/color.js";
+import { pickHighestContrastColor, saturateColor } from "#src/util/color.js";
 import { hsvToRgb } from "#src/util/colorspace.js";
 import { DataType } from "#src/util/data_type.js";
 import { RefCounted } from "#src/util/disposable.js";
@@ -206,17 +206,11 @@ const NODE_BORDER_OUTLINE_MAX_WIDTH_2D = "2.5";
 const NODE_BORDER_OUTLINE_MIN_WIDTH_3D = "1.0";
 const NODE_BORDER_OUTLINE_MAX_WIDTH_3D = "2.0";
 
-// Vivid colors for the hovered node -- the actively pointed at node,
-// drawn to stand out.
-const HOVERED_NODE_HIGHLIGHT_COLORS: readonly vec3[] = [
-  // vec3.fromValues(1.0, 1.0, 1.0), // white
-  vec3.fromValues(1.0, 0.95, 0.0), // yellow
-  vec3.fromValues(0.0, 0.95, 1.0), // cyan
-  // vec3.fromValues(0.1, 1.0, 0.25), // green
-  // vec3.fromValues(1.0, 0.55, 0.0), // orange
-  // vec3.fromValues(1.0, 0.1, 0.65), // pink
-  // vec3.fromValues(0.2, 0.45, 1.0), // blue
-];
+// Saturation boost factor for the highlighted node border: moves each channel
+// away from the perceptual-grey axis by this multiplier (clamped to [0, 1]).
+const HIGHLIGHTED_NODE_BORDER_SATURATION_FACTOR = 1.5;
+const SELECTED_NODE_BORDER_OUTLINE_GLSL_COLOR = "1.0, 1.0, 1.0";
+const HIGHLIGHTED_NODE_BORDER_OUTLINE_GLSL_COLOR = "1.0, 1.0, 1.0";
 
 // Muted colors for the selected (pinned) node -- less vibrant.
 const SELECTED_NODE_HIGHLIGHT_COLORS: readonly vec3[] = [
@@ -854,7 +848,7 @@ emitCircle(
               ? `mix(mix(renderColor, vec4(uSelectedNodeOutlineColor, renderColor.a), vSelectedNode), vec4(uHighlightedNodeOutlineColor, renderColor.a), vHighlightedNode)`
               : "renderColor";
             const borderOutlineColorExpression = hasNodeIdSelection
-              ? `mix(mix(renderColor, vec4(1.0, 1.0, 1.0, renderColor.a), vSelectedNode), vec4(0.0, 0.0, 0.0, renderColor.a), vHighlightedNode)`
+              ? `mix(mix(renderColor, vec4(${SELECTED_NODE_BORDER_OUTLINE_GLSL_COLOR}, renderColor.a), vSelectedNode), vec4(${HIGHLIGHTED_NODE_BORDER_OUTLINE_GLSL_COLOR}, renderColor.a), vHighlightedNode)`
               : "renderColor";
             builder.addFragmentCode(`
 vec4 segmentColor() {
@@ -906,7 +900,7 @@ void emitDefault() {
               ? `mix(mix(renderColor, vec4(uSelectedNodeOutlineColor, renderColor.a), vSelectedNode), vec4(uHighlightedNodeOutlineColor, renderColor.a), vHighlightedNode)`
               : "renderColor";
             const borderOutlineColorExpression = hasNodeIdSelection
-              ? `mix(mix(renderColor, vec4(1.0, 1.0, 1.0, renderColor.a), vSelectedNode), vec4(0.0, 0.0, 0.0, renderColor.a), vHighlightedNode)`
+              ? `mix(mix(renderColor, vec4(${SELECTED_NODE_BORDER_OUTLINE_GLSL_COLOR}, renderColor.a), vSelectedNode), vec4(${HIGHLIGHTED_NODE_BORDER_OUTLINE_GLSL_COLOR}, renderColor.a), vHighlightedNode)`
               : "renderColor";
             builder.addFragmentCode(`
 vec4 segmentColor() {
@@ -2355,9 +2349,9 @@ export class SpatiallyIndexedSkeletonLayer
         : undefined;
     if (hoveredSegmentColor !== undefined) {
       this.highlightedNodeOutlineColor.set(
-        pickHighestContrastColor(
-          HOVERED_NODE_HIGHLIGHT_COLORS,
+        saturateColor(
           hoveredSegmentColor,
+          HIGHLIGHTED_NODE_BORDER_SATURATION_FACTOR,
         ),
       );
     } else {
