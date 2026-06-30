@@ -208,6 +208,12 @@ const SELECTED_NODE_OUTLINE_MAX_WIDTH_3D = "7.0";
 // the min for typical nodes and scales up the ring for larger nodes.
 const SELECTED_NODE_OUTLINE_DIAMETER_FRACTION = "0.5";
 
+const NODE_BORDER_OUTLINE_DIAMETER_FRACTION = "0.15";
+const NODE_BORDER_OUTLINE_MIN_WIDTH_2D = "1.0";
+const NODE_BORDER_OUTLINE_MAX_WIDTH_2D = "2.5";
+const NODE_BORDER_OUTLINE_MIN_WIDTH_3D = "1.0";
+const NODE_BORDER_OUTLINE_MAX_WIDTH_3D = "2.0";
+
 interface VertexAttributeRenderInfo extends VertexAttributeInfo {
   name: string;
   webglDataType: number;
@@ -767,6 +773,7 @@ void emitDefault() {
           );
           builder.addUniform("highp float", "uNodeDiameter");
           let selectedOutlineWidthExpression = "0.0";
+          let borderOutlineWidthExpression = "0.0";
           if (this.nodeIdAttributeIndex !== undefined) {
             builder.addUniform("highp vec3", "uSelectedNodeOutlineColor");
             builder.addUniform("highp int", "uSelectedNodeId");
@@ -781,6 +788,13 @@ void emitDefault() {
               ? SELECTED_NODE_OUTLINE_MAX_WIDTH_2D
               : SELECTED_NODE_OUTLINE_MAX_WIDTH_3D;
             selectedOutlineWidthExpression = `(max(vSelectedNode, vHighlightedNode) * clamp(${SELECTED_NODE_OUTLINE_DIAMETER_FRACTION} * uNodeDiameter, ${selectedOutlineMinWidth}, ${selectedOutlineMaxWidth}))`;
+            const borderOutlineMinWidth = this.targetIsSliceView
+              ? NODE_BORDER_OUTLINE_MIN_WIDTH_2D
+              : NODE_BORDER_OUTLINE_MIN_WIDTH_3D;
+            const borderOutlineMaxWidth = this.targetIsSliceView
+              ? NODE_BORDER_OUTLINE_MAX_WIDTH_2D
+              : NODE_BORDER_OUTLINE_MAX_WIDTH_3D;
+            borderOutlineWidthExpression = `(max(vSelectedNode, vHighlightedNode) * clamp(${NODE_BORDER_OUTLINE_DIAMETER_FRACTION} * uNodeDiameter, ${borderOutlineMinWidth}, ${borderOutlineMaxWidth}))`;
           }
           let vertexMain = `
 highp uint vertexIndex = uint(gl_InstanceID);
@@ -805,7 +819,8 @@ highp vec3 vertexPosition = readAttribute0(vertexIndex);
 emitCircle(
   uProjection * vec4(vertexPosition, 1.0),
   uNodeDiameter,
-  ${selectedOutlineWidthExpression}
+  ${selectedOutlineWidthExpression},
+  ${borderOutlineWidthExpression}
 );
 `;
           const segmentColorExpression = this.getSegmentColorExpression();
@@ -823,6 +838,9 @@ emitCircle(
             const borderColorExpression = hasNodeIdSelection
               ? `mix(mix(renderColor, vec4(uSelectedNodeOutlineColor, renderColor.a), vSelectedNode), vec4(uHighlightedNodeOutlineColor, renderColor.a), vHighlightedNode)`
               : "renderColor";
+            const borderOutlineColorExpression = hasNodeIdSelection
+              ? `mix(mix(renderColor, vec4(1.0, 1.0, 1.0, renderColor.a), vSelectedNode), vec4(0.0, 0.0, 0.0, renderColor.a), vHighlightedNode)`
+              : "renderColor";
             builder.addFragmentCode(`
 vec4 segmentColor() {
   return getSegmentAppearance(${segmentExpression});
@@ -833,7 +851,8 @@ void emitRGBA(vec4 color) {
   if (alpha <= 0.0) discard;
   vec4 renderColor = vec4(color.rgb, alpha);
   vec4 borderColor = ${borderColorExpression};
-  vec4 circleColor = getCircleColor(renderColor, borderColor);
+  vec4 borderOutlineColor = ${borderOutlineColorExpression};
+  vec4 circleColor = getCircleColor(renderColor, borderColor, borderOutlineColor);
   emit(vec4(circleColor.rgb * circleColor.a, circleColor.a), vPickID);
 }
 void emitRGB(vec3 color) {
@@ -871,6 +890,9 @@ void emitDefault() {
             const borderColorExpression = hasNodeIdSelection
               ? `mix(mix(renderColor, vec4(uSelectedNodeOutlineColor, renderColor.a), vSelectedNode), vec4(uHighlightedNodeOutlineColor, renderColor.a), vHighlightedNode)`
               : "renderColor";
+            const borderOutlineColorExpression = hasNodeIdSelection
+              ? `mix(mix(renderColor, vec4(1.0, 1.0, 1.0, renderColor.a), vSelectedNode), vec4(0.0, 0.0, 0.0, renderColor.a), vHighlightedNode)`
+              : "renderColor";
             builder.addFragmentCode(`
 vec4 segmentColor() {
   return ${segmentColorExpression};
@@ -878,7 +900,8 @@ vec4 segmentColor() {
 void emitRGBA(vec4 color) {
   vec4 renderColor = color;
   vec4 borderColor = ${borderColorExpression};
-  vec4 circleColor = getCircleColor(renderColor, borderColor);
+  vec4 borderOutlineColor = ${borderOutlineColorExpression};
+  vec4 circleColor = getCircleColor(renderColor, borderColor, borderOutlineColor);
   emit(vec4(circleColor.rgb * circleColor.a, circleColor.a), vPickID);
 }
 void emitRGB(vec3 color) {
