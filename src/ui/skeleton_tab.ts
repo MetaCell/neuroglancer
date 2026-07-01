@@ -113,6 +113,8 @@ const NO_NODE_SELECTED_MESSAGE =
   "No skeleton node is selected, only go to root is supported on skeleton edges.";
 const NAVIGATE_FROM_SPATIAL_INDEX_MESSAGE =
   "A non-visible segment is selected. Make it visible to use skeleton navigation features.";
+const SEGMENT_NOT_VISIBLE_LIST_MESSAGE =
+  "A non-visible segment is selected. Make it visible to inspect its nodes here.";
 
 export type SegmentDisplayState = SpatialSkeletonSegmentRenderState & {
   segmentLabel: string | undefined;
@@ -139,6 +141,37 @@ export function buildSpatialSkeletonVirtualListItems(
     items.push({ kind: "empty", text: emptyText });
   }
   return { items, listIndexByNodeId };
+}
+
+export function getSpatialSkeletonEmptyListText(options: {
+  activeSegmentId: number | undefined;
+  selectedSegmentNotVisible: boolean;
+  segmentState: SegmentDisplayState | undefined;
+  filterText: string;
+  nodeFilterType: SpatialSkeletonNodeFilterType;
+}): string {
+  const {
+    activeSegmentId,
+    selectedSegmentNotVisible,
+    segmentState,
+    filterText,
+    nodeFilterType,
+  } = options;
+  if (activeSegmentId === undefined) {
+    return selectedSegmentNotVisible
+      ? SEGMENT_NOT_VISIBLE_LIST_MESSAGE
+      : "Select a skeleton segment to inspect editable nodes.";
+  }
+  if (
+    segmentState === undefined ||
+    segmentState.totalNodeCount === 0 ||
+    (filterText.length === 0 &&
+      (nodeFilterType === SpatialSkeletonNodeFilterType.DEFAULT ||
+        nodeFilterType === SpatialSkeletonNodeFilterType.NONE))
+  ) {
+    return "No loaded nodes.";
+  }
+  return "No matching nodes.";
 }
 
 interface SpatiallyIndexedSkeletonNavigationApi {
@@ -369,6 +402,7 @@ export class SpatialSkeletonEditTab extends Tab {
 
     let allNodes: SpatiallyIndexedSkeletonNode[] = [];
     let activeSegmentId: number | undefined;
+    let selectedSegmentNotVisible = false;
     let nodesBySegment = new Map<number, SpatiallyIndexedSkeletonNode[]>();
     let inspectionAllowed = false;
     let navigationAllowed = false;
@@ -1515,24 +1549,14 @@ export class SpatialSkeletonEditTab extends Tab {
       }
     };
 
-    const getEmptyListText = (
-      segmentState: SegmentDisplayState | undefined,
-    ) => {
-      if (activeSegmentId === undefined) {
-        return "Select a skeleton segment to inspect editable nodes.";
-      }
-      if (
-        segmentState === undefined ||
-        segmentState.totalNodeCount === 0 ||
-        (getFilterText().length === 0 &&
-          (nodeFilterTypeModel.value ===
-            SpatialSkeletonNodeFilterType.DEFAULT ||
-            nodeFilterTypeModel.value === SpatialSkeletonNodeFilterType.NONE))
-      ) {
-        return "No loaded nodes.";
-      }
-      return "No matching nodes.";
-    };
+    const getEmptyListText = (segmentState: SegmentDisplayState | undefined) =>
+      getSpatialSkeletonEmptyListText({
+        activeSegmentId,
+        selectedSegmentNotVisible,
+        segmentState,
+        filterText: getFilterText(),
+        nodeFilterType: nodeFilterTypeModel.value,
+      });
 
     const updateList = (segmentState: SegmentDisplayState | undefined) => {
       const flattened = buildSpatialSkeletonVirtualListItems(
@@ -1610,6 +1634,9 @@ export class SpatialSkeletonEditTab extends Tab {
         cachedSelectedSegmentNodes === undefined
           ? undefined
           : selectedSegmentId;
+      selectedSegmentNotVisible =
+        selectedSegmentId !== undefined &&
+        cachedSelectedSegmentNodes === undefined;
       loadedNodeSummarySuffix = "";
       if (
         skeletonLayer === undefined ||
