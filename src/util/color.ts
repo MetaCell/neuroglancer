@@ -182,6 +182,15 @@ export function getContrastRatio(
   return (lighter + 0.05) / (darker + 0.05);
 }
 
+// Returns the HSV saturation of `color`: the fraction by which its most intense
+// channel exceeds its least intense channel. 0 for greys, 1 for fully saturated colors.
+export function getSaturation(color: ArrayLike<number>): number {
+  const max = Math.max(color[0], color[1], color[2]);
+  if (max <= 0) return 0;
+  const min = Math.min(color[0], color[1], color[2]);
+  return (max - min) / max;
+}
+
 // Returns a copy of `color` with saturation boosted by `factor` (moves each channel
 // away from the perceptual-grey axis by the given multiplier, clamped to [0, 1]).
 export function saturateColor(color: ArrayLike<number>, factor: number): vec3 {

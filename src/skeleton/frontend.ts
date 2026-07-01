@@ -117,7 +117,11 @@ import {
 } from "#src/trackable_value.js";
 import { Uint64Set } from "#src/uint64_set.js";
 import { gatherUpdate } from "#src/util/array.js";
-import { pickHighestContrastColor, saturateColor } from "#src/util/color.js";
+import {
+  getSaturation,
+  pickHighestContrastColor,
+  saturateColor,
+} from "#src/util/color.js";
 import { hsvToRgb } from "#src/util/colorspace.js";
 import { DataType } from "#src/util/data_type.js";
 import { RefCounted } from "#src/util/disposable.js";
@@ -206,11 +210,18 @@ const NODE_BORDER_OUTLINE_MAX_WIDTH_2D = "2.5";
 const NODE_BORDER_OUTLINE_MIN_WIDTH_3D = "1.0";
 const NODE_BORDER_OUTLINE_MAX_WIDTH_3D = "2.0";
 
-// Saturation boost factor for the highlighted node border: moves each channel
-// away from the perceptual-grey axis by this multiplier (clamped to [0, 1]).
-const HIGHLIGHTED_NODE_BORDER_SATURATION_FACTOR = 1.5;
+// Saturation adjustment factors for the highlighted (hovered) node border: each
+// moves the segment's color away from (>1) or towards (<1) the perceptual-grey
+// axis by this multiplier, clamped to [0, 1]. A segment color that is already
+// very saturated has little room left to move further from grey, so boosting it
+// further is barely visible; in that case the color is desaturated instead, which
+// remains a visible change in either direction. Mirrors the saturation-flip
+// logic in getObjectColor (segmentation_display_state/frontend.ts).
+const HIGHLIGHTED_NODE_BORDER_SATURATION_BOOST_FACTOR = 1.5;
+const HIGHLIGHTED_NODE_BORDER_SATURATION_REDUCE_FACTOR = 0.5;
+const HIGHLIGHTED_NODE_BORDER_SATURATION_THRESHOLD = 0.5;
 const SELECTED_NODE_BORDER_OUTLINE_GLSL_COLOR = "1.0, 1.0, 1.0";
-const HIGHLIGHTED_NODE_BORDER_OUTLINE_GLSL_COLOR = "1.0, 1.0, 1.0";
+const HIGHLIGHTED_NODE_BORDER_OUTLINE_GLSL_COLOR = "0.0, 0.0, 0.0";
 
 // Muted colors for the selected (pinned) node -- less vibrant.
 const SELECTED_NODE_HIGHLIGHT_COLORS: readonly vec3[] = [
@@ -2313,7 +2324,8 @@ export class SpatiallyIndexedSkeletonLayer
   // Updates `selectedNodeOutlineColor` and `highlightedNodeOutlineColor` in
   // place. Each outline is chosen, independently of the other, for high contrast
   // against its own node's segment color: the selected node uses the muted
-  // palette and the hovered node the vivid palette. Because the two are computed
+  // palette, and the hovered node uses its own segment color pushed away from
+  // (or, if already very saturated, towards) grey. Because the two are computed
   // independently, a given segment color always yields the same selected color
   // and the same hovered color.
   private updateNodeOutlineColorPair() {
@@ -2348,11 +2360,13 @@ export class SpatiallyIndexedSkeletonLayer
         ? this.getNodeSegmentColor(hoveredNodeInfo)
         : undefined;
     if (hoveredSegmentColor !== undefined) {
+      const saturationFactor =
+        getSaturation(hoveredSegmentColor) >
+        HIGHLIGHTED_NODE_BORDER_SATURATION_THRESHOLD
+          ? HIGHLIGHTED_NODE_BORDER_SATURATION_REDUCE_FACTOR
+          : HIGHLIGHTED_NODE_BORDER_SATURATION_BOOST_FACTOR;
       this.highlightedNodeOutlineColor.set(
-        saturateColor(
-          hoveredSegmentColor,
-          HIGHLIGHTED_NODE_BORDER_SATURATION_FACTOR,
-        ),
+        saturateColor(hoveredSegmentColor, saturationFactor),
       );
     } else {
       vec3.copy(
