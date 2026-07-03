@@ -14,10 +14,6 @@
  * limitations under the License.
  */
 
-import {
-  SpatialSkeletonActions,
-  type SpatialSkeletonAction,
-} from "#src/skeleton/actions.js";
 import type {
   EditableSpatiallyIndexedSkeletonSource,
   SpatiallyIndexedSkeletonNode,
@@ -26,7 +22,11 @@ import type {
   SpatialSkeletonCommandPayload,
   SpatialSkeletonEditCommandFactory,
 } from "#src/skeleton/command_factories.js";
-import type { SpatialSkeletonCommand } from "#src/skeleton/command_history.js";
+import {
+  SpatialSkeletonActions,
+  type SpatialSkeletonAction,
+  type SpatialSkeletonCommand,
+} from "#src/skeleton/command_protocol.js";
 import { getSpatialSkeletonActionErrorMessage } from "#src/skeleton/edit_errors.js";
 import {
   getEditableSpatiallyIndexedSkeletonSource,
@@ -69,7 +69,7 @@ function executeCommand(
   return layer.spatialSkeletonState.commandHistory.execute(command);
 }
 
-function executeCommandWithPendingMessage<T>(
+async function executeCommandWithPendingMessage<T>(
   promise: Promise<T>,
   message: string,
 ) {
@@ -346,19 +346,43 @@ export function executeSpatialSkeletonMerge(
 export async function undoSpatialSkeletonCommand(
   layer: SpatialSkeletonLayerContext,
 ) {
-  const changed = await layer.spatialSkeletonState.commandHistory.undo();
-  if (!changed) {
+  const { commandHistory } = layer.spatialSkeletonState;
+  if (commandHistory.isBusy.value) {
+    StatusMessage.showTemporaryMessage(
+      "Wait for the current skeleton edit to finish.",
+    );
     return false;
   }
-  return true;
+  if (!commandHistory.canUndo.value) {
+    return false;
+  }
+  const undoLabel = commandHistory.undoLabel.value;
+  const pendingMessage =
+    undoLabel !== undefined ? `Undoing ${undoLabel}...` : "Undoing...";
+  return executeCommandWithPendingMessage(
+    commandHistory.undo(),
+    pendingMessage,
+  );
 }
 
 export async function redoSpatialSkeletonCommand(
   layer: SpatialSkeletonLayerContext,
 ) {
-  const changed = await layer.spatialSkeletonState.commandHistory.redo();
-  if (!changed) {
+  const { commandHistory } = layer.spatialSkeletonState;
+  if (commandHistory.isBusy.value) {
+    StatusMessage.showTemporaryMessage(
+      "Wait for the current skeleton edit to finish.",
+    );
     return false;
   }
-  return true;
+  if (!commandHistory.canRedo.value) {
+    return false;
+  }
+  const redoLabel = commandHistory.redoLabel.value;
+  const pendingMessage =
+    redoLabel !== undefined ? `Redoing ${redoLabel}...` : "Redoing...";
+  return executeCommandWithPendingMessage(
+    commandHistory.redo(),
+    pendingMessage,
+  );
 }

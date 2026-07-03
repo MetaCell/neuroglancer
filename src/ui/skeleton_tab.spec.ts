@@ -39,7 +39,7 @@ function makeNode(
   };
 }
 
-async function getBuildSpatialSkeletonVirtualListItems() {
+function stubWebGLContext() {
   const webglContextStub = new Proxy(
     {},
     {
@@ -49,8 +49,17 @@ async function getBuildSpatialSkeletonVirtualListItems() {
   (
     globalThis as { WebGL2RenderingContext?: unknown }
   ).WebGL2RenderingContext ??= webglContextStub;
+}
+
+async function getBuildSpatialSkeletonVirtualListItems() {
+  stubWebGLContext();
   return (await import("#src/ui/skeleton_tab.js"))
     .buildSpatialSkeletonVirtualListItems;
+}
+
+async function getSpatialSkeletonEmptyListText() {
+  stubWebGLContext();
+  return (await import("#src/ui/skeleton_tab.js")).getSpatialSkeletonEmptyListText;
 }
 
 describe("spatial skeleton edit tab render state", () => {
@@ -291,5 +300,77 @@ describe("spatial skeleton edit tab virtual list items", () => {
     expect(segmentState.displayedNodeCount).toBeGreaterThan(10_000);
     expect(flattened.items.length).toBe(segmentState.displayedNodeCount + 1);
     expect(flattened.listIndexByNodeId.get(leafCount + 1)).toBe(leafCount + 1);
+  });
+});
+
+describe("spatial skeleton edit tab empty list text", () => {
+  it("tells the user to make the segment visible when a non-visible segment is selected", async () => {
+    const getEmptyListText = await getSpatialSkeletonEmptyListText();
+
+    const text = getEmptyListText({
+      activeSegmentId: undefined,
+      selectedSegmentNotVisible: true,
+      segmentState: undefined,
+      filterText: "",
+      nodeFilterType: SpatialSkeletonNodeFilterType.DEFAULT,
+    });
+
+    expect(text).not.toBe("Select a skeleton segment to inspect editable nodes.");
+    expect(text).toMatch(/not visible|make it visible/i);
+  });
+
+  it("still asks the user to select a segment when nothing is selected at all", async () => {
+    const getEmptyListText = await getSpatialSkeletonEmptyListText();
+
+    const text = getEmptyListText({
+      activeSegmentId: undefined,
+      selectedSegmentNotVisible: false,
+      segmentState: undefined,
+      filterText: "",
+      nodeFilterType: SpatialSkeletonNodeFilterType.DEFAULT,
+    });
+
+    expect(text).toBe("Select a skeleton segment to inspect editable nodes.");
+  });
+
+  it("reports no loaded nodes for an active segment with no cached nodes, regardless of visibility", async () => {
+    const getEmptyListText = await getSpatialSkeletonEmptyListText();
+
+    const text = getEmptyListText({
+      activeSegmentId: 20380,
+      selectedSegmentNotVisible: false,
+      segmentState: undefined,
+      filterText: "",
+      nodeFilterType: SpatialSkeletonNodeFilterType.DEFAULT,
+    });
+
+    expect(text).toBe("No loaded nodes.");
+  });
+
+  it("reports no matching nodes when a filter excludes all loaded nodes", async () => {
+    const getEmptyListText = await getSpatialSkeletonEmptyListText();
+    const graph = buildSpatiallyIndexedSkeletonNavigationGraph([
+      makeNode(1, undefined),
+    ]);
+    const segmentState = {
+      ...buildSpatialSkeletonSegmentRenderState(20380, graph, {
+        filterText: "no-match",
+        nodeFilterType: SpatialSkeletonNodeFilterType.DEFAULT,
+        getNodeDescription() {
+          return undefined;
+        },
+      }),
+      segmentLabel: undefined,
+    };
+
+    const text = getEmptyListText({
+      activeSegmentId: 20380,
+      selectedSegmentNotVisible: false,
+      segmentState,
+      filterText: "no-match",
+      nodeFilterType: SpatialSkeletonNodeFilterType.DEFAULT,
+    });
+
+    expect(text).toBe("No matching nodes.");
   });
 });

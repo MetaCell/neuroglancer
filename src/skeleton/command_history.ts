@@ -14,21 +14,11 @@
  * limitations under the License.
  */
 
+import type { SpatialSkeletonCommand } from "#src/skeleton/command_protocol.js";
 import { WatchableValue } from "#src/trackable_value.js";
 import { RefCounted } from "#src/util/disposable.js";
 
 export const SPATIAL_SKELETON_COMMAND_HISTORY_MAX_ENTRIES = 100;
-
-export interface SpatialSkeletonCommandContext {
-  readonly mappings: SpatialSkeletonCommandMappings;
-}
-
-export interface SpatialSkeletonCommand {
-  readonly label: string;
-  execute(context: SpatialSkeletonCommandContext): Promise<void>;
-  undo(context: SpatialSkeletonCommandContext): Promise<void>;
-  redo?(context: SpatialSkeletonCommandContext): Promise<void>;
-}
 
 interface SpatialSkeletonCommandMappingSnapshot {
   nodeIdMappings: Array<[number, number]>;
@@ -86,6 +76,10 @@ function findStableIdentifier(
 export class SpatialSkeletonCommandMappings {
   private nodeIdMappings = new Map<number, number>();
   private segmentIdMappings = new Map<number, number>();
+
+  get empty() {
+    return this.nodeIdMappings.size === 0 && this.segmentIdMappings.size === 0;
+  }
 
   clear() {
     this.nodeIdMappings.clear();
@@ -251,10 +245,15 @@ export class SpatialSkeletonCommandHistory extends RefCounted {
   }
 
   clear() {
+    const changed =
+      this.undoEntries.length !== 0 ||
+      this.redoEntries.length !== 0 ||
+      !this.mappings.empty;
     this.undoEntries = [];
     this.redoEntries = [];
     this.mappings.clear();
     this.updateState();
+    return changed;
   }
 
   setSource(source: unknown) {

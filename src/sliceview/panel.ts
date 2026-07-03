@@ -19,6 +19,7 @@ import type { DisplayContext } from "#src/display_context.js";
 import type { VisibleRenderLayerTracker } from "#src/layer/index.js";
 import { makeRenderedPanelVisibleLayerTracker } from "#src/layer/index.js";
 import { PickIDManager } from "#src/object_picking.js";
+import { PickingIndicatorHelper } from "#src/picking_indicator.js";
 import type {
   FramePickingData,
   RenderedDataViewerState,
@@ -66,6 +67,7 @@ export interface SliceViewerState extends RenderedDataViewerState {
   scaleBarOptions: TrackableScaleBarOptions;
   crossSectionBackgroundColor: TrackableRGB;
   hideCrossSectionBackground3D: TrackableBoolean;
+  showPickingIndicator: TrackableBoolean;
 }
 
 export enum OffscreenTextures {
@@ -104,6 +106,9 @@ export class SliceViewPanel extends RenderedDataPanel {
   private sliceViewRenderHelper;
 
   private axesLineHelper = this.registerDisposer(AxesLineHelper.get(this.gl));
+  private pickingIndicatorHelper = this.registerDisposer(
+    PickingIndicatorHelper.get(this.gl),
+  );
 
   private colorFactor = vec4.fromValues(1, 1, 1, 1);
   private pickIDs = new PickIDManager();
@@ -276,6 +281,18 @@ export class SliceViewPanel extends RenderedDataPanel {
         }
       }),
     );
+    this.registerDisposer(
+      viewer.showPickingIndicator.changed.add(() => {
+        if (this.visible) this.scheduleRedraw();
+      }),
+    );
+    this.registerDisposer(
+      viewer.mouseState.changed.add(() => {
+        if (this.viewer.showPickingIndicator.value && this.visible) {
+          this.scheduleRedraw();
+        }
+      }),
+    );
   }
 
   translateByViewportPixels(deltaX: number, deltaY: number): void {
@@ -433,6 +450,10 @@ export class SliceViewPanel extends RenderedDataPanel {
       }
     }
 
+    if (this.viewer.showPickingIndicator.value) {
+      this.offscreenFramebuffer.bindSingle(OffscreenTextures.COLOR);
+      this.drawPickingIndicator();
+    }
     this.offscreenFramebuffer.unbind();
 
     // Draw the texture over the whole viewport.
@@ -530,6 +551,49 @@ export class SliceViewPanel extends RenderedDataPanel {
       return;
     }
     setStateFromRelative(pickRadius, pickRadius, 0);
+  }
+
+  private drawPickingIndicator() {
+    const { mouseState } = this.viewer;
+    if (!mouseState.active) return;
+    const {
+      viewProjectionMat,
+      logicalWidth,
+      logicalHeight,
+      width,
+      height,
+      displayDimensionRenderInfo: { displayDimensionIndices },
+    } = this.sliceView.projectionParameters.value;
+    const displayPos = tempVec3;
+    displayPos[0] =
+      displayDimensionIndices[0] >= 0
+        ? mouseState.position[displayDimensionIndices[0]]
+        : 0;
+    displayPos[1] =
+      displayDimensionIndices[1] >= 0
+        ? mouseState.position[displayDimensionIndices[1]]
+        : 0;
+    displayPos[2] =
+      displayDimensionIndices[2] >= 0
+        ? mouseState.position[displayDimensionIndices[2]]
+        : 0;
+    vec3.transformMat4(displayPos, displayPos, viewProjectionMat);
+    if (displayPos[2] < -1 || displayPos[2] > 1) return;
+    const { gl } = this;
+    gl.disable(gl.SCISSOR_TEST);
+    gl.disable(gl.DEPTH_TEST);
+    gl.depthMask(false);
+    gl.viewport(0, 0, width, height);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    this.pickingIndicatorHelper.draw(
+      displayPos[0],
+      displayPos[1],
+      logicalWidth,
+      logicalHeight,
+    );
+    gl.disable(gl.BLEND);
+    gl.depthMask(true);
   }
 
   /**

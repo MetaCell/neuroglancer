@@ -18,26 +18,49 @@ import { describe, expect, it } from "vitest";
 import {
   collectActionBindings,
   CommandCatalog,
+  type CommandCatalogContext,
 } from "#src/ui/command_palette.js";
 import { EventActionMap } from "#src/util/event_action_map.js";
-import type { Viewer } from "#src/viewer.js";
+import type { InputEventBindings } from "#src/viewer.js";
 
-function makeViewer(
+function makeInputEventBindings(
   global: EventActionMap,
   sliceView = new EventActionMap(),
   perspectiveView = new EventActionMap(),
-): Viewer {
+): InputEventBindings {
   return {
-    inputEventBindings: { global, sliceView, perspectiveView },
-    globalToolBinder: { bindings: new Map(), localBinders: new Set() },
-  } as unknown as Viewer;
+    global,
+    sliceView,
+    perspectiveView,
+  } as unknown as InputEventBindings;
+}
+
+const noopSignal = { add: () => () => {} };
+
+function makeContext(
+  inputEventBindings = makeInputEventBindings(new EventActionMap()),
+): CommandCatalogContext {
+  return {
+    globalToolBinder: {
+      changed: noopSignal,
+      bindings: new Map(),
+      localBinders: new Set(),
+    },
+    layerManager: {
+      layersChanged: noopSignal,
+      managedLayers: [],
+      getLayerByName: () => undefined,
+    },
+    selectedLayer: {},
+    inputEventBindings,
+  } as unknown as CommandCatalogContext;
 }
 
 describe("collectActionBindings", () => {
   it("collects keyboard bindings", () => {
     const map = new EventActionMap();
     map.set("keya", "some-action");
-    const bindings = collectActionBindings(makeViewer(map));
+    const bindings = collectActionBindings(makeInputEventBindings(map));
     expect(bindings.map((binding) => binding.actionId)).toContain(
       "some-action",
     );
@@ -48,7 +71,9 @@ describe("collectActionBindings", () => {
     map.set("at:mousedown0", "mouse-action");
     map.set("at:wheel", "wheel-action");
     map.set("keya", "keyboard-action");
-    const ids = collectActionBindings(makeViewer(map)).map((b) => b.actionId);
+    const ids = collectActionBindings(makeInputEventBindings(map)).map(
+      (b) => b.actionId,
+    );
     expect(ids).toContain("keyboard-action");
     expect(ids).not.toContain("mouse-action");
     expect(ids).not.toContain("wheel-action");
@@ -59,7 +84,9 @@ describe("collectActionBindings", () => {
     globalMap.set("keya", "shared-action");
     const sliceMap = new EventActionMap();
     sliceMap.set("keyb", "shared-action");
-    const bindings = collectActionBindings(makeViewer(globalMap, sliceMap));
+    const bindings = collectActionBindings(
+      makeInputEventBindings(globalMap, sliceMap),
+    );
     const forAction = bindings.filter((b) => b.actionId === "shared-action");
     expect(forAction).toHaveLength(1);
     expect(forAction[0].eventAction.originalEventIdentifier).toBe("keya");
@@ -69,7 +96,9 @@ describe("collectActionBindings", () => {
     const map = new EventActionMap();
     map.set("f1", "open-command-palette");
     map.set("keya", "some-action");
-    const ids = collectActionBindings(makeViewer(map)).map((b) => b.actionId);
+    const ids = collectActionBindings(makeInputEventBindings(map)).map(
+      (b) => b.actionId,
+    );
     expect(ids).not.toContain("open-command-palette");
     expect(ids).toContain("some-action");
   });
@@ -79,12 +108,7 @@ describe("CommandCatalog.filter", () => {
   // With empty bindings the catalog contains only the two supplemental commands:
   // "Edit JSON State" and "Screenshot".
   function makeCatalog() {
-    return new CommandCatalog(
-      {
-        globalToolBinder: { bindings: new Map(), localBinders: new Set() },
-      } as unknown as Viewer,
-      [],
-    );
+    return new CommandCatalog(makeContext());
   }
 
   it("returns all commands for an empty query", () => {

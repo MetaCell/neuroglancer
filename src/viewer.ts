@@ -72,6 +72,18 @@ import {
 import { overlaysOpen } from "#src/overlay.js";
 import { ScreenshotHandler } from "#src/python_integration/screenshots.js";
 import { allRenderLayerRoles, RenderLayerRole } from "#src/renderlayer.js";
+import {
+  SKELETON_CYCLE_BRANCHES,
+  SKELETON_GO_BRANCH_END,
+  SKELETON_GO_BRANCH_START,
+  SKELETON_GO_CHILD,
+  SKELETON_GO_PARENT,
+  SKELETON_GO_ROOT,
+  SKELETON_GO_UNFINISHED,
+  SKELETON_REDO,
+  SKELETON_TOGGLE_HIDDEN,
+  SKELETON_UNDO,
+} from "#src/skeleton/actions.js";
 import { StatusMessage } from "#src/status.js";
 import {
   ElementVisibilityFromTrackableBoolean,
@@ -83,7 +95,6 @@ import {
   observeWatchable,
   TrackableValue,
 } from "#src/trackable_value.js";
-import { CommandPalette } from "#src/ui/command_palette.js";
 import {
   LayerArchiveCountWidget,
   LayerListPanel,
@@ -109,7 +120,7 @@ import {
 import { AutomaticallyFocusedElement } from "#src/util/automatic_focus.js";
 import { TrackableRGB } from "#src/util/color.js";
 import type { Borrowed, Owned } from "#src/util/disposable.js";
-import { RefCounted, registerEventListener } from "#src/util/disposable.js";
+import { RefCounted } from "#src/util/disposable.js";
 import { removeFromParent } from "#src/util/dom.js";
 import type { ActionEvent } from "#src/util/event_action_map.js";
 import { registerActionListener } from "#src/util/event_action_map.js";
@@ -266,6 +277,7 @@ class TrackableViewerState extends CompoundTrackable {
     this.add("enableAdaptiveDownsampling", viewer.enableAdaptiveDownsampling);
     this.add("showScaleBar", viewer.showScaleBar);
     this.add("showDefaultAnnotations", viewer.showDefaultAnnotations);
+    this.add("showPickingIndicator", viewer.showPickingIndicator);
 
     this.add("showSlices", viewer.showPerspectiveSliceViews);
     this.add(
@@ -441,6 +453,7 @@ export class Viewer extends RefCounted implements ViewerState {
   showScaleBar = new TrackableBoolean(true, true);
   showPerspectiveSliceViews = new TrackableBoolean(true, true);
   hideCrossSectionBackground3D = new TrackableBoolean(false, false);
+  showPickingIndicator = new TrackableBoolean(false, false);
   visibleLayerRoles = allRenderLayerRoles();
   showDefaultAnnotations = new TrackableBoolean(true, true);
   crossSectionBackgroundColor = new TrackableRGB(
@@ -1067,7 +1080,27 @@ export class Viewer extends RefCounted implements ViewerState {
    * Called once by the constructor to register the action listeners.
    */
   private registerActionListeners() {
-    for (const action of ["recolor", "clear-segments"]) {
+    for (const action of [
+      "recolor",
+      "clear-segments",
+      SKELETON_TOGGLE_HIDDEN,
+    ]) {
+      this.bindAction(action, () => {
+        this.layerManager.invokeAction(action);
+      });
+    }
+
+    for (const action of [
+      SKELETON_GO_ROOT,
+      SKELETON_GO_PARENT,
+      SKELETON_GO_CHILD,
+      SKELETON_GO_BRANCH_START,
+      SKELETON_GO_BRANCH_END,
+      SKELETON_CYCLE_BRANCHES,
+      SKELETON_GO_UNFINISHED,
+      SKELETON_UNDO,
+      SKELETON_REDO,
+    ]) {
       this.bindAction(action, () => {
         this.layerManager.invokeAction(action);
       });
@@ -1159,33 +1192,6 @@ export class Viewer extends RefCounted implements ViewerState {
     );
     this.bindAction("toggle-show-statistics", () => this.showStatistics());
 
-    // Guard prevents double-open when both the element-level action listener and
-    // the document capture listener fire for the same keypress.
-    let openPalette: CommandPalette | undefined;
-    const openCommandPalette = () => {
-      if (openPalette !== undefined && !openPalette.wasDisposed) return;
-      const prevFocused = document.activeElement;
-      const dispatchTarget =
-        prevFocused instanceof HTMLElement && this.element.contains(prevFocused)
-          ? prevFocused
-          : this.element;
-      openPalette = new CommandPalette(this, dispatchTarget);
-    };
-    this.bindAction("open-command-palette", openCommandPalette);
-    // Document-level capture to ensure that the command palette opens even when focus is inside a tool's input element outside viewer.element.
-    this.registerDisposer(
-      registerEventListener(
-        document,
-        "keydown",
-        (event: KeyboardEvent) => {
-          if (event.code === "KeyP" && event.ctrlKey) {
-            event.preventDefault();
-            openCommandPalette();
-          }
-        },
-        { capture: true },
-      ),
-    );
     this.bindAction("deactivate-active-tool", () =>
       this.globalToolBinder.deactivate(),
     );

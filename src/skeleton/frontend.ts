@@ -117,7 +117,11 @@ import {
 } from "#src/trackable_value.js";
 import { Uint64Set } from "#src/uint64_set.js";
 import { gatherUpdate } from "#src/util/array.js";
-import { computeHighVisibilityContrastColor } from "#src/util/color.js";
+import {
+  getSaturation,
+  pickHighestContrastColor,
+  saturateColor,
+} from "#src/util/color.js";
 import { hsvToRgb } from "#src/util/colorspace.js";
 import { DataType } from "#src/util/data_type.js";
 import { RefCounted } from "#src/util/disposable.js";
@@ -186,20 +190,49 @@ import type { RPC } from "#src/worker_rpc.js";
 const DEBUG_SPATIAL_SKELETON_OVERLAY = false;
 const DEBUG_EXCLUDED_SEGMENTS = false;
 const DEBUG_SPATIAL_SKELETON_CHUNKS = false;
-// Used for debugging chunks via a different color for each chunk
-const tempChunkKeyToColorMap = new Map<string, Float32Array>();
 
-const tempMat4 = mat4.create();
 const DEFAULT_FRAGMENT_MAIN = `void main() {
   emitDefault();
 }
 `;
-
 const SELECTED_NODE_OUTLINE_FALLBACK_COLOR = vec3.fromValues(1.0, 0.95, 0.35);
-const SELECTED_NODE_OUTLINE_MIN_WIDTH_2D = "1.75";
-const SELECTED_NODE_OUTLINE_MAX_WIDTH_2D = "3.0";
-const SELECTED_NODE_OUTLINE_MIN_WIDTH_3D = "1.5";
-const SELECTED_NODE_OUTLINE_MAX_WIDTH_3D = "2.5";
+const SELECTED_NODE_OUTLINE_MIN_WIDTH_2D = "3.5";
+const SELECTED_NODE_OUTLINE_MAX_WIDTH_2D = "8.0";
+const SELECTED_NODE_OUTLINE_MIN_WIDTH_3D = "3.0";
+const SELECTED_NODE_OUTLINE_MAX_WIDTH_3D = "7.0";
+// Fraction of the node diameter used as the highlight outline width before
+// clamping to the min/max above. Nodes are small (~5-6px), so this mostly hits
+// the min for typical nodes and scales up the ring for larger nodes.
+const SELECTED_NODE_OUTLINE_DIAMETER_FRACTION = "0.5";
+const NODE_BORDER_OUTLINE_DIAMETER_FRACTION = "0.15";
+const NODE_BORDER_OUTLINE_MIN_WIDTH_2D = "1.0";
+const NODE_BORDER_OUTLINE_MAX_WIDTH_2D = "2.5";
+const NODE_BORDER_OUTLINE_MIN_WIDTH_3D = "1.0";
+const NODE_BORDER_OUTLINE_MAX_WIDTH_3D = "2.0";
+
+// Saturation adjustment factors for the highlighted (hovered) node border: each
+// moves the segment's color away from (>1) or towards (<1) the perceptual-grey
+// axis by this multiplier, clamped to [0, 1]. A segment color that is already
+// very saturated has little room left to move further from grey, so boosting it
+// further is barely visible; in that case the color is desaturated instead, which
+// remains a visible change in either direction. Mirrors the saturation-flip
+// logic in getObjectColor (segmentation_display_state/frontend.ts).
+const HIGHLIGHTED_NODE_BORDER_SATURATION_BOOST_FACTOR = 1.5;
+const HIGHLIGHTED_NODE_BORDER_SATURATION_REDUCE_FACTOR = 0.5;
+const HIGHLIGHTED_NODE_BORDER_SATURATION_THRESHOLD = 0.5;
+const SELECTED_NODE_BORDER_OUTLINE_GLSL_COLOR = "1.0, 1.0, 1.0";
+const HIGHLIGHTED_NODE_BORDER_OUTLINE_GLSL_COLOR = "0.0, 0.0, 0.0";
+
+// Muted colors for the selected (pinned) node -- less vibrant.
+const SELECTED_NODE_HIGHLIGHT_COLORS: readonly vec3[] = [
+  vec3.fromValues(0.1, 0.1, 0.1), // near-black
+  vec3.fromValues(0.7, 0.67, 0.6), // stone (light warm gray)
+  vec3.fromValues(0.5, 0.45, 0.15), // olive
+];
+
+// Used for debugging chunks via a different color for each chunk
+const tempChunkKeyToColorMap = new Map<string, Float32Array>();
+const tempMat4 = mat4.create();
 
 interface VertexAttributeRenderInfo extends VertexAttributeInfo {
   name: string;
@@ -760,17 +793,28 @@ void emitDefault() {
           );
           builder.addUniform("highp float", "uNodeDiameter");
           let selectedOutlineWidthExpression = "0.0";
+          let borderOutlineWidthExpression = "0.0";
           if (this.nodeIdAttributeIndex !== undefined) {
             builder.addUniform("highp vec3", "uSelectedNodeOutlineColor");
             builder.addUniform("highp int", "uSelectedNodeId");
             builder.addVarying("highp float", "vSelectedNode", "flat");
+            builder.addUniform("highp vec3", "uHighlightedNodeOutlineColor");
+            builder.addUniform("highp int", "uHighlightedNodeId");
+            builder.addVarying("highp float", "vHighlightedNode", "flat");
             const selectedOutlineMinWidth = this.targetIsSliceView
               ? SELECTED_NODE_OUTLINE_MIN_WIDTH_2D
               : SELECTED_NODE_OUTLINE_MIN_WIDTH_3D;
             const selectedOutlineMaxWidth = this.targetIsSliceView
               ? SELECTED_NODE_OUTLINE_MAX_WIDTH_2D
               : SELECTED_NODE_OUTLINE_MAX_WIDTH_3D;
-            selectedOutlineWidthExpression = `(vSelectedNode * clamp(0.25 * uNodeDiameter, ${selectedOutlineMinWidth}, ${selectedOutlineMaxWidth}))`;
+            selectedOutlineWidthExpression = `(max(vSelectedNode, vHighlightedNode) * clamp(${SELECTED_NODE_OUTLINE_DIAMETER_FRACTION} * uNodeDiameter, ${selectedOutlineMinWidth}, ${selectedOutlineMaxWidth}))`;
+            const borderOutlineMinWidth = this.targetIsSliceView
+              ? NODE_BORDER_OUTLINE_MIN_WIDTH_2D
+              : NODE_BORDER_OUTLINE_MIN_WIDTH_3D;
+            const borderOutlineMaxWidth = this.targetIsSliceView
+              ? NODE_BORDER_OUTLINE_MAX_WIDTH_2D
+              : NODE_BORDER_OUTLINE_MAX_WIDTH_3D;
+            borderOutlineWidthExpression = `(max(vSelectedNode, vHighlightedNode) * clamp(${NODE_BORDER_OUTLINE_DIAMETER_FRACTION} * uNodeDiameter, ${borderOutlineMinWidth}, ${borderOutlineMaxWidth}))`;
           }
           let vertexMain = `
 highp uint vertexIndex = uint(gl_InstanceID);
@@ -783,6 +827,7 @@ highp vec3 vertexPosition = readAttribute0(vertexIndex);
           }
           if (this.nodeIdAttributeIndex !== undefined) {
             vertexMain += `vSelectedNode = float(readAttribute${this.nodeIdAttributeIndex}(vertexIndex).value == uSelectedNodeId);\n`;
+            vertexMain += `vHighlightedNode = float(readAttribute${this.nodeIdAttributeIndex}(vertexIndex).value == uHighlightedNodeId);\n`;
           }
           if (
             skeletonParams.dynamicSegmentAppearance &&
@@ -794,7 +839,8 @@ highp vec3 vertexPosition = readAttribute0(vertexIndex);
 emitCircle(
   uProjection * vec4(vertexPosition, 1.0),
   uNodeDiameter,
-  ${selectedOutlineWidthExpression}
+  ${selectedOutlineWidthExpression},
+  ${borderOutlineWidthExpression}
 );
 `;
           const segmentColorExpression = this.getSegmentColorExpression();
@@ -807,8 +853,13 @@ emitCircle(
             // getSegmentAppearance(). uColor is unused in this path.
             const segmentExpression = `vSegmentValue`;
             const hasNodeIdSelection = this.nodeIdAttributeIndex !== undefined;
+            // Apply the selected outline first, then the hovered outline, so the
+            // hovered color wins when a node is both selected and hovered.
             const borderColorExpression = hasNodeIdSelection
-              ? `mix(renderColor, vec4(uSelectedNodeOutlineColor, renderColor.a), vSelectedNode)`
+              ? `mix(mix(renderColor, vec4(uSelectedNodeOutlineColor, renderColor.a), vSelectedNode), vec4(uHighlightedNodeOutlineColor, renderColor.a), vHighlightedNode)`
+              : "renderColor";
+            const borderOutlineColorExpression = hasNodeIdSelection
+              ? `mix(mix(renderColor, vec4(${SELECTED_NODE_BORDER_OUTLINE_GLSL_COLOR}, renderColor.a), vSelectedNode), vec4(${HIGHLIGHTED_NODE_BORDER_OUTLINE_GLSL_COLOR}, renderColor.a), vHighlightedNode)`
               : "renderColor";
             builder.addFragmentCode(`
 vec4 segmentColor() {
@@ -820,7 +871,8 @@ void emitRGBA(vec4 color) {
   if (alpha <= 0.0) discard;
   vec4 renderColor = vec4(color.rgb, alpha);
   vec4 borderColor = ${borderColorExpression};
-  vec4 circleColor = getCircleColor(renderColor, borderColor);
+  vec4 borderOutlineColor = ${borderOutlineColorExpression};
+  vec4 circleColor = getCircleColor(renderColor, borderColor, borderOutlineColor);
   emit(vec4(circleColor.rgb * circleColor.a, circleColor.a), vPickID);
 }
 void emitRGB(vec3 color) {
@@ -853,8 +905,13 @@ void emitDefault() {
             // Per-vertex color attribute path: color comes from a per-vertex
             // attribute; alpha is taken from the attribute's alpha component.
             const hasNodeIdSelection = this.nodeIdAttributeIndex !== undefined;
+            // Apply the selected outline first, then the hovered outline, so the
+            // hovered color wins when a node is both selected and hovered.
             const borderColorExpression = hasNodeIdSelection
-              ? `mix(renderColor, vec4(uSelectedNodeOutlineColor, renderColor.a), vSelectedNode)`
+              ? `mix(mix(renderColor, vec4(uSelectedNodeOutlineColor, renderColor.a), vSelectedNode), vec4(uHighlightedNodeOutlineColor, renderColor.a), vHighlightedNode)`
+              : "renderColor";
+            const borderOutlineColorExpression = hasNodeIdSelection
+              ? `mix(mix(renderColor, vec4(${SELECTED_NODE_BORDER_OUTLINE_GLSL_COLOR}, renderColor.a), vSelectedNode), vec4(${HIGHLIGHTED_NODE_BORDER_OUTLINE_GLSL_COLOR}, renderColor.a), vHighlightedNode)`
               : "renderColor";
             builder.addFragmentCode(`
 vec4 segmentColor() {
@@ -863,7 +920,8 @@ vec4 segmentColor() {
 void emitRGBA(vec4 color) {
   vec4 renderColor = color;
   vec4 borderColor = ${borderColorExpression};
-  vec4 circleColor = getCircleColor(renderColor, borderColor);
+  vec4 borderOutlineColor = ${borderOutlineColorExpression};
+  vec4 circleColor = getCircleColor(renderColor, borderColor, borderOutlineColor);
   emit(vec4(circleColor.rgb * circleColor.a, circleColor.a), vPickID);
 }
 void emitRGB(vec3 color) {
@@ -960,7 +1018,6 @@ void emitDefault() {
     nodeShader: ShaderProgram,
     skeletonGpuGeometry: SkeletonGPUGeometry,
     projectionParameters: { width: number; height: number },
-    drawNodes: boolean,
   ) {
     // Bind vertex attribute textures to be used across edge and node shaders
     // The edge shader and node shader share the same texture unit for each attribute
@@ -1000,8 +1057,8 @@ void emitDefault() {
       gl.disableVertexAttribArray(aVertexIndex);
     }
 
-    // Draw nodes if in line and node mode
-    if (drawNodes) {
+    // Draw nodes
+    {
       nodeShader.bind();
       initializeCircleShader(nodeShader, projectionParameters, {
         featherWidthInPixels: this.targetIsSliceView ? 1.0 : 0.0,
@@ -1333,9 +1390,6 @@ export class SkeletonLayer extends RefCounted implements SkeletonShaderContext {
 
     const { shaderControlState } = this.displayState.skeletonRenderingOptions;
 
-    const drawNodes =
-      renderOptions.mode.value === SkeletonRenderMode.LINES_AND_POINTS;
-
     edgeShader.bind();
     renderHelper.beginLayer(gl, edgeShader, renderContext, modelMatrix);
     renderHelper.setPickInstanceStride(gl, edgeShader, 0);
@@ -1348,24 +1402,21 @@ export class SkeletonLayer extends RefCounted implements SkeletonShaderContext {
     gl.uniform1f(edgeShader.uniform("uLineWidth"), lineWidth!);
     gl.uniform1f(
       edgeShader.uniform("uLineEndpointClipRadius"),
-      drawNodes ? pointDiameter / 2 : 0,
+      pointDiameter / 2,
     );
 
-    if (drawNodes) {
-      nodeShader.bind();
-      renderHelper.beginLayer(gl, nodeShader, renderContext, modelMatrix);
-      gl.uniform1f(nodeShader.uniform("uNodeDiameter"), pointDiameter);
-      renderHelper.setPickInstanceStride(gl, nodeShader, 0);
-      setControlsInShader(
-        gl,
-        nodeShader,
-        shaderControlState,
-        nodeShaderParameters.parseResult,
-      );
-    }
+    nodeShader.bind();
+    renderHelper.beginLayer(gl, nodeShader, renderContext, modelMatrix);
+    gl.uniform1f(nodeShader.uniform("uNodeDiameter"), pointDiameter);
+    renderHelper.setPickInstanceStride(gl, nodeShader, 0);
+    setControlsInShader(
+      gl,
+      nodeShader,
+      shaderControlState,
+      nodeShaderParameters.parseResult,
+    );
 
     const skeletons = source.chunks;
-
     forEachVisibleSegmentToDraw(
       displayState,
       layer,
@@ -1380,21 +1431,19 @@ export class SkeletonLayer extends RefCounted implements SkeletonShaderContext {
         ) {
           return;
         }
+        edgeShader.bind();
         if (color !== undefined) {
-          edgeShader.bind();
           renderHelper.setColor(gl, edgeShader, color);
-          if (drawNodes) {
-            nodeShader.bind();
-            renderHelper.setColor(gl, nodeShader, color);
-          }
         }
         if (pickIndex !== undefined) {
-          edgeShader.bind();
           renderHelper.setPickID(gl, edgeShader, pickIndex);
-          if (drawNodes) {
-            nodeShader.bind();
-            renderHelper.setPickID(gl, nodeShader, pickIndex);
-          }
+        }
+        nodeShader.bind();
+        if (color !== undefined) {
+          renderHelper.setColor(gl, nodeShader, color);
+        }
+        if (pickIndex !== undefined) {
+          renderHelper.setPickID(gl, nodeShader, pickIndex);
         }
         renderHelper.drawSkeletons(
           gl,
@@ -1402,7 +1451,6 @@ export class SkeletonLayer extends RefCounted implements SkeletonShaderContext {
           nodeShader,
           skeleton,
           renderContext.projectionParameters,
-          drawNodes,
         );
       },
     );
@@ -1463,7 +1511,11 @@ export class PerspectiveViewSkeletonLayer extends PerspectiveViewRenderLayer {
   }
 
   get isTransparent() {
-    return this.base.displayState.objectAlpha.value < 1.0;
+    return true;
+    // TODO (SKM) the below is the correct way to do this
+    // but non-transparent rendering interacts badly with the
+    // volume rendering
+    // return this.base.displayState.objectAlpha.value < 1.0;
   }
 
   draw(
@@ -1784,6 +1836,46 @@ export class SpatiallyIndexedSkeletonSource extends SliceViewChunkSource<
   }
 }
 
+export interface SpatiallyIndexedSkeletonSourceRuntimeDisposalOptions {
+  invalidateCache?: boolean;
+}
+
+export function disposeSpatiallyIndexedSkeletonSourceRuntimeState(
+  sources: Iterable<SpatiallyIndexedSkeletonSource>,
+  options: SpatiallyIndexedSkeletonSourceRuntimeDisposalOptions = {},
+) {
+  const uniqueSources = new Set(sources);
+  const invalidateCache = options.invalidateCache ?? true;
+  const chunkQueueManagersWithDeletedChunks = new Set<
+    ChunkManager["chunkQueueManager"]
+  >();
+  let changed = false;
+  for (const source of uniqueSources) {
+    if (source.chunks.size !== 0) {
+      for (const chunkKey of source.chunks.keys()) {
+        source.deleteChunk(chunkKey);
+      }
+      chunkQueueManagersWithDeletedChunks.add(
+        source.chunkManager.chunkQueueManager,
+      );
+      changed = true;
+    }
+    if (
+      invalidateCache &&
+      source.wasDisposed !== true &&
+      source.rpc !== null &&
+      source.rpcId !== null
+    ) {
+      source.invalidateCache();
+      changed = true;
+    }
+  }
+  for (const chunkQueueManager of chunkQueueManagersWithDeletedChunks) {
+    chunkQueueManager.visibleChunksChanged.dispatch();
+  }
+  return changed;
+}
+
 // Options are provided by the SliceView framework for scale selection,
 // but spatial skeleton sources expose all grid levels unconditionally.
 // TODO (SKM): validate if this is an ok deviation from the SliceView
@@ -1842,6 +1934,9 @@ interface SelectedSkeletonNodeInfo {
 interface SpatiallyIndexedSkeletonLayerOptions {
   sources2d?: SpatiallyIndexedSkeletonSourceEntry[];
   selectedNodeInfo?: WatchableValueInterface<
+    SelectedSkeletonNodeInfo | undefined
+  >;
+  hoveredNodeInfo?: WatchableValueInterface<
     SelectedSkeletonNodeInfo | undefined
   >;
   pendingNodePositionVersion?: WatchableValueInterface<number>;
@@ -2073,6 +2168,9 @@ export class SpatiallyIndexedSkeletonLayer
   private selectedNodeInfo:
     | WatchableValueInterface<SelectedSkeletonNodeInfo | undefined>
     | undefined;
+  private hoveredNodeInfo:
+    | WatchableValueInterface<SelectedSkeletonNodeInfo | undefined>
+    | undefined;
   private pendingNodePositionVersion:
     | WatchableValueInterface<number>
     | undefined;
@@ -2096,13 +2194,70 @@ export class SpatiallyIndexedSkeletonLayer
   private readonly selectedNodeOutlineColor = vec3.clone(
     SELECTED_NODE_OUTLINE_FALLBACK_COLOR,
   );
-  private selectedNodeOutlineColorGeneration = 0;
-  private cachedSelectedNodeOutlineColorGeneration = -1;
+  private readonly highlightedNodeOutlineColor = vec3.clone(
+    SELECTED_NODE_OUTLINE_FALLBACK_COLOR,
+  );
+  // The selected and hovered outline colors are derived together from a single
+  // source segment color, so they share one cache generation.
+  private nodeOutlineColorGeneration = 0;
+  private cachedNodeOutlineColorGeneration = -1;
 
   private disposeOverlayChunk() {
+    const changed =
+      this.overlayChunk !== undefined || this.overlayGeometryKey !== undefined;
     this.overlayChunk?.dispose(this.gl);
     this.overlayChunk = undefined;
     this.overlayGeometryKey = undefined;
+    return changed;
+  }
+
+  getUniqueChunkSources() {
+    const sources = new Set<SpatiallyIndexedSkeletonSource>();
+    for (const sourceEntry of [...this.sources, ...this.sources2d]) {
+      sources.add(sourceEntry.chunkSource);
+    }
+    return sources;
+  }
+
+  private clearOverlayRuntimeState() {
+    let changed = this.disposeOverlayChunk();
+    if (this.pendingOverlaySegmentLoads.size !== 0) {
+      this.pendingOverlaySegmentLoads.clear();
+      changed = true;
+    }
+    if (this.editedSegmentIds.size !== 0) {
+      this.editedSegmentIds.clear();
+      changed = true;
+    }
+    if (this.retainedOverlaySegmentIds.length !== 0) {
+      this.retainedOverlaySegmentIds = [];
+      changed = true;
+    }
+    if (this.browseExcludedSegments.size !== 0) {
+      this.browseExcludedSegments.clear();
+      changed = true;
+    }
+    if (this.browseExcludedSegmentsKey !== undefined) {
+      this.browseExcludedSegmentsKey = undefined;
+      changed = true;
+    }
+    this.overlayRebuildFrame = -1;
+    return changed;
+  }
+
+  disposeRuntimeState(
+    options: SpatiallyIndexedSkeletonSourceRuntimeDisposalOptions = {},
+  ) {
+    const overlayChanged = this.clearOverlayRuntimeState();
+    const sourceChanged = disposeSpatiallyIndexedSkeletonSourceRuntimeState(
+      this.getUniqueChunkSources(),
+      options,
+    );
+    const changed = overlayChanged || sourceChanged;
+    if (changed) {
+      this.redrawNeeded.dispatch();
+    }
+    return changed;
   }
 
   private requestOverlaySegmentLoad(segmentId: number) {
@@ -2150,27 +2305,75 @@ export class SpatiallyIndexedSkeletonLayer
     return segmentIds;
   }
 
-  private getSelectedNodeOutlineColor() {
-    const nodeInfo = this.selectedNodeInfo?.value;
-    if (nodeInfo === undefined) {
-      return SELECTED_NODE_OUTLINE_FALLBACK_COLOR;
-    }
-    const currentGeneration = this.selectedNodeOutlineColorGeneration;
-    if (this.cachedSelectedNodeOutlineColorGeneration === currentGeneration) {
-      return this.selectedNodeOutlineColor;
-    }
+  // Segment fill color a node's outline should contrast against, or undefined
+  // when no segment can be resolved. Falls back to the currently selected
+  // segment when the node carries no segment id.
+  private getNodeSegmentColor(
+    nodeInfo: SelectedSkeletonNodeInfo,
+  ): Float32Array | undefined {
     const segmentId =
       nodeInfo.segmentId !== undefined
         ? BigInt(nodeInfo.segmentId)
         : this.displayState.segmentSelectionState.baseValue;
     if (segmentId === undefined) {
-      return SELECTED_NODE_OUTLINE_FALLBACK_COLOR;
+      return undefined;
     }
-    this.cachedSelectedNodeOutlineColorGeneration = currentGeneration;
-    return computeHighVisibilityContrastColor(
-      this.selectedNodeOutlineColor,
-      getBaseObjectColor(this.displayState, segmentId),
-    );
+    return getBaseObjectColor(this.displayState, segmentId);
+  }
+
+  // Updates `selectedNodeOutlineColor` and `highlightedNodeOutlineColor` in
+  // place. Each outline is chosen, independently of the other, for high contrast
+  // against its own node's segment color: the selected node uses the muted
+  // palette, and the hovered node uses its own segment color pushed away from
+  // (or, if already very saturated, towards) grey. Because the two are computed
+  // independently, a given segment color always yields the same selected color
+  // and the same hovered color.
+  private updateNodeOutlineColorPair() {
+    const currentGeneration = this.nodeOutlineColorGeneration;
+    if (this.cachedNodeOutlineColorGeneration === currentGeneration) {
+      return;
+    }
+    this.cachedNodeOutlineColorGeneration = currentGeneration;
+
+    const selectedNodeInfo = this.selectedNodeInfo?.value;
+    const selectedSegmentColor =
+      selectedNodeInfo !== undefined
+        ? this.getNodeSegmentColor(selectedNodeInfo)
+        : undefined;
+    if (selectedSegmentColor !== undefined) {
+      this.selectedNodeOutlineColor.set(
+        pickHighestContrastColor(
+          SELECTED_NODE_HIGHLIGHT_COLORS,
+          selectedSegmentColor,
+        ),
+      );
+    } else {
+      vec3.copy(
+        this.selectedNodeOutlineColor,
+        SELECTED_NODE_OUTLINE_FALLBACK_COLOR,
+      );
+    }
+
+    const hoveredNodeInfo = this.hoveredNodeInfo?.value;
+    const hoveredSegmentColor =
+      hoveredNodeInfo !== undefined
+        ? this.getNodeSegmentColor(hoveredNodeInfo)
+        : undefined;
+    if (hoveredSegmentColor !== undefined) {
+      const saturationFactor =
+        getSaturation(hoveredSegmentColor) >
+        HIGHLIGHTED_NODE_BORDER_SATURATION_THRESHOLD
+          ? HIGHLIGHTED_NODE_BORDER_SATURATION_REDUCE_FACTOR
+          : HIGHLIGHTED_NODE_BORDER_SATURATION_BOOST_FACTOR;
+      this.highlightedNodeOutlineColor.set(
+        saturateColor(hoveredSegmentColor, saturationFactor),
+      );
+    } else {
+      vec3.copy(
+        this.highlightedNodeOutlineColor,
+        SELECTED_NODE_OUTLINE_FALLBACK_COLOR,
+      );
+    }
   }
 
   getRetainedOverlaySegmentIds() {
@@ -2333,7 +2536,7 @@ export class SpatiallyIndexedSkeletonLayer
   ) {
     super();
     this.registerDisposer(() => {
-      this.disposeOverlayChunk();
+      this.disposeRuntimeState();
     });
     let sources3d: SpatiallyIndexedSkeletonSourceEntry[];
     let sources2d = options.sources2d ?? [];
@@ -2372,6 +2575,7 @@ export class SpatiallyIndexedSkeletonLayer
       ),
     );
     this.selectedNodeInfo = options.selectedNodeInfo;
+    this.hoveredNodeInfo = options.hoveredNodeInfo;
     this.pendingNodePositionVersion = options.pendingNodePositionVersion;
     this.getPendingNodePositionOverride = options.getPendingNodePosition;
     this.getCachedNodeInfo = options.getCachedNode;
@@ -2384,8 +2588,8 @@ export class SpatiallyIndexedSkeletonLayer
       ),
     );
     registerRedrawWhenSegmentationDisplayState3DChanged(displayState, this);
-    const invalidateSelectedNodeOutlineColor = () => {
-      ++this.selectedNodeOutlineColorGeneration;
+    const invalidateNodeOutlineColors = () => {
+      ++this.nodeOutlineColorGeneration;
     };
     this.displayState.shaderError.value = undefined;
     const { skeletonRenderingOptions: renderingOptions } = displayState;
@@ -2437,17 +2641,17 @@ export class SpatiallyIndexedSkeletonLayer
       registerNested((context, colorGroupState) => {
         context.registerDisposer(
           colorGroupState.segmentColorHash.changed.add(
-            invalidateSelectedNodeOutlineColor,
+            invalidateNodeOutlineColors,
           ),
         );
         context.registerDisposer(
           colorGroupState.segmentStatedColors.changed.add(
-            invalidateSelectedNodeOutlineColor,
+            invalidateNodeOutlineColors,
           ),
         );
         context.registerDisposer(
           colorGroupState.segmentDefaultColor.changed.add(
-            invalidateSelectedNodeOutlineColor,
+            invalidateNodeOutlineColors,
           ),
         );
       }, this.displayState.segmentationColorGroupState),
@@ -2482,7 +2686,17 @@ export class SpatiallyIndexedSkeletonLayer
     if (this.selectedNodeInfo?.changed) {
       this.registerDisposer(
         this.selectedNodeInfo.changed.add(() => {
-          invalidateSelectedNodeOutlineColor();
+          invalidateNodeOutlineColors();
+          requestRedraw();
+        }),
+      );
+    }
+    if (this.hoveredNodeInfo?.changed) {
+      this.registerDisposer(
+        this.hoveredNodeInfo.changed.add(() => {
+          // The hovered node drives both which node is outlined and the source
+          // segment color of its outline.
+          invalidateNodeOutlineColors();
           requestRedraw();
         }),
       );
@@ -2497,7 +2711,7 @@ export class SpatiallyIndexedSkeletonLayer
     if (inspectionState !== undefined) {
       this.registerDisposer(
         inspectionState.nodeDataVersion.changed.add(() => {
-          invalidateSelectedNodeOutlineColor();
+          invalidateNodeOutlineColors();
           this.redrawNeeded.dispatch();
         }),
       );
@@ -2803,7 +3017,6 @@ export class SpatiallyIndexedSkeletonLayer
     modelMatrix: mat4,
     lineWidth: number,
     pointDiameter: number,
-    renderMode: SkeletonRenderMode,
     excludedGPUTable?: GPUHashTable<HashSetUint64>,
   ):
     | {
@@ -2829,7 +3042,6 @@ export class SpatiallyIndexedSkeletonLayer
       nodeShaderResult;
     if (edgeShader === null || nodeShader === null) return undefined;
 
-    const drawNodes = renderMode === SkeletonRenderMode.LINES_AND_POINTS;
     const { shaderControlState } = this.displayState.skeletonRenderingOptions;
 
     edgeShader.bind();
@@ -2837,7 +3049,7 @@ export class SpatiallyIndexedSkeletonLayer
     gl.uniform1f(edgeShader.uniform("uLineWidth"), lineWidth);
     gl.uniform1f(
       edgeShader.uniform("uLineEndpointClipRadius"),
-      drawNodes ? pointDiameter / 2 : 0,
+      pointDiameter / 2,
     );
     renderHelper.setPickInstanceStride(gl, edgeShader, 0);
     setControlsInShader(
@@ -2854,25 +3066,23 @@ export class SpatiallyIndexedSkeletonLayer
       excludedGPUTable,
     );
 
-    if (drawNodes) {
-      nodeShader.bind();
-      renderHelper.beginLayer(gl, nodeShader, renderContext, modelMatrix);
-      gl.uniform1f(nodeShader.uniform("uNodeDiameter"), pointDiameter);
-      renderHelper.setPickInstanceStride(gl, nodeShader, 0);
-      setControlsInShader(
-        gl,
-        nodeShader,
-        shaderControlState,
-        nodeShaderParameters.parseResult,
-      );
-      renderHelper.setColor(gl, nodeShader, kOneVec4);
-      renderHelper.maybeEnableDynamicSegmentAppearance(
-        gl,
-        nodeShader,
-        skeletonParams,
-        excludedGPUTable,
-      );
-    }
+    nodeShader.bind();
+    renderHelper.beginLayer(gl, nodeShader, renderContext, modelMatrix);
+    gl.uniform1f(nodeShader.uniform("uNodeDiameter"), pointDiameter);
+    renderHelper.setPickInstanceStride(gl, nodeShader, 0);
+    setControlsInShader(
+      gl,
+      nodeShader,
+      shaderControlState,
+      nodeShaderParameters.parseResult,
+    );
+    renderHelper.setColor(gl, nodeShader, kOneVec4);
+    renderHelper.maybeEnableDynamicSegmentAppearance(
+      gl,
+      nodeShader,
+      skeletonParams,
+      excludedGPUTable,
+    );
 
     return {
       gl,
@@ -2888,20 +3098,17 @@ export class SpatiallyIndexedSkeletonLayer
     edgeShader: ShaderProgram,
     nodeShader: ShaderProgram,
     skeletonParams: SkeletonShaderParameters,
-    drawNodes: boolean,
   ) {
     renderHelper.maybeDisableDynamicSegmentAppearance(
       gl,
       edgeShader,
       skeletonParams,
     );
-    if (drawNodes) {
-      renderHelper.maybeDisableDynamicSegmentAppearance(
-        gl,
-        nodeShader,
-        skeletonParams,
-      );
-    }
+    renderHelper.maybeDisableDynamicSegmentAppearance(
+      gl,
+      nodeShader,
+      skeletonParams,
+    );
     renderHelper.endLayer(gl, edgeShader, nodeShader);
   }
 
@@ -2912,7 +3119,6 @@ export class SpatiallyIndexedSkeletonLayer
     modelMatrix: mat4,
     lineWidth: number,
     pointDiameter: number,
-    renderMode: SkeletonRenderMode,
     visibleChunks: VisibleChunk[],
   ) {
     if (visibleChunks.length === 0) return;
@@ -2924,24 +3130,29 @@ export class SpatiallyIndexedSkeletonLayer
       modelMatrix,
       lineWidth,
       pointDiameter,
-      renderMode,
       hasExcludedSegments ? this.gpuBrowseExcludedSegmentsHashTable : undefined,
     );
     if (passState === undefined) return;
     const { gl, edgeShader, nodeShader, skeletonParams } = passState;
-    const drawNodes = renderMode === SkeletonRenderMode.LINES_AND_POINTS;
 
-    if (drawNodes) {
-      nodeShader.bind();
-      gl.uniform3fv(
-        nodeShader.uniform("uSelectedNodeOutlineColor"),
-        this.getSelectedNodeOutlineColor(),
-      );
-      gl.uniform1i(
-        nodeShader.uniform("uSelectedNodeId"),
-        this.selectedNodeInfo?.value?.nodeId ?? -1,
-      );
-    }
+    nodeShader.bind();
+    this.updateNodeOutlineColorPair();
+    gl.uniform3fv(
+      nodeShader.uniform("uSelectedNodeOutlineColor"),
+      this.selectedNodeOutlineColor,
+    );
+    gl.uniform1i(
+      nodeShader.uniform("uSelectedNodeId"),
+      this.selectedNodeInfo?.value?.nodeId ?? -1,
+    );
+    gl.uniform3fv(
+      nodeShader.uniform("uHighlightedNodeOutlineColor"),
+      this.highlightedNodeOutlineColor,
+    );
+    gl.uniform1i(
+      nodeShader.uniform("uHighlightedNodeId"),
+      this.hoveredNodeInfo?.value?.nodeId ?? -1,
+    );
 
     const chunkOrigin = vec3.create();
     const chunkBound = vec3.create();
@@ -2951,10 +3162,8 @@ export class SpatiallyIndexedSkeletonLayer
         vec3.add(chunkBound, chunkOrigin, chunkLayout.size);
         edgeShader.bind();
         renderHelper.setChunkBounds(gl, edgeShader, chunkOrigin, chunkBound);
-        if (drawNodes) {
-          nodeShader.bind();
-          renderHelper.setChunkBounds(gl, nodeShader, chunkOrigin, chunkBound);
-        }
+        nodeShader.bind();
+        renderHelper.setChunkBounds(gl, nodeShader, chunkOrigin, chunkBound);
       }
       if (renderContext.emitPickID) {
         let edgePickId = 0;
@@ -2973,7 +3182,7 @@ export class SpatiallyIndexedSkeletonLayer
           );
           edgePickStride = 1;
         }
-        if (chunk.numVertices > 0 && drawNodes) {
+        if (chunk.numVertices > 0) {
           nodePickId = renderContext.pickIDs.register(
             layer,
             chunk.numVertices,
@@ -2988,11 +3197,9 @@ export class SpatiallyIndexedSkeletonLayer
         edgeShader.bind();
         renderHelper.setPickID(gl, edgeShader, edgePickId);
         renderHelper.setPickInstanceStride(gl, edgeShader, edgePickStride);
-        if (drawNodes) {
-          nodeShader.bind();
-          renderHelper.setPickID(gl, nodeShader, nodePickId);
-          renderHelper.setPickInstanceStride(gl, nodeShader, nodePickStride);
-        }
+        nodeShader.bind();
+        renderHelper.setPickID(gl, nodeShader, nodePickId);
+        renderHelper.setPickInstanceStride(gl, nodeShader, nodePickStride);
       }
 
       // Render each chunk with different node/edge colors for debugging
@@ -3014,13 +3221,11 @@ export class SpatiallyIndexedSkeletonLayer
           tempChunkKeyToColorMap.set(chunkKey, randomColor);
         }
         if (skeletonParams.hasSegmentDefaultColor) {
-          if (drawNodes) {
-            nodeShader.bind();
-            gl.uniform3fv(
-              nodeShader.uniform("uSegmentDefaultColor"),
-              randomColor,
-            );
-          }
+          nodeShader.bind();
+          gl.uniform3fv(
+            nodeShader.uniform("uSegmentDefaultColor"),
+            randomColor,
+          );
           edgeShader.bind();
           gl.uniform3fv(
             edgeShader.uniform("uSegmentDefaultColor"),
@@ -3035,7 +3240,6 @@ export class SpatiallyIndexedSkeletonLayer
         nodeShader,
         chunk,
         renderContext.projectionParameters,
-        drawNodes,
       );
     }
     this.endSkeletonRenderPass(
@@ -3044,7 +3248,6 @@ export class SpatiallyIndexedSkeletonLayer
       edgeShader,
       nodeShader,
       skeletonParams,
-      drawNodes,
     );
   }
 
@@ -3055,7 +3258,6 @@ export class SpatiallyIndexedSkeletonLayer
     modelMatrix: mat4,
     lineWidth: number,
     pointDiameter: number,
-    renderMode: SkeletonRenderMode,
   ) {
     const overlayChunk = this.resolveSourceBackedOverlayChunk();
     if (overlayChunk === undefined) return;
@@ -3065,23 +3267,28 @@ export class SpatiallyIndexedSkeletonLayer
       modelMatrix,
       lineWidth,
       pointDiameter,
-      renderMode,
     );
     if (passState === undefined) return;
     const { gl, edgeShader, nodeShader, skeletonParams } = passState;
-    const drawNodes = renderMode === SkeletonRenderMode.LINES_AND_POINTS;
 
-    if (drawNodes) {
-      nodeShader.bind();
-      gl.uniform3fv(
-        nodeShader.uniform("uSelectedNodeOutlineColor"),
-        this.getSelectedNodeOutlineColor(),
-      );
-      gl.uniform1i(
-        nodeShader.uniform("uSelectedNodeId"),
-        this.selectedNodeInfo?.value?.nodeId ?? -1,
-      );
-    }
+    nodeShader.bind();
+    this.updateNodeOutlineColorPair();
+    gl.uniform3fv(
+      nodeShader.uniform("uSelectedNodeOutlineColor"),
+      this.selectedNodeOutlineColor,
+    );
+    gl.uniform1i(
+      nodeShader.uniform("uSelectedNodeId"),
+      this.selectedNodeInfo?.value?.nodeId ?? -1,
+    );
+    gl.uniform3fv(
+      nodeShader.uniform("uHighlightedNodeOutlineColor"),
+      this.highlightedNodeOutlineColor,
+    );
+    gl.uniform1i(
+      nodeShader.uniform("uHighlightedNodeId"),
+      this.hoveredNodeInfo?.value?.nodeId ?? -1,
+    );
 
     if (renderContext.emitPickID) {
       const edgePickId =
@@ -3106,32 +3313,30 @@ export class SpatiallyIndexedSkeletonLayer
         edgePickId === 0 ? 0 : 1,
       );
 
-      if (drawNodes) {
-        const nodePickId =
-          overlayChunk.numVertices > 0 &&
-          overlayChunk.pickNodeIds !== undefined &&
-          overlayChunk.pickNodePositions !== undefined &&
-          overlayChunk.pickSegmentIds !== undefined
-            ? renderContext.pickIDs.register(
-                layer,
-                overlayChunk.numVertices,
-                0n,
-                {
-                  kind: "node",
-                  nodeIds: overlayChunk.pickNodeIds,
-                  nodePositions: overlayChunk.pickNodePositions,
-                  segmentIds: overlayChunk.pickSegmentIds,
-                } satisfies SpatiallyIndexedSkeletonPickData,
-              )
-            : 0;
-        nodeShader.bind();
-        renderHelper.setPickID(gl, nodeShader, nodePickId);
-        renderHelper.setPickInstanceStride(
-          gl,
-          nodeShader,
-          nodePickId === 0 ? 0 : 1,
-        );
-      }
+      const nodePickId =
+        overlayChunk.numVertices > 0 &&
+        overlayChunk.pickNodeIds !== undefined &&
+        overlayChunk.pickNodePositions !== undefined &&
+        overlayChunk.pickSegmentIds !== undefined
+          ? renderContext.pickIDs.register(
+              layer,
+              overlayChunk.numVertices,
+              0n,
+              {
+                kind: "node",
+                nodeIds: overlayChunk.pickNodeIds,
+                nodePositions: overlayChunk.pickNodePositions,
+                segmentIds: overlayChunk.pickSegmentIds,
+              } satisfies SpatiallyIndexedSkeletonPickData,
+            )
+          : 0;
+      nodeShader.bind();
+      renderHelper.setPickID(gl, nodeShader, nodePickId);
+      renderHelper.setPickInstanceStride(
+        gl,
+        nodeShader,
+        nodePickId === 0 ? 0 : 1,
+      );
     }
 
     renderHelper.drawSkeletons(
@@ -3140,7 +3345,6 @@ export class SpatiallyIndexedSkeletonLayer
       nodeShader,
       overlayChunk,
       renderContext.projectionParameters,
-      drawNodes,
     );
     this.endSkeletonRenderPass(
       renderHelper,
@@ -3148,7 +3352,6 @@ export class SpatiallyIndexedSkeletonLayer
       edgeShader,
       nodeShader,
       skeletonParams,
-      drawNodes,
     );
   }
 
@@ -3182,7 +3385,6 @@ export class SpatiallyIndexedSkeletonLayer
       modelMatrix,
       lineWidth,
       pointDiameter,
-      renderOptions.mode.value,
       visibleChunks,
     );
     this.drawInspectionOverlayPass(
@@ -3192,7 +3394,6 @@ export class SpatiallyIndexedSkeletonLayer
       modelMatrix,
       lineWidth,
       pointDiameter,
-      renderOptions.mode.value,
     );
   }
 
@@ -3403,12 +3604,16 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
   }
 
   get isTransparent() {
-    const { objectAlpha, hiddenObjectAlpha } = this.base.displayState;
-    const opaque =
-      (objectAlpha.value == 1.0 &&
-        (hiddenObjectAlpha.value == 1.0 || hiddenObjectAlpha.value == 0.0)) ||
-      (objectAlpha.value == 0.0 && hiddenObjectAlpha.value == 1.0);
-    return !opaque;
+    return true;
+    // TODO (SKM) the below is the correct way to do this
+    // but non-transparent rendering interacts badly with the
+    // volume rendering
+    // const { objectAlpha, hiddenObjectAlpha } = this.base.displayState;
+    // const opaque =
+    //   (objectAlpha.value == 1.0 &&
+    //     (hiddenObjectAlpha.value == 1.0 || hiddenObjectAlpha.value == 0.0)) ||
+    //   (objectAlpha.value == 0.0 && hiddenObjectAlpha.value == 1.0);
+    // return !opaque;
   }
 
   getValueAt(_position: Float32Array) {

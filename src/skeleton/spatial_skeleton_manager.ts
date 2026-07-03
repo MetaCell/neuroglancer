@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import type { SpatialSkeletonAction } from "#src/skeleton/actions.js";
 import type {
   EditableSpatiallyIndexedSkeletonSource,
   SpatialSkeletonConfidenceConfiguration,
@@ -29,6 +28,7 @@ import {
   SPATIAL_SKELETON_EDIT_COMMAND_METADATA,
 } from "#src/skeleton/command_factories.js";
 import { SpatialSkeletonCommandHistory } from "#src/skeleton/command_history.js";
+import type { SpatialSkeletonAction } from "#src/skeleton/command_protocol.js";
 import type { SpatiallyIndexedSkeletonLayer } from "#src/skeleton/frontend.js";
 import { WatchableValue } from "#src/trackable_value.js";
 import { RefCounted } from "#src/util/disposable.js";
@@ -409,6 +409,40 @@ export class SpatialSkeletonState extends RefCounted {
     this.clearFullSkeletonCache();
     this.nodeDataVersion.value = this.nodeDataVersion.value + 1;
     return true;
+  }
+
+  clearRuntimeState() {
+    const cacheChanged =
+      this.fullSegmentNodeCache.size !== 0 ||
+      this.pendingFullSegmentNodeFetches.size !== 0 ||
+      this.cachedNodesById.size !== 0;
+    const pendingChanged = this.clearPendingNodePositions();
+    const mergeAnchorChanged = this.clearMergeAnchor();
+    let modeChanged = false;
+    if (this.editMode.value) {
+      this.editMode.value = false;
+      modeChanged = true;
+    }
+    if (this.mergeMode.value) {
+      this.mergeMode.value = false;
+      modeChanged = true;
+    }
+    if (this.splitMode.value) {
+      this.splitMode.value = false;
+      modeChanged = true;
+    }
+    const historyChanged = this.commandHistory.clear();
+    if (cacheChanged) {
+      this.clearFullSkeletonCache();
+      this.nodeDataVersion.value = this.nodeDataVersion.value + 1;
+    }
+    return (
+      cacheChanged ||
+      pendingChanged ||
+      mergeAnchorChanged ||
+      modeChanged ||
+      historyChanged
+    );
   }
 
   markNodeDataChanged(options: { invalidateFullSkeletonCache?: boolean } = {}) {

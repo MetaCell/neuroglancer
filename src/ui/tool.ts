@@ -317,6 +317,10 @@ export class GlobalToolBinder extends RefCounted {
     super();
   }
 
+  bindInputEventMap(inputEventMap: EventActionMap, context: RefCounted) {
+    this.inputEventMapBinder(inputEventMap, context);
+  }
+
   get(key: string): Borrowed<Tool> | undefined {
     return this.bindings.get(key);
   }
@@ -490,6 +494,20 @@ export class GlobalToolBinder extends RefCounted {
 
   public deactivate() {
     this.debounceDeactivate();
+  }
+
+  // Activate a tool that has no letter-key binding. The tool is treated as
+  // toggle-mode (stays active until explicitly deactivated). The ToolActivation
+  // takes ownership of the tool via registerDisposer so the tool is disposed
+  // automatically when the activation ends.
+  activateDirect(tool: Owned<Tool>): void {
+    this.queuedTool = undefined; // explicit activation clears any queued toggle tool
+    this.deactivate_(); // cancels debounce + disposes current activation
+    const activation = new ToolActivation(tool, this.inputEventMapBinder);
+    activation.registerDisposer(tool);
+    this.activeTool_ = activation;
+    tool.activate(activation);
+    this.changed.dispatch();
   }
 }
 
