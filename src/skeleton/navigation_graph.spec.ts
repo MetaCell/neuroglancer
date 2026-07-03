@@ -115,6 +115,21 @@ describe("skeleton/navigation", () => {
     expect(getBranchEnd(preferenceGraph, 2).nodeId).toBe(2);
   });
 
+  it("randomly resolves ties between equally preferred branch-end candidates", () => {
+    const tiedGraph = buildSpatiallyIndexedSkeletonNavigationGraph([
+      makeNode(1, undefined),
+      makeNode(2, 1),
+      makeNode(3, 2),
+      makeNode(4, 2),
+      makeNode(5, 1),
+      makeNode(6, 5),
+      makeNode(7, 5),
+    ]);
+
+    expect(getBranchEnd(tiedGraph, 1, { random: () => 0 }).nodeId).toBe(2);
+    expect(getBranchEnd(tiedGraph, 1, { random: () => 0.99 }).nodeId).toBe(5);
+  });
+
   it("orders flat-list rows in leaf-first pre-order", () => {
     const listGraph = buildSpatiallyIndexedSkeletonNavigationGraph([
       makeNode(1, undefined),

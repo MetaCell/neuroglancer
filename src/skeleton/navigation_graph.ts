@@ -519,17 +519,27 @@ export function getBranchStart(
 export function getBranchEnd(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
   nodeId: number,
+  options: { random?: () => number } = {},
 ) {
   getNodeOrThrow(graph, nodeId);
   const branchEndNodeIds = getBranchEndNodeIds(graph, nodeId);
   if (branchEndNodeIds.length === 0) {
     return getNodeTarget(graph, nodeId);
   }
-  const preferredBranchEndNodeId =
-    branchEndNodeIds.find(
-      (branchEndNodeId) => getChildNodeIds(graph, branchEndNodeId).length > 1,
-    ) ?? branchEndNodeIds[0];
-  return getNodeTarget(graph, preferredBranchEndNodeId);
+  const forkNodeIds = branchEndNodeIds.filter(
+    (branchEndNodeId) => getChildNodeIds(graph, branchEndNodeId).length > 1,
+  );
+  const preferredNodeIds =
+    forkNodeIds.length > 0 ? forkNodeIds : branchEndNodeIds;
+  const { random = Math.random } = options;
+  const randomValue = random();
+  const index = Number.isFinite(randomValue)
+    ? Math.min(
+        preferredNodeIds.length - 1,
+        Math.max(0, Math.floor(randomValue * preferredNodeIds.length)),
+      )
+    : 0;
+  return getNodeTarget(graph, preferredNodeIds[index]);
 }
 
 export function getParentNode(
