@@ -506,7 +506,7 @@ export function getBranchStart(
   while (true) {
     const parentNodeId = getParentNodeId(graph, currentNodeId);
     if (parentNodeId === undefined || visited.has(parentNodeId)) {
-      return getNodeTarget(graph, nodeId);
+      return getNodeTarget(graph, currentNodeId);
     }
     currentNodeId = parentNodeId;
     visited.add(currentNodeId);
