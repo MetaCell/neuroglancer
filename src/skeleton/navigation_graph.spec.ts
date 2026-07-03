@@ -65,9 +65,39 @@ describe("skeleton/navigation", () => {
   it("finds the skeleton root and branch starts", () => {
     expect(getSkeletonRootNode(graph).nodeId).toBe(1);
     expect(getBranchStart(graph, 6).nodeId).toBe(3);
-    expect(getBranchStart(graph, 3).nodeId).toBe(3);
-    expect(getBranchStart(graph, 2).nodeId).toBe(2);
+    expect(getBranchStart(graph, 3).nodeId).toBe(1);
+    expect(getBranchStart(graph, 2).nodeId).toBe(1);
     expect(getBranchStart(graph, 1).nodeId).toBe(1);
+  });
+
+  it("walks a degenerate, unbranched skeleton to the root", () => {
+    const chainGraph = buildSpatiallyIndexedSkeletonNavigationGraph([
+      makeNode(1, undefined),
+      makeNode(2, 1),
+      makeNode(3, 2),
+      makeNode(4, 3),
+    ]);
+
+    expect(getBranchStart(chainGraph, 4).nodeId).toBe(1);
+    expect(getBranchStart(chainGraph, 3).nodeId).toBe(1);
+    expect(getBranchStart(chainGraph, 2).nodeId).toBe(1);
+    expect(getBranchStart(chainGraph, 1).nodeId).toBe(1);
+  });
+
+  it("walks past a branch point to the previous branch point or root", () => {
+    const nestedForkGraph = buildSpatiallyIndexedSkeletonNavigationGraph([
+      makeNode(1, undefined),
+      makeNode(2, 1),
+      makeNode(3, 2),
+      makeNode(4, 2),
+      makeNode(5, 3),
+      makeNode(6, 3),
+    ]);
+
+    expect(getBranchStart(nestedForkGraph, 6).nodeId).toBe(3);
+    expect(getBranchStart(nestedForkGraph, 3).nodeId).toBe(2);
+    expect(getBranchStart(nestedForkGraph, 2).nodeId).toBe(1);
+    expect(getBranchStart(nestedForkGraph, 1).nodeId).toBe(1);
   });
 
   it("prefers a downstream branch over a leaf for branch-end navigation", () => {
@@ -83,6 +113,21 @@ describe("skeleton/navigation", () => {
     expect(getBranchEnd(preferenceGraph, 1).nodeId).toBe(4);
     expect(getBranchEnd(preferenceGraph, 3).nodeId).toBe(4);
     expect(getBranchEnd(preferenceGraph, 2).nodeId).toBe(2);
+  });
+
+  it("randomly resolves ties between equally preferred branch-end candidates", () => {
+    const tiedGraph = buildSpatiallyIndexedSkeletonNavigationGraph([
+      makeNode(1, undefined),
+      makeNode(2, 1),
+      makeNode(3, 2),
+      makeNode(4, 2),
+      makeNode(5, 1),
+      makeNode(6, 5),
+      makeNode(7, 5),
+    ]);
+
+    expect(getBranchEnd(tiedGraph, 1, { random: () => 0 }).nodeId).toBe(2);
+    expect(getBranchEnd(tiedGraph, 1, { random: () => 0.99 }).nodeId).toBe(5);
   });
 
   it("orders flat-list rows in leaf-first pre-order", () => {
