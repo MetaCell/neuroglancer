@@ -16,7 +16,10 @@
 
 export function isMacPlatform(): boolean {
   if (typeof navigator === "undefined") return false;
-  return /Mac|iPhone|iPad/.test(
+  // `userAgentData` (Client Hints) is preferred where available; `navigator.platform` is
+  // deprecated but remains the only option in Firefox and Safari, which do not implement
+  // `userAgentData`.
+  return /mac/i.test(
     (navigator as any).userAgentData?.platform ?? navigator.platform ?? "",
   );
 }
