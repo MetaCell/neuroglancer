@@ -80,6 +80,12 @@ function formatKeyStroke(stroke: string): string {
     .join("+");
 }
 
+function formatModifierName(modifier: "control" | "alt"): string {
+  const mac = isMacPlatform();
+  if (modifier === "control") return mac ? "⌘" : "Ctrl";
+  return mac ? "⌥" : "Alt";
+}
+
 function actionIdToLabel(actionId: ActionIdentifier): string {
   return actionId
     .split("-")
@@ -287,13 +293,16 @@ export class CommandCatalog extends RefCounted {
       })),
     });
 
+    const controlModifierLabel = formatModifierName("control");
+    const altModifierLabel = formatModifierName("alt");
+
     commands.push({
       label: "Select Layer",
-      shortcut: "Ctrl+1–9",
+      shortcut: `${controlModifierLabel}+1–9`,
       actionId: "select-layer-group" as ActionIdentifier,
       children: layers.map((layer, index) => ({
         label: layer.name,
-        shortcut: index < 9 ? `Ctrl+${index + 1}` : "",
+        shortcut: index < 9 ? `${controlModifierLabel}+${index + 1}` : "",
         actionId: `select-layer-name:${layer.name}` as ActionIdentifier,
         execute: () => {
           selectedLayer.layer = layer;
@@ -304,11 +313,11 @@ export class CommandCatalog extends RefCounted {
 
     commands.push({
       label: "Toggle Pick Layer",
-      shortcut: "Alt+1–9",
+      shortcut: `${altModifierLabel}+1–9`,
       actionId: "toggle-pick-layer-group" as ActionIdentifier,
       children: layers.map((layer, index) => ({
         label: layer.name,
-        shortcut: index < 9 ? `Alt+${index + 1}` : "",
+        shortcut: index < 9 ? `${altModifierLabel}+${index + 1}` : "",
         actionId: `toggle-pick-layer-name:${layer.name}` as ActionIdentifier,
         execute: () => {
           layer.pickEnabled = !layer.pickEnabled;

@@ -222,6 +222,7 @@ import {
   verifyString,
 } from "#src/util/json.js";
 import * as matrix from "#src/util/matrix.js";
+import { isMacPlatform } from "#src/util/platform.js";
 import { Signal } from "#src/util/signal.js";
 import { TrackableEnum } from "#src/util/trackable_enum.js";
 import { makeWatchableShaderError } from "#src/webgl/dynamic_shader.js";
@@ -310,7 +311,7 @@ function bindSpatialSkeletonSegmentSelection(
 ) {
   const id = BigInt(segmentId);
   const hasSegmentSelectionModifiers = (event: MouseEvent) =>
-    event.ctrlKey && !event.altKey && !event.metaKey;
+    (isMacPlatform() ? event.metaKey : event.ctrlKey) && !event.altKey;
   element.addEventListener("mousedown", (event: MouseEvent) => {
     if (event.button !== 2 || !hasSegmentSelectionModifiers(event)) return;
     selectSegment(id, event.shiftKey ? "force-unpin" : true);
@@ -2494,10 +2495,11 @@ export class SegmentationUserLayer extends Base {
       segmentIdChip.textContent = `${segmentId}`;
       segmentIdChip.style.backgroundColor = segmentChipColors.background;
       segmentIdChip.style.color = segmentChipColors.foreground;
+      const modifierKeyLabel = isMacPlatform() ? "Cmd" : "Ctrl";
       segmentIdChip.title =
         `Segment ${segmentId}\n` +
-        "Ctrl+right-click to pin selection\n" +
-        "Ctrl+shift+right-click to unpin";
+        `${modifierKeyLabel}+right-click to pin selection\n` +
+        `${modifierKeyLabel}+shift+right-click to unpin`;
       bindSpatialSkeletonSegmentSelection(
         segmentIdChip,
         this.selectSegment,

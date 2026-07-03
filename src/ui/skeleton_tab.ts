@@ -1319,8 +1319,8 @@ export class SpatialSkeletonEditTab extends Tab {
       if (inspectionAllowed) {
         row.tabIndex = 0;
         row.setAttribute("role", "button");
-        row.title =
-          "Click to move to node and pin selection. Right-click to move to node. Ctrl+right-click to pin selection without moving.";
+        const nodeRowModifierKeyLabel = isMacPlatform() ? "Cmd" : "Ctrl";
+        row.title = `Click to move to node and pin selection. Right-click to move to node. ${nodeRowModifierKeyLabel}+right-click to pin selection without moving.`;
         row.addEventListener("click", (event: MouseEvent) => {
           const target = event.target;
           if (
