@@ -346,43 +346,19 @@ export function executeSpatialSkeletonMerge(
 export async function undoSpatialSkeletonCommand(
   layer: SpatialSkeletonLayerContext,
 ) {
-  const { commandHistory } = layer.spatialSkeletonState;
-  if (commandHistory.isBusy.value) {
-    StatusMessage.showTemporaryMessage(
-      "Wait for the current skeleton edit to finish.",
-    );
+  const changed = await layer.spatialSkeletonState.commandHistory.undo();
+  if (!changed) {
     return false;
   }
-  if (!commandHistory.canUndo.value) {
-    return false;
-  }
-  const undoLabel = commandHistory.undoLabel.value;
-  const pendingMessage =
-    undoLabel !== undefined ? `Undoing ${undoLabel}...` : "Undoing...";
-  return executeCommandWithPendingMessage(
-    commandHistory.undo(),
-    pendingMessage,
-  );
+  return true;
 }
 
 export async function redoSpatialSkeletonCommand(
   layer: SpatialSkeletonLayerContext,
 ) {
-  const { commandHistory } = layer.spatialSkeletonState;
-  if (commandHistory.isBusy.value) {
-    StatusMessage.showTemporaryMessage(
-      "Wait for the current skeleton edit to finish.",
-    );
+  const changed = await layer.spatialSkeletonState.commandHistory.redo();
+  if (!changed) {
     return false;
   }
-  if (!commandHistory.canRedo.value) {
-    return false;
-  }
-  const redoLabel = commandHistory.redoLabel.value;
-  const pendingMessage =
-    redoLabel !== undefined ? `Redoing ${redoLabel}...` : "Redoing...";
-  return executeCommandWithPendingMessage(
-    commandHistory.redo(),
-    pendingMessage,
-  );
+  return true;
 }
