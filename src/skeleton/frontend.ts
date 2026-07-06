@@ -195,35 +195,26 @@ const DEFAULT_FRAGMENT_MAIN = `void main() {
   emitDefault();
 }
 `;
-const SELECTED_NODE_OUTLINE_FALLBACK_COLOR = vec3.fromValues(1.0, 0.95, 0.35);
-const SELECTED_NODE_OUTLINE_MIN_WIDTH_2D = "3.5";
-const SELECTED_NODE_OUTLINE_MAX_WIDTH_2D = "8.0";
-const SELECTED_NODE_OUTLINE_MIN_WIDTH_3D = "3.0";
-const SELECTED_NODE_OUTLINE_MAX_WIDTH_3D = "7.0";
-// Fraction of the node diameter used as the highlight outline width before
-// clamping to the min/max above. Nodes are small (~5-6px), so this mostly hits
-// the min for typical nodes and scales up the ring for larger nodes.
-const SELECTED_NODE_OUTLINE_DIAMETER_FRACTION = "0.5";
-const NODE_BORDER_OUTLINE_DIAMETER_FRACTION = "0.15";
-const NODE_BORDER_OUTLINE_MIN_WIDTH_2D = "1.0";
-const NODE_BORDER_OUTLINE_MAX_WIDTH_2D = "2.5";
-const NODE_BORDER_OUTLINE_MIN_WIDTH_3D = "1.0";
-const NODE_BORDER_OUTLINE_MAX_WIDTH_3D = "2.0";
+// If use values like 8.0, need to ensure JS keeps the decimal place for GLSL
+const ACTIVE_NODE_BORDER_MIN_WIDTH = 3.5;
+const ACTIVE_NODE_BORDER_MAX_WIDTH = 8.5;
+const ACTIVE_NODE_BORDER_DIAMETER_FRACTION = 0.5;
+const ACTIVE_NODE_OUTLINE_DIAMETER_FRACTION = 0.25;
 
-// Saturation adjustment factors for the highlighted (hovered) node border: each
+// Saturation adjustment factor and threshold for the highlighted (hovered) node border: each
 // moves the segment's color away from (>1) or towards (<1) the perceptual-grey
 // axis by this multiplier, clamped to [0, 1]. A segment color that is already
 // very saturated has little room left to move further from grey, so boosting it
 // further is barely visible; in that case the color is desaturated instead, which
 // remains a visible change in either direction. Mirrors the saturation-flip
 // logic in getObjectColor (segmentation_display_state/frontend.ts).
-const HIGHLIGHTED_NODE_BORDER_SATURATION_BOOST_FACTOR = 1.5;
-const HIGHLIGHTED_NODE_BORDER_SATURATION_REDUCE_FACTOR = 0.5;
+const HIGHLIGHTED_NODE_BORDER_SATURATION_FACTOR = 0.5;
 const HIGHLIGHTED_NODE_BORDER_SATURATION_THRESHOLD = 0.5;
+
 const SELECTED_NODE_BORDER_OUTLINE_GLSL_COLOR = "1.0, 1.0, 1.0";
 const HIGHLIGHTED_NODE_BORDER_OUTLINE_GLSL_COLOR = "0.0, 0.0, 0.0";
-
-// Muted colors for the selected (pinned) node -- less vibrant.
+const ACTIVE_NODE_BORDER_FALLBACK_COLOR = vec3.fromValues(1.0, 0.95, 0.35);
+// Muted colors for the selected (pinned) node
 const SELECTED_NODE_HIGHLIGHT_COLORS: readonly vec3[] = [
   vec3.fromValues(0.1, 0.1, 0.1), // near-black
   vec3.fromValues(0.7, 0.67, 0.6), // stone (light warm gray)
@@ -801,20 +792,14 @@ void emitDefault() {
             builder.addUniform("highp vec3", "uHighlightedNodeOutlineColor");
             builder.addUniform("highp int", "uHighlightedNodeId");
             builder.addVarying("highp float", "vHighlightedNode", "flat");
-            const selectedOutlineMinWidth = this.targetIsSliceView
-              ? SELECTED_NODE_OUTLINE_MIN_WIDTH_2D
-              : SELECTED_NODE_OUTLINE_MIN_WIDTH_3D;
-            const selectedOutlineMaxWidth = this.targetIsSliceView
-              ? SELECTED_NODE_OUTLINE_MAX_WIDTH_2D
-              : SELECTED_NODE_OUTLINE_MAX_WIDTH_3D;
-            selectedOutlineWidthExpression = `(max(vSelectedNode, vHighlightedNode) * clamp(${SELECTED_NODE_OUTLINE_DIAMETER_FRACTION} * uNodeDiameter, ${selectedOutlineMinWidth}, ${selectedOutlineMaxWidth}))`;
-            const borderOutlineMinWidth = this.targetIsSliceView
-              ? NODE_BORDER_OUTLINE_MIN_WIDTH_2D
-              : NODE_BORDER_OUTLINE_MIN_WIDTH_3D;
-            const borderOutlineMaxWidth = this.targetIsSliceView
-              ? NODE_BORDER_OUTLINE_MAX_WIDTH_2D
-              : NODE_BORDER_OUTLINE_MAX_WIDTH_3D;
-            borderOutlineWidthExpression = `(max(vSelectedNode, vHighlightedNode) * clamp(${NODE_BORDER_OUTLINE_DIAMETER_FRACTION} * uNodeDiameter, ${borderOutlineMinWidth}, ${borderOutlineMaxWidth}))`;
+            selectedOutlineWidthExpression = `(max(vSelectedNode, vHighlightedNode) * clamp(${ACTIVE_NODE_BORDER_DIAMETER_FRACTION} * uNodeDiameter, ${ACTIVE_NODE_BORDER_MIN_WIDTH}, ${ACTIVE_NODE_BORDER_MAX_WIDTH}))`;
+            const borderOutlineMinWidth =
+              ACTIVE_NODE_BORDER_MIN_WIDTH *
+              ACTIVE_NODE_OUTLINE_DIAMETER_FRACTION;
+            const borderOutlineMaxWidth =
+              ACTIVE_NODE_BORDER_MAX_WIDTH *
+              ACTIVE_NODE_OUTLINE_DIAMETER_FRACTION;
+            borderOutlineWidthExpression = `(max(vSelectedNode, vHighlightedNode) * clamp(${ACTIVE_NODE_OUTLINE_DIAMETER_FRACTION} * uNodeDiameter, ${borderOutlineMinWidth}, ${borderOutlineMaxWidth}))`;
           }
           let vertexMain = `
 highp uint vertexIndex = uint(gl_InstanceID);
@@ -2148,10 +2133,10 @@ export class SpatiallyIndexedSkeletonLayer
   private retainedOverlaySegmentIds: number[] = [];
   private maxRetainedOverlaySegments: number;
   private readonly selectedNodeOutlineColor = vec3.clone(
-    SELECTED_NODE_OUTLINE_FALLBACK_COLOR,
+    ACTIVE_NODE_BORDER_FALLBACK_COLOR,
   );
   private readonly highlightedNodeOutlineColor = vec3.clone(
-    SELECTED_NODE_OUTLINE_FALLBACK_COLOR,
+    ACTIVE_NODE_BORDER_FALLBACK_COLOR,
   );
   // The selected and hovered outline colors are derived together from a single
   // source segment color, so they share one cache generation.
@@ -2225,14 +2210,7 @@ export class SpatiallyIndexedSkeletonLayer
     return getBaseObjectColor(this.displayState, segmentId);
   }
 
-  // Updates `selectedNodeOutlineColor` and `highlightedNodeOutlineColor` in
-  // place. Each outline is chosen, independently of the other, for high contrast
-  // against its own node's segment color: the selected node uses the muted
-  // palette, and the hovered node uses its own segment color pushed away from
-  // (or, if already very saturated, towards) grey. Because the two are computed
-  // independently, a given segment color always yields the same selected color
-  // and the same hovered color.
-  private updateNodeOutlineColorPair() {
+  private updateNodeOutlineColors() {
     const currentGeneration = this.nodeOutlineColorGeneration;
     if (this.cachedNodeOutlineColorGeneration === currentGeneration) {
       return;
@@ -2254,7 +2232,7 @@ export class SpatiallyIndexedSkeletonLayer
     } else {
       vec3.copy(
         this.selectedNodeOutlineColor,
-        SELECTED_NODE_OUTLINE_FALLBACK_COLOR,
+        ACTIVE_NODE_BORDER_FALLBACK_COLOR,
       );
     }
 
@@ -2267,15 +2245,15 @@ export class SpatiallyIndexedSkeletonLayer
       const saturationFactor =
         getSaturation(hoveredSegmentColor) >
         HIGHLIGHTED_NODE_BORDER_SATURATION_THRESHOLD
-          ? HIGHLIGHTED_NODE_BORDER_SATURATION_REDUCE_FACTOR
-          : HIGHLIGHTED_NODE_BORDER_SATURATION_BOOST_FACTOR;
+          ? 1.0 - HIGHLIGHTED_NODE_BORDER_SATURATION_FACTOR
+          : 1.0 + HIGHLIGHTED_NODE_BORDER_SATURATION_FACTOR;
       this.highlightedNodeOutlineColor.set(
         saturateColor(hoveredSegmentColor, saturationFactor),
       );
     } else {
       vec3.copy(
         this.highlightedNodeOutlineColor,
-        SELECTED_NODE_OUTLINE_FALLBACK_COLOR,
+        ACTIVE_NODE_BORDER_FALLBACK_COLOR,
       );
     }
   }
@@ -2598,8 +2576,6 @@ export class SpatiallyIndexedSkeletonLayer
     if (this.hoveredNodeInfo?.changed) {
       this.registerDisposer(
         this.hoveredNodeInfo.changed.add(() => {
-          // The hovered node drives both which node is outlined and the source
-          // segment color of its outline.
           invalidateNodeOutlineColors();
           requestRedraw();
         }),
@@ -3040,7 +3016,7 @@ export class SpatiallyIndexedSkeletonLayer
     const { gl, edgeShader, nodeShader, skeletonParams } = passState;
 
     nodeShader.bind();
-    this.updateNodeOutlineColorPair();
+    this.updateNodeOutlineColors();
     gl.uniform3fv(
       nodeShader.uniform("uSelectedNodeOutlineColor"),
       this.selectedNodeOutlineColor,
@@ -3176,7 +3152,7 @@ export class SpatiallyIndexedSkeletonLayer
     const { gl, edgeShader, nodeShader, skeletonParams } = passState;
 
     nodeShader.bind();
-    this.updateNodeOutlineColorPair();
+    this.updateNodeOutlineColors();
     gl.uniform3fv(
       nodeShader.uniform("uSelectedNodeOutlineColor"),
       this.selectedNodeOutlineColor,
