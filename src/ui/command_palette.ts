@@ -15,10 +15,16 @@
  */
 
 import "#src/ui/command_palette.css";
-import { LayerManager, SelectedLayerState, UserLayer } from "#src/layer/index.js";
+import type { LayerManager, SelectedLayerState } from "#src/layer/index.js";
+import { UserLayer } from "#src/layer/index.js";
 import { Overlay } from "#src/overlay.js";
-import { getMatchingTools, restoreTool, type GlobalToolBinder } from "#src/ui/tool.js";
+import {
+  getMatchingTools,
+  restoreTool,
+  type GlobalToolBinder,
+} from "#src/ui/tool.js";
 import { parseToolQuery } from "#src/ui/tool_query.js";
+import type { DebouncedFunction } from "#src/util/animation_frame_debounce.js";
 import { animationFrameDebounce } from "#src/util/animation_frame_debounce.js";
 import { RefCounted } from "#src/util/disposable.js";
 import type {
@@ -50,13 +56,34 @@ export interface ActionBinding {
   readonly eventAction: EventAction;
 }
 
-export interface CommandPaletteEntry {
+interface CommandPaletteEntryBase {
   readonly label: string;
   readonly shortcut: string;
-  readonly actionId: ActionIdentifier;
-  readonly execute?: () => void;
-  readonly children?: readonly CommandPaletteEntry[];
 }
+
+// Dispatched as an `action:<actionId>` DOM event, exactly as the keyboard
+// shortcut would be.
+export interface ActionCommandEntry extends CommandPaletteEntryBase {
+  readonly kind: "action";
+  readonly actionId: ActionIdentifier;
+}
+
+// Runs a callback directly (no DOM action exists for it).
+export interface ExecuteCommandEntry extends CommandPaletteEntryBase {
+  readonly kind: "execute";
+  readonly execute: () => void;
+}
+
+// Opens a sub-palette of `children` instead of activating anything itself.
+export interface GroupCommandEntry extends CommandPaletteEntryBase {
+  readonly kind: "group";
+  readonly children: readonly CommandPaletteEntry[];
+}
+
+export type CommandPaletteEntry =
+  | ActionCommandEntry
+  | ExecuteCommandEntry
+  | GroupCommandEntry;
 
 function formatKeyStroke(stroke: string): string {
   return stroke
@@ -110,7 +137,10 @@ function createToolFromJson(context: CommandCatalogContext, toolJson: unknown) {
   }
 }
 
-function getToolDescription(context: CommandCatalogContext, toolJson: unknown): string {
+function getToolDescription(
+  context: CommandCatalogContext,
+  toolJson: unknown,
+): string {
   const tool = createToolFromJson(context, toolJson);
   if (tool === undefined) return toolJsonToLabel(toolJson);
   const label =
@@ -145,7 +175,10 @@ function toolJsonToLabel(toolJson: unknown): string {
   return layerName !== undefined ? `${base} — ${layerName}` : base;
 }
 
-function isToolLayerVisible(context: CommandCatalogContext, toolJson: unknown): boolean {
+function isToolLayerVisible(
+  context: CommandCatalogContext,
+  toolJson: unknown,
+): boolean {
   const json =
     typeof toolJson === "object" && toolJson !== null
       ? (toolJson as Record<string, unknown>)
@@ -156,7 +189,10 @@ function isToolLayerVisible(context: CommandCatalogContext, toolJson: unknown): 
   return managedLayer !== undefined && managedLayer.visible;
 }
 
-function activateUnboundTool(context: CommandCatalogContext, toolJson: unknown): void {
+function activateUnboundTool(
+  context: CommandCatalogContext,
+  toolJson: unknown,
+): void {
   const tool = createToolFromJson(context, toolJson);
   if (tool === undefined) return;
   // If the same tool is already bound to a key, activate that key directly
@@ -220,23 +256,37 @@ export function collectActionBindings(
 export class CommandCatalog extends RefCounted {
   commands: readonly CommandPaletteEntry[] = [];
   readonly changed = new Signal();
+  private readonly debouncedRebuild: DebouncedFunction;
 
   constructor(private readonly context: CommandCatalogContext) {
     super();
-    const debouncedRebuild = this.registerCancellable(
+    const debouncedRebuild = (this.debouncedRebuild = this.registerCancellable(
       animationFrameDebounce(() => this.rebuild()),
+    ));
+    this.registerDisposer(
+      context.globalToolBinder.changed.add(debouncedRebuild),
     );
-    this.registerDisposer(context.globalToolBinder.changed.add(debouncedRebuild));
-    this.registerDisposer(context.layerManager.layersChanged.add(debouncedRebuild));
+    this.registerDisposer(
+      context.globalToolBinder.localBindersChanged.add(debouncedRebuild),
+    );
+    this.registerDisposer(
+      context.layerManager.layersChanged.add(debouncedRebuild),
+    );
     this.rebuild();
   }
 
   private rebuild() {
-    const { globalToolBinder, layerManager, selectedLayer, inputEventBindings } = this.context;
+    const {
+      globalToolBinder,
+      layerManager,
+      selectedLayer,
+      inputEventBindings,
+    } = this.context;
     const commands: CommandPaletteEntry[] = [];
 
     // "Deactivate Active Tool" is always present — harmless no-op when nothing is active.
     commands.push({
+      kind: "action",
       label: "Deactivate Active Tool",
       shortcut: "",
       actionId: "deactivate-active-tool",
@@ -248,25 +298,25 @@ export class CommandCatalog extends RefCounted {
     const layers = layerManager?.managedLayers ?? [];
 
     commands.push({
+      kind: "group",
       label: "Toggle Layer",
       shortcut: "1–9",
-      actionId: "toggle-layer-group" as ActionIdentifier,
       children: layers.map((layer, index) => ({
+        kind: "execute",
         label: layer.name,
         shortcut: index < 9 ? String(index + 1) : "",
-        actionId: `toggle-layer-name:${layer.name}` as ActionIdentifier,
         execute: () => layer.setVisible(!layer.visible),
       })),
     });
 
     commands.push({
+      kind: "group",
       label: "Select Layer",
       shortcut: "Ctrl+1–9",
-      actionId: "select-layer-group" as ActionIdentifier,
       children: layers.map((layer, index) => ({
+        kind: "execute",
         label: layer.name,
         shortcut: index < 9 ? `Ctrl+${index + 1}` : "",
-        actionId: `select-layer-name:${layer.name}` as ActionIdentifier,
         execute: () => {
           selectedLayer.layer = layer;
           selectedLayer.visible = true;
@@ -275,13 +325,13 @@ export class CommandCatalog extends RefCounted {
     });
 
     commands.push({
+      kind: "group",
       label: "Toggle Pick Layer",
       shortcut: "Alt+1–9",
-      actionId: "toggle-pick-layer-group" as ActionIdentifier,
       children: layers.map((layer, index) => ({
+        kind: "execute",
         label: layer.name,
         shortcut: index < 9 ? `Alt+${index + 1}` : "",
-        actionId: `toggle-pick-layer-name:${layer.name}` as ActionIdentifier,
         execute: () => {
           layer.pickEnabled = !layer.pickEnabled;
         },
@@ -308,16 +358,28 @@ export class CommandCatalog extends RefCounted {
       const shortcut = formatKeyStroke(
         friendlyEventIdentifier(eventAction.originalEventIdentifier ?? ""),
       );
-      commands.push({ label, shortcut, actionId });
+      commands.push({ kind: "action", label, shortcut, actionId });
     }
 
     for (const { actionId, label } of SUPPLEMENTAL_COMMANDS) {
-      commands.push({ label, shortcut: "", actionId });
+      commands.push({ kind: "action", label, shortcut: "", actionId });
     }
 
     const toolQueryResult = parseToolQuery("+");
     if ("query" in toolQueryResult) {
-      const toolMatches = getMatchingTools(globalToolBinder, toolQueryResult.query);
+      // Tool listers report changes to their available tool set (e.g. controls
+      // that appear once a data source resolves) via this callback
+      let toolSetChanged = false;
+      const onListableToolsChanged = () => {
+        if (toolSetChanged) return;
+        toolSetChanged = true;
+        this.debouncedRebuild();
+      };
+      const toolMatches = getMatchingTools(
+        globalToolBinder,
+        toolQueryResult.query,
+        onListableToolsChanged,
+      );
 
       // Build a reverse lookup from palette-JSON key to letter for currently-bound tools.
       // Keys must include getCommonToolProperties() to match the keys produced by
@@ -342,6 +404,7 @@ export class CommandCatalog extends RefCounted {
               ? `${tool.description} — ${tool.context.managedLayer.name}`
               : tool.description;
           commands.push({
+            kind: "action",
             label,
             shortcut: shortcutByAction.get(actionId) ?? "",
             actionId,
@@ -349,9 +412,9 @@ export class CommandCatalog extends RefCounted {
         } else {
           const capturedToolJson = toolJson;
           commands.push({
+            kind: "execute",
             label: getToolDescription(this.context, toolJson),
             shortcut: "",
-            actionId: `tool-json:${jsonKey}` as ActionIdentifier,
             execute: () => activateUnboundTool(this.context, capturedToolJson),
           });
         }
@@ -492,6 +555,19 @@ export class CommandPalette extends Overlay {
       event.stopPropagation();
     });
 
+    // The catalog may rebuild while this palette is open (a layer or tool
+    // change, or an async lister resolving). Build rows for the new entries so
+    // top-level filtering can be applied to the new entries.
+    this.registerDisposer(
+      this.catalog.changed.add(() => {
+        this.buildRows(this.catalog.commands);
+        if (this.levelStack.length === 0) {
+          this.currentCommands = this.catalog.commands;
+          this.render();
+        }
+      }),
+    );
+
     this.render();
     searchInput.focus();
   }
@@ -517,7 +593,7 @@ export class CommandPalette extends Overlay {
 
       this.rowByCommand.set(command, commandRow);
 
-      if (command.children !== undefined) {
+      if (command.kind === "group") {
         this.buildRows(command.children);
       }
     }
@@ -605,7 +681,7 @@ export class CommandPalette extends Overlay {
   }
 
   private run(command: CommandPaletteEntry) {
-    if (command.children !== undefined && command.children.length > 0) {
+    if (command.kind === "group" && command.children.length > 0) {
       this.levelStack.push({
         commands: this.currentCommands,
         label: command.label,
@@ -621,9 +697,9 @@ export class CommandPalette extends Overlay {
 
     this.closeAndRestoreFocus();
 
-    if (command.execute !== undefined) {
+    if (command.kind === "execute") {
       command.execute();
-    } else {
+    } else if (command.kind === "action") {
       this.actionDispatchTarget.dispatchEvent(
         new CustomEvent(`action:${command.actionId}`, {
           bubbles: true,
@@ -636,20 +712,24 @@ export class CommandPalette extends Overlay {
 }
 
 /**
- * Binds the command palette to a viewer: registers the "open-command-palette"
- * action and a document-level Ctrl+P capture listener so the palette opens
- * regardless of where focus currently sits.
- *
- * Call from the standalone setup (e.g. setupDefaultViewer). Embedders who do
- * not want the document-level key capture simply omit this call.
+ * Binds the command palette to a viewer by handling the "open-command-palette"
+ * action at the viewer element level, the same way every other global action
+ * (e.g. "help") is bound. The action is dispatched by the configured
+ * `control+keyp` binding in the viewer's input event map. This intentionally
+ * does not install any document-level key listener, so the palette opens from
+ * the main viewer UI but does not intercept keystrokes globally.
  */
-export function bindCommandPalette(viewer: Viewer, catalog: CommandCatalog): void {
-  // Guard prevents double-open when both the element-level action listener and
-  // the document capture listener fire for the same keypress.
+export function bindCommandPalette(
+  viewer: Viewer,
+  catalog: CommandCatalog,
+): void {
   let openPalette: CommandPalette | undefined;
   const openCommandPalette = () => {
     if (openPalette !== undefined && !openPalette.wasDisposed) return;
     const prevFocused = document.activeElement;
+    // Tracking the dispatch target lets an activated command target the
+    // specific element that had focus (e.g. the "snap" action in the panel the
+    // user was in), falling back to the viewer element.
     const dispatchTarget =
       prevFocused instanceof HTMLElement && viewer.element.contains(prevFocused)
         ? prevFocused
@@ -657,15 +737,4 @@ export function bindCommandPalette(viewer: Viewer, catalog: CommandCatalog): voi
     openPalette = new CommandPalette(catalog, dispatchTarget);
   };
   viewer.bindAction("open-command-palette", openCommandPalette);
-  viewer.registerEventListener(
-    document,
-    "keydown",
-    (event: KeyboardEvent) => {
-      if (event.code === "KeyP" && event.ctrlKey) {
-        event.preventDefault();
-        openCommandPalette();
-      }
-    },
-    { capture: true },
-  );
 }

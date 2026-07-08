@@ -21,14 +21,23 @@ import {
   type CommandCatalogContext,
 } from "#src/ui/command_palette.js";
 import { EventActionMap } from "#src/util/event_action_map.js";
+import { Signal } from "#src/util/signal.js";
 import type { InputEventBindings } from "#src/viewer.js";
+
+function nextAnimationFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
 
 function makeInputEventBindings(
   global: EventActionMap,
   sliceView = new EventActionMap(),
   perspectiveView = new EventActionMap(),
 ): InputEventBindings {
-  return { global, sliceView, perspectiveView } as unknown as InputEventBindings;
+  return {
+    global,
+    sliceView,
+    perspectiveView,
+  } as unknown as InputEventBindings;
 }
 
 const noopSignal = { add: () => () => {} };
@@ -39,6 +48,7 @@ function makeContext(
   return {
     globalToolBinder: {
       changed: noopSignal,
+      localBindersChanged: noopSignal,
       bindings: new Map(),
       localBinders: new Set(),
     },
@@ -57,7 +67,9 @@ describe("collectActionBindings", () => {
     const map = new EventActionMap();
     map.set("keya", "some-action");
     const bindings = collectActionBindings(makeInputEventBindings(map));
-    expect(bindings.map((binding) => binding.actionId)).toContain("some-action");
+    expect(bindings.map((binding) => binding.actionId)).toContain(
+      "some-action",
+    );
   });
 
   it("excludes mouse and wheel events", () => {
@@ -65,7 +77,9 @@ describe("collectActionBindings", () => {
     map.set("at:mousedown0", "mouse-action");
     map.set("at:wheel", "wheel-action");
     map.set("keya", "keyboard-action");
-    const ids = collectActionBindings(makeInputEventBindings(map)).map((b) => b.actionId);
+    const ids = collectActionBindings(makeInputEventBindings(map)).map(
+      (b) => b.actionId,
+    );
     expect(ids).toContain("keyboard-action");
     expect(ids).not.toContain("mouse-action");
     expect(ids).not.toContain("wheel-action");
@@ -76,7 +90,9 @@ describe("collectActionBindings", () => {
     globalMap.set("keya", "shared-action");
     const sliceMap = new EventActionMap();
     sliceMap.set("keyb", "shared-action");
-    const bindings = collectActionBindings(makeInputEventBindings(globalMap, sliceMap));
+    const bindings = collectActionBindings(
+      makeInputEventBindings(globalMap, sliceMap),
+    );
     const forAction = bindings.filter((b) => b.actionId === "shared-action");
     expect(forAction).toHaveLength(1);
     expect(forAction[0].eventAction.originalEventIdentifier).toBe("keya");
@@ -86,7 +102,9 @@ describe("collectActionBindings", () => {
     const map = new EventActionMap();
     map.set("f1", "open-command-palette");
     map.set("keya", "some-action");
-    const ids = collectActionBindings(makeInputEventBindings(map)).map((b) => b.actionId);
+    const ids = collectActionBindings(makeInputEventBindings(map)).map(
+      (b) => b.actionId,
+    );
     expect(ids).not.toContain("open-command-palette");
     expect(ids).toContain("some-action");
   });
@@ -122,5 +140,29 @@ describe("CommandCatalog.filter", () => {
 
   it("returns empty for a non-matching query", () => {
     expect(makeCatalog().filter("xyz")).toHaveLength(0);
+  });
+});
+
+describe("CommandCatalog reactivity", () => {
+  it("rebuilds (debounced) when a subscribed change signal fires", async () => {
+    const layersChanged = new Signal();
+    const context = makeContext();
+    (
+      context.layerManager as unknown as { layersChanged: Signal }
+    ).layersChanged = layersChanged;
+    const catalog = new CommandCatalog(context);
+    try {
+      let rebuildCount = 0;
+      catalog.changed.add(() => {
+        ++rebuildCount;
+      });
+      layersChanged.dispatch();
+      // The rebuild is debounced to an animation frame, so nothing fires yet.
+      expect(rebuildCount).toBe(0);
+      await nextAnimationFrame();
+      expect(rebuildCount).toBe(1);
+    } finally {
+      catalog.dispose();
+    }
   });
 });
