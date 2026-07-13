@@ -859,18 +859,28 @@ export function makeToolActivationStatusMessageWithHeader(
   return { message, body, header };
 }
 
+// A tool matched by a query, paired with the exact context (the `UserLayer`,
+// `LayerGroupViewer`, or root `Viewer` instance) it was matched against.
+export interface MatchedTool {
+  readonly context: object;
+  readonly toolJson: any;
+}
+
 function* getToolsFromListerMatchingTerms(
   localBinder: LocalToolBinder,
   lister: ToolLister,
   terms: QueryTerm[],
   commonProperties: { [key: string]: string },
   onChange: (() => void) | undefined,
-) {
+): Generator<MatchedTool> {
   for (const tool of lister(localBinder.context, onChange)) {
     if (matchesTerms(tool, terms)) {
       yield {
-        ...localBinder.convertLocalJSONToPaletteJSON(tool),
-        ...commonProperties,
+        context: localBinder.context,
+        toolJson: {
+          ...localBinder.convertLocalJSONToPaletteJSON(tool),
+          ...commonProperties,
+        },
       };
     }
   }
@@ -880,7 +890,7 @@ function* getToolsMatchingTerms(
   localBinder: LocalToolBinder,
   terms: QueryTerm[],
   onChange?: () => void,
-) {
+): Generator<MatchedTool> {
   const typePredicate = terms.find(
     (term) => term.property === "type",
   )?.predicate;
@@ -942,22 +952,18 @@ export function getMatchingTools(
   globalBinder: GlobalToolBinder,
   query: Query,
   onChange?: () => void,
-): Map<string, any> {
-  const matchingTools = new Map<string, any>();
+): Map<string, MatchedTool> {
+  const matchingTools = new Map<string, MatchedTool>();
 
   const localBinders = Array.from(globalBinder.localBinders);
   localBinders.sort((a, b) => a.getSortOrder() - b.getSortOrder());
 
   for (const localBinder of localBinders) {
     for (const { include, terms } of query.clauses) {
-      for (const toolJson of getToolsMatchingTerms(
-        localBinder,
-        terms,
-        onChange,
-      )) {
-        const identifier = JSON.stringify(toolJson);
+      for (const match of getToolsMatchingTerms(localBinder, terms, onChange)) {
+        const identifier = JSON.stringify(match.toolJson);
         if (include) {
-          matchingTools.set(identifier, toolJson);
+          matchingTools.set(identifier, match);
         } else {
           matchingTools.delete(identifier);
         }

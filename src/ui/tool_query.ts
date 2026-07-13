@@ -15,6 +15,7 @@
  */
 
 import { escapeRegExp } from "lodash-es";
+import type { MatchedTool } from "#src/ui/tool.js";
 import { defaultStringCompare } from "#src/util/string.js";
 
 export type PropertyPredicate = { equals: string } | { regexp: RegExp };
@@ -315,15 +316,15 @@ function getSortedCompletions(values: Map<string, number>) {
 
 export function getPropertyNameCompletions(
   completionQuery: Query,
-  matches: Map<string, any>,
+  matches: Map<string, MatchedTool>,
   prefix: string,
 ) {
   const existingPropertyNames = new Set(
     Array.from(completionQuery.clauses[0].terms, (term) => term.property),
   );
   const properties = new Map<string, number>();
-  for (const match of matches.values()) {
-    for (const property in match) {
+  for (const { toolJson } of matches.values()) {
+    for (const property in toolJson) {
       if (!property.startsWith(prefix) || existingPropertyNames.has(property)) {
         continue;
       }
@@ -336,12 +337,12 @@ export function getPropertyNameCompletions(
 }
 
 export function getPropertyValueCompletions(
-  matches: Map<string, any>,
+  matches: Map<string, MatchedTool>,
   property: string,
 ) {
   const values = new Map<string, number>();
-  for (const match of matches.values()) {
-    const value = "" + match[property];
+  for (const { toolJson } of matches.values()) {
+    const value = "" + toolJson[property];
     const existing = values.get(value) ?? 0;
     values.set(value, existing + 1);
   }

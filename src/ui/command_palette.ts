@@ -22,6 +22,7 @@ import {
   getMatchingTools,
   restoreTool,
   type GlobalToolBinder,
+  type MatchedTool,
 } from "#src/ui/tool.js";
 import { parseToolQuery } from "#src/ui/tool_query.js";
 import type { DebouncedFunction } from "#src/util/animation_frame_debounce.js";
@@ -113,36 +114,21 @@ function isKeyboardEvent(normalizedId: NormalizedEventIdentifier): boolean {
   );
 }
 
-// Creates a Tool instance from a palette-form JSON object (with optional "layer" field).
+// Creates a Tool instance from a matched tool. `match.context` is the exact
+// `LocalToolBinder.context` this tool's JSON came from (a `UserLayer`, a
+// specific `LayerGroupViewer`, or the root `Viewer`)
 // Caller is responsible for disposing the returned tool.
-function createToolFromJson(context: CommandCatalogContext, toolJson: unknown) {
+function createTool(match: MatchedTool) {
   try {
-    const json =
-      typeof toolJson === "object" && toolJson !== null
-        ? (toolJson as Record<string, unknown>)
-        : undefined;
-    const layerName = typeof json?.layer === "string" ? json.layer : undefined;
-    if (layerName !== undefined) {
-      const { layer: _ignored, ...rest } = json!;
-      const managedLayer = context.layerManager.getLayerByName(layerName);
-      const userLayer = managedLayer?.layer ?? null;
-      if (userLayer === null) return undefined;
-      return restoreTool(userLayer, rest);
-    }
-    // context is the viewer instance; restoreTool walks its prototype chain
-    // to find the registered tool factory.
-    return restoreTool(context, toolJson);
+    return restoreTool(match.context, match.toolJson);
   } catch {
     return undefined;
   }
 }
 
-function getToolDescription(
-  context: CommandCatalogContext,
-  toolJson: unknown,
-): string {
-  const tool = createToolFromJson(context, toolJson);
-  if (tool === undefined) return toolJsonToLabel(toolJson);
+function getToolDescription(match: MatchedTool): string {
+  const tool = createTool(match);
+  if (tool === undefined) return toolJsonToLabel(match.toolJson);
   const label =
     tool.context instanceof UserLayer
       ? `${tool.description} — ${tool.context.managedLayer.name}`
@@ -190,10 +176,10 @@ function isToolLayerVisible(
 }
 
 function activateUnboundTool(
-  context: CommandCatalogContext,
-  toolJson: unknown,
+  globalToolBinder: GlobalToolBinder,
+  match: MatchedTool,
 ): void {
-  const tool = createToolFromJson(context, toolJson);
+  const tool = createTool(match);
   if (tool === undefined) return;
   // If the same tool is already bound to a key, activate that key directly
   // rather than creating a duplicate.
@@ -202,11 +188,11 @@ function activateUnboundTool(
   );
   if (existingKey !== undefined) {
     tool.dispose();
-    context.globalToolBinder.activate(existingKey);
+    globalToolBinder.activate(existingKey);
     return;
   }
   // No key binding — activate directly without allocating a letter slot.
-  context.globalToolBinder.activateDirect(tool);
+  globalToolBinder.activateDirect(tool);
 }
 
 /**
@@ -393,8 +379,8 @@ export class CommandCatalog extends RefCounted {
         boundByJsonKey.set(JSON.stringify(paletteJson), letter);
       }
 
-      for (const [jsonKey, toolJson] of toolMatches) {
-        if (!isToolLayerVisible(this.context, toolJson)) continue;
+      for (const [jsonKey, match] of toolMatches) {
+        if (!isToolLayerVisible(this.context, match.toolJson)) continue;
         const boundLetter = boundByJsonKey.get(jsonKey);
         if (boundLetter !== undefined) {
           const actionId: ActionIdentifier = `tool-${boundLetter}`;
@@ -410,12 +396,12 @@ export class CommandCatalog extends RefCounted {
             actionId,
           });
         } else {
-          const capturedToolJson = toolJson;
+          const capturedMatch = match;
           commands.push({
             kind: "execute",
-            label: getToolDescription(this.context, toolJson),
+            label: getToolDescription(match),
             shortcut: "",
-            execute: () => activateUnboundTool(this.context, capturedToolJson),
+            execute: () => activateUnboundTool(globalToolBinder, capturedMatch),
           });
         }
       }

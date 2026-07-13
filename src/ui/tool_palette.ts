@@ -43,7 +43,7 @@ import {
   DEFAULT_SIDE_PANEL_LOCATION,
   TrackableSidePanelLocation,
 } from "#src/ui/side_panel_location.js";
-import type { Tool } from "#src/ui/tool.js";
+import type { MatchedTool, Tool } from "#src/ui/tool.js";
 import {
   getMatchingTools,
   LayerToolBinder,
@@ -361,7 +361,7 @@ class QueryResults extends RefCounted {
     }),
   );
 
-  private getMatches(): Map<string, any> | undefined {
+  private getMatches(): Map<string, MatchedTool> | undefined {
     let triggered = false;
     const onChange = () => {
       if (triggered) return;
@@ -385,10 +385,10 @@ class QueryResults extends RefCounted {
     const matches = this.getMatches() ?? new Map();
     const { results, jsonToTool } = this;
     const newResults: Tool[] = [];
-    for (const [key, toolJson] of matches) {
+    for (const [key, match] of matches) {
       let tool = jsonToTool.get(key);
       if (tool === undefined) {
-        tool = getToolFromJson(this.state.viewer, toolJson);
+        tool = restoreTool(match.context, match.toolJson);
         if (tool === undefined) {
           continue;
         }
