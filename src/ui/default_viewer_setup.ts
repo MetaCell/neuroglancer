@@ -15,7 +15,8 @@
  */
 
 import { StatusMessage } from "#src/status.js";
-import { bindCommandPalette, CommandCatalog } from "#src/ui/command_palette.js";
+import { CommandCatalog } from "#src/ui/command_catalog.js";
+import { bindCommandPalette } from "#src/ui/command_palette.js";
 import {
   bindDefaultCopyHandler,
   bindDefaultPasteHandler,
