@@ -119,6 +119,9 @@ function isKeyboardEvent(normalizedId: NormalizedEventIdentifier): boolean {
 // specific `LayerGroupViewer`, or the root `Viewer`)
 // Caller is responsible for disposing the returned tool.
 function createTool(match: MatchedTool) {
+  if (match.context instanceof RefCounted && match.context.wasDisposed) {
+    return undefined;
+  }
   try {
     return restoreTool(match.context, match.toolJson);
   } catch {
