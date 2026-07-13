@@ -11,12 +11,86 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Test volume rendering picking."""
+"""Test volume rendering picking and rendering."""
 
 import threading
 
 import neuroglancer
 import numpy as np
+import pytest
+
+
+def _setup_viewer_with_volume_and_mesh(webdriver, orthographic):
+    shape = (20, 20, 20)
+
+    # Image data in the far half of the volume (high z = far from default camera,
+    # which looks in the +z direction so low z is nearest).
+    image_data = np.zeros(shape, dtype=np.uint8)
+    image_data[1:19, 1:19, 11:20] = 200
+
+    # Segmentation cube in the near half (low z = close to default camera).
+    # The cube must not touch any array boundary so that marching cubes generates
+    # a fully closed mesh rather than an open plane.
+    seg_data = np.zeros(shape, dtype=np.uint64)
+    seg_data[1:19, 1:19, 1:9] = 1
+
+    with webdriver.viewer.txn() as s:
+        s.dimensions = neuroglancer.CoordinateSpace(
+            names=["x", "y", "z"], units="nm", scales=[1, 1, 1]
+        )
+        s.layers.append(
+            name="image",
+            layer=neuroglancer.ImageLayer(
+                source=neuroglancer.LocalVolume(
+                    data=image_data, dimensions=s.dimensions
+                ),
+                volume_rendering_mode="On",
+                volume_rendering_gain=10.0,
+            ),
+        )
+        s.layers.append(
+            name="seg",
+            layer=neuroglancer.SegmentationLayer(
+                source=neuroglancer.LocalVolume(data=seg_data, dimensions=s.dimensions),
+                segments=[1],
+                segment_default_color="#ff0000",
+                hover_highlight=False,
+            ),
+        )
+        s.layout = "3d"
+        s.layout.orthographic_projection = orthographic
+        s.show_axis_lines = False
+        s.position = [10, 10, 10]
+        s.projection_scale = 15
+
+
+@pytest.mark.parametrize("orthographic", [False, True])
+def test_opaque_mesh_occludes_volume_rendering(webdriver, orthographic):
+    """Test that an opaque mesh occludes a volume rendered from an image volume.
+
+    Specifically, this aims to check the harder case where the mesh sits
+    inside a single image chunk, as opposed to fully being in front of the chunk.
+    """
+    _setup_viewer_with_volume_and_mesh(webdriver, orthographic=True)
+
+    # The mesh should occlude the volume with default camera
+    webdriver.sync()
+    screenshot = webdriver.viewer.screenshot(size=[10, 10]).screenshot
+    np.testing.assert_array_equal(
+        screenshot.image_pixels,
+        np.tile(np.array([255, 0, 0, 255], dtype=np.uint8), (10, 10, 1)),
+    )
+
+    # On flipping the camera, a full opacity volume rendering occludes the mesh
+    with webdriver.viewer.txn() as s:
+        s.projection_orientation = [0, 1, 0, 0]
+
+    webdriver.sync()
+    screenshot = webdriver.viewer.screenshot(size=[10, 10]).screenshot
+    np.testing.assert_array_equal(
+        screenshot.image_pixels,
+        np.tile(np.array([255, 255, 255, 255], dtype=np.uint8), (10, 10, 1)),
+    )
 
 
 def test_volume_rendering_picking_does_not_occlude_mesh(webdriver):
@@ -31,44 +105,7 @@ def test_volume_rendering_picking_does_not_occlude_mesh(webdriver):
     depth (≈ 0) to the picking buffer, making it appear closer than any real geometry
     and stealing pick buffer entries from meshes that were geometrically in front of it.
     """
-    shape = (20, 20, 20)
-
-    # Image data in the far half of the volume (high z = far from default camera,
-    # which looks in the +z direction so low z is nearest).
-    image_data = np.zeros(shape, dtype=np.uint8)
-    image_data[:, :, 10:20] = 200
-
-    # Segmentation cube in the near half (low z = close to default camera).
-    # The cube must not touch any array boundary so that marching cubes generates
-    # a fully closed mesh rather than an open plane.
-    seg_data = np.zeros(shape, dtype=np.uint64)
-    seg_data[2:18, 2:18, 2:9] = 1
-
-    with webdriver.viewer.txn() as s:
-        s.dimensions = neuroglancer.CoordinateSpace(
-            names=["x", "y", "z"], units="nm", scales=[1, 1, 1]
-        )
-        s.layers.append(
-            name="image",
-            layer=neuroglancer.ImageLayer(
-                source=neuroglancer.LocalVolume(
-                    data=image_data, dimensions=s.dimensions
-                ),
-                volume_rendering_mode="On",
-            ),
-        )
-        s.layers.append(
-            name="seg",
-            layer=neuroglancer.SegmentationLayer(
-                source=neuroglancer.LocalVolume(data=seg_data, dimensions=s.dimensions),
-                segments=[1],
-                object_alpha=0.5,
-            ),
-        )
-        s.layout = "3d"
-        s.show_axis_lines = False
-        s.position = [10, 10, 10]
-        s.projection_scale = 30
+    _setup_viewer_with_volume_and_mesh(webdriver, orthographic=False)
 
     # threading.Event is required because the pick callback fires on a background
     # thread (browser → Python action dispatch), not on the test's main thread.
@@ -116,7 +153,7 @@ def test_volume_rendering_picking_does_not_occlude_mesh(webdriver):
     assert action_state is not None
 
     image_pick = action_state.selected_values.get("image")
-    assert (
-        image_pick is not None
-    ), "Image volume was not picked when it is in front of the mesh"
+    assert image_pick is not None, (
+        "Image volume was not picked when it is in front of the mesh"
+    )
     # We don't assert the value because currently volume rendering reports 0
