@@ -19,7 +19,7 @@ import {
   collectActionBindings,
   CommandCatalog,
   type CommandCatalogContext,
-} from "#src/ui/command_palette.js";
+} from "#src/ui/command_catalog.js";
 import { EventActionMap } from "#src/util/event_action_map.js";
 import { Signal } from "#src/util/signal.js";
 import type { InputEventBindings } from "#src/viewer.js";
