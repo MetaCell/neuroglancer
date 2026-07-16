@@ -1138,6 +1138,12 @@ export class Viewer extends RefCounted implements ViewerState {
       this.showPerspectiveSliceViews.toggle(),
     );
     this.bindAction("toggle-show-statistics", () => this.showStatistics());
+
+    this.bindAction("deactivate-active-tool", () =>
+      this.globalToolBinder.deactivate(),
+    );
+    this.bindAction("edit-json-state", () => this.editJsonState());
+    this.bindAction("screenshot", () => this.showScreenshotDialog());
   }
 
   toggleHelpPanel() {

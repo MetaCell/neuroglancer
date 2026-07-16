@@ -1,0 +1,168 @@
+/**
+ * @license
+ * Copyright 2026 Google Inc.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { describe, expect, it } from "vitest";
+import {
+  collectActionBindings,
+  CommandCatalog,
+  type CommandCatalogContext,
+} from "#src/ui/command_catalog.js";
+import { EventActionMap } from "#src/util/event_action_map.js";
+import { Signal } from "#src/util/signal.js";
+import type { InputEventBindings } from "#src/viewer.js";
+
+function nextAnimationFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+function makeInputEventBindings(
+  global: EventActionMap,
+  sliceView = new EventActionMap(),
+  perspectiveView = new EventActionMap(),
+): InputEventBindings {
+  return {
+    global,
+    sliceView,
+    perspectiveView,
+  } as unknown as InputEventBindings;
+}
+
+const noopSignal = { add: () => () => {} };
+
+function makeContext(
+  inputEventBindings = makeInputEventBindings(new EventActionMap()),
+): CommandCatalogContext {
+  return {
+    globalToolBinder: {
+      changed: noopSignal,
+      localBindersChanged: noopSignal,
+      bindings: new Map(),
+      localBinders: new Set(),
+    },
+    layerManager: {
+      layersChanged: noopSignal,
+      managedLayers: [],
+      getLayerByName: () => undefined,
+    },
+    selectedLayer: {},
+    inputEventBindings,
+  } as unknown as CommandCatalogContext;
+}
+
+describe("collectActionBindings", () => {
+  it("collects keyboard bindings", () => {
+    const map = new EventActionMap();
+    map.set("keya", "some-action");
+    const bindings = collectActionBindings(makeInputEventBindings(map));
+    expect(bindings.map((binding) => binding.actionId)).toContain(
+      "some-action",
+    );
+  });
+
+  it("excludes mouse and wheel events", () => {
+    const map = new EventActionMap();
+    map.set("at:mousedown0", "mouse-action");
+    map.set("at:wheel", "wheel-action");
+    map.set("keya", "keyboard-action");
+    const ids = collectActionBindings(makeInputEventBindings(map)).map(
+      (b) => b.actionId,
+    );
+    expect(ids).toContain("keyboard-action");
+    expect(ids).not.toContain("mouse-action");
+    expect(ids).not.toContain("wheel-action");
+  });
+
+  it("keeps only the first binding when an action appears in multiple maps", () => {
+    const globalMap = new EventActionMap();
+    globalMap.set("keya", "shared-action");
+    const sliceMap = new EventActionMap();
+    sliceMap.set("keyb", "shared-action");
+    const bindings = collectActionBindings(
+      makeInputEventBindings(globalMap, sliceMap),
+    );
+    const forAction = bindings.filter((b) => b.actionId === "shared-action");
+    expect(forAction).toHaveLength(1);
+    expect(forAction[0].eventAction.originalEventIdentifier).toBe("keya");
+  });
+
+  it("excludes open-command-palette", () => {
+    const map = new EventActionMap();
+    map.set("f1", "open-command-palette");
+    map.set("keya", "some-action");
+    const ids = collectActionBindings(makeInputEventBindings(map)).map(
+      (b) => b.actionId,
+    );
+    expect(ids).not.toContain("open-command-palette");
+    expect(ids).toContain("some-action");
+  });
+});
+
+describe("CommandCatalog.filter", () => {
+  // With empty bindings the catalog contains only the two supplemental commands:
+  // "Edit JSON State" and "Screenshot".
+  function makeCatalog() {
+    return new CommandCatalog(makeContext());
+  }
+
+  it("returns all commands for an empty query", () => {
+    const catalog = makeCatalog();
+    expect(catalog.filter("")).toStrictEqual(catalog.commands);
+  });
+
+  it("is case-insensitive", () => {
+    expect(makeCatalog().filter("EDIT")).toHaveLength(1);
+    expect(makeCatalog().filter("edit")).toHaveLength(1);
+  });
+
+  it("ranks prefix matches before substring matches", () => {
+    // "Screenshot" is a prefix match; "Edit JSON State" is a substring match.
+    // Verify all prefix matches appear before all substring matches.
+    const results = makeCatalog().filter("s");
+    const screenshotIndex = results.findIndex((r) => r.label === "Screenshot");
+    const stateIndex = results.findIndex((r) => r.label === "Edit JSON State");
+    expect(screenshotIndex).toBeGreaterThanOrEqual(0);
+    expect(stateIndex).toBeGreaterThanOrEqual(0);
+    expect(screenshotIndex).toBeLessThan(stateIndex);
+  });
+
+  it("returns empty for a non-matching query", () => {
+    expect(makeCatalog().filter("xyz")).toHaveLength(0);
+  });
+});
+
+describe("CommandCatalog reactivity", () => {
+  it("rebuilds (debounced) when a subscribed change signal fires", async () => {
+    const layersChanged = new Signal();
+    const context = makeContext();
+    (
+      context.layerManager as unknown as { layersChanged: Signal }
+    ).layersChanged = layersChanged;
+    const catalog = new CommandCatalog(context);
+    try {
+      let rebuildCount = 0;
+      catalog.changed.add(() => {
+        ++rebuildCount;
+      });
+      layersChanged.dispatch();
+      // The rebuild is debounced to an animation frame, so nothing fires yet.
+      expect(rebuildCount).toBe(0);
+      await nextAnimationFrame();
+      expect(rebuildCount).toBe(1);
+    } finally {
+      catalog.dispose();
+    }
+  });
+});
