@@ -20,3 +20,11 @@ export function nearlyEqual(a: number, b: number, epsilon = 1e-6): boolean {
   }
   return Math.abs(a - b) / Math.max(a, b) < epsilon;
 }
+
+export function nearlyInteger(value: number, epsilon = 1e-6): boolean {
+  return nearlyEqual(value, Math.round(value), epsilon);
+}
+
+export function isPowerOfTwo(value: number): boolean {
+  return value !== 0 && (value & -value) === value;
+}
