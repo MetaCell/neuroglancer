@@ -25,12 +25,14 @@ export function detectNestedOctree(
   // Reject if rank is less than 3 for either source
   if (outerLayout.finiteRank < 3 || innerLayout.finiteRank < 3) return false;
 
-  // Determine the map from an inner chunk to an outer chunk
+  // Determine the map from outer chunk-layout coordinates to inner
+  // chunk-layout coordinates (outer-local -> global -> inner-local).
   const m = mat4.create();
   mat4.multiply(m, innerLayout.invTransform, outerLayout.transform);
 
   // First check the diagonal elements are all the same
   // and are a power of two
+  // scale represents how many inner units per outer unit
   const scale = m[0];
   if (!nearlyInteger(scale) || !isPowerOfTwo(scale)) return false;
   if (!nearlyEqual(scale, m[5]) || !nearlyEqual(scale, m[10])) return false;
