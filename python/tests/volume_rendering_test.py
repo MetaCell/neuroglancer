@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 
 
-def _setup_viewer_with_volume_and_mesh(webdriver, orthographic):
+def _setup_viewer_with_volume_and_mesh(webdriver, orthographic, mesh_opacity=1.0):
     shape = (20, 20, 20)
 
     # Image data in the far half of the volume (high z = far from default camera,
@@ -60,6 +60,7 @@ void main() {
                 segments=[1],
                 segment_default_color="#ff0000",
                 hover_highlight=False,
+                object_alpha=mesh_opacity,
             ),
         )
         s.layout = "3d"
@@ -115,7 +116,9 @@ def test_volume_rendering_picking_does_not_occlude_mesh(webdriver, orthographic)
     depth (≈ 0) to the picking buffer, making it appear closer than any real geometry
     and stealing pick buffer entries from meshes that were geometrically in front of it.
     """
-    _setup_viewer_with_volume_and_mesh(webdriver, orthographic=orthographic)
+    _setup_viewer_with_volume_and_mesh(
+        webdriver, orthographic=orthographic, mesh_opacity=0.5
+    )
 
     # threading.Event is required because the pick callback fires on a background
     # thread (browser → Python action dispatch), not on the test's main thread.
