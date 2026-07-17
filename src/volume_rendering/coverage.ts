@@ -25,10 +25,9 @@ export function detectNestedOctree(
   // Reject if rank is less than 3 for either source
   if (outerLayout.finiteRank < 3 || innerLayout.finiteRank < 3) return false;
 
-  // Map the inner layout voxel coords to the outer layout voxel coords
-  // first map inner to global, then global to outer
+  // Determine the map from an inner chunk to an outer chunk
   const m = mat4.create();
-  mat4.multiply(m, outerLayout.transform, innerLayout.transform);
+  mat4.multiply(m, innerLayout.invTransform, outerLayout.transform);
 
   // First check the diagonal elements are all the same
   // and are a power of two

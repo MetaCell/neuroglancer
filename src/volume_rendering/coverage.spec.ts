@@ -34,6 +34,20 @@ describe("volume rendering scale nesting (octree detection)", () => {
     expect(detectNestedOctree(outerLayout, innerLayout)).toBe(true);
   });
 
+  it("detects a nested octree with different scaling factors", () => {
+    const outerLayout = new ChunkLayout(
+      vec3.fromValues(64, 64, 64),
+      mat4.fromValues(4, 0, 0, 0, 0, 8, 0, 0, 0, 0, 16, 0, 0, 0, 0, 1),
+      3,
+    );
+    const innerLayout = new ChunkLayout(
+      vec3.fromValues(64, 64, 64),
+      mat4.fromValues(2, 0, 0, 0, 0, 4, 0, 0, 0, 0, 8, 0, 0, 0, 0, 1),
+      3,
+    );
+    expect(detectNestedOctree(outerLayout, innerLayout)).toBe(true);
+  });
+
   it("detects a nested octree with different chunk sizes", () => {
     const outerLayout = new ChunkLayout(
       vec3.fromValues(64, 64, 64),
