@@ -140,7 +140,11 @@ export class RenderScaleWidget extends RefCounted {
 
     const getTargetValue = (event: MouseEvent) => {
       const position = (event.offsetX / canvas.width) * this.histogram.numBins;
-      return getRenderScaleFromHistogramOffset(position, this.histogram.logScaleOrigin, this.histogram.binSize);
+      return getRenderScaleFromHistogramOffset(
+        position,
+        this.histogram.logScaleOrigin,
+        this.histogram.binSize,
+      );
     };
     this.registerEventListener(canvas, "pointermove", (event: MouseEvent) => {
       this.hoverTarget.value = [getTargetValue(event), event.offsetY];
@@ -252,7 +256,11 @@ export class RenderScaleWidget extends RefCounted {
     let hoverSpatialScale: number | undefined = undefined;
     if (hoverValue !== undefined) {
       const i = Math.floor(
-        getRenderScaleHistogramOffset(hoverValue[0], this.histogram.logScaleOrigin, this.histogram.binSize),
+        getRenderScaleHistogramOffset(
+          hoverValue[0],
+          this.histogram.logScaleOrigin,
+          this.histogram.binSize,
+        ),
       );
       if (i >= 0 && i < numBins) {
         let sum = 0;
@@ -350,7 +358,11 @@ export class RenderScaleWidget extends RefCounted {
       const value = targetValue;
       ctx.fillStyle = "#fff";
       const startOffset = binToCanvasX(
-        getRenderScaleHistogramOffset(value, this.histogram.logScaleOrigin, this.histogram.binSize),
+        getRenderScaleHistogramOffset(
+          value,
+          this.histogram.logScaleOrigin,
+          this.histogram.binSize,
+        ),
       );
       const lineWidth = 1;
       ctx.fillRect(Math.floor(startOffset), 0, lineWidth, height);
@@ -360,7 +372,11 @@ export class RenderScaleWidget extends RefCounted {
       const value = hoverValue[0];
       ctx.fillStyle = "#888";
       const startOffset = binToCanvasX(
-        getRenderScaleHistogramOffset(value, this.histogram.logScaleOrigin, this.histogram.binSize),
+        getRenderScaleHistogramOffset(
+          value,
+          this.histogram.logScaleOrigin,
+          this.histogram.binSize,
+        ),
       );
       const lineWidth = 1;
       ctx.fillRect(Math.floor(startOffset), 0, lineWidth, height);

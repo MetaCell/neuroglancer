@@ -143,7 +143,11 @@ export class RenderScaleHistogram {
         Math.max(
           0,
           Math.round(
-            getRenderScaleHistogramOffset(renderScale, this.logScaleOrigin, this.binSize),
+            getRenderScaleHistogramOffset(
+              renderScale,
+              this.logScaleOrigin,
+              this.binSize,
+            ),
           ),
         ),
         this.numBins - 1,
