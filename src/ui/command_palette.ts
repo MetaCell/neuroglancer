@@ -279,6 +279,8 @@ export class CommandPalette extends Overlay {
 
     if (command.kind === "execute") {
       command.execute();
+    } else if (command.kind === "command") {
+      command.invoke();
     } else if (command.kind === "action") {
       this.actionDispatchTarget.dispatchEvent(
         new CustomEvent(`action:${command.actionId}`, {

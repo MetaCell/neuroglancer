@@ -94,6 +94,7 @@ import { SelectionDetailsPanel } from "#src/ui/selection_details.js";
 import { SidePanelManager } from "#src/ui/side_panel.js";
 import { StateEditorDialog } from "#src/ui/state_editor.js";
 import { StatisticsDisplayState, StatisticsPanel } from "#src/ui/statistics.js";
+import { CommandRegistry } from "#src/ui/command_registry.js";
 import { GlobalToolBinder, LocalToolBinder } from "#src/ui/tool.js";
 import {
   MultiToolPaletteDropdownButton,
@@ -1174,6 +1175,11 @@ export class Viewer extends RefCounted implements ViewerState {
   public globalToolBinder = this.registerDisposer(
     new GlobalToolBinder(this.toolInputEventMapBinder, this.toolPalettes),
   );
+
+  // Global, binding-independent registry of viewer commands. Populated with the
+  // built-in commands during default viewer setup; feature code and hosts may
+  // register additional commands against it.
+  public commandRegistry = this.registerDisposer(new CommandRegistry());
 
   public toolBinder = this.registerDisposer(
     new LocalToolBinder(this, this.globalToolBinder),
