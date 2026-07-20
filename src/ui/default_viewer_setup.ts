@@ -17,6 +17,7 @@
 import { StatusMessage } from "#src/status.js";
 import { CommandCatalog } from "#src/ui/command_catalog.js";
 import { bindCommandPalette } from "#src/ui/command_palette.js";
+import { registerDefaultCommands } from "#src/ui/default_commands.js";
 import {
   bindDefaultCopyHandler,
   bindDefaultPasteHandler,
@@ -64,6 +65,7 @@ export function setupDefaultViewer(options?: Partial<MinimalViewerOptions>) {
 
   bindDefaultCopyHandler(viewer);
   bindDefaultPasteHandler(viewer);
+  registerDefaultCommands(viewer.commandRegistry);
   const catalog = viewer.registerDisposer(new CommandCatalog(viewer));
   bindCommandPalette(viewer, catalog);
 

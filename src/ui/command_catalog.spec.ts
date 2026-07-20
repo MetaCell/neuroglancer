@@ -14,12 +14,13 @@
  * limitations under the License.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   collectActionBindings,
   CommandCatalog,
   type CommandCatalogContext,
 } from "#src/ui/command_catalog.js";
+import { CommandRegistry } from "#src/ui/command_registry.js";
 import { EventActionMap } from "#src/util/event_action_map.js";
 import { Signal } from "#src/util/signal.js";
 import type { InputEventBindings } from "#src/viewer.js";
@@ -42,9 +43,18 @@ function makeInputEventBindings(
 
 const noopSignal = { add: () => () => {} };
 
+// Registries created by makeContext, disposed after each test.
+const activeRegistries: CommandRegistry[] = [];
+
+afterEach(() => {
+  while (activeRegistries.length > 0) activeRegistries.pop()!.dispose();
+});
+
 function makeContext(
   inputEventBindings = makeInputEventBindings(new EventActionMap()),
+  commandRegistry = new CommandRegistry(),
 ): CommandCatalogContext {
+  activeRegistries.push(commandRegistry);
   return {
     globalToolBinder: {
       changed: noopSignal,
@@ -59,6 +69,7 @@ function makeContext(
     },
     selectedLayer: {},
     inputEventBindings,
+    commandRegistry,
   } as unknown as CommandCatalogContext;
 }
 
@@ -111,10 +122,15 @@ describe("collectActionBindings", () => {
 });
 
 describe("CommandCatalog.filter", () => {
-  // With empty bindings the catalog contains only the two supplemental commands:
-  // "Edit JSON State" and "Screenshot".
+  // Seed the registry with two commands so the catalog surfaces exactly
+  // "Edit JSON State" and "Screenshot" as its flat entries.
   function makeCatalog() {
-    return new CommandCatalog(makeContext());
+    const registry = new CommandRegistry();
+    registry.registerAction({ id: "edit-json-state", label: "Edit JSON State" });
+    registry.registerAction({ id: "screenshot", label: "Screenshot" });
+    return new CommandCatalog(
+      makeContext(makeInputEventBindings(new EventActionMap()), registry),
+    );
   }
 
   it("returns all commands for an empty query", () => {
