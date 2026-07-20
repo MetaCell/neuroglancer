@@ -57,3 +57,20 @@ export function detectNestedOctree(
 
   return true;
 }
+
+/**
+ * Given ChunkLayouts ordered finest (index 0) to coarsest (index length-1),
+ * returns an array of the same length where entry `i` (for `i >= 1`) is
+ * `detectNestedOctree(chunkLayouts[i], chunkLayouts[i - 1])` -- whether scale
+ * `i` nests inside its immediate finer neighbor `i - 1`. Entry 0 is true.
+ */
+export function detectNestedOctreeLevels(
+  chunkLayouts: readonly ChunkLayout[],
+): boolean[] {
+  const result = new Array<boolean>(chunkLayouts.length);
+  result[0] = true; // For the finest chunk, it has no "parent" level
+  for (let i = 1; i < chunkLayouts.length; ++i) {
+    result[i] = detectNestedOctree(chunkLayouts[i], chunkLayouts[i - 1]);
+  }
+  return result;
+}

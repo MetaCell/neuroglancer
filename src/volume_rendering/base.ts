@@ -92,6 +92,12 @@ export function forEachVisibleVolumeRenderingChunk<
   localPosition: Float32Array,
   volumeRenderingDepthSamples: number,
   transformedSources: readonly Transformed[],
+  // Per-scale nesting: entry `i` reflects whether scale
+  // `i` nests inside its immediate finer neighbor `i - 1`, and
+  // entry `0` is unused but set to true.
+  // `undefined` means single-scale and can be used to reflect only the target scale
+  // this can be useful for a ready check for example
+  nestedOctreeLevels: readonly boolean[] | undefined,
   beginScale: (
     source: Transformed,
     index: number,
@@ -105,8 +111,8 @@ export function forEachVisibleVolumeRenderingChunk<
     index: number,
     positionInChunks: vec3,
   ) => void,
-) {
-  if (transformedSources.length === 0) return;
+): { targetScaleIndex: number; coarsestNestedScaleIndex: number } | undefined {
+  if (transformedSources.length === 0) return undefined;
   const { viewMatrix, projectionMat, displayDimensionRenderInfo } =
     projectionParameters;
   const { voxelPhysicalScales } = displayDimensionRenderInfo;
@@ -135,10 +141,8 @@ export function forEachVisibleVolumeRenderingChunk<
   };
   // Index of high resolution source with voxel volume greater than `targetViewVolume`.
   // This allows to find the highest resolution source that is not greatly under-sampled.
-  let bestScaleIndex = transformedSources.length - 1;
-  // Voxel volume in "view" space of source `bestScaleIndex`.
-  let bestViewVolume = getViewVolume(bestScaleIndex);
-  for (let scaleIndex = bestScaleIndex; scaleIndex >= 0; --scaleIndex) {
+  let targetScaleIndex = transformedSources.length - 1;
+  for (let scaleIndex = targetScaleIndex; scaleIndex >= 0; --scaleIndex) {
     const viewVolume = getViewVolume(scaleIndex);
     const physicalSpacing = Math.cbrt(
       (viewVolume * canonicalToPhysicalScale) / viewDet,
@@ -146,10 +150,9 @@ export function forEachVisibleVolumeRenderingChunk<
     const optimalSamples = depthRange / Math.cbrt(viewVolume);
     histogramInformation.spatialScales.set(physicalSpacing, optimalSamples);
     if (viewVolume - targetViewVolume >= 0) {
-      bestViewVolume = viewVolume;
-      bestScaleIndex = scaleIndex;
+      targetScaleIndex = scaleIndex;
     }
-    histogramInformation.activeIndex = bestScaleIndex;
+    histogramInformation.activeIndex = targetScaleIndex;
   }
 
   if (DEBUG_CHUNK_LEVEL) {
@@ -162,36 +165,58 @@ export function forEachVisibleVolumeRenderingChunk<
       const viewVolume = getViewVolume(scaleIndex);
       const desiredSamples = depthRange / Math.cbrt(viewVolume);
       console.log(
-        `scaleIndex=${scaleIndex} viewVolume=${viewVolume} bestScaleIndex=${bestScaleIndex} actualViewVolume=${targetViewVolume}, desiredSamples=${desiredSamples}, difference=${
+        `scaleIndex=${scaleIndex} viewVolume=${viewVolume} targetScaleIndex=${targetScaleIndex} actualViewVolume=${targetViewVolume}, desiredSamples=${desiredSamples}, difference=${
           viewVolume - targetViewVolume
         }`,
       );
     }
   }
 
-  const physicalSpacing = Math.cbrt(
-    (bestViewVolume * canonicalToPhysicalScale) / viewDet,
-  );
-  const optimalSamples = depthRange / Math.cbrt(bestViewVolume);
-  let firstChunk = true;
-  const tsource = transformedSources[bestScaleIndex];
-  forEachVisibleVolumetricChunk(
-    projectionParameters,
-    localPosition,
-    tsource,
-    (positionInChunks, clippingPlanes) => {
-      if (firstChunk) {
-        beginScale(
-          tsource,
-          bestScaleIndex,
-          physicalSpacing,
-          optimalSamples,
-          clippingPlanes,
-          histogramInformation,
-        );
-        firstChunk = false;
-      }
-      callback(tsource, bestScaleIndex, positionInChunks);
-    },
-  );
+  // Walk forward from targetScaleIndex through coarser scales as long as
+  // each next scale nests cleanly inside its immediate finer neighbor,
+  // stopping at the first `false` -- or, once there are no coarser scales
+  // left, the out-of-bounds array read is `undefined` (falsy), which stops
+  // the walk the same way. If nestedOctreeLevels is undefined, no fallback
+  // walking is performed (single-scale mode).
+  let coarsestNestedScaleIndex = targetScaleIndex;
+  if (nestedOctreeLevels !== undefined) {
+    while (nestedOctreeLevels[coarsestNestedScaleIndex + 1]) {
+      ++coarsestNestedScaleIndex;
+    }
+  }
+
+  for (
+    let scaleIndex = targetScaleIndex;
+    scaleIndex <= coarsestNestedScaleIndex;
+    ++scaleIndex
+  ) {
+    const viewVolume = getViewVolume(scaleIndex);
+    const physicalSpacing = Math.cbrt(
+      (viewVolume * canonicalToPhysicalScale) / viewDet,
+    );
+    const optimalSamples = depthRange / Math.cbrt(viewVolume);
+    const tsource = transformedSources[scaleIndex];
+    let firstChunk = true;
+    forEachVisibleVolumetricChunk(
+      projectionParameters,
+      localPosition,
+      tsource,
+      (positionInChunks, clippingPlanes) => {
+        if (firstChunk) {
+          beginScale(
+            tsource,
+            scaleIndex,
+            physicalSpacing,
+            optimalSamples,
+            clippingPlanes,
+            histogramInformation,
+          );
+          firstChunk = false;
+        }
+        callback(tsource, scaleIndex, positionInChunks);
+      },
+    );
+  }
+
+  return { targetScaleIndex, coarsestNestedScaleIndex };
 }

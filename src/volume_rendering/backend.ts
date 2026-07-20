@@ -43,6 +43,7 @@ import {
   VOLUME_RENDERING_RENDER_LAYER_RPC_ID,
   VOLUME_RENDERING_RENDER_LAYER_UPDATE_SOURCES_RPC_ID,
 } from "#src/volume_rendering/base.js";
+import { detectNestedOctreeLevels } from "#src/volume_rendering/coverage.js";
 import type { RPC } from "#src/worker_rpc.js";
 import { registerRPC, registerSharedObject } from "#src/worker_rpc.js";
 
@@ -52,6 +53,7 @@ interface VolumeRenderingRenderLayerAttachmentState {
     VolumeRenderingRenderLayerBackend,
     VolumeChunkSource
   >[][];
+  nestedOctreeLevels: boolean[];
 }
 
 const tempChunkPosition = vec3.create();
@@ -106,6 +108,7 @@ class VolumeRenderingRenderLayerBackend extends withChunkManager(
       displayDimensionRenderInfo:
         view.projectionParameters.value.displayDimensionRenderInfo,
       transformedSources: [],
+      nestedOctreeLevels: [],
     };
   }
 
@@ -118,7 +121,7 @@ class VolumeRenderingRenderLayerBackend extends withChunkManager(
       }
       const state =
         attachment.state as VolumeRenderingRenderLayerAttachmentState;
-      const { transformedSources } = state;
+      const { transformedSources, nestedOctreeLevels } = state;
 
       if (
         transformedSources.length === 0 ||
@@ -154,6 +157,7 @@ class VolumeRenderingRenderLayerBackend extends withChunkManager(
         this.localPosition.value,
         this.renderScaleTarget.value,
         transformedSources[0],
+        nestedOctreeLevels,
         (tsource, scaleIndex) => {
           const { chunkLayout } = tsource;
           chunkLayout.globalToLocalSpatial(localCenter, centerDataPosition);
@@ -163,7 +167,7 @@ class VolumeRenderingRenderLayerBackend extends withChunkManager(
             chunkSize[i] = 0;
             localCenter[i] = 0;
           }
-          const priorityIndex = transformedSources[0].length - 1 - scaleIndex;
+          const priorityIndex = scaleIndex;
           sourceBasePriority =
             basePriority + SCALE_PRIORITY_MULTIPLIER * priorityIndex;
         },
@@ -200,6 +204,12 @@ registerRPC(VOLUME_RENDERING_RENDER_LAYER_UPDATE_SOURCES_RPC_ID, function (x) {
     VolumeChunkSource,
     VolumeRenderingRenderLayerBackend
   >(this, x.sources, layer);
+  attachment.state!.nestedOctreeLevels =
+    attachment.state!.transformedSources.length > 0
+      ? detectNestedOctreeLevels(
+          attachment.state!.transformedSources[0].map((s) => s.chunkLayout),
+        )
+      : [];
   attachment.state!.displayDimensionRenderInfo = x.displayDimensionRenderInfo;
   layer.chunkManager.scheduleUpdateChunkPriorities();
 });

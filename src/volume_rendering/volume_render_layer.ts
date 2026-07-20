@@ -65,6 +65,7 @@ import {
   VOLUME_RENDERING_RENDER_LAYER_RPC_ID,
   VOLUME_RENDERING_RENDER_LAYER_UPDATE_SOURCES_RPC_ID,
 } from "#src/volume_rendering/base.js";
+import { detectNestedOctreeLevels } from "#src/volume_rendering/coverage.js";
 import type { TrackableVolumeRenderingModeValue } from "#src/volume_rendering/trackable_volume_rendering_mode.js";
 import {
   VolumeRenderingModes,
@@ -142,7 +143,10 @@ type TransformedVolumeSource = FrontendTransformedSource<
 >;
 
 interface VolumeRenderingAttachmentState {
-  sources: NestedStateManager<TransformedVolumeSource[][]>;
+  sources: NestedStateManager<{
+    transformedSources: TransformedVolumeSource[][];
+    nestedOctreeLevels: boolean[];
+  }>;
 }
 
 export interface VolumeRenderingRenderLayerOptions {
@@ -722,6 +726,12 @@ gl_Position = uModelViewProjectionMatrix * vec4(position, 1.0);
                 context.registerDisposer(tsource.source);
               }
             }
+            const nestedOctreeLevels =
+              transformedSources.length > 0
+                ? detectNestedOctreeLevels(
+                    transformedSources[0].map((s) => s.chunkLayout),
+                  )
+                : [];
             attachment.view.flushBackendProjectionParameters();
             this.backend.rpc!.invoke(
               VOLUME_RENDERING_RENDER_LAYER_UPDATE_SOURCES_RPC_ID,
@@ -733,7 +743,10 @@ gl_Position = uModelViewProjectionMatrix * vec4(position, 1.0);
               },
             );
             this.redrawNeeded.dispatch();
-            return transformedSources;
+            return {
+              transformedSources,
+              nestedOctreeLevels,
+            };
           },
           this.transform,
           attachment.view.displayDimensionRenderInfo,
@@ -754,7 +767,8 @@ gl_Position = uModelViewProjectionMatrix * vec4(position, 1.0);
     >,
   ) {
     if (!renderContext.emitColor) return;
-    const allSources = attachment.state!.sources.value;
+    const { transformedSources: allSources, nestedOctreeLevels } =
+      attachment.state!.sources.value;
     if (allSources.length === 0) return;
     let curPhysicalSpacing = 0;
     let curOptimalSamples = 0;
@@ -882,6 +896,7 @@ gl_Position = uModelViewProjectionMatrix * vec4(position, 1.0);
       this.localPosition.value,
       this.depthSamplesTarget.value,
       allSources[0],
+      nestedOctreeLevels,
       (
         transformedSource,
         ignored1,
@@ -1367,7 +1382,7 @@ gl_Position = uModelViewProjectionMatrix * vec4(position, 1.0);
       VolumeRenderingAttachmentState
     >,
   ) {
-    const allSources = attachment.state!.sources.value;
+    const { transformedSources: allSources } = attachment.state!.sources.value;
     if (allSources.length === 0) return true;
     let missing = false;
     forEachVisibleVolumeRenderingChunk(
@@ -1375,6 +1390,7 @@ gl_Position = uModelViewProjectionMatrix * vec4(position, 1.0);
       this.localPosition.value,
       this.depthSamplesTarget.value,
       allSources[0],
+      undefined,
       () => {},
       (tsource) => {
         const chunk = tsource.source.chunks.get(
