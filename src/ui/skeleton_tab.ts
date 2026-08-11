@@ -71,6 +71,7 @@ import { StatusMessage } from "#src/status.js";
 import { observeWatchable, registerNested } from "#src/trackable_value.js";
 import {
   SPATIAL_SKELETON_EDIT_MODE_TOOL_ID,
+  SPATIAL_SKELETON_FIND_PATH_TOOL_ID,
   SPATIAL_SKELETON_MERGE_MODE_TOOL_ID,
   SPATIAL_SKELETON_SPLIT_MODE_TOOL_ID,
 } from "#src/ui/skeleton_edit_tools.js";
@@ -190,6 +191,13 @@ export class SpatialSkeletonEditTab extends Tab {
         toolJson: SPATIAL_SKELETON_SPLIT_MODE_TOOL_ID,
         label: "Split",
         title: "Toggle skeleton split mode",
+      }),
+    );
+    toolbox.appendChild(
+      makeToolButton(this, layer.toolBinder, {
+        toolJson: SPATIAL_SKELETON_FIND_PATH_TOOL_ID,
+        label: "Find Path",
+        title: "Highlight the route between two skeleton nodes",
       }),
     );
     const toolbarActions = document.createElement("div");

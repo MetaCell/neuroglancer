@@ -45,3 +45,30 @@
 .neuroglancer-skeleton-tool-status-point-field-value {
   color: inherit;
 }
+
+.neuroglancer-skeleton-find-path-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.neuroglancer-skeleton-find-path-status > .neuroglancer-icon {
+  height: 100%;
+}
+
+.neuroglancer-skeleton-find-path-message {
+  display: inline-flex;
+  align-items: center;
+}
+
+.neuroglancer-skeleton-find-path-annotations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.neuroglancer-skeleton-find-path-annotations
+  > .neuroglancer-annotation-list-entry {
+  background-color: black;
+}

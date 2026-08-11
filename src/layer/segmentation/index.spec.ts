@@ -19,6 +19,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { RenderLayerTransform } from "#src/render_coordinate_transform.js";
 import { SpatialSkeletonActions } from "#src/skeleton/actions.js";
 import { WatchableValue } from "#src/trackable_value.js";
+import { NullarySignal } from "#src/util/signal.js";
 
 if (!("WebGL2RenderingContext" in globalThis)) {
   Object.defineProperty(globalThis, "WebGL2RenderingContext", {
@@ -106,6 +107,73 @@ function makeSpatialSkeletonLayerWithSource(source: unknown) {
   return {
     source,
   };
+}
+
+function makeTrackableStub<T>(initialValue: T) {
+  const value = new WatchableValue(initialValue);
+  return Object.assign(value, {
+    restoreState: (newValue: T | undefined) => {
+      if (newValue !== undefined) value.value = newValue;
+    },
+    toJSON: () => value.value,
+  });
+}
+
+function makeSegmentationUserLayerForFindPathTests() {
+  let nextRpcId = 0;
+  const rpc = {
+    newId: () => nextRpcId++,
+    set: vi.fn(),
+    delete: vi.fn(),
+    invoke: vi.fn(),
+  };
+  const globalToolBinder = {
+    bindings: new Map(),
+    localBinders: new Set(),
+    localBindersChanged: new NullarySignal(),
+  };
+  const mouseState = {
+    active: false,
+    changed: new NullarySignal(),
+  };
+  const layerSelectedValues = {
+    changed: new NullarySignal(),
+    mouseState,
+    get: () => undefined,
+  };
+  const selectionState = new WatchableValue<any>(undefined);
+  const layerManager = {
+    getLayerByName: () => undefined,
+    updateNonArchivedLayerIndices: vi.fn(),
+  };
+  const manager: any = {
+    rpc,
+    layerManager,
+    rootLayers: layerManager,
+    layerSelectedValues,
+    chunkManager: {
+      layerChunkStatisticsUpdated: new NullarySignal(),
+      memoize: {
+        getUncounted: (_key: unknown, getter: () => unknown) => getter(),
+      },
+    },
+  };
+  manager.root = {
+    toolBinder: globalToolBinder,
+    selectionState,
+  };
+  const managedLayer: any = {
+    name: "find-path-test",
+    layer: null,
+    manager,
+    localCoordinateSpaceCombiner: {},
+    localCoordinateSpace: makeTrackableStub({ rank: 0 }),
+    localPosition: makeTrackableStub(new Float32Array(0)),
+    localVelocity: makeTrackableStub(new Float32Array(0)),
+  };
+  const layer = new SegmentationUserLayer(managedLayer);
+  managedLayer.layer = layer;
+  return layer;
 }
 
 function makeSpatialSkeletonActionGateLayer(options: {
@@ -641,5 +709,91 @@ describe("layer/segmentation spatial skeleton node navigation helpers", () => {
       false,
     );
     expect(clearSpatialSkeletonNodeSelection).toHaveBeenCalledWith(false);
+  });
+});
+
+describe("layer/segmentation spatial skeleton find-path state", () => {
+  const serializedFindPathState = {
+    source: { nodeId: "1", segmentId: "7", position: [1, 2, 3] },
+    target: { nodeId: "3", segmentId: "7", position: [7, 8, 9] },
+    result: [
+      { nodeId: "1", position: [1, 2, 3] },
+      { nodeId: "2", position: [4, 5, 6] },
+      { nodeId: "3", position: [7, 8, 9] },
+    ],
+  };
+
+  it("restores and serializes find-path state through the layer JSON key", () => {
+    const layer = makeSegmentationUserLayerForFindPathTests();
+    layer.restoreState({
+      spatialSkeletonFindPath: serializedFindPathState,
+    });
+
+    expect(layer.spatialSkeletonState.findPathState.toJSON()).toEqual(
+      serializedFindPathState,
+    );
+    const layerJson = layer.toJSON();
+    expect(layerJson.spatialSkeletonFindPath).toEqual(serializedFindPathState);
+
+    const restoredLayer = makeSegmentationUserLayerForFindPathTests();
+    restoredLayer.restoreState(layerJson);
+    expect(restoredLayer.spatialSkeletonState.findPathState.toJSON()).toEqual(
+      serializedFindPathState,
+    );
+  });
+
+  it("rejects malformed find-path layer JSON without replacing valid state", () => {
+    const layer = makeSegmentationUserLayerForFindPathTests();
+    layer.spatialSkeletonState.findPathState.restoreState(
+      serializedFindPathState,
+    );
+
+    expect(() =>
+      layer.restoreState({
+        spatialSkeletonFindPath: {
+          ...serializedFindPathState,
+          source: {
+            ...serializedFindPathState.source,
+            nodeId: "0",
+          },
+        },
+      }),
+    ).toThrow(/nodeId/);
+    expect(layer.spatialSkeletonState.findPathState.toJSON()).toEqual(
+      serializedFindPathState,
+    );
+  });
+
+  it("invalidates a restored result after a later skeleton data version", () => {
+    const layer = makeSegmentationUserLayerForFindPathTests();
+    layer.spatialSkeletonState.findPathState.restoreState(
+      serializedFindPathState,
+    );
+
+    layer.spatialSkeletonNodeDataVersion.value++;
+
+    expect(layer.spatialSkeletonState.findPathState.result).toBeUndefined();
+    expect(layer.spatialSkeletonState.findPathState.source?.nodeId).toBe(1n);
+    expect(layer.spatialSkeletonState.findPathState.target?.nodeId).toBe(3n);
+  });
+
+  it("invalidates pending find-path work after a skeleton data version", () => {
+    const layer = makeSegmentationUserLayerForFindPathTests();
+    layer.spatialSkeletonState.findPathState.restoreState({
+      ...serializedFindPathState,
+      result: undefined,
+    });
+    const requestGeneration =
+      layer.spatialSkeletonState.findPathState.beginRequest();
+
+    layer.spatialSkeletonNodeDataVersion.value++;
+
+    expect(layer.spatialSkeletonState.findPathState.requestPending).toBe(false);
+    expect(
+      layer.spatialSkeletonState.findPathState.completeRequest(
+        requestGeneration,
+        [],
+      ),
+    ).toBe(false);
   });
 });

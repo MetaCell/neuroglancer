@@ -29,6 +29,7 @@ import {
   SPATIAL_SKELETON_EDIT_COMMAND_METADATA,
 } from "#src/skeleton/command_factories.js";
 import { SpatialSkeletonCommandHistory } from "#src/skeleton/command_history.js";
+import { SkeletonFindPathState } from "#src/skeleton/find_path.js";
 import type { SpatiallyIndexedSkeletonLayer } from "#src/skeleton/frontend.js";
 import { WatchableValue } from "#src/trackable_value.js";
 import { RefCounted } from "#src/util/disposable.js";
@@ -239,6 +240,7 @@ export class SpatialSkeletonState extends RefCounted {
   readonly commandHistory = this.registerDisposer(
     new SpatialSkeletonCommandHistory(),
   );
+  readonly findPathState = this.registerDisposer(new SkeletonFindPathState());
   readonly editMode = new WatchableValue(false);
   readonly mergeMode = new WatchableValue(false);
   readonly splitMode = new WatchableValue(false);

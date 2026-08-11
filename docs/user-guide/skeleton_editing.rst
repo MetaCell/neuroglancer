@@ -166,6 +166,10 @@ To make structural edits to nodes, you must bind at least some of the editing
 tools available in the skeleton tab. The available tools are **Edit**, **Merge**,
 and **Split**.
 
+The skeleton tab also provides a **Find Path** inspection tool for spatially
+indexed skeletons. Unlike the editing tools, **Find Path** is available for
+read-only sources.
+
 To bind a tool, click on it in the UI and hold down a key. To activate the tool,
 press :kbd:`Shift` + the bound key. For example, if you bind :kbd:`E` to the Edit
 tool, pressing :kbd:`Shift+E` activates it.
@@ -173,6 +177,25 @@ tool, pressing :kbd:`Shift+E` activates it.
 An important concept throughout editing is the *selected node*. The selected node
 is highlighted with a border in the viewer, highlighted in the skeleton tab table,
 and its details are shown in the selection details panel.
+
+Find Path Tool
+~~~~~~~~~~~~~~
+
+Click **Find Path** in the skeleton tab, then hold :kbd:`Control` and left-click
+the source node followed by the target node. You may also hold :kbd:`Shift` while
+selecting. The skeleton must already be visible, and both endpoints must be
+distinct, exact nodes in the same skeleton segment; points on edges are not
+accepted. The current implementation assumes one active spatial skeleton source
+in the segmentation layer. A third selection is ignored until an endpoint is
+removed or the tool is cleared.
+
+Making a skeleton visible loads its complete node data through the normal
+visibility pipeline. Click **Submit** or press :kbd:`Enter` to use the nodes
+already cached in the client and highlight the route as a white annotation
+polyline. **Find Path** does not initiate a download; if the visible skeleton is
+still loading, wait and submit again. Click **Clear** to remove the endpoints and
+route. If a generic skeleton contains cycles, **Find Path** selects a
+deterministic route with the fewest edges.
 
 Edit Tool
 ~~~~~~~~~

@@ -106,6 +106,7 @@ import type {
   SpatiallyIndexedSkeletonNode,
   SpatialSkeletonSourceState,
 } from "#src/skeleton/api.js";
+import { SpatialSkeletonFindPathAnnotationController } from "#src/skeleton/find_path_annotations.js";
 import {
   PerspectiveViewSkeletonLayer,
   SkeletonLayer,
@@ -773,6 +774,11 @@ interface SelectedSpatialSkeletonNodeInfo {
   sourceState?: SpatialSkeletonSourceState;
 }
 
+export interface SpatialSkeletonFindPathContext {
+  readonly skeletonLayer: SpatiallyIndexedSkeletonLayer;
+  readonly annotationController: SpatialSkeletonFindPathAnnotationController;
+}
+
 function normalizeOptionalPositiveSafeInteger(value: unknown) {
   if (value === undefined) return undefined;
   const normalized = Math.round(Number(value));
@@ -796,6 +802,10 @@ export class SegmentationUserLayer extends Base {
   readonly spatialSkeletonState = this.registerDisposer(
     new SpatialSkeletonState(),
   );
+  private readonly spatialSkeletonFindPathContexts = new Map<
+    SpatiallyIndexedSkeletonLayer,
+    SpatialSkeletonFindPathContext
+  >();
   readonly selectedSpatialSkeletonNodeInfo = new WatchableValue<
     SelectedSpatialSkeletonNodeInfo | undefined
   >(undefined);
@@ -1063,6 +1073,16 @@ export class SegmentationUserLayer extends Base {
     super(managedLayer);
     this.codeVisible.changed.add(this.specificationChanged.dispatch);
     this.registerDisposer(
+      this.spatialSkeletonState.findPathState.changed.add(
+        this.specificationChanged.dispatch,
+      ),
+    );
+    this.registerDisposer(
+      this.spatialSkeletonState.nodeDataVersion.changed.add(() => {
+        this.spatialSkeletonState.findPathState.invalidateResult();
+      }),
+    );
+    this.registerDisposer(
       registerNestedSync((context, group) => {
         context.registerDisposer(
           group.specificationChanged.add(this.specificationChanged.dispatch),
@@ -1307,6 +1327,47 @@ export class SegmentationUserLayer extends Base {
     }
     return undefined;
   };
+
+  getSpatialSkeletonFindPathContext(
+    skeletonLayer:
+      | SpatiallyIndexedSkeletonLayer
+      | undefined = this.getSpatiallyIndexedSkeletonLayer(),
+  ) {
+    return skeletonLayer === undefined
+      ? undefined
+      : this.spatialSkeletonFindPathContexts.get(skeletonLayer);
+  }
+
+  private registerSpatialSkeletonFindPathContext(
+    skeletonLayer: SpatiallyIndexedSkeletonLayer,
+    loadedSubsource: LoadedDataSubsource,
+  ) {
+    const activated = loadedSubsource.activated;
+    if (activated === undefined) {
+      throw new Error(
+        "Cannot register find-path annotations for an inactive spatial skeleton source.",
+      );
+    }
+    const annotationController = activated.registerDisposer(
+      new SpatialSkeletonFindPathAnnotationController({
+        layer: this,
+        loadedSubsource,
+        state: this.spatialSkeletonState.findPathState,
+      }),
+    );
+    const context: SpatialSkeletonFindPathContext = {
+      skeletonLayer,
+      annotationController,
+    };
+    this.spatialSkeletonFindPathContexts.set(skeletonLayer, context);
+    activated.registerDisposer(() => {
+      if (this.spatialSkeletonFindPathContexts.get(skeletonLayer) === context) {
+        this.spatialSkeletonFindPathContexts.delete(skeletonLayer);
+      }
+      this.spatialSkeletonState.findPathState.invalidateResult();
+    });
+    return context;
+  }
 
   getSpatialSkeletonChunkStats(kind: "2d" | "3d") {
     // 2D chunks are now handled by the same backend as 3D, so only report
@@ -1612,6 +1673,10 @@ export class SegmentationUserLayer extends Base {
                   inspectionState: this.spatialSkeletonState,
                 },
               );
+              this.registerSpatialSkeletonFindPathContext(
+                base,
+                loadedSubsource,
+              );
               if (perspectiveSources.length > 0) {
                 loadedSubsource.addRenderLayer(
                   new PerspectiveViewSpatiallyIndexedSkeletonLayer(
@@ -1645,6 +1710,7 @@ export class SegmentationUserLayer extends Base {
                 inspectionState: this.spatialSkeletonState,
               },
             );
+            this.registerSpatialSkeletonFindPathContext(base, loadedSubsource);
             loadedSubsource.addRenderLayer(
               new PerspectiveViewSpatiallyIndexedSkeletonLayer(base.addRef()),
             );
@@ -1848,6 +1914,9 @@ export class SegmentationUserLayer extends Base {
       (value) =>
         this.displayState.spatialSkeletonNodeFilter.restoreState(value),
     );
+    this.spatialSkeletonState.findPathState.restoreState(
+      specification[json_keys.SPATIAL_SKELETON_FIND_PATH_JSON_KEY],
+    );
     this.displayState.spatialSkeletonSpacingTarget2d.restoreState(
       specification[json_keys.SKELETON_CROSS_SECTION_SPACING_JSON_KEY],
     );
@@ -1921,6 +1990,8 @@ export class SegmentationUserLayer extends Base {
       this.displayState.spatialSkeletonNodeQuery.toJSON();
     x[json_keys.SKELETON_NODE_FILTER_JSON_KEY] =
       this.displayState.spatialSkeletonNodeFilter.toJSON();
+    x[json_keys.SPATIAL_SKELETON_FIND_PATH_JSON_KEY] =
+      this.spatialSkeletonState.findPathState.toJSON();
     x[json_keys.HIDDEN_OPACITY_3D_JSON_KEY] =
       this.displayState.hiddenObjectAlpha.toJSON();
     x[json_keys.SKELETON_CROSS_SECTION_SPACING_JSON_KEY] =
