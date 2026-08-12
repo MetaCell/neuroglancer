@@ -30,7 +30,10 @@ import type {
   SpatialSkeletonSourceState,
   SpatialSkeletonVector,
 } from "#src/skeleton/api.js";
-import type { SkeletonFindPathEndpoint } from "#src/skeleton/find_path.js";
+import type {
+  SkeletonFindPathEndpoint,
+  SkeletonFindPathState,
+} from "#src/skeleton/find_path.js";
 import {
   SPATIAL_SKELETON_FIND_PATH_SOURCE_DESCRIPTION,
   SPATIAL_SKELETON_FIND_PATH_TARGET_DESCRIPTION,
@@ -287,7 +290,10 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
     }
     const resolvedNodeInfo =
       skeletonLayer.getNode(nodeHit.nodeId) ??
-      this.layer.spatialSkeletonState.getCachedNode(nodeHit.nodeId);
+      this.layer.spatialSkeletonState.getCachedNode(
+        nodeHit.nodeId,
+        skeletonLayer,
+      );
     return {
       nodeId: nodeHit.nodeId,
       segmentId: nodeHit.segmentId ?? resolvedNodeInfo?.segmentId,
@@ -316,7 +322,7 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
     }
     const resolvedNodeInfo =
       skeletonLayer?.getNode(nodeId) ??
-      this.layer.spatialSkeletonState.getCachedNode(nodeId);
+      this.layer.spatialSkeletonState.getCachedNode(nodeId, skeletonLayer);
     const selectedNodeInfo = this.layer.selectedSpatialSkeletonNodeInfo.value;
     const layerSelectionState =
       this.layer.manager.root.selectionState.value?.layers.find(
@@ -555,8 +561,10 @@ export class SpatialSkeletonEditModeTool extends SpatialSkeletonToolBase {
       return undefined;
     }
     return (
-      this.layer.spatialSkeletonState.getCachedNode(parentNodeId) ??
-      skeletonLayer.getNode(parentNodeId)
+      this.layer.spatialSkeletonState.getCachedNode(
+        parentNodeId,
+        skeletonLayer,
+      ) ?? skeletonLayer.getNode(parentNodeId)
     );
   }
 
@@ -1055,9 +1063,14 @@ export class SpatialSkeletonMergeModeTool extends SpatialSkeletonToolBase {
         anchorSelection = undefined;
         return undefined;
       }
+      const activeSkeletonLayer =
+        this.getActiveSpatiallyIndexedSkeletonLayer() ?? skeletonLayer;
       const cachedNode =
-        this.getActiveSpatiallyIndexedSkeletonLayer()?.getNode(nodeId) ??
-        this.layer.spatialSkeletonState.getCachedNode(nodeId);
+        activeSkeletonLayer?.getNode(nodeId) ??
+        this.layer.spatialSkeletonState.getCachedNode(
+          nodeId,
+          activeSkeletonLayer,
+        );
       if (
         anchorSelection?.nodeId === nodeId &&
         (cachedNode === undefined ||
@@ -1420,7 +1433,9 @@ export class SpatialSkeletonFindPathTool extends SpatialSkeletonToolBase {
     }
 
     const { layer } = this;
-    const state = layer.spatialSkeletonState.findPathState;
+    let activeContext = layer.getInitialSpatialSkeletonFindPathContext(
+      this.getActiveSpatiallyIndexedSkeletonLayer(),
+    );
     setSpatialSkeletonModesToLinesAndPoints(layer);
 
     const { body, header } =
@@ -1432,12 +1447,28 @@ export class SpatialSkeletonFindPathTool extends SpatialSkeletonToolBase {
     statusElement.className = "neuroglancer-skeleton-find-path-message";
     let statusOverride: string | undefined;
 
-    const getStateContext = () =>
-      layer.getSpatialSkeletonFindPathContext(
-        this.getActiveSpatiallyIndexedSkeletonLayer(),
-      );
+    const getStateContext = () => {
+      if (activeContext === undefined) return undefined;
+      return layer.getSpatialSkeletonFindPathContext(
+        activeContext.skeletonLayer,
+      ) === activeContext
+        ? activeContext
+        : undefined;
+    };
+
+    const getState = () => getStateContext()?.dataSourceState.findPathState;
 
     const submitAction = () => {
+      const context = getStateContext();
+      const state = context?.dataSourceState.findPathState;
+      if (context === undefined || state === undefined) {
+        const message =
+          "The spatial skeleton source selected for Find Path is no longer loaded.";
+        statusOverride = message;
+        updateStatus();
+        StatusMessage.showTemporaryMessage(message);
+        return;
+      }
       const { source, target } = state;
       if (source === undefined || target === undefined) {
         const message = "Select both a source and target skeleton node first.";
@@ -1468,16 +1499,6 @@ export class SpatialSkeletonFindPathTool extends SpatialSkeletonToolBase {
         StatusMessage.showTemporaryMessage(message);
         return;
       }
-      const context = getStateContext();
-      if (context === undefined) {
-        const message =
-          "The spatial skeleton source selected for Find Path is no longer loaded.";
-        statusOverride = message;
-        updateStatus();
-        StatusMessage.showTemporaryMessage(message);
-        return;
-      }
-
       const segmentId = Number(source.segmentId);
       const sourceNodeId = Number(source.nodeId);
       const targetNodeId = Number(target.nodeId);
@@ -1494,7 +1515,10 @@ export class SpatialSkeletonFindPathTool extends SpatialSkeletonToolBase {
         return;
       }
       const cachedSegmentNodes =
-        layer.spatialSkeletonState.getCachedSegmentNodes(segmentId);
+        layer.spatialSkeletonState.getCachedSegmentNodes(
+          segmentId,
+          context.skeletonLayer,
+        );
       if (cachedSegmentNodes === undefined) {
         const message = `Skeleton ${source.segmentId} is visible, but its full node data is not available in the client yet. Wait for it to finish loading and submit again.`;
         statusOverride = message;
@@ -1555,7 +1579,7 @@ export class SpatialSkeletonFindPathTool extends SpatialSkeletonToolBase {
         title: "Clear Find Path",
         onClick: () => {
           statusOverride = undefined;
-          state.clear();
+          getState()?.clear();
         },
       }),
     );
@@ -1622,8 +1646,12 @@ export class SpatialSkeletonFindPathTool extends SpatialSkeletonToolBase {
     };
 
     function updateStatus() {
+      const state = getState();
       if (statusOverride !== undefined) {
         statusElement.textContent = statusOverride;
+      } else if (state === undefined) {
+        statusElement.textContent =
+          "No spatial skeleton datasource supports Find Path.";
       } else if (state.requestPending) {
         statusElement.textContent = "Finding path...";
       } else if (state.result !== undefined) {
@@ -1638,13 +1666,25 @@ export class SpatialSkeletonFindPathTool extends SpatialSkeletonToolBase {
       updateAnnotationElements();
     }
 
-    activation.registerDisposer(
-      state.changed.add(() => {
-        if (!state.requestPending) statusOverride = undefined;
-        updateStatus();
-      }),
-    );
-    activation.registerDisposer(() => state.invalidatePendingRequest());
+    const observedStates = new Set<SkeletonFindPathState>();
+    for (const context of layer.getSpatialSkeletonFindPathContexts()) {
+      const state = context.dataSourceState.findPathState;
+      if (observedStates.has(state)) continue;
+      observedStates.add(state);
+      activation.registerDisposer(
+        state.changed.add(() => {
+          if (state === getState() && !state.requestPending) {
+            statusOverride = undefined;
+          }
+          updateStatus();
+        }),
+      );
+    }
+    activation.registerDisposer(() => {
+      for (const state of observedStates) {
+        state.invalidatePendingRequest();
+      }
+    });
     this.registerAutoCancelOnDisabled(
       activation,
       SpatialSkeletonActions.inspect,
@@ -1665,7 +1705,11 @@ export class SpatialSkeletonFindPathTool extends SpatialSkeletonToolBase {
       (event: ActionEvent<MouseEvent>) => {
         event.stopPropagation();
         event.detail.preventDefault();
-        if (state.source !== undefined && state.target !== undefined) {
+        const currentState = getState();
+        if (
+          currentState?.source !== undefined &&
+          currentState.target !== undefined
+        ) {
           StatusMessage.showTemporaryMessage(
             "Clear Find Path or delete an endpoint before selecting another node.",
           );
@@ -1676,6 +1720,17 @@ export class SpatialSkeletonFindPathTool extends SpatialSkeletonToolBase {
         if (skeletonLayer === undefined || context === undefined) {
           StatusMessage.showTemporaryMessage(
             "No spatially indexed skeleton source is currently loaded.",
+          );
+          return;
+        }
+        if (
+          currentState !== undefined &&
+          (currentState.source !== undefined ||
+            currentState.target !== undefined) &&
+          context !== activeContext
+        ) {
+          StatusMessage.showTemporaryMessage(
+            "Find Path endpoints must come from the same spatial skeleton datasource. Clear the current route before switching sources.",
           );
           return;
         }
@@ -1700,6 +1755,16 @@ export class SpatialSkeletonFindPathTool extends SpatialSkeletonToolBase {
           segmentId: BigInt(pickedNode.segmentId),
           position: new Float32Array(pickedNode.position),
         };
+        if (
+          activeContext === undefined ||
+          (currentState?.source === undefined &&
+            currentState?.target === undefined &&
+            context !== activeContext)
+        ) {
+          activeContext = context;
+          layer.claimSpatialSkeletonFindPathContext(context);
+        }
+        const state = context.dataSourceState.findPathState;
         const otherEndpoint =
           state.source === undefined ? state.target : state.source;
         if (otherEndpoint !== undefined) {
@@ -1734,7 +1799,11 @@ function makeSpatialSkeletonToolLister(toolId: string) {
     if (onChange !== undefined) {
       layer.layersChanged.addOnce(onChange);
     }
-    if (layer.getSpatiallyIndexedSkeletonLayer() === undefined) {
+    if (
+      layer.getSpatiallyIndexedSkeletonLayer() === undefined ||
+      (toolId === SPATIAL_SKELETON_FIND_PATH_TOOL_ID &&
+        layer.getSpatialSkeletonFindPathContexts().length === 0)
+    ) {
       return [];
     }
     return [{ type: toolId }];

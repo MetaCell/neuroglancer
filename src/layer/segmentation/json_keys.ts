@@ -25,7 +25,6 @@ export const SKELETON_CODE_VISIBLE_KEY = "codeVisible";
 export const SEGMENT_QUERY_JSON_KEY = "segmentQuery";
 export const SKELETON_NODE_QUERY_JSON_KEY = "skeletonNodeQuery";
 export const SKELETON_NODE_FILTER_JSON_KEY = "skeletonNodeFilter";
-export const SPATIAL_SKELETON_FIND_PATH_JSON_KEY = "spatialSkeletonFindPath";
 export const MESH_SILHOUETTE_RENDERING_JSON_KEY = "meshSilhouetteRendering";
 export const LINKED_SEGMENTATION_GROUP_JSON_KEY = "linkedSegmentationGroup";
 export const LINKED_SEGMENTATION_COLOR_GROUP_JSON_KEY =

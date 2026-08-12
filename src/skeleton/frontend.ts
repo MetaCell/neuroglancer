@@ -1846,7 +1846,10 @@ interface SpatiallyIndexedSkeletonLayerOptions {
   >;
   pendingNodePositionVersion?: WatchableValueInterface<number>;
   getPendingNodePosition?: (nodeId: number) => ArrayLike<number> | undefined;
-  getCachedNode?: (nodeId: number) => SpatiallyIndexedSkeletonNode | undefined;
+  getCachedNode?: (
+    nodeId: number,
+    skeletonLayer?: SpatiallyIndexedSkeletonLayer,
+  ) => SpatiallyIndexedSkeletonNode | undefined;
   inspectionState?: SpatiallyIndexedSkeletonInspectionState;
   maxRetainedOverlaySegments?: number;
 }
@@ -1856,12 +1859,16 @@ interface SpatiallyIndexedSkeletonInspectionState {
   readonly pendingNodePositionVersion: WatchableValueInterface<number>;
   getCachedSegmentNodes(
     segmentId: number,
+    skeletonLayer?: SpatiallyIndexedSkeletonLayer,
   ): readonly SpatiallyIndexedSkeletonNode[] | undefined;
   getFullSegmentNodes(
     skeletonLayer: SpatiallyIndexedSkeletonLayer,
     segmentId: number,
   ): Promise<readonly SpatiallyIndexedSkeletonNode[]>;
-  evictInactiveSegmentNodes(activeSegmentIds: Iterable<number>): void;
+  evictInactiveSegmentNodes(
+    activeSegmentIds: Iterable<number>,
+    skeletonLayer?: SpatiallyIndexedSkeletonLayer,
+  ): void;
 }
 
 class SkeletonOverlayChunk implements SkeletonGPUGeometry {
@@ -2080,7 +2087,10 @@ export class SpatiallyIndexedSkeletonLayer
     | ((nodeId: number) => ArrayLike<number> | undefined)
     | undefined;
   private getCachedNodeInfo:
-    | ((nodeId: number) => SpatiallyIndexedSkeletonNode | undefined)
+    | ((
+        nodeId: number,
+        skeletonLayer?: SpatiallyIndexedSkeletonLayer,
+      ) => SpatiallyIndexedSkeletonNode | undefined)
     | undefined;
   private inspectionState: SpatiallyIndexedSkeletonInspectionState | undefined;
   private overlayChunk: SkeletonOverlayChunk | undefined;
@@ -2268,12 +2278,15 @@ export class SpatiallyIndexedSkeletonLayer
       this.disposeOverlayChunk();
       return undefined;
     }
-    this.inspectionState.evictInactiveSegmentNodes(overlaySegmentIds);
+    this.inspectionState.evictInactiveSegmentNodes(overlaySegmentIds, this);
 
     // Pass 1: cheap scan to determine which segments are loaded and check cache.
     const loadedSegmentIds: number[] = [];
     for (const segmentId of overlaySegmentIds) {
-      if (this.inspectionState.getCachedSegmentNodes(segmentId) !== undefined) {
+      if (
+        this.inspectionState.getCachedSegmentNodes(segmentId, this) !==
+        undefined
+      ) {
         loadedSegmentIds.push(segmentId);
       } else {
         this.requestOverlaySegmentLoad(segmentId);
@@ -2297,8 +2310,10 @@ export class SpatiallyIndexedSkeletonLayer
     // Geometry cache miss — collect node sets and rebuild.
     const segmentNodeSets: (readonly SpatiallyIndexedSkeletonNode[])[] = [];
     for (const segmentId of loadedSegmentIds) {
-      const segmentNodes =
-        this.inspectionState.getCachedSegmentNodes(segmentId);
+      const segmentNodes = this.inspectionState.getCachedSegmentNodes(
+        segmentId,
+        this,
+      );
       if (segmentNodes !== undefined) {
         segmentNodeSets.push(segmentNodes);
       }
@@ -2547,7 +2562,7 @@ export class SpatiallyIndexedSkeletonLayer
   }
 
   private getCachedNodeSnapshot(nodeId: number) {
-    const cachedNode = this.getCachedNodeInfo?.(nodeId);
+    const cachedNode = this.getCachedNodeInfo?.(nodeId, this);
     if (cachedNode === undefined) {
       return undefined;
     }
@@ -2779,7 +2794,7 @@ export class SpatiallyIndexedSkeletonLayer
     const nodes = new Map<number, SpatiallyIndexedSkeletonNode>();
     for (const segmentId of segmentIds) {
       const segmentNodes =
-        this.inspectionState?.getCachedSegmentNodes(segmentId) ?? [];
+        this.inspectionState?.getCachedSegmentNodes(segmentId, this) ?? [];
       for (const node of segmentNodes) {
         if (nodes.has(node.nodeId)) continue;
         const cachedNode = this.getCachedNodeSnapshot(node.nodeId);

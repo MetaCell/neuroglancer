@@ -57,6 +57,7 @@ import type {
   SpatiallyIndexedSkeletonNode,
   SpatiallyIndexedSkeletonNodeBase,
 } from "#src/skeleton/api.js";
+import { SkeletonDataSourceState } from "#src/skeleton/find_path.js";
 import {
   SpatiallyIndexedSkeletonSource,
   SkeletonSource,
@@ -319,6 +320,7 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
 
   async get(options: GetDataSourceOptions): Promise<DataSource> {
     const { providerUrl } = options;
+    const state = new SkeletonDataSourceState(options.state);
 
     // Remove scheme if present to handle "catmaid://"
     let cleanUrl = providerUrl;
@@ -501,6 +503,7 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
     return {
       modelTransform: makeIdentityTransform(modelSpace),
       subsources,
+      state,
     };
   }
 }

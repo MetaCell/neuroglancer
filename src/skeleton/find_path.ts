@@ -53,6 +53,10 @@ export interface SkeletonFindPathStateJson {
   result?: SkeletonFindPathResultNodeJson[];
 }
 
+export interface SkeletonDataSourceStateJson {
+  findPath?: SkeletonFindPathStateJson;
+}
+
 function parsePositiveUint64(value: unknown, description: string): bigint {
   let parsed: bigint;
   try {
@@ -449,5 +453,40 @@ export class SkeletonFindPathState extends RefCounted implements Trackable {
   disposed() {
     this.advanceRequestGeneration();
     super.disposed();
+  }
+}
+
+/**
+ * Skeleton-tool state owned by a single datasource.
+ *
+ * Keeping this container representation-neutral mirrors Graphene's state
+ * model and lets future regular-skeleton datasources reuse Find Path without
+ * adding segmentation-layer state or source locators.
+ */
+export class SkeletonDataSourceState extends RefCounted implements Trackable {
+  readonly changed = new NullarySignal();
+  readonly findPathState = this.registerDisposer(new SkeletonFindPathState());
+
+  constructor(value?: unknown) {
+    super();
+    this.registerDisposer(
+      this.findPathState.changed.add(this.changed.dispatch),
+    );
+    if (value !== undefined) {
+      this.restoreState(value);
+    }
+  }
+
+  reset() {
+    this.findPathState.reset();
+  }
+
+  toJSON(): SkeletonDataSourceStateJson {
+    return { findPath: this.findPathState.toJSON() };
+  }
+
+  restoreState(value: unknown) {
+    const obj = verifyObject(value);
+    this.findPathState.restoreState(obj.findPath);
   }
 }

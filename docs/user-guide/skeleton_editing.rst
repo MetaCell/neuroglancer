@@ -185,9 +185,8 @@ Click **Find Path** in the skeleton tab, then hold :kbd:`Control` and left-click
 the source node followed by the target node. You may also hold :kbd:`Shift` while
 selecting. The skeleton must already be visible, and both endpoints must be
 distinct, exact nodes in the same skeleton segment; points on edges are not
-accepted. The current implementation assumes one active spatial skeleton source
-in the segmentation layer. A third selection is ignored until an endpoint is
-removed or the tool is cleared.
+accepted. A third selection is ignored until an endpoint is removed or the
+tool is cleared.
 
 Making a skeleton visible loads its complete node data through the normal
 visibility pipeline. Click **Submit** or press :kbd:`Enter` to use the nodes
@@ -196,6 +195,12 @@ polyline. **Find Path** does not initiate a download; if the visible skeleton is
 still loading, wait and submit again. Click **Clear** to remove the endpoints and
 route. If a generic skeleton contains cycles, **Find Path** selects a
 deterministic route with the fewest edges.
+
+When a segmentation layer has multiple spatial skeleton datasources, both
+endpoints must be picked from the same datasource. A pick from another source
+is rejected after the first endpoint; use **Clear** before switching sources.
+Each datasource keeps its own saved Find Path state, while the segmentation
+layer displays one active route at a time.
 
 Edit Tool
 ~~~~~~~~~

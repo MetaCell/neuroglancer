@@ -116,6 +116,7 @@ function makeFixture(state: SkeletonFindPathState) {
     controller,
     layer,
     loadedSubsource,
+    transform,
     get addedState() {
       return addedState;
     },
@@ -206,6 +207,42 @@ describe("SpatialSkeletonFindPathAnnotationController", () => {
 
     controller.dispose();
     state.dispose();
+  });
+
+  it("keeps annotations and transforms isolated between datasource states", () => {
+    const firstState = new SkeletonFindPathState();
+    const secondState = new SkeletonFindPathState();
+    firstState.setSource(endpoint(1, 100, [1, 2, 3]));
+    secondState.setSource(endpoint(8, 200, [8, 9, 10]));
+    const first = makeFixture(firstState);
+    const second = makeFixture(secondState);
+
+    const firstAnnotation = Array.from(first.controller.annotationSource)[0];
+    const secondAnnotation = Array.from(second.controller.annotationSource)[0];
+    expect(firstAnnotation.type).toBe(AnnotationType.POINT);
+    expect(secondAnnotation.type).toBe(AnnotationType.POINT);
+    if (
+      firstAnnotation.type !== AnnotationType.POINT ||
+      secondAnnotation.type !== AnnotationType.POINT
+    ) {
+      throw new Error("Expected isolated source point annotations.");
+    }
+    expect(Array.from(firstAnnotation.point)).toEqual([1, 2, 3]);
+    expect(Array.from(secondAnnotation.point)).toEqual([8, 9, 10]);
+    expect(first.controller.annotationSource.watchableTransform).toBe(
+      first.transform,
+    );
+    expect(second.controller.annotationSource.watchableTransform).toBe(
+      second.transform,
+    );
+    expect(first.controller.annotationSource.watchableTransform).not.toBe(
+      second.controller.annotationSource.watchableTransform,
+    );
+
+    first.controller.dispose();
+    second.controller.dispose();
+    firstState.dispose();
+    secondState.dispose();
   });
 
   it("preserves annotation IDs when endpoint state changes", () => {

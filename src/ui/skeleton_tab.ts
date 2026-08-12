@@ -440,13 +440,19 @@ export class SpatialSkeletonEditTab extends Tab {
     };
 
     const getNavigationNode = (nodeId: number) => {
-      return skeletonState.getCachedNode(nodeId);
+      return skeletonState.getCachedNode(
+        nodeId,
+        layer.getSpatiallyIndexedSkeletonLayer(),
+      );
     };
 
     const getSegmentNavigationNodes = (segmentId: number) => {
       return (
         nodesBySegment.get(segmentId) ??
-        skeletonState.getCachedSegmentNodes(segmentId)
+        skeletonState.getCachedSegmentNodes(
+          segmentId,
+          layer.getSpatiallyIndexedSkeletonLayer(),
+        )
       );
     };
 
@@ -755,7 +761,10 @@ export class SpatialSkeletonEditTab extends Tab {
       updateDisplay();
       void (async () => {
         try {
-          const currentNode = skeletonState.getCachedNode(node.nodeId);
+          const currentNode = skeletonState.getCachedNode(
+            node.nodeId,
+            layer.getSpatiallyIndexedSkeletonLayer(),
+          );
           if (currentNode === undefined) {
             throw new Error(
               `Node ${node.nodeId} is missing from the inspected skeleton cache.`,
@@ -1517,7 +1526,10 @@ export class SpatialSkeletonEditTab extends Tab {
       const cachedSelectedSegmentNodes =
         selectedSegmentId === undefined
           ? undefined
-          : skeletonState.getCachedSegmentNodes(selectedSegmentId);
+          : skeletonState.getCachedSegmentNodes(
+              selectedSegmentId,
+              skeletonLayer,
+            );
       activeSegmentId =
         cachedSelectedSegmentNodes === undefined
           ? undefined
@@ -1545,7 +1557,7 @@ export class SpatialSkeletonEditTab extends Tab {
       for (const retainedSegmentId of skeletonLayer.getRetainedOverlaySegmentIds()) {
         cachedSegmentIds.add(retainedSegmentId);
       }
-      skeletonState.evictInactiveSegmentNodes(cachedSegmentIds);
+      skeletonState.evictInactiveSegmentNodes(cachedSegmentIds, skeletonLayer);
       applyNodesBySegment(
         new Map<number, SpatiallyIndexedSkeletonNode[]>([
           [segmentId, cachedSelectedSegmentNodes],

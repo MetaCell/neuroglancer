@@ -18,6 +18,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { RenderLayerTransform } from "#src/render_coordinate_transform.js";
 import { SpatialSkeletonActions } from "#src/skeleton/actions.js";
+import { SkeletonDataSourceState } from "#src/skeleton/find_path.js";
 import { WatchableValue } from "#src/trackable_value.js";
 import { NullarySignal } from "#src/util/signal.js";
 
@@ -723,77 +724,119 @@ describe("layer/segmentation spatial skeleton find-path state", () => {
     ],
   };
 
-  it("restores and serializes find-path state through the layer JSON key", () => {
+  function makeContextTestLayer(states: SkeletonDataSourceState[]) {
+    const dataSources = states.map(() => ({}));
+    const contexts = states.map((dataSourceState, index) => ({
+      skeletonLayer: { source: {} },
+      dataSourceState,
+      loadedSubsource: {
+        subsourceIndex: 0,
+        loadedDataSource: { layerDataSource: dataSources[index] },
+      },
+      annotationController: {},
+    }));
+    const layer = Object.assign(
+      Object.create(SegmentationUserLayer.prototype),
+      {
+        dataSources,
+        spatialSkeletonFindPathContexts: new Map(
+          [...contexts]
+            .reverse()
+            .map((context) => [context.skeletonLayer, context]),
+        ),
+      },
+    );
+    return { layer, contexts };
+  }
+
+  it("does not restore or serialize the removed layer-wide JSON key", () => {
     const layer = makeSegmentationUserLayerForFindPathTests();
     layer.restoreState({
       spatialSkeletonFindPath: serializedFindPathState,
     });
 
-    expect(layer.spatialSkeletonState.findPathState.toJSON()).toEqual(
-      serializedFindPathState,
-    );
     const layerJson = layer.toJSON();
-    expect(layerJson.spatialSkeletonFindPath).toEqual(serializedFindPathState);
-
-    const restoredLayer = makeSegmentationUserLayerForFindPathTests();
-    restoredLayer.restoreState(layerJson);
-    expect(restoredLayer.spatialSkeletonState.findPathState.toJSON()).toEqual(
-      serializedFindPathState,
-    );
+    expect(layerJson).not.toHaveProperty("spatialSkeletonFindPath");
   });
 
-  it("rejects malformed find-path layer JSON without replacing valid state", () => {
-    const layer = makeSegmentationUserLayerForFindPathTests();
-    layer.spatialSkeletonState.findPathState.restoreState(
-      serializedFindPathState,
-    );
-
-    expect(() =>
-      layer.restoreState({
-        spatialSkeletonFindPath: {
-          ...serializedFindPathState,
-          source: {
-            ...serializedFindPathState.source,
-            nodeId: "0",
-          },
-        },
-      }),
-    ).toThrow(/nodeId/);
-    expect(layer.spatialSkeletonState.findPathState.toJSON()).toEqual(
-      serializedFindPathState,
-    );
-  });
-
-  it("invalidates a restored result after a later skeleton data version", () => {
-    const layer = makeSegmentationUserLayerForFindPathTests();
-    layer.spatialSkeletonState.findPathState.restoreState(
-      serializedFindPathState,
-    );
-
-    layer.spatialSkeletonNodeDataVersion.value++;
-
-    expect(layer.spatialSkeletonState.findPathState.result).toBeUndefined();
-    expect(layer.spatialSkeletonState.findPathState.source?.nodeId).toBe(1n);
-    expect(layer.spatialSkeletonState.findPathState.target?.nodeId).toBe(3n);
-  });
-
-  it("invalidates pending find-path work after a skeleton data version", () => {
-    const layer = makeSegmentationUserLayerForFindPathTests();
-    layer.spatialSkeletonState.findPathState.restoreState({
-      ...serializedFindPathState,
-      result: undefined,
+  it("keeps the lowest datasource-index state when multiple are non-empty", () => {
+    const first = new SkeletonDataSourceState({
+      findPath: serializedFindPathState,
     });
-    const requestGeneration =
-      layer.spatialSkeletonState.findPathState.beginRequest();
+    const second = new SkeletonDataSourceState({
+      findPath: {
+        source: { nodeId: "4", segmentId: "8", position: [1, 1, 1] },
+      },
+    });
+    const { layer, contexts } = makeContextTestLayer([first, second]);
+
+    (layer as any).reconcileSpatialSkeletonFindPathStates();
+
+    expect(first.findPathState.toJSON()).toEqual(serializedFindPathState);
+    expect(second.findPathState.toJSON()).toBeUndefined();
+    expect(layer.getInitialSpatialSkeletonFindPathContext()).toBe(contexts[0]);
+  });
+
+  it("uses the picked context when all states are empty and claiming it clears others", () => {
+    const first = new SkeletonDataSourceState();
+    const second = new SkeletonDataSourceState();
+    const { layer, contexts } = makeContextTestLayer([first, second]);
+    const disabled = new SkeletonDataSourceState({
+      findPath: {
+        source: { nodeId: "9", segmentId: "9", position: [9, 9, 9] },
+      },
+    });
+    layer.dataSources.push({
+      loadState: { dataSource: { state: disabled } },
+    });
+
+    expect(
+      layer.getInitialSpatialSkeletonFindPathContext(contexts[1].skeletonLayer),
+    ).toBe(contexts[1]);
+
+    first.findPathState.setSource({
+      nodeId: 1n,
+      segmentId: 7n,
+      position: new Float32Array([1, 2, 3]),
+    });
+    layer.claimSpatialSkeletonFindPathContext(contexts[1]);
+    expect(first.findPathState.toJSON()).toBeUndefined();
+    expect(disabled.findPathState.toJSON()).toBeUndefined();
+    expect(layer.claimSpatialSkeletonFindPathContext(contexts[1])).toBe(
+      second.findPathState,
+    );
+  });
+
+  it("invalidates results in every loaded datasource after a topology version", () => {
+    const layer = makeSegmentationUserLayerForFindPathTests();
+    const first = new SkeletonDataSourceState({
+      findPath: serializedFindPathState,
+    });
+    const second = new SkeletonDataSourceState({
+      findPath: serializedFindPathState,
+    });
+    const contexts = (layer as any).spatialSkeletonFindPathContexts as Map<
+      unknown,
+      unknown
+    >;
+    for (const dataSourceState of [first, second]) {
+      const skeletonLayer = {};
+      contexts.set(skeletonLayer, {
+        skeletonLayer,
+        dataSourceState,
+        loadedSubsource: {
+          subsourceIndex: 0,
+          loadedDataSource: { layerDataSource: {} },
+        },
+      });
+    }
 
     layer.spatialSkeletonNodeDataVersion.value++;
 
-    expect(layer.spatialSkeletonState.findPathState.requestPending).toBe(false);
-    expect(
-      layer.spatialSkeletonState.findPathState.completeRequest(
-        requestGeneration,
-        [],
-      ),
-    ).toBe(false);
+    for (const state of [first, second]) {
+      expect(state.findPathState.result).toBeUndefined();
+      expect(state.findPathState.source?.nodeId).toBe(1n);
+      expect(state.findPathState.target?.nodeId).toBe(3n);
+    }
   });
 });

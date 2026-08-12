@@ -17,6 +17,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  SkeletonDataSourceState,
   type SkeletonFindPathEndpoint,
   SkeletonFindPathState,
 } from "#src/skeleton/find_path.js";
@@ -223,5 +224,53 @@ describe("SkeletonFindPathState", () => {
     restored.restoreState(state.toJSON());
     expect(restored.source).toBeUndefined();
     expect(restored.target?.nodeId).toBe(2n);
+  });
+});
+
+describe("SkeletonDataSourceState", () => {
+  it("round-trips Find Path under the datasource-owned findPath key", () => {
+    const state = new SkeletonDataSourceState();
+    state.findPathState.setEndpoints(endpoint(1, 7), endpoint(3, 7));
+
+    expect(state.toJSON()).toEqual({
+      findPath: {
+        source: { nodeId: "1", segmentId: "7", position: [1, 2, 3] },
+        target: { nodeId: "3", segmentId: "7", position: [3, 4, 5] },
+      },
+    });
+
+    const restored = new SkeletonDataSourceState(state.toJSON());
+    expect(restored.toJSON()).toEqual(state.toJSON());
+  });
+
+  it("forwards nested changes and never serializes runtime request state", () => {
+    const state = new SkeletonDataSourceState();
+    let changes = 0;
+    state.changed.add(() => ++changes);
+    state.findPathState.setEndpoints(endpoint(1), endpoint(2));
+    state.findPathState.beginRequest();
+
+    expect(changes).toBe(2);
+    expect(state.toJSON()).toEqual({
+      findPath: {
+        source: { nodeId: "1", segmentId: "100", position: [1, 2, 3] },
+        target: { nodeId: "2", segmentId: "100", position: [2, 3, 4] },
+      },
+    });
+  });
+
+  it("rejects malformed datasource state atomically", () => {
+    const state = new SkeletonDataSourceState();
+    state.findPathState.setSource(endpoint(7));
+    const before = state.toJSON();
+
+    expect(() =>
+      state.restoreState({
+        findPath: {
+          source: { nodeId: "0", segmentId: "1", position: [1, 2, 3] },
+        },
+      }),
+    ).toThrow(/nodeId/);
+    expect(state.toJSON()).toEqual(before);
   });
 });
