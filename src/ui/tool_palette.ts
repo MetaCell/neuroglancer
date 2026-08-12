@@ -1274,7 +1274,7 @@ export class MultiToolPaletteDropdownButton extends RefCounted {
     const checkbox = this.registerDisposer(
       new CheckboxIcon(this.dropdownVisible, {
         svg: svg_tool,
-        enableTitle: "Show tool palette list (control+click to create new)",
+        enableTitle: "Show tool palette list",
         disableTitle: "Hide tool palette list",
         backgroundScheme: "dark",
       }),
