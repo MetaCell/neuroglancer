@@ -17,7 +17,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { RenderLayerTransform } from "#src/render_coordinate_transform.js";
-import { SpatialSkeletonActions } from "#src/skeleton/actions.js";
+import { SpatialSkeletonActions } from "#src/skeleton/command_protocol.js";
 import { SkeletonDataSourceState } from "#src/skeleton/find_path.js";
 import { WatchableValue } from "#src/trackable_value.js";
 import { NullarySignal } from "#src/util/signal.js";

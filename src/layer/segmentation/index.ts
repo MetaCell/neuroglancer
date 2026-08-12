@@ -96,11 +96,15 @@ import { SegmentationGraphSourceTab } from "#src/segmentation_graph/source.js";
 import { SharedDisjointUint64Sets } from "#src/shared_disjoint_sets.js";
 import { SharedWatchableValue } from "#src/shared_watchable_value.js";
 import {
-  DEFAULT_SPATIAL_SKELETON_EDIT_ACTIONS,
-  getSpatialSkeletonActionSupportLabel,
-  isSpatialSkeletonEditAction,
-  SpatialSkeletonActions,
-  type SpatialSkeletonAction,
+  SKELETON_CYCLE_BRANCHES,
+  SKELETON_GO_BRANCH_END,
+  SKELETON_GO_BRANCH_START,
+  SKELETON_GO_CHILD,
+  SKELETON_GO_PARENT,
+  SKELETON_GO_ROOT,
+  SKELETON_GO_UNFINISHED,
+  SKELETON_REDO,
+  SKELETON_UNDO,
 } from "#src/skeleton/actions.js";
 import type {
   SpatiallyIndexedSkeletonNode,
@@ -108,6 +112,24 @@ import type {
 } from "#src/skeleton/api.js";
 import { SkeletonDataSourceState } from "#src/skeleton/find_path.js";
 import { SpatialSkeletonFindPathAnnotationController } from "#src/skeleton/find_path_annotations.js";
+import {
+  DEFAULT_SPATIAL_SKELETON_EDIT_ACTIONS,
+  getSpatialSkeletonActionSupportLabel,
+  isSpatialSkeletonEditAction,
+  SpatialSkeletonActions,
+  type SpatialSkeletonAction,
+} from "#src/skeleton/command_protocol.js";
+import {
+  executeSpatialSkeletonDeleteNode,
+  executeSpatialSkeletonNodeConfidenceUpdate,
+  executeSpatialSkeletonNodeDescriptionUpdate,
+  executeSpatialSkeletonNodeRadiusUpdate,
+  executeSpatialSkeletonReroot,
+  executeSpatialSkeletonNodeTrueEndUpdate,
+  redoSpatialSkeletonCommand,
+  showSpatialSkeletonActionError,
+  undoSpatialSkeletonCommand,
+} from "#src/skeleton/commands.js";
 import {
   PerspectiveViewSkeletonLayer,
   SkeletonLayer,
@@ -120,6 +142,16 @@ import {
   MultiscaleSpatiallyIndexedSkeletonSource,
 } from "#src/skeleton/frontend.js";
 import {
+  buildSpatiallyIndexedSkeletonNavigationGraph,
+  getBranchEnd as getBranchEndFromGraph,
+  getBranchStart as getBranchStartFromGraph,
+  getNextCollapsedLevelNode as getNextCollapsedLevelNodeFromGraph,
+  getOpenLeaves as getOpenLeavesFromGraph,
+  getParentNode as getParentNodeFromGraph,
+  getRandomChildNode as getRandomChildNodeFromGraph,
+  getSkeletonRootNode as getSkeletonRootNodeFromGraph,
+} from "#src/skeleton/navigation_graph.js";
+import {
   findSpatiallyIndexedSkeletonNode,
   getSpatiallyIndexedSkeletonDirectChildren,
   getSpatiallyIndexedSkeletonNodeParent,
@@ -131,15 +163,6 @@ import {
   SpatialSkeletonDisplayNodeType,
   SpatialSkeletonNodeFilterType,
 } from "#src/skeleton/node_types.js";
-import {
-  executeSpatialSkeletonDeleteNode,
-  executeSpatialSkeletonNodeConfidenceUpdate,
-  executeSpatialSkeletonNodeDescriptionUpdate,
-  executeSpatialSkeletonNodeRadiusUpdate,
-  executeSpatialSkeletonReroot,
-  executeSpatialSkeletonNodeTrueEndUpdate,
-  showSpatialSkeletonActionError,
-} from "#src/skeleton/spatial_skeleton_commands.js";
 import {
   editableSpatiallyIndexedSkeletonSourceSupportsAction,
   getEditableSpatiallyIndexedSkeletonSource,
@@ -812,7 +835,7 @@ export class SegmentationUserLayer extends Base {
   readonly selectedSpatialSkeletonNodeInfo = new WatchableValue<
     SelectedSpatialSkeletonNodeInfo | undefined
   >(undefined);
-  readonly hoveredSpatialSkeletonNodeId = this.registerDisposer(
+  readonly hoveredSpatialSkeletonNodeInfo = this.registerDisposer(
     new SpatialSkeletonHoverState(),
   );
   readonly spatialSkeletonVisibleChunksNeeded = new WatchableValue(0);
@@ -1147,7 +1170,7 @@ export class SegmentationUserLayer extends Base {
       ),
     );
     syncSelectedSpatialSkeletonNodeIdFromGlobalSelection();
-    this.hoveredSpatialSkeletonNodeId.bindTo(
+    this.hoveredSpatialSkeletonNodeInfo.bindTo(
       this.manager.layerSelectedValues,
       this,
     );
@@ -1782,6 +1805,7 @@ export class SegmentationUserLayer extends Base {
                 {
                   sources2d: slicePanelSources,
                   selectedNodeInfo: this.selectedSpatialSkeletonNodeInfo,
+                  hoveredNodeInfo: this.hoveredSpatialSkeletonNodeInfo,
                   pendingNodePositionVersion:
                     this.spatialSkeletonState.pendingNodePositionVersion,
                   getPendingNodePosition: (nodeId) =>
@@ -1822,6 +1846,7 @@ export class SegmentationUserLayer extends Base {
               displayState,
               {
                 selectedNodeInfo: this.selectedSpatialSkeletonNodeInfo,
+                hoveredNodeInfo: this.hoveredSpatialSkeletonNodeInfo,
                 pendingNodePositionVersion:
                   this.spatialSkeletonState.pendingNodePositionVersion,
                 getPendingNodePosition: (nodeId) =>
@@ -2205,8 +2230,205 @@ export class SegmentationUserLayer extends Base {
         }
         break;
       }
+      case SKELETON_GO_ROOT:
+      case SKELETON_GO_BRANCH_START:
+      case SKELETON_GO_BRANCH_END:
+      case SKELETON_CYCLE_BRANCHES:
+      case SKELETON_GO_PARENT:
+      case SKELETON_GO_CHILD:
+      case SKELETON_GO_UNFINISHED:
+      case SKELETON_UNDO:
+      case SKELETON_REDO: {
+        if (!this.shouldHandleGlobalSkeletonAction()) return;
+        void this.handleSkeletonNavigationAction(action);
+        break;
+      }
     }
   }
+
+  private shouldHandleGlobalSkeletonAction(): boolean {
+    let skeletonLayerCount = 0;
+    for (const managedLayer of this.manager.root.layerManager.managedLayers) {
+      if (!managedLayer.visible || managedLayer.layer === null) continue;
+      const layer = managedLayer.layer;
+      if (
+        layer instanceof SegmentationUserLayer &&
+        layer.getSpatialSkeletonActionsDisabledReason(
+          SpatialSkeletonActions.inspect,
+          { requireVisibleChunks: false },
+        ) === undefined
+      ) {
+        skeletonLayerCount++;
+        if (skeletonLayerCount > 1) break;
+      }
+    }
+    return (
+      skeletonLayerCount <= 1 ||
+      this.managedLayer === this.manager.root.selectedLayer.layer
+    );
+  }
+
+  private async handleSkeletonNavigationAction(action: string): Promise<void> {
+    const inspectDisabledReason = this.getSpatialSkeletonActionsDisabledReason(
+      SpatialSkeletonActions.inspect,
+      { requireVisibleChunks: false },
+    );
+    if (inspectDisabledReason !== undefined) {
+      StatusMessage.showTemporaryMessage(inspectDisabledReason);
+      return;
+    }
+
+    if (action === SKELETON_UNDO) {
+      try {
+        await undoSpatialSkeletonCommand(this);
+      } catch (error) {
+        showSpatialSkeletonActionError("undo", error);
+      }
+      return;
+    }
+    if (action === SKELETON_REDO) {
+      try {
+        await redoSpatialSkeletonCommand(this);
+      } catch (error) {
+        showSpatialSkeletonActionError("redo", error);
+      }
+      return;
+    }
+
+    const nodeInfo = this.selectedSpatialSkeletonNodeInfo.value;
+    const cachedNode =
+      nodeInfo?.nodeId !== undefined
+        ? this.spatialSkeletonState.getCachedNode(nodeInfo.nodeId)
+        : undefined;
+
+    const segmentId =
+      cachedNode?.segmentId ??
+      nodeInfo?.segmentId ??
+      getSegmentIdFromLayerSelectionValue(
+        this.manager.root.selectionState.value?.layers.find(
+          (entry) => entry.layer === this,
+        )?.state,
+      );
+
+    if (segmentId === undefined) {
+      StatusMessage.showTemporaryMessage("No segment/skeleton is selected.");
+      return;
+    }
+
+    const segmentNodes =
+      this.spatialSkeletonState.getCachedSegmentNodes(segmentId);
+    if (segmentNodes === undefined || segmentNodes.length === 0) {
+      StatusMessage.showTemporaryMessage(
+        "A non-visible segment is selected. Make it visible to use skeleton navigation features.",
+      );
+      return;
+    }
+
+    const graph = buildSpatiallyIndexedSkeletonNavigationGraph(segmentNodes);
+
+    try {
+      if (action === SKELETON_GO_ROOT) {
+        const target = getSkeletonRootNodeFromGraph(graph);
+        this.selectAndMoveToSpatialSkeletonNode({
+          nodeId: target.nodeId,
+          segmentId,
+          position: target.position,
+        });
+        return;
+      }
+
+      const nodeId = cachedNode?.nodeId ?? nodeInfo?.nodeId;
+      if (nodeId === undefined) {
+        StatusMessage.showTemporaryMessage(
+          "No skeleton node is selected, only go to root is supported on skeleton edges.",
+        );
+        return;
+      }
+
+      switch (action) {
+        case SKELETON_GO_BRANCH_START: {
+          const target = getBranchStartFromGraph(graph, nodeId);
+          this.selectAndMoveToSpatialSkeletonNode({
+            nodeId: target.nodeId,
+            segmentId,
+            position: target.position,
+          });
+          break;
+        }
+        case SKELETON_GO_BRANCH_END: {
+          const target = getBranchEndFromGraph(graph, nodeId);
+          this.selectAndMoveToSpatialSkeletonNode({
+            nodeId: target.nodeId,
+            segmentId,
+            position: target.position,
+          });
+          break;
+        }
+        case SKELETON_CYCLE_BRANCHES: {
+          const target = getNextCollapsedLevelNodeFromGraph(graph, nodeId);
+          this.selectAndMoveToSpatialSkeletonNode({
+            nodeId: target.nodeId,
+            segmentId,
+            position: target.position,
+          });
+          break;
+        }
+        case SKELETON_GO_PARENT: {
+          const target = getParentNodeFromGraph(graph, nodeId);
+          if (target === undefined) {
+            StatusMessage.showTemporaryMessage("Selected node has no parent.");
+            return;
+          }
+          this.selectAndMoveToSpatialSkeletonNode({
+            nodeId: target.nodeId,
+            segmentId,
+            position: target.position,
+          });
+          break;
+        }
+        case SKELETON_GO_CHILD: {
+          const target = getRandomChildNodeFromGraph(graph, nodeId);
+          if (target === undefined) {
+            StatusMessage.showTemporaryMessage("Selected node has no child.");
+            return;
+          }
+          this.selectAndMoveToSpatialSkeletonNode({
+            nodeId: target.nodeId,
+            segmentId,
+            position: target.position,
+          });
+          break;
+        }
+        case SKELETON_GO_UNFINISHED: {
+          const openLeaves = getOpenLeavesFromGraph(graph, nodeId);
+          if (openLeaves.length === 0) {
+            StatusMessage.showTemporaryMessage(
+              "No unfinished branch was found in the current skeleton.",
+            );
+            return;
+          }
+          openLeaves.sort((a, b) =>
+            a.distance === b.distance
+              ? a.nodeId - b.nodeId
+              : a.distance - b.distance,
+          );
+          const leaf = openLeaves[0];
+          this.selectAndMoveToSpatialSkeletonNode({
+            nodeId: leaf.nodeId,
+            segmentId,
+            position: leaf.position,
+          });
+          break;
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      StatusMessage.showTemporaryMessage(
+        `Skeleton navigation failed: ${message}`,
+      );
+    }
+  }
+
   selectionStateFromJson(state: this["selectionState"], json: any) {
     super.selectionStateFromJson(state, json);
     let parsedValue = state.value;
@@ -2488,12 +2710,14 @@ export class SegmentationUserLayer extends Base {
           ? "Load the active skeleton in the Skeleton tab before rerooting from Selection."
           : fullNodeInfo.parentNodeId === undefined
             ? "Selected node is already root."
-            : this.getSpatialSkeletonActionsDisabledReason(
-                SpatialSkeletonActions.reroot,
-                {
-                  requireVisibleChunks: false,
-                },
-              );
+            : (fullNodeInfo.isTrueEnd ?? false)
+              ? "True end nodes cannot be set as root. Clear the true end state first."
+              : this.getSpatialSkeletonActionsDisabledReason(
+                  SpatialSkeletonActions.reroot,
+                  {
+                    requireVisibleChunks: false,
+                  },
+                );
     const rerootButton = document.createElement("button");
     rerootButton.type = "button";
     rerootButton.className = "neuroglancer-selection-details-skeleton-action";
@@ -2512,7 +2736,8 @@ export class SegmentationUserLayer extends Base {
         rerootButton.disabled ||
         rerootPending ||
         completeNodeInfo === undefined ||
-        completeNodeInfo.parentNodeId === undefined
+        completeNodeInfo.parentNodeId === undefined ||
+        (completeNodeInfo.isTrueEnd ?? false)
       ) {
         return;
       }
