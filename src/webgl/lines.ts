@@ -28,7 +28,15 @@ import { glsl_clipLineToDepthRange } from "#src/webgl/shader_lib.js";
 
 export const VERTICES_PER_LINE = VERTICES_PER_QUAD;
 
-export function defineLineShader(builder: ShaderBuilder, rounded = false) {
+/**
+ @param rounded adds a float borderWidth param to emitLine
+ @param endpointClipping adds a float endpointClipping param to emitLine
+ */
+export function defineLineShader(
+  builder: ShaderBuilder,
+  rounded = false,
+  endpointClipping = false,
+) {
   builder.addVertexCode(glsl_getQuadVertexPosition);
   // x: 1 / viewportWidth
   // y: 1 / viewportHeight
@@ -37,6 +45,12 @@ export function defineLineShader(builder: ShaderBuilder, rounded = false) {
   builder.addVarying("highp float", "vLineCoord");
   // max(1e-6, featherWidth) / (lineWidth + featherWidth)
   builder.addVarying("highp float", "vLineFeatherFraction");
+  if (endpointClipping) {
+    builder.addVarying("highp float", "vLineOffsetX");
+    builder.addVarying("highp float", "vLineLengthInPixels", "flat");
+    builder.addVarying("highp float", "vLineHalfWidthInPixels", "flat");
+    builder.addVarying("highp float", "vLineEndpointClipRadius", "flat");
+  }
   if (rounded) {
     // Fraction of total line length used by each endpoint.
     builder.addVarying("highp float", "vEndpointFraction");
@@ -50,7 +64,8 @@ vec2 getLineOffset() { return getQuadVertexPosition(vec2(0.0, -1.0), vec2(1.0, 1
 float getLineEndpointCoefficient() { return getLineOffset().x; }
 uint getLineEndpointIndex() { return uint(getLineEndpointCoefficient()); }
 void emitLine(vec4 vertexAClip, vec4 vertexBClip, float lineWidthInPixels
-              ${rounded ? ", float borderWidth" : ""}) {
+              ${rounded ? ", float borderWidth" : ""}
+              ${endpointClipping ? ", float endpointClipRadiusInPixels" : ""}) {
   if (!clipLineToDepthRange(vertexAClip, vertexBClip)) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     return;
@@ -86,6 +101,14 @@ void emitLine(vec4 vertexAClip, vec4 vertexBClip, float lineWidthInPixels
                   * totalLineWidth * uLineParams.xy;
   vLineCoord = lineOffset.y;
   ${
+    endpointClipping
+      ? `vLineOffsetX = lineOffset.x;
+  vLineLengthInPixels = linePixelLength;
+  vLineHalfWidthInPixels = totalLineWidth * 0.5;
+  vLineEndpointClipRadius = endpointClipRadiusInPixels;`
+      : ""
+  }
+  ${
     rounded
       ? "vEndpointFraction = totalLineWidth / (linePixelLength + totalLineWidth * 2.0);"
       : ""
@@ -97,10 +120,12 @@ void emitLine(vec4 vertexAClip, vec4 vertexBClip, float lineWidthInPixels
   }
 }
 void emitLine(mat4 projection, vec3 vertexA, vec3 vertexB, float lineWidthInPixels
-              ${rounded ? ", float borderWidth" : ""}) {
+              ${rounded ? ", float borderWidth" : ""}
+              ${endpointClipping ? ", float endpointClipRadiusInPixels" : ""}) {
   emitLine(projection * vec4(vertexA, 1.0), projection * vec4(vertexB, 1.0),
            lineWidthInPixels
-           ${rounded ? ", borderWidth" : ""});
+           ${rounded ? ", borderWidth" : ""}
+           ${endpointClipping ? ", endpointClipRadiusInPixels" : ""});
 }
 `);
   if (rounded) {
@@ -126,6 +151,16 @@ vec4 getRoundedLineColor(vec4 interiorColor, vec4 borderColor) {
 
   builder.addFragmentCode(`
 float getLineAlpha() {
+  ${
+    endpointClipping
+      ? `if (vLineEndpointClipRadius > 0.0) {
+    float offsetY = vLineCoord * vLineHalfWidthInPixels;
+    float distFromA = length(vec2(vLineOffsetX * vLineLengthInPixels, offsetY));
+    float distFromB = length(vec2((1.0 - vLineOffsetX) * vLineLengthInPixels, offsetY));
+    if (min(distFromA, distFromB) < vLineEndpointClipRadius) discard;
+  }`
+      : ""
+  }
   return clamp((1.0 - abs(vLineCoord)) / vLineFeatherFraction, 0.0, 1.0);
 }
 `);
