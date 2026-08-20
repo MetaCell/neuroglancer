@@ -81,8 +81,8 @@ RaycastHit makeRaycastHit(highp vec3 surfacePoint, highp vec3 modelNormal) {
 }
 `;
 
-// Emits the screen-axis-aligned quad covering the box
-// `center +/- halfExtentU +/- halfExtentV +/- halfExtentW`.
+// Emits the screen-axis-aligned quad covering the model-space box
+// `center +/- halfExtent`.
 //
 // A corner on or behind the near plane must not be dropped -- that would
 // under-cover a primitive straddling the near plane and leave it undrawn -- so its
@@ -91,27 +91,26 @@ RaycastHit makeRaycastHit(highp vec3 surfacePoint, highp vec3 modelNormal) {
 // longer bounds the silhouette, which is what the relative margin covers.
 const glsl_raycastPrimitiveVertexUtil = `
 const highp float RAYCAST_NDC_BOUND = 2.0;
-void emitRaycastBoundingQuad(highp vec3 center, highp vec3 halfExtentU,
-                             highp vec3 halfExtentV, highp vec3 halfExtentW) {
-  // Projection is linear before the divide, so the 8 corners come from 4 products.
+void emitRaycastBoundingQuad(highp vec3 center, highp vec3 halfExtent) {
+  // Projection is linear before the divide, so each axis is one scaled column.
   highp vec4 clipCenter = uProjection * vec4(center, 1.0);
-  highp vec4 clipU = uProjection * vec4(halfExtentU, 0.0);
-  highp vec4 clipV = uProjection * vec4(halfExtentV, 0.0);
-  highp vec4 clipW = uProjection * vec4(halfExtentW, 0.0);
+  highp vec4 clipX = uProjection[0] * halfExtent.x;
+  highp vec4 clipY = uProjection[1] * halfExtent.y;
+  highp vec4 clipZ = uProjection[2] * halfExtent.z;
   highp vec2 ndcMin = vec2(RAYCAST_NDC_BOUND);
   highp vec2 ndcMax = vec2(-RAYCAST_NDC_BOUND);
   highp float ndcNearZ = 1.0;
   for (int corner = 0; corner < 8; ++corner) {
     highp vec4 clip = clipCenter
-        + ((corner & 1) == 0 ? -clipU : clipU)
-        + ((corner & 2) == 0 ? -clipV : clipV)
-        + ((corner & 4) == 0 ? -clipW : clipW);
-    highp float clippedW = max(clip.w, 1e-4);
+        + ((corner & 1) == 0 ? -clipX : clipX)
+        + ((corner & 2) == 0 ? -clipY : clipY)
+        + ((corner & 4) == 0 ? -clipZ : clipZ);
+    highp float clipW = max(clip.w, 1e-4);
     highp vec2 ndcXY =
-        clamp(clip.xy / clippedW, vec2(-RAYCAST_NDC_BOUND), vec2(RAYCAST_NDC_BOUND));
+        clamp(clip.xy / clipW, vec2(-RAYCAST_NDC_BOUND), vec2(RAYCAST_NDC_BOUND));
     ndcMin = min(ndcMin, ndcXY);
     ndcMax = max(ndcMax, ndcXY);
-    ndcNearZ = min(ndcNearZ, clamp(clip.z / clippedW, -1.0, 1.0));
+    ndcNearZ = min(ndcNearZ, clamp(clip.z / clipW, -1.0, 1.0));
   }
   highp vec2 margin = (ndcMax - ndcMin) * 0.02 + 2.0 / uViewportSize;
   highp vec2 quadCorner = getQuadVertexPosition(ndcMin - margin, ndcMax + margin);
