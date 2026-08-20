@@ -76,10 +76,10 @@ RaycastHit intersectRaycastPrimitive() {
   // rather than slipping through (NaN < 0.0 is false).
   if (!(halfChordSquared >= 0.0)) return raycastMiss();  // triangle cannot close
   highp float halfChord = sqrt(halfChordSquared);
+  // Only the near crossing is drawn. A negative one means the sphere is behind us or
+  // the origin is inside it, and drawing the far surface then fills the view when the
+  // camera clips inside the geometry.
   highp float hitDistance = -projectedDistance - halfChord;
-  // Near crossing behind the origin means the origin is inside the sphere, so use
-  // the far one; if that is behind too the whole sphere is.
-  if (hitDistance < 0.0) hitDistance = -projectedDistance + halfChord;
   if (!(hitDistance >= 0.0)) return raycastMiss();
   highp vec3 offsetFromCenter = centerToOrigin + hitDistance * ray.direction;
   return makeRaycastHit(ray.origin + hitDistance * ray.direction, offsetFromCenter);
