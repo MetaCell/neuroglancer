@@ -37,6 +37,7 @@ import {
 import { RefCounted } from "#src/util/disposable.js";
 import { removeFromParent } from "#src/util/dom.js";
 import { preventDrag } from "#src/util/drag_and_drop.js";
+import { isMacPlatform } from "#src/util/platform.js";
 import { makeCloseButton } from "#src/widget/close_button.js";
 import { makeDeleteButton } from "#src/widget/delete_button.js";
 import { makeIcon } from "#src/widget/icon.js";
@@ -331,8 +332,9 @@ export class LayerBar extends RefCounted {
 
     const addButton = makeIcon({
       svg: svg_plus,
-      title:
-        "Click to add layer, control+click/right click/⌘+click to add local annotation layer.",
+      title: `Click to add layer, ${
+        isMacPlatform() ? "⌘+click" : "control+click"
+      }/right click to add local annotation layer.`,
     });
     addButton.classList.add("neuroglancer-layer-add-button");
 
