@@ -15,18 +15,26 @@
  */
 
 /**
- * @file Shared GLSL for raycast primitives: a camera-facing quad whose fragment
- * shader ray casts to find the 3D surface, writes `gl_FragDepth` and shades a
- * normal. Intersection is in model space and must be transformed into
- * display-space, similar to `src/annotation/ellipsoid.ts`.
+ * @file Shared GLSL for raycast primitives: a camera facing screen space quad
+ * whose fragment shader ray casts to find the 3D surface.
+ * Emits the depth, normal, and lighting factor.
+ * Intersection is in model space and must be transformed after finding the hit
+ * similar to `src/annotation/ellipsoid.ts`.
  *
- * `emitRaycastBoundingQuad` is an AABB that any primitive can use. One whose shape
- * admits a tighter bound can define its own instead, as `raycast_cylinder.ts` does.
+ * `emitRaycastAabbQuad` and `emitRaycastAxialObbQuad` bound a primitive for
+ * rasterisation by bounding the object in model space - then projecting to
+ * screen space and emit the screen space quad which covers the
+ * projected bounding box.
+ * Use the AABB (axis aligned bounding box) for objects like spheres, cubes
+ * and other fairly uniform geometries.
+ * Use the axial OBB (oriented bounding box) for objects with one defined long
+ * axis, like cylinders, capsules, cones, etc.
  */
 
 import { mat4 } from "#src/util/geom.js";
 import { glsl_getQuadVertexPosition } from "#src/webgl/quad.js";
 import type { ShaderBuilder, ShaderProgram } from "#src/webgl/shader.js";
+import { glsl_clipLineToDepthRange } from "#src/webgl/shader_lib.js";
 
 export const raycastProjectionUniform = (builder: ShaderBuilder) => {
   builder.addUniform("highp mat4", "uProjection");
@@ -89,10 +97,9 @@ RaycastHit makeRaycastHit(highp vec3 surfacePoint, highp vec3 modelNormal) {
 // w is floored positive, which projects it far off-screen; NDC is clamped so that
 // expansion stays finite.  Once a corner is clamped the projected-corner hull no
 // longer bounds the silhouette, which is what the relative margin covers.
-const glsl_raycastPrimitiveVertexUtil = `
+const glsl_raycastAabbQuad = `
 const highp float RAYCAST_NDC_BOUND = 2.0;
-void emitRaycastBoundingQuad(highp vec3 center, highp vec3 halfExtent) {
-  // Projection is linear before the divide, so each axis is one scaled column.
+void emitRaycastAabbQuad(highp vec3 center, highp vec3 halfExtent) {
   highp vec4 clipCenter = uProjection * vec4(center, 1.0);
   highp vec4 clipX = uProjection[0] * halfExtent.x;
   highp vec4 clipY = uProjection[1] * halfExtent.y;
@@ -100,6 +107,7 @@ void emitRaycastBoundingQuad(highp vec3 center, highp vec3 halfExtent) {
   highp vec2 ndcMin = vec2(RAYCAST_NDC_BOUND);
   highp vec2 ndcMax = vec2(-RAYCAST_NDC_BOUND);
   highp float ndcNearZ = 1.0;
+
   for (int corner = 0; corner < 8; ++corner) {
     highp vec4 clip = clipCenter
         + ((corner & 1) == 0 ? -clipX : clipX)
@@ -112,9 +120,71 @@ void emitRaycastBoundingQuad(highp vec3 center, highp vec3 halfExtent) {
     ndcMax = max(ndcMax, ndcXY);
     ndcNearZ = min(ndcNearZ, clamp(clip.z / clipW, -1.0, 1.0));
   }
+
   highp vec2 margin = (ndcMax - ndcMin) * 0.02 + 2.0 / uViewportSize;
   highp vec2 quadCorner = getQuadVertexPosition(ndcMin - margin, ndcMax + margin);
   gl_Position = vec4(quadCorner, ndcNearZ, 1.0);
+}
+`;
+
+// An OBB about the segment endpointA..endpointB with radial half-extents
+// radiusVectorA/B, emitted as a quad oriented along the projected axis.
+//
+// Depth-clipping the segment first is what makes an oriented quad possible at all.
+// It bounds a primitive crossing the eye plane, whose footprint is otherwise
+// unbounded, and it leaves every corner in front of the eye, where the
+// projected-corner hull is a valid bound and the screen basis below is real. If a
+// corner still grazes the eye plane there is no valid basis, so cover the screen.
+const glsl_raycastAxialObbQuad = `
+highp vec2 raycastClipToPixels(highp vec4 clip) {
+  return clip.xy / clip.w * uViewportSize * 0.5;
+}
+void emitRaycastAxialObbQuad(highp vec3 endpointA, highp vec3 endpointB,
+                             highp vec3 radiusVectorA, highp vec3 radiusVectorB) {
+  highp vec4 clipA = uProjection * vec4(endpointA, 1.0);
+  highp vec4 clipB = uProjection * vec4(endpointB, 1.0);
+  highp vec4 clipVectorA = uProjection * vec4(radiusVectorA, 0.0);
+  highp vec4 clipVectorB = uProjection * vec4(radiusVectorB, 0.0);
+
+  // Clips clipA and clipB in place, so everything below uses the clipped segment.
+  bool clipped = clipLineToDepthRange(clipA, clipB);
+  highp float minW =
+      min(clipA.w, clipB.w) - abs(clipVectorA.w) - abs(clipVectorB.w);
+  highp vec2 quadCoefficient = getQuadVertexPosition(vec2(-1.0), vec2(1.0));
+
+  // Positive-form test, so a NaN from a degenerate clip also covers the screen.
+  if (!(clipped && minW > 1e-4 * max(clipA.w, clipB.w))) {
+    gl_Position = vec4(quadCoefficient, 0.0, 1.0);
+    return;
+  }
+
+  highp vec2 pixelsA = raycastClipToPixels(clipA);
+  highp vec2 pixelsB = raycastClipToPixels(clipB);
+  highp vec2 axisPixels = pixelsB - pixelsA;
+  highp float axisLengthPixels = length(axisPixels);
+  highp vec2 alongDirection =
+      axisLengthPixels > 1e-3 ? axisPixels / axisLengthPixels : vec2(1.0, 0.0);
+  highp vec2 perpDirection = vec2(-alongDirection.y, alongDirection.x);
+  highp vec2 pixelCenter = (pixelsA + pixelsB) * 0.5;
+  highp float halfAlongPixels = 0.0;
+  highp float halfPerpPixels = 0.0;
+  highp float ndcNearZ = 1.0;
+
+  for (int corner = 0; corner < 8; ++corner) {
+    highp vec4 clip = ((corner & 1) == 0 ? clipA : clipB)
+        + ((corner & 2) == 0 ? -clipVectorA : clipVectorA)
+        + ((corner & 4) == 0 ? -clipVectorB : clipVectorB);
+    highp vec2 offset = raycastClipToPixels(clip) - pixelCenter;
+    halfAlongPixels = max(halfAlongPixels, abs(dot(offset, alongDirection)));
+    halfPerpPixels = max(halfPerpPixels, abs(dot(offset, perpDirection)));
+    ndcNearZ = min(ndcNearZ, clamp(clip.z / clip.w, -1.0, 1.0));
+  }
+
+  // One pixel for numerical error; the corner bound is otherwise exact.
+  highp vec2 pixels = pixelCenter
+      + alongDirection * (quadCoefficient.x * (halfAlongPixels + 1.0))
+      + perpDirection * (quadCoefficient.y * (halfPerpPixels + 1.0));
+  gl_Position = vec4(pixels * 2.0 / uViewportSize, ndcNearZ, 1.0);
 }
 `;
 
@@ -148,7 +218,9 @@ export function defineRaycastPrimitiveCommon(builder: ShaderBuilder) {
   builder.addUniform("highp vec4", "uLightDirection");
   builder.addUniform("highp vec2", "uViewportSize");
   builder.addVertexCode(glsl_getQuadVertexPosition);
-  builder.addVertexCode(glsl_raycastPrimitiveVertexUtil);
+  builder.addVertexCode(glsl_clipLineToDepthRange);
+  builder.addVertexCode(glsl_raycastAabbQuad);
+  builder.addVertexCode(glsl_raycastAxialObbQuad);
   builder.addVertexCode(glsl_raycastPrimitivePixelRadius);
   builder.addFragmentCode(glsl_raycastPrimitiveFragmentUtil);
 }

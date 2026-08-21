@@ -55,7 +55,7 @@ export function defineRaycastSphereShader(builder: ShaderBuilder) {
 void emitRaycastSphere(highp vec3 center, highp float radius) {
   vSphereCenter = center;
   vSphereRadius = radius;
-  emitRaycastBoundingQuad(center, vec3(radius));
+  emitRaycastAabbQuad(center, vec3(radius));
 }
 `);
   builder.addFragmentCode(`
