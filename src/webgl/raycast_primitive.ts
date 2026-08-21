@@ -94,18 +94,20 @@ RaycastHit makeRaycastHit(highp vec3 surfacePoint, highp vec3 modelNormal) {
 //
 // A corner on or behind the near plane must not be dropped -- that would
 // under-cover a primitive straddling the near plane and leave it undrawn -- so its
-// w is floored positive, which projects it far off-screen; NDC is clamped so that
-// expansion stays finite.  Once a corner is clamped the projected-corner hull no
-// longer bounds the silhouette, which is what the relative margin covers.
+// w is floored positive, which projects it far off-screen, and its NDC is then
+// clamped to keep the box finite.  Once a corner is clamped the projected-corner
+// hull no longer bounds the silhouette, which is what the relative margin covers.
 const glsl_raycastAabbQuad = `
-const highp float RAYCAST_NDC_BOUND = 2.0;
+// Must exceed 1.0 as pinned exactly at the viewport edge, the margin added
+// later would drag a fully off-screen primitive back on screen as a sliver.
+const highp float RAYCAST_OFFSCREEN_NDC = 2.0;
 void emitRaycastAabbQuad(highp vec3 center, highp vec3 halfExtent) {
   highp vec4 clipCenter = uProjection * vec4(center, 1.0);
   highp vec4 clipX = uProjection[0] * halfExtent.x;
   highp vec4 clipY = uProjection[1] * halfExtent.y;
   highp vec4 clipZ = uProjection[2] * halfExtent.z;
-  highp vec2 ndcMin = vec2(RAYCAST_NDC_BOUND);
-  highp vec2 ndcMax = vec2(-RAYCAST_NDC_BOUND);
+  highp vec2 ndcMin = vec2(RAYCAST_OFFSCREEN_NDC);
+  highp vec2 ndcMax = vec2(-RAYCAST_OFFSCREEN_NDC);
   highp float ndcNearZ = 1.0;
 
   for (int corner = 0; corner < 8; ++corner) {
@@ -115,7 +117,7 @@ void emitRaycastAabbQuad(highp vec3 center, highp vec3 halfExtent) {
         + ((corner & 4) == 0 ? -clipZ : clipZ);
     highp float clipW = max(clip.w, 1e-4);
     highp vec2 ndcXY =
-        clamp(clip.xy / clipW, vec2(-RAYCAST_NDC_BOUND), vec2(RAYCAST_NDC_BOUND));
+        clamp(clip.xy / clipW, vec2(-RAYCAST_OFFSCREEN_NDC), vec2(RAYCAST_OFFSCREEN_NDC));
     ndcMin = min(ndcMin, ndcXY);
     ndcMax = max(ndcMax, ndcXY);
     ndcNearZ = min(ndcNearZ, clamp(clip.z / clipW, -1.0, 1.0));
