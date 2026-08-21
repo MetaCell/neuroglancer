@@ -17,7 +17,7 @@
 /**
  * @file Shared GLSL for raycast primitives: a camera facing screen space quad
  * whose fragment shader ray casts to find the 3D surface.
- * Emits the depth, normal, and lighting factor.
+ * Emits the depth and a lighting factor.
  * Intersection is in model space and must be transformed after finding the hit
  * similar to `src/annotation/ellipsoid.ts`.
  *
