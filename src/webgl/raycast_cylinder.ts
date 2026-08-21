@@ -104,16 +104,19 @@ RaycastHit intersectRaycastPrimitive() {
 
   // ray.direction is a unit vector, so this length is the sine of the angle between
   // the ray and the axis. It scales ray distance into in-plane distance, and is zero
-  // exactly when the ray runs parallel to the axis.
+  // exactly when the ray runs parallel to the axis, which never crosses the lateral
+  // surface. Guard that explicitly: directionInPlane is then the zero vector, and
+  // GLSL ES leaves 0.0 / 0.0 undefined rather than promising a NaN we could catch.
   highp float sinAngleToAxis = length(directionInPlane);
+  if (!(sinAngleToAxis > 0.0)) return raycastMiss();
   highp vec3 inPlaneDirection = directionInPlane / sinAngleToAxis;
   highp float projectedDistance = dot(originInPlane, inPlaneDirection);
   highp vec3 perpendicular = originInPlane - projectedDistance * inPlaneDirection;
   highp float halfChordSquared =
       vCylinderRadius * vCylinderRadius - dot(perpendicular, perpendicular);
 
-  // Positive-form guards throughout, so a ray parallel to the axis (a zero
-  // sinAngleToAxis) and any NaN it produces miss rather than slipping through.
+  // Comparisons are in positive form so that a non-finite value misses rather than
+  // slipping through. Defence only: GLSL ES guarantees nothing about NaN.
   if (!(halfChordSquared >= 0.0)) return raycastMiss();
   highp float halfChord = sqrt(halfChordSquared);
   // Only the near crossing is drawn, as in raycast_sphere.ts: a negative one means

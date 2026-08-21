@@ -72,8 +72,8 @@ RaycastHit intersectRaycastPrimitive() {
   highp vec3 perpendicular = centerToOrigin - projectedDistance * ray.direction;
   highp float halfChordSquared =
       vSphereRadius * vSphereRadius - dot(perpendicular, perpendicular);
-  // Positive-form guards, so a NaN ray from a degenerate projection misses
-  // rather than slipping through (NaN < 0.0 is false).
+  // Comparisons are in positive form so that a non-finite value misses rather than
+  // slipping through. Defence only: GLSL ES guarantees nothing about NaN.
   if (!(halfChordSquared >= 0.0)) return raycastMiss();  // triangle cannot close
   highp float halfChord = sqrt(halfChordSquared);
   // Only the near crossing is drawn. A negative one means the sphere is behind us or

@@ -154,7 +154,7 @@ void emitRaycastAxialObbQuad(highp vec3 endpointA, highp vec3 endpointB,
       min(clipA.w, clipB.w) - abs(clipVectorA.w) - abs(clipVectorB.w);
   highp vec2 quadCoefficient = getQuadVertexPosition(vec2(-1.0), vec2(1.0));
 
-  // Positive-form test, so a NaN from a degenerate clip also covers the screen.
+  // Positive form, so a non-finite result falls back rather than proceeding.
   if (!(clipped && minW > 1e-4 * max(clipA.w, clipB.w))) {
     gl_Position = vec4(quadCoefficient, 0.0, 1.0);
     return;
@@ -205,8 +205,8 @@ highp float getRaycastModelRadiusForPixels(highp vec3 modelPoint, highp float ra
 export const glsl_raycastFragmentSetup = `
 RaycastHit raycastHit = intersectRaycastPrimitive();
 if (!raycastHit.hit) discard;
-// Positive-form range test, so a NaN depth from a degenerate projection is
-// rejected rather than poisoning the OIT weight.
+// Positive-form range test, so a non-finite depth is rejected rather than poisoning
+// the OIT weight.
 if (!(raycastHit.windowDepth >= 0.0 && raycastHit.windowDepth <= 1.0)) discard;
 gl_FragDepth = raycastHit.windowDepth;
 raycastSurfaceDepth = raycastHit.windowDepth;
