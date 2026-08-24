@@ -14,12 +14,19 @@
  * limitations under the License.
  */
 
-import { describe, it } from "vitest";
+import { describe, expect, it } from "vitest";
+import { mat4 } from "#src/util/geom.js";
+import type { GL } from "#src/webgl/context.js";
+import { drawQuads } from "#src/webgl/quad.js";
 import { defineRaycastCylinderShader } from "#src/webgl/raycast_cylinder.js";
-import { glsl_raycastFragmentSetup } from "#src/webgl/raycast_primitive.js";
+import {
+  glsl_raycastFragmentSetup,
+  initializeRaycastPrimitiveShader,
+} from "#src/webgl/raycast_primitive.js";
 import { defineRaycastSphereShader } from "#src/webgl/raycast_sphere.js";
 import { ShaderBuilder } from "#src/webgl/shader.js";
 import { webglTest } from "#src/webgl/testing.js";
+import { defineVertexId, VertexIdHelper } from "#src/webgl/vertex_id.js";
 
 function buildShader(
   definePrimitive: (builder: ShaderBuilder) => void,
@@ -42,6 +49,87 @@ void emitShaded() {
   });
 }
 
+// A camera at the model-space origin looking down -z, so a model z of -1 is one
+// unit in front of the camera.
+const COVERAGE_VIEWPORT_SIZE = 64;
+const COVERAGE_NEAR_BOUND = 0.1;
+const COVERAGE_FAR_BOUND = 20;
+
+// Fraction of the viewport that the bounding quad rasterises.  The fragment
+// shader writes unconditionally, so this measures the vertex stage: an
+// out-of-range quad is counted here but discarded by the real shader, making it
+// invisible to any test of the shaded result.
+function measureQuadCoverage(
+  gl: GL,
+  definePrimitive: (builder: ShaderBuilder) => void,
+  emitPrimitive: string,
+): number {
+  const size = COVERAGE_VIEWPORT_SIZE;
+  const builder = new ShaderBuilder(gl);
+  builder.addOutputBuffer("vec4", "out_color", 0);
+  defineVertexId(builder);
+  definePrimitive(builder);
+  builder.setVertexMain(emitPrimitive);
+  builder.setFragmentMain("out_color = vec4(1.0, 1.0, 1.0, 1.0);\n");
+  const shader = builder.build();
+  const vertexIdHelper = VertexIdHelper.get(gl);
+  try {
+    shader.bind();
+    vertexIdHelper.enable();
+    const projectionMatrix = mat4.perspective(
+      mat4.create(),
+      Math.PI / 4,
+      1,
+      COVERAGE_NEAR_BOUND,
+      COVERAGE_FAR_BOUND,
+    );
+    initializeRaycastPrimitiveShader(shader, projectionMatrix, {
+      width: size,
+      height: size,
+    });
+    gl.viewport(0, 0, size, size);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
+    drawQuads(gl, 1, 1);
+    const pixels = new Uint8Array(size * size * 4);
+    gl.readPixels(
+      0,
+      0,
+      size,
+      size,
+      WebGL2RenderingContext.RGBA,
+      WebGL2RenderingContext.UNSIGNED_BYTE,
+      pixels,
+    );
+    let covered = 0;
+    for (let i = 0; i < size * size; ++i) {
+      if (pixels[i * 4] !== 0) ++covered;
+    }
+    return covered / (size * size);
+  } finally {
+    vertexIdHelper.disable();
+    shader.dispose();
+  }
+}
+
+// `depth` is the model-space z, negative for in front of the camera.
+function cylinderCoverage(gl: GL, depth: number) {
+  return measureQuadCoverage(
+    gl,
+    defineRaycastCylinderShader,
+    `emitRaycastCylinder(vec3(0.0, -0.3, ${depth.toFixed(4)}),
+                     vec3(0.0, 0.3, ${depth.toFixed(4)}), 0.05, 0.0, 0.0);`,
+  );
+}
+
+function sphereCoverage(gl: GL, depth: number) {
+  return measureQuadCoverage(
+    gl,
+    defineRaycastSphereShader,
+    `emitRaycastSphere(vec3(0.0, 0.0, ${depth.toFixed(4)}), 0.05);`,
+  );
+}
+
 describe("raycast primitives", () => {
   it("compiles the sphere shader", () => {
     buildShader(
@@ -56,5 +144,23 @@ describe("raycast primitives", () => {
       `emitRaycastCylinder(vec3(0.0), vec3(0.0, 1.0, 0.0),
                     getRaycastModelRadiusForPixels(vec3(0.0), 2.0), 1.0, 1.0);`,
     );
+  });
+
+  it("bounds a cylinder tightly, and culls one behind the camera", () => {
+    webglTest((gl) => {
+      const visible = cylinderCoverage(gl, -1);
+      expect(visible).toBeGreaterThan(0);
+      expect(visible).toBeLessThan(0.5);
+      expect(cylinderCoverage(gl, 1)).toBe(0);
+    });
+  });
+
+  it("bounds a sphere tightly, and culls one behind the camera", () => {
+    webglTest((gl) => {
+      const visible = sphereCoverage(gl, -1);
+      expect(visible).toBeGreaterThan(0);
+      expect(visible).toBeLessThan(0.5);
+      expect(sphereCoverage(gl, 1)).toBe(0);
+    });
   });
 });

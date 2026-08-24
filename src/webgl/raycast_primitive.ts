@@ -89,6 +89,20 @@ RaycastHit makeRaycastHit(highp vec3 surfacePoint, highp vec3 modelNormal) {
 }
 `;
 
+// A box wholly outside the depth range can only produce hits that
+// `glsl_raycastFragmentSetup` discards, so culling it costs no coverage.
+const glsl_raycastDepthRangeCull = `
+highp vec2 raycastDepthPlaneDistances(highp vec4 clip) {
+  return vec2(clip.z + clip.w, clip.w - clip.z);
+}
+// Both distances are linear, so callers pass the maximum over the box corners: the
+// larger base value plus the magnitude of each half-extent term. Negative form, so
+// a non-finite value leaves the box unculled rather than dropping it.
+bool raycastBoxOutsideDepthRange(highp vec2 maxDepthDistances) {
+  return maxDepthDistances.x < 0.0 || maxDepthDistances.y < 0.0;
+}
+`;
+
 // Emits the screen-axis-aligned quad covering the model-space box
 // `center +/- halfExtent`.
 //
@@ -106,6 +120,16 @@ void emitRaycastAabbQuad(highp vec3 center, highp vec3 halfExtent) {
   highp vec4 clipX = uProjection[0] * halfExtent.x;
   highp vec4 clipY = uProjection[1] * halfExtent.y;
   highp vec4 clipZ = uProjection[2] * halfExtent.z;
+
+  if (raycastBoxOutsideDepthRange(
+          raycastDepthPlaneDistances(clipCenter)
+          + abs(raycastDepthPlaneDistances(clipX))
+          + abs(raycastDepthPlaneDistances(clipY))
+          + abs(raycastDepthPlaneDistances(clipZ)))) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    return;
+  }
+
   highp vec2 ndcMin = vec2(RAYCAST_OFFSCREEN_NDC);
   highp vec2 ndcMax = vec2(-RAYCAST_OFFSCREEN_NDC);
   highp float ndcNearZ = 1.0;
@@ -147,12 +171,20 @@ void emitRaycastAxialObbQuad(highp vec3 endpointA, highp vec3 endpointB,
   highp vec4 clipB = uProjection * vec4(endpointB, 1.0);
   highp vec4 clipVectorA = uProjection * vec4(radiusVectorA, 0.0);
   highp vec4 clipVectorB = uProjection * vec4(radiusVectorB, 0.0);
+  highp vec2 quadCoefficient = getQuadVertexPosition(vec2(-1.0), vec2(1.0));
+
+  if (raycastBoxOutsideDepthRange(
+          max(raycastDepthPlaneDistances(clipA), raycastDepthPlaneDistances(clipB))
+          + abs(raycastDepthPlaneDistances(clipVectorA))
+          + abs(raycastDepthPlaneDistances(clipVectorB)))) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    return;
+  }
 
   // Clips clipA and clipB in place, so everything below uses the clipped segment.
   bool clipped = clipLineToDepthRange(clipA, clipB);
   highp float minW =
       min(clipA.w, clipB.w) - abs(clipVectorA.w) - abs(clipVectorB.w);
-  highp vec2 quadCoefficient = getQuadVertexPosition(vec2(-1.0), vec2(1.0));
 
   // Positive form, so a non-finite result falls back rather than proceeding.
   if (!(clipped && minW > 1e-4 * max(clipA.w, clipB.w))) {
@@ -221,6 +253,7 @@ export function defineRaycastPrimitiveCommon(builder: ShaderBuilder) {
   builder.addUniform("highp vec2", "uViewportSize");
   builder.addVertexCode(glsl_getQuadVertexPosition);
   builder.addVertexCode(glsl_clipLineToDepthRange);
+  builder.addVertexCode(glsl_raycastDepthRangeCull);
   builder.addVertexCode(glsl_raycastAabbQuad);
   builder.addVertexCode(glsl_raycastAxialObbQuad);
   builder.addVertexCode(glsl_raycastPrimitivePixelRadius);
