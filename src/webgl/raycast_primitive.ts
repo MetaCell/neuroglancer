@@ -36,9 +36,9 @@ import { glsl_getQuadVertexPosition } from "#src/webgl/quad.js";
 import type { ShaderBuilder, ShaderProgram } from "#src/webgl/shader.js";
 import { glsl_clipLineToDepthRange } from "#src/webgl/shader_lib.js";
 
-export const raycastProjectionUniform = (builder: ShaderBuilder) => {
+export function projectionMatrixShaderModule(builder: ShaderBuilder) {
   builder.addUniform("highp mat4", "uProjection");
-};
+}
 
 const glsl_raycastPrimitiveFragmentUtil = `
 struct RaycastRay {
@@ -214,7 +214,7 @@ raycastLightingFactor = raycastHit.lightingFactor;
 `;
 
 export function defineRaycastPrimitiveCommon(builder: ShaderBuilder) {
-  builder.require(raycastProjectionUniform);
+  builder.require(projectionMatrixShaderModule);
   builder.addUniform("highp mat4", "uInvProjection");
   builder.addUniform("highp mat3", "uNormalTransform");
   builder.addUniform("highp vec4", "uLightDirection");
