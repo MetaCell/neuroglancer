@@ -60,6 +60,7 @@ import { TrackableEnum } from "#src/util/trackable_enum.js";
 import { GLBuffer } from "#src/webgl/buffer.js";
 import {
   defineCircleShader,
+  drawCircles,
   initializeCircleShader,
 } from "#src/webgl/circles.js";
 import { glsl_COLORMAPS } from "#src/webgl/colormaps.js";
@@ -70,7 +71,11 @@ import {
   parameterizedEmitterDependentShaderGetter,
   shaderCodeWithLineDirective,
 } from "#src/webgl/dynamic_shader.js";
-import { defineLineShader, initializeLineShader } from "#src/webgl/lines.js";
+import {
+  defineLineShader,
+  drawLines,
+  initializeLineShader,
+} from "#src/webgl/lines.js";
 import { drawQuads } from "#src/webgl/quad.js";
 import { defineRaycastCylinderShader } from "#src/webgl/raycast_cylinder.js";
 import {
@@ -361,8 +366,10 @@ void emitDefault() {
     builder.setVertexMain(vertexMain);
     addControlsToBuilder(shaderBuilderState, builder);
     builder.addFragmentCode(glsl_string);
+    // Run our main before user main to discard early
+    builder.addFragmentCode("void userMain();\n");
     builder.addFragmentCode(
-      "void userMain();\n#define main userMain\n" +
+      "\n#define main userMain\n" +
         shaderCodeWithLineDirective(shaderBuilderState.parseResult.code) +
         "\n#undef main\n",
     );
@@ -537,14 +544,23 @@ void emitDefault() {
         WebGL2RenderingContext.UNSIGNED_INT,
       );
       gl.vertexAttribDivisor(aVertexIndex, 1);
-      drawQuads(gl, 1, skeletonChunk.numIndices / 2);
+      const numEdges = skeletonChunk.numIndices / 2;
+      if (this.raycastEnabled.value) {
+        drawQuads(gl, 1, numEdges);
+      } else {
+        drawLines(gl, 1, numEdges);
+      }
       gl.vertexAttribDivisor(aVertexIndex, 0);
       gl.disableVertexAttribArray(aVertexIndex);
     }
 
     // Drawn in every render mode so that there are no visible gaps between edges.
     nodeShader.bind();
-    drawQuads(gl, 1, skeletonChunk.numVertices);
+    if (this.raycastEnabled.value) {
+      drawQuads(gl, 1, skeletonChunk.numVertices);
+    } else {
+      drawCircles(gl, 1, skeletonChunk.numVertices);
+    }
   }
 
   endLayer(gl: GL, shader: ShaderProgram) {
