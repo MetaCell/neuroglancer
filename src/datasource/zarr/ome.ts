@@ -441,7 +441,7 @@ function validateCoordinateTransformations(
     ) {
       throw new Error(
         `Invalid coordinate transformation for dataset at path "${path}": ` +
-          `input is "${input}" but expected "${expectedInput}"`,
+          `input is "${input.path}" but expected "${expectedInput}"`,
       );
     }
 
@@ -477,7 +477,7 @@ function validateCoordinateTransformations(
           ) {
             throw new Error(
               `Invalid sequence transformation for dataset at path "${path}": ` +
-                `first inner transform has input "${innerInput}" but expected "${expectedInput}"`,
+                `first inner transform has input "${innerInput.name}" but expected "${expectedInput}"`,
             );
           }
 
@@ -489,7 +489,7 @@ function validateCoordinateTransformations(
           ) {
             throw new Error(
               `Invalid sequence transformation for dataset at path "${path}": ` +
-                `last inner transform has output "${innerOutput}" but expected "${expectedOutput}"`,
+                `last inner transform has output "${innerOutput.name}" but expected "${expectedOutput}"`,
             );
           }
 
@@ -510,7 +510,7 @@ function validateCoordinateTransformations(
             ) {
               throw new Error(
                 `Invalid sequence transformation for dataset at path "${path}": ` +
-                  `transform ${i - 1} has output "${prevOutput}" but transform ${i} has input "${innerInput}". ` +
+                  `transform ${i - 1} has output "${prevOutput.name}" but transform ${i} has input "${innerInput.name}". ` +
                   `Transforms in a sequence must have matching input/output for consecutive transforms.`,
               );
             }
