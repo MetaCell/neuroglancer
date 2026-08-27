@@ -278,7 +278,7 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
     );
   });
 
-  it("should use the instrinsic coordinate system if multiple provided", () => {
+  it("should require all multiscales.datasets coordinate to have the same output which is treated as the intrinsic system", () => {
     const attrs = {
       ome: {
         version: "0.6",
@@ -302,7 +302,92 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
                 coordinateTransformations: [
                   {
                     type: "identity",
-                    output: "physical",
+                    input: { path: "array" },
+                    output: { name: "physical" },
+                  },
+                ],
+              },
+              {
+                path: "array1",
+                coordinateTransformations: [
+                  {
+                    type: "identity",
+                    input: { path: "array1" },
+                    output: { name: "last_system" },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+    expect(() => parseOmeMetadata("test://", attrs, 3)).toThrow(
+      /candidate name from first scale is physical, but found last_system at scale 1/,
+    );
+  });
+
+  it("should verify names against the intrinsic system while choosing multiscales.coordinateTransforms ending space as the coordinateSpace to use", () => {
+    const attrs = {
+      ome: {
+        version: "0.6",
+        multiscales: [
+          {
+            name: "multiscales",
+            coordinateSystems: [
+              {
+                name: "first_system",
+                axes: [{ type: "space", name: "x", unit: "micrometer" }],
+              },
+              {
+                name: "target_system",
+                axes: [{ type: "space", name: "z", unit: "millimeter" }],
+              },
+              {
+                name: "physical",
+                axes: [{ type: "space", name: "y", unit: "millimeter" }],
+              },
+              {
+                name: "last_system",
+                axes: [{ type: "space", name: "x", unit: "micrometer" }],
+              },
+            ],
+            coordinateTransformations: [
+              {
+                type: "identity",
+                input: { path: "physical" },
+                output: { name: "first_system" },
+              },
+              {
+                type: "identity",
+                input: { path: "first_system" },
+                output: { name: "last_system" },
+              },
+              {
+                type: "identity",
+                input: { path: "last_system" },
+                output: { name: "target_system" },
+              },
+            ],
+            datasets: [
+              {
+                path: "array",
+                coordinateTransformations: [
+                  {
+                    type: "identity",
+                    input: { path: "array" },
+                    output: { name: "physical" },
+                  },
+                ],
+              },
+              {
+                path: "array1",
+                coordinateTransformations: [
+                  {
+                    type: "identity",
+                    input: { path: "array1" },
+                    output: { name: "physical" },
                   },
                 ],
               },
@@ -314,8 +399,8 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
 
     const metadata = parseOmeMetadata("test://", attrs, 3);
     const space = metadata!.multiscale.coordinateSpace;
-    expect(space.names).toStrictEqual(["z", "y", "x"]);
-    expect(space.units).toStrictEqual(["m", "m", "m"]);
+    expect(space.names).toStrictEqual(["z"]);
+    expect(space.units).toStrictEqual(["m"]);
   });
 
   it("should throw an error for non-supported transformation types", () => {
@@ -573,7 +658,7 @@ describe("OME-Zarr 0.6 sequence transformation validation", () => {
     };
 
     expect(() => parseOmeMetadata("test://", attrs, 3)).toThrow(
-      /matching the intrinsic name wrong_system/,
+      /with name wrong_system but found physical/,
     );
   });
 
