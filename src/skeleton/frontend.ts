@@ -50,7 +50,6 @@ import {
 } from "#src/trackable_value.js";
 import { DataType } from "#src/util/data_type.js";
 import { RefCounted } from "#src/util/disposable.js";
-import type { vec3 } from "#src/util/geom.js";
 import { mat3, mat3FromMat4, mat4, scaleMat3Output } from "#src/util/geom.js";
 import { verifyFinitePositiveFloat } from "#src/util/json.js";
 import { NullarySignal } from "#src/util/signal.js";
@@ -162,6 +161,7 @@ class RenderHelper extends RefCounted {
     "vertexData",
   );
   private vertexIdHelper;
+  private readonly clearedTextureUnits = new Set<number>();
   private readonly raycastEnabled: WatchableValueInterface<boolean>;
   get vertexAttributes(): VertexAttributeRenderInfo[] {
     return this.base.vertexAttributes;
@@ -507,7 +507,7 @@ void emitDefault() {
     }
   }
 
-  setColor(gl: GL, shader: ShaderProgram, color: vec3) {
+  setColor(gl: GL, shader: ShaderProgram, color: Float32Array) {
     gl.uniform4fv(shader.uniform("uColor"), color);
   }
 
@@ -515,47 +515,66 @@ void emitDefault() {
     gl.uniform1ui(shader.uniform("uPickID"), pickID);
   }
 
-  drawSkeleton(
+  private bindVertexAttributeTextures(
     gl: GL,
-    edgeShader: ShaderProgram,
-    nodeShader: ShaderProgram,
+    shader: ShaderProgram,
     skeletonChunk: SkeletonChunk,
   ) {
     const { vertexAttributes } = this;
-    const numAttributes = vertexAttributes.length;
     const { vertexAttributeTextures } = skeletonChunk;
-    for (let i = 0; i < numAttributes; ++i) {
-      const textureUnit =
+    for (
+      let i = 0, numAttributes = vertexAttributes.length;
+      i < numAttributes;
+      ++i
+    ) {
+      gl.activeTexture(
         WebGL2RenderingContext.TEXTURE0 +
-        edgeShader.textureUnit(vertexAttributeSamplerSymbols[i]);
-      gl.activeTexture(textureUnit);
+          shader.textureUnit(vertexAttributeSamplerSymbols[i]),
+      );
       gl.bindTexture(
         WebGL2RenderingContext.TEXTURE_2D,
         vertexAttributeTextures[i],
       );
     }
+  }
 
-    {
-      edgeShader.bind();
-      const aVertexIndex = edgeShader.attribute("aVertexIndex");
-      skeletonChunk.indexBuffer.bindToVertexAttribI(
-        aVertexIndex,
-        2,
-        WebGL2RenderingContext.UNSIGNED_INT,
-      );
-      gl.vertexAttribDivisor(aVertexIndex, 1);
-      const numEdges = skeletonChunk.numIndices / 2;
-      if (this.raycastEnabled.value) {
-        drawQuads(gl, 1, numEdges);
-      } else {
-        drawLines(gl, 1, numEdges);
-      }
-      gl.vertexAttribDivisor(aVertexIndex, 0);
-      gl.disableVertexAttribArray(aVertexIndex);
+  beginEdges(shader: ShaderProgram) {
+    const { gl } = this;
+    const aVertexIndex = shader.attribute("aVertexIndex");
+    gl.vertexAttribDivisor(aVertexIndex, 1);
+    return aVertexIndex;
+  }
+
+  drawEdges(
+    gl: GL,
+    shader: ShaderProgram,
+    aVertexIndex: number,
+    skeletonChunk: SkeletonChunk,
+  ) {
+    this.bindVertexAttributeTextures(gl, shader, skeletonChunk);
+    skeletonChunk.indexBuffer.bindToVertexAttribI(
+      aVertexIndex,
+      2,
+      WebGL2RenderingContext.UNSIGNED_INT,
+    );
+    const numEdges = skeletonChunk.numIndices / 2;
+    if (this.raycastEnabled.value) {
+      drawQuads(gl, 1, numEdges);
+    } else {
+      drawLines(gl, 1, numEdges);
     }
+  }
 
-    // Drawn in every render mode so that there are no visible gaps between edges.
-    nodeShader.bind();
+  endEdges(aVertexIndex: number) {
+    const { gl } = this;
+    gl.vertexAttribDivisor(aVertexIndex, 0);
+    gl.disableVertexAttribArray(aVertexIndex);
+  }
+
+  // Nodes are drawn in every render mode so that there are no visible gaps
+  // between edges.
+  drawNodes(gl: GL, shader: ShaderProgram, skeletonChunk: SkeletonChunk) {
+    this.bindVertexAttributeTextures(gl, shader, skeletonChunk);
     if (this.raycastEnabled.value) {
       drawQuads(gl, 1, skeletonChunk.numVertices);
     } else {
@@ -563,15 +582,22 @@ void emitDefault() {
     }
   }
 
-  endLayer(gl: GL, shader: ShaderProgram) {
-    const { vertexAttributes } = this;
+  // Each shader assigns its own texture unit per attribute, so both are asked;
+  // in practice they agree, hence the dedup rather than one loop per shader.
+  endLayer(gl: GL, ...shaders: ShaderProgram[]) {
+    const { vertexAttributes, clearedTextureUnits } = this;
     const numAttributes = vertexAttributes.length;
-    for (let i = 0; i < numAttributes; ++i) {
-      const curTextureUnit =
-        shader.textureUnit(vertexAttributeSamplerSymbols[i]) +
-        WebGL2RenderingContext.TEXTURE0;
-      gl.activeTexture(curTextureUnit);
-      gl.bindTexture(gl.TEXTURE_2D, null);
+    clearedTextureUnits.clear();
+    for (const shader of shaders) {
+      for (let i = 0; i < numAttributes; ++i) {
+        const textureUnit = shader.textureUnit(
+          vertexAttributeSamplerSymbols[i],
+        );
+        if (clearedTextureUnits.has(textureUnit)) continue;
+        clearedTextureUnits.add(textureUnit);
+        gl.activeTexture(WebGL2RenderingContext.TEXTURE0 + textureUnit);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+      }
     }
     this.vertexIdHelper.disable();
   }
@@ -734,7 +760,7 @@ export class SkeletonLayer extends RefCounted {
     >,
   ) {
     const lineWidth = renderOptions.lineWidth.value;
-    const { gl, source, displayState } = this;
+    const { gl, displayState } = this;
     if (displayState.objectAlpha.value <= 0.0) {
       // Skip drawing.
       return;
@@ -782,6 +808,11 @@ export class SkeletonLayer extends RefCounted {
       lineWidth,
       nodeDiameter,
     );
+    const aVertexIndex = renderHelper.beginEdges(edgeShader);
+    this.drawPass(layer, renderContext, renderHelper, edgeShader, (skeleton) =>
+      renderHelper.drawEdges(gl, edgeShader, aVertexIndex, skeleton),
+    );
+    renderHelper.endEdges(aVertexIndex);
 
     nodeShader.bind();
     renderHelper.beginLayer(gl, nodeShader, renderContext, modelMatrix);
@@ -797,39 +828,45 @@ export class SkeletonLayer extends RefCounted {
       shaderControlState,
       nodeShaderParameters.parseResult,
     );
+    this.drawPass(layer, renderContext, renderHelper, nodeShader, (skeleton) =>
+      renderHelper.drawNodes(gl, nodeShader, skeleton),
+    );
 
-    const skeletons = source.chunks;
+    renderHelper.endLayer(gl, edgeShader, nodeShader);
+  }
 
+  // Each pass registers pick IDs again, so a segment ends up with one ID for its
+  // edges and another for its nodes.  Both map to that segment, so picking is
+  // unaffected.
+  private drawPass(
+    layer: RenderLayer,
+    renderContext: SliceViewPanelRenderContext | PerspectiveViewRenderContext,
+    renderHelper: RenderHelper,
+    shader: ShaderProgram,
+    drawChunk: (skeleton: SkeletonChunk) => void,
+  ) {
+    const { gl, displayState } = this;
+    const skeletons = this.source.chunks;
     forEachVisibleSegmentToDraw(
       displayState,
       layer,
       renderContext.emitColor,
       renderContext.emitPickID ? renderContext.pickIDs : undefined,
       (objectId, color, pickIndex) => {
-        const key = getObjectKey(objectId);
-        const skeleton = skeletons.get(key);
+        const skeleton = skeletons.get(getObjectKey(objectId));
         if (
           skeleton === undefined ||
           skeleton.state !== ChunkState.GPU_MEMORY
         ) {
           return;
         }
-        if (color !== undefined) {
-          edgeShader.bind();
-          renderHelper.setColor(gl, edgeShader, <vec3>(<Float32Array>color));
-          nodeShader.bind();
-          renderHelper.setColor(gl, nodeShader, <vec3>(<Float32Array>color));
-        }
+        if (color !== undefined) renderHelper.setColor(gl, shader, color);
         if (pickIndex !== undefined) {
-          edgeShader.bind();
-          renderHelper.setPickID(gl, edgeShader, pickIndex);
-          nodeShader.bind();
-          renderHelper.setPickID(gl, nodeShader, pickIndex);
+          renderHelper.setPickID(gl, shader, pickIndex);
         }
-        renderHelper.drawSkeleton(gl, edgeShader, nodeShader, skeleton);
+        drawChunk(skeleton);
       },
     );
-    renderHelper.endLayer(gl, edgeShader);
   }
 
   isReady() {
