@@ -278,7 +278,7 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
     );
   });
 
-  it("should require all multiscales.datasets coordinate to have the same output which is treated as the intrinsic system", () => {
+  it("should require all multiscales.datasets coordinate transformations to have the same output which is treated as the intrinsic system", () => {
     const attrs = {
       ome: {
         version: "0.6",
