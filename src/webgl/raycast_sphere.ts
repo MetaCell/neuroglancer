@@ -35,8 +35,10 @@
  *   - The bounding-quad vertex stage has no counterpart in the original, which
  *     ray-marches a full-screen quad.
  *   - The discriminant uses the perpendicular-distance rearrangement instead of
- *     `c = dot(oc, oc) - r * r`; see `intersectRaycastPrimitive` below.
- *     This is for better scaling as neuroglancer can have large depth range.
+ *     `c = dot(oc, oc) - r * r`, and moves into the shared
+ *     `intersectRaycastCircle` in `raycast_intersect.ts`, which `raycast_cylinder.ts`
+ *     also calls. This is for better scaling as neuroglancer can have large depth
+ *     range.
  *   - Returns depth and a lighting factor rather than a ray distance.
  */
 
@@ -62,27 +64,14 @@ void emitRaycastSphere(highp vec3 center, highp float radius) {
 RaycastHit intersectRaycastPrimitive() {
   RaycastRay ray = getRaycastEyeRay();
 
-  // ray.direction is a unit vector, so this projection locates where the ray passes
-  // closest to the centre: at t = -projectedDistance, offset by perpendicular.
-  // The half-chord is the third side of a right triangle with hypotenuse radius and
-  // leg perpendicular, so it exists only while halfChordSquared is non-negative;
-  // the two surface crossings are then at -projectedDistance -/+ halfChord.
-  highp vec3 centerToOrigin = ray.origin - vSphereCenter;
-  highp float projectedDistance = dot(centerToOrigin, ray.direction);
-  highp vec3 perpendicular = centerToOrigin - projectedDistance * ray.direction;
-  highp float halfChordSquared =
-      vSphereRadius * vSphereRadius - dot(perpendicular, perpendicular);
-  // Comparisons are in positive form so that a non-finite value misses rather than
-  // slipping through. Defence only: GLSL ES guarantees nothing about NaN.
-  if (!(halfChordSquared >= 0.0)) return raycastMiss();  // triangle cannot close
-  highp float halfChord = sqrt(halfChordSquared);
-  // Only the near crossing is drawn. A negative one means the sphere is behind us or
-  // the origin is inside it, and drawing the far surface then fills the view when the
-  // camera clips inside the geometry.
-  highp float hitDistance = -projectedDistance - halfChord;
-  if (!(hitDistance >= 0.0)) return raycastMiss();
-  highp vec3 offsetFromCenter = centerToOrigin + hitDistance * ray.direction;
-  return makeRaycastHit(ray.origin + hitDistance * ray.direction, offsetFromCenter);
+  // A sphere is one ray/circle test about its centre C, and nothing else. The
+  // normal at the hit point H is the standard sphere normal H - C, which
+  // intersectRaycastCircle returns as offsetFromCenter.
+  RaycastCircleHit circleHit = intersectRaycastCircle(
+      ray.origin - vSphereCenter, ray.direction, vSphereRadius);
+  if (!circleHit.hit) return raycastMiss();
+  return makeRaycastHit(ray.origin + circleHit.distanceAlongRay * ray.direction,
+                        circleHit.offsetFromCenter);
 }
 `);
 }

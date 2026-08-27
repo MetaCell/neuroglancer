@@ -29,10 +29,17 @@
  * and other fairly uniform geometries.
  * Use the axial OBB (oriented bounding box) for objects with one defined long
  * axis, like cylinders, capsules, cones, etc.
+ *
+ * The intersection maths that the primitives share lives in `raycast_intersect.ts`,
+ * which this module pulls into every raycast fragment shader.
  */
 
 import { mat4 } from "#src/util/geom.js";
 import { glsl_getQuadVertexPosition } from "#src/webgl/quad.js";
+import {
+  glsl_intersectRaycastCircle,
+  glsl_splitAboutAxis,
+} from "#src/webgl/raycast_intersect.js";
 import type { ShaderBuilder, ShaderProgram } from "#src/webgl/shader.js";
 import { glsl_clipLineToDepthRange } from "#src/webgl/shader_lib.js";
 
@@ -258,6 +265,8 @@ export function defineRaycastPrimitiveCommon(builder: ShaderBuilder) {
   builder.addVertexCode(glsl_raycastAxialObbQuad);
   builder.addVertexCode(glsl_raycastPrimitivePixelRadius);
   builder.addFragmentCode(glsl_raycastPrimitiveFragmentUtil);
+  builder.addFragmentCode(glsl_intersectRaycastCircle);
+  builder.addFragmentCode(glsl_splitAboutAxis);
 }
 
 const tempInvProjection = mat4.create();
