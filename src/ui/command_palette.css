@@ -43,13 +43,15 @@
 
 .neuroglancer-command-palette-results {
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #555 transparent;
 }
 
 .neuroglancer-command-palette-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 8px;
+  padding: 4px 12px;
   cursor: pointer;
 }
 
