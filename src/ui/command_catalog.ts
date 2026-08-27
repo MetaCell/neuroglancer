@@ -265,62 +265,80 @@ export class CommandCatalog extends RefCounted {
     const layers = layerManager?.managedLayers ?? [];
 
     const toggleLayerGroup: CommandGroup = {
-      label: "Toggle Layer",
+      label: "Toggle Layer Visibility",
       shortcut: "1–9",
     };
-    for (const [index, layer] of layers.entries()) {
-      commands.push({
-        label: layer.name,
-        shortcut: index < 9 ? String(index + 1) : "",
-        source: "derived",
-        group: toggleLayerGroup,
-        command: new CallbackCommand(
-          `toggle-layer-${index + 1}`,
-          `Show/hide ${layer.name}`,
-          () => layer.setVisible(!layer.visible),
-        ),
-      });
-    }
-
     const selectLayerGroup: CommandGroup = {
       label: "Select Layer",
       shortcut: "Ctrl+1–9",
     };
-    for (const [index, layer] of layers.entries()) {
-      commands.push({
+    const togglePickLayerGroup: CommandGroup = {
+      label: "Toggle Layer Picking",
+      shortcut: "Alt+1–9",
+    };
+
+    let nonArchivedIndex = -1;
+    for (const layer of layers) {
+      const enabled = !layer.archived;
+      const commonObject = {
         label: layer.name,
-        shortcut: index < 9 ? `Ctrl+${index + 1}` : "",
-        source: "derived",
-        group: selectLayerGroup,
-        command: new CallbackCommand(
-          `select-layer-${index + 1}`,
+        source: "derived" as CommandSource,
+      };
+      if (enabled) ++nonArchivedIndex;
+
+      {
+        // Toggle layer
+        const command = new CallbackCommand(
+          `toggle-layer-${nonArchivedIndex + 1}`,
+          `Show/hide ${layer.name}`,
+          () => layer.setVisible(!layer.visible),
+        );
+        command.enabled = enabled;
+        commands.push({
+          ...commonObject,
+          shortcut: nonArchivedIndex < 9 ? String(nonArchivedIndex + 1) : "",
+          group: toggleLayerGroup,
+          command,
+        });
+      }
+
+      {
+        // Select layer
+        const command = new CallbackCommand(
+          `select-layer-${nonArchivedIndex + 1}`,
           `Select ${layer.name}`,
           () => {
             selectedLayer.layer = layer;
             selectedLayer.visible = true;
           },
-        ),
-      });
-    }
+        );
+        command.enabled = enabled;
+        commands.push({
+          ...commonObject,
+          shortcut: nonArchivedIndex < 9 ? `Ctrl+${nonArchivedIndex + 1}` : "",
+          group: selectLayerGroup,
+          command,
+        });
+      }
 
-    const togglePickLayerGroup: CommandGroup = {
-      label: "Toggle Pick Layer",
-      shortcut: "Alt+1–9",
-    };
-    for (const [index, layer] of layers.entries()) {
-      commands.push({
-        label: layer.name,
-        shortcut: index < 9 ? `Alt+${index + 1}` : "",
-        source: "derived",
-        group: togglePickLayerGroup,
-        command: new CallbackCommand(
-          `toggle-pick-layer-${index + 1}`,
+      {
+        // Toggle pick
+        const command = new CallbackCommand(
+          `toggle-pick-layer-${nonArchivedIndex + 1}`,
           `Toggle pick ${layer.name}`,
           () => {
             layer.pickEnabled = !layer.pickEnabled;
           },
-        ),
-      });
+        );
+        command.enabled = enabled;
+        commands.push({
+          label: layer.name,
+          shortcut: nonArchivedIndex < 9 ? `Alt+${nonArchivedIndex + 1}` : "",
+          source: "derived",
+          group: togglePickLayerGroup,
+          command,
+        });
+      }
     }
 
     const bindings = collectActionBindings(inputEventBindings);
@@ -337,7 +355,6 @@ export class CommandCatalog extends RefCounted {
     // Registered commands come first. A command's shortcut is whatever binding
     // is currently installed for its id, shown for reference only.
     for (const command of commandRegistry.values()) {
-      if (!command.enabled) continue;
       commands.push({
         label: command.label,
         shortcut: shortcutByAction.get(command.id) ?? "",
@@ -427,16 +444,26 @@ export class CommandCatalog extends RefCounted {
   }
 
   // Restricting to `groupLabel` scopes the search to a single group's entries
+  // filtering with no args can be used to exclude disabled commands
   filter(
-    searchString: string,
+    searchString: string = "",
     groupLabel?: string,
     ignoreGroupsForGlobalSearch: boolean = true,
+    excludeDisabled: boolean = true,
   ): readonly CommandEntry[] {
     let pool = this.commands;
     if (groupLabel !== undefined) {
-      pool = pool.filter((entry) => entry.group?.label === groupLabel);
+      pool = pool.filter(
+        (entry) =>
+          entry.group?.label === groupLabel &&
+          (!excludeDisabled || entry.command.enabled),
+      );
     } else if (ignoreGroupsForGlobalSearch) {
-      pool = pool.filter((entry) => entry.group === undefined);
+      pool = pool.filter(
+        (entry) =>
+          entry.group === undefined &&
+          (!excludeDisabled || entry.command.enabled),
+      );
     }
 
     if (searchString === "") return pool;

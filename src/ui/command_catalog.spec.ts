@@ -228,7 +228,7 @@ describe("CommandCatalog command sources", () => {
     }
   });
 
-  it("omits a disabled command, binding or not", () => {
+  it("omits disabled commands at filter time", () => {
     const map = new EventActionMap();
     map.set("keyb", "toggle-scale-bar");
     const registry = new CommandRegistry();
@@ -237,11 +237,7 @@ describe("CommandCatalog command sources", () => {
     registry.register(command);
     const catalog = makeCatalog(map, registry);
     try {
-      expect(
-        catalog.commands.filter(
-          (entry) => entry.command.id === "toggle-scale-bar",
-        ),
-      ).toHaveLength(0);
+      expect(catalog.filter()).toHaveLength(0);
     } finally {
       catalog.dispose();
     }
