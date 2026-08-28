@@ -50,7 +50,7 @@ import {
 } from "#src/trackable_value.js";
 import { DataType } from "#src/util/data_type.js";
 import { RefCounted } from "#src/util/disposable.js";
-import { mat3, mat3FromMat4, mat4, scaleMat3Output } from "#src/util/geom.js";
+import { mat4, vec3 } from "#src/util/geom.js";
 import { verifyFinitePositiveFloat } from "#src/util/json.js";
 import { NullarySignal } from "#src/util/signal.js";
 import type { Trackable } from "#src/util/trackable.js";
@@ -107,7 +107,11 @@ import {
 import { defineVertexId, VertexIdHelper } from "#src/webgl/vertex_id.js";
 
 const tempModelClip = mat4.create();
-const tempMat3 = mat3.create();
+const tempDisplayClip = mat4.create();
+const tempModelToDisplay = mat4.create();
+const tempCanonicalVoxelScaleMatrix = mat4.create();
+const tempCanonicalVoxelScale = vec3.create();
+const tempInverseCanonicalVoxelScale = vec3.create();
 
 const DEFAULT_FRAGMENT_MAIN = `void main() {
   emitDefault();
@@ -253,13 +257,16 @@ highp vec3 vertexB = readAttribute0(aVertexIndex.y);
     if (useRaycast) {
       defineRaycastCylinderShader(builder);
       builder.addUniform("highp float", "uEdgePixelRadius");
+      builder.addUniform("highp mat4", "uModelToDisplay");
       vertexMain += `
 highp uint vertexIndex = aVertexIndex.x;
-highp float edgeRadius =
-    getRaycastModelRadiusForPixels(mix(vertexA, vertexB, 0.5), uEdgePixelRadius);
-emitRaycastCylinder(vertexA, vertexB, edgeRadius,
-                    getRaycastModelRadiusForPixels(vertexA, uNodeClipPixelRadius),
-                    getRaycastModelRadiusForPixels(vertexB, uNodeClipPixelRadius));
+highp vec3 displayVertexA = (uModelToDisplay * vec4(vertexA, 1.0)).xyz;
+highp vec3 displayVertexB = (uModelToDisplay * vec4(vertexB, 1.0)).xyz;
+highp float edgeRadius = getRaycastSegmentRadiusForPixels(
+    displayVertexA, displayVertexB, uEdgePixelRadius);
+emitRaycastCylinder(displayVertexA, displayVertexB, edgeRadius,
+                    getRaycastRadiusForPixels(displayVertexA, uNodeClipPixelRadius),
+                    getRaycastRadiusForPixels(displayVertexB, uNodeClipPixelRadius));
 `;
       builder.addFragmentCode(`
 void emitRGB(vec3 color) {
@@ -308,9 +315,12 @@ highp vec3 vertexPosition = readAttribute0(vertexIndex);
     if (useRaycast) {
       defineRaycastSphereShader(builder);
       builder.addUniform("highp float", "uNodePixelRadius");
-      vertexMain += `emitRaycastSphere(
-    vertexPosition,
-    getRaycastModelRadiusForPixels(vertexPosition, uNodePixelRadius));
+      builder.addUniform("highp mat4", "uModelToDisplay");
+      vertexMain += `
+highp vec3 displayPosition = (uModelToDisplay * vec4(vertexPosition, 1.0)).xyz;
+emitRaycastSphere(
+    displayPosition,
+    getRaycastRadiusForPixels(displayPosition, uNodePixelRadius));
 `;
       builder.addFragmentCode(`
 void emitRGBA(vec4 color) {
@@ -419,44 +429,59 @@ void emitDefault() {
     renderContext: SliceViewPanelRenderContext | PerspectiveViewRenderContext,
     modelMatrix: mat4,
   ) {
-    const { projectionParameters } = renderContext;
-    const modelClip = mat4.multiply(
-      tempModelClip,
-      projectionParameters.viewProjectionMat,
-      modelMatrix,
-    );
     if (this.raycastEnabled.value) {
-      this.setRaycastUniforms(
-        gl,
-        shader,
-        renderContext,
-        modelMatrix,
-        modelClip,
-      );
+      this.setRaycastUniforms(gl, shader, renderContext, modelMatrix);
     } else {
-      gl.uniformMatrix4fv(shader.uniform("uProjection"), false, modelClip);
+      gl.uniformMatrix4fv(
+        shader.uniform("uProjection"),
+        false,
+        mat4.multiply(
+          tempModelClip,
+          renderContext.projectionParameters.viewProjectionMat,
+          modelMatrix,
+        ),
+      );
     }
     this.vertexIdHelper.enable();
   }
 
+  // The raycast solves a true sphere in display space, which is the global space
+  // scaled to canonical voxels. Display space reaches the eye through a rotation
+  // and a uniform scale, so a node is round on screen only when it is round there.
+  // In layer space an anisotropic dataset would draw every node as an ellipsoid.
+  // The light direction is given in display space, so the surface normal that the
+  // raycast returns needs no further transform.
   private setRaycastUniforms(
     gl: GL,
     shader: ShaderProgram,
     renderContext: SliceViewPanelRenderContext | PerspectiveViewRenderContext,
     modelMatrix: mat4,
-    modelClip: mat4,
   ) {
     const { projectionParameters } = renderContext;
-    initializeRaycastPrimitiveShader(shader, modelClip, projectionParameters);
-    mat3FromMat4(tempMat3, modelMatrix);
-    scaleMat3Output(
-      tempMat3,
-      tempMat3,
-      projectionParameters.displayDimensionRenderInfo.canonicalVoxelFactors,
+    const { canonicalVoxelFactors } =
+      projectionParameters.displayDimensionRenderInfo;
+    const canonicalVoxelScale = vec3.set(
+      tempCanonicalVoxelScale,
+      canonicalVoxelFactors[0],
+      canonicalVoxelFactors[1],
+      canonicalVoxelFactors[2],
     );
-    mat3.invert(tempMat3, tempMat3);
-    mat3.transpose(tempMat3, tempMat3);
-    gl.uniformMatrix3fv(shader.uniform("uNormalTransform"), false, tempMat3);
+    const modelToDisplay = mat4.multiply(
+      tempModelToDisplay,
+      mat4.fromScaling(tempCanonicalVoxelScaleMatrix, canonicalVoxelScale),
+      modelMatrix,
+    );
+    const displayClip = mat4.scale(
+      tempDisplayClip,
+      projectionParameters.viewProjectionMat,
+      vec3.inverse(tempInverseCanonicalVoxelScale, canonicalVoxelScale),
+    );
+    gl.uniformMatrix4fv(
+      shader.uniform("uModelToDisplay"),
+      false,
+      modelToDisplay,
+    );
+    initializeRaycastPrimitiveShader(shader, displayClip, projectionParameters);
     const { lightDirection, ambientLighting, directionalLighting } =
       renderContext as PerspectiveViewRenderContext;
     gl.uniform4f(

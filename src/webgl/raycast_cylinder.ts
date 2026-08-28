@@ -65,7 +65,7 @@ bool cylinderPointClipped(highp vec3 surfacePoint) {
 }
 
 RaycastHit intersectRaycastPrimitive() {
-  RaycastRay ray = getModelRayThroughFragment();
+  RaycastRay ray = getRaycastRayThroughFragment();
   highp vec3 axisDirection = vCylinderAxis.xyz;
   highp float axisLength = vCylinderAxis.w;
 

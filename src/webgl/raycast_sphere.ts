@@ -35,7 +35,7 @@ void emitRaycastSphere(highp vec3 center, highp float radius) {
 `);
   builder.addFragmentCode(`
 RaycastHit intersectRaycastPrimitive() {
-  RaycastRay ray = getModelRayThroughFragment();
+  RaycastRay ray = getRaycastRayThroughFragment();
   RaycastCircleHit circleHit = intersectRaycastCircle(
       ray.origin - vSphereCenter, ray.direction, vSphereRadius);
   if (!circleHit.hit) return raycastMiss();

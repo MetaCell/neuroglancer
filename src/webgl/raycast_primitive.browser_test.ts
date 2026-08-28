@@ -49,8 +49,8 @@ void emitShaded() {
   });
 }
 
-// A camera at the model-space origin looking down -z, so a model z of -1 is one
-// unit in front of the camera.
+// A camera at the raycast-space origin looking down -z, so a raycast-space z of
+// -1 is one unit in front of the camera.
 const COVERAGE_VIEWPORT_SIZE = 64;
 const COVERAGE_NEAR_BOUND = 0.1;
 const COVERAGE_FAR_BOUND = 20;
@@ -112,7 +112,7 @@ function measureQuadCoverage(
   }
 }
 
-// `depth` is the model-space z, negative for in front of the camera.
+// `depth` is the raycast-space z, negative for in front of the camera.
 function cylinderCoverage(gl: GL, depth: number) {
   return measureQuadCoverage(
     gl,
@@ -134,7 +134,7 @@ describe("raycast primitives", () => {
   it("compiles the sphere shader", () => {
     buildShader(
       defineRaycastSphereShader,
-      `emitRaycastSphere(vec3(0.0), getRaycastModelRadiusForPixels(vec3(0.0), 5.0));`,
+      `emitRaycastSphere(vec3(0.0), getRaycastRadiusForPixels(vec3(0.0), 5.0));`,
     );
   });
 
@@ -142,7 +142,7 @@ describe("raycast primitives", () => {
     buildShader(
       defineRaycastCylinderShader,
       `emitRaycastCylinder(vec3(0.0), vec3(0.0, 1.0, 0.0),
-                    getRaycastModelRadiusForPixels(vec3(0.0), 2.0), 1.0, 1.0);`,
+                    getRaycastRadiusForPixels(vec3(0.0), 2.0), 1.0, 1.0);`,
     );
   });
 
@@ -152,6 +152,43 @@ describe("raycast primitives", () => {
       expect(visible).toBeGreaterThan(0);
       expect(visible).toBeLessThan(0.5);
       expect(cylinderCoverage(gl, 1)).toBe(0);
+    });
+  });
+
+  // The camera sits inside this tube, whose surface then has no bounded screen
+  // footprint. Covering the viewport instead would shade every pixel of a
+  // depth-writing fragment shader, once for each such edge.
+  it("culls a cylinder that wraps the camera", () => {
+    webglTest((gl) => {
+      const coverage = measureQuadCoverage(
+        gl,
+        defineRaycastCylinderShader,
+        `emitRaycastCylinder(vec3(-1.0, 0.0, -0.2), vec3(1.0, 0.0, -0.2),
+                     0.5, 0.0, 0.0);`,
+      );
+      expect(coverage).toBe(0);
+    });
+  });
+
+  // This edge crosses the eye plane, so its midpoint lies behind the camera. A
+  // radius read there is zero and the near half of the edge is lost with it.
+  it("keeps an edge whose midpoint has passed behind the camera", () => {
+    webglTest((gl) => {
+      const endpoints = "vec3(-0.3, -0.2, -1.0), vec3(0.5, 0.4, 1.0)";
+      const coverage = (radius: string) =>
+        measureQuadCoverage(
+          gl,
+          defineRaycastCylinderShader,
+          `emitRaycastCylinder(${endpoints}, ${radius}, 0.0, 0.0);`,
+        );
+      expect(
+        coverage("getRaycastRadiusForPixels(vec3(0.1, 0.1, 0.0), 1.0)"),
+      ).toBe(0);
+      const atNearEndpoint = coverage(
+        `getRaycastSegmentRadiusForPixels(${endpoints}, 1.0)`,
+      );
+      expect(atNearEndpoint).toBeGreaterThan(0.25);
+      expect(atNearEndpoint).toBeLessThan(1);
     });
   });
 
