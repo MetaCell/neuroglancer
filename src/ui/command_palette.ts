@@ -23,6 +23,8 @@ import type {
 } from "#src/ui/command_catalog.js";
 import type { Viewer } from "#src/viewer.js";
 
+const COMMAND_INPUT_PLACEHOLDER = "Type to find a command...";
+
 type PaletteRow =
   | { readonly kind: "command"; readonly entry: CommandEntry }
   | { readonly kind: "group-header"; readonly group: CommandGroup };
@@ -105,7 +107,7 @@ export class CommandPalette extends Overlay {
     const searchInput = (this.searchInput = document.createElement("input"));
     searchInput.type = "text";
     searchInput.className = "neuroglancer-command-palette-input";
-    searchInput.placeholder = "Type a command...";
+    searchInput.placeholder = COMMAND_INPUT_PLACEHOLDER;
     searchInput.autocomplete = "off";
     searchInput.spellcheck = false;
     inputContainer.appendChild(searchInput);
@@ -281,7 +283,7 @@ export class CommandPalette extends Overlay {
     }
     this.currentGroup = undefined;
     this.searchInput.value = "";
-    this.searchInput.placeholder = "Type a command...";
+    this.searchInput.placeholder = COMMAND_INPUT_PLACEHOLDER;
     this.updateHeader();
     this.activeIndex = 0;
     this.render();
