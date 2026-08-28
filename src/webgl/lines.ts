@@ -29,8 +29,9 @@ import { glsl_clipLineToDepthRange } from "#src/webgl/shader_lib.js";
 export const VERTICES_PER_LINE = VERTICES_PER_QUAD;
 
 /**
- @param rounded adds a float borderWidth param to emitLine
- @param endpointClipping adds a float endpointClipping param to emitLine
+ * @param rounded adds a borderWidth argument to emitLine.
+ * @param endpointClipping adds an endpointClipRadiusInPixels argument to emitLine,
+ *   and discards fragments within that radius of either endpoint.
  */
 export function defineLineShader(
   builder: ShaderBuilder,

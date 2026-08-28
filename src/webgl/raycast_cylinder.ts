@@ -15,35 +15,11 @@
  */
 
 /**
- * @file Raycast open-ended cylinder drawn on a camera-facing quad; see
- * `raycast_primitive.ts` for the shared conventions.
+ * @file Raycast cylinder drawn on a camera-facing quad. The vertex stage bounds the
+ * cylinder with a quad and the fragment stage returns depth and a lighting factor.
  *
- * Adapted from Inigo Quilez's cylinder intersector
- * (https://iquilezles.org/articles/intersectors/,
- * https://www.shadertoy.com/view/4lcSRn), MIT licensed:
- *
- *   The MIT License. Copyright (c) 2016 Inigo Quilez.
- *   Permission is hereby granted, free of charge, to any person obtaining a copy
- *   of this software and associated documentation files (the "Software"), to
- *   deal in the Software without restriction, including without limitation the
- *   rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
- *   sell copies of the Software, and to permit persons to whom the Software is
- *   furnished to do so, subject to the following conditions: the above copyright
- *   notice and this permission notice shall be included in all copies or
- *   substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS".
- *
- * Modifications:
- *   - The vertex stage has no counterpart in the original, which ray-marches a
- *     full-screen quad. It bounds the cylinder with
- *     `emitRaycastAxialObbQuad` and hands the axis frame to the fragment stage in
- *     `vCylinderAxis`.
- *   - The quadratic becomes a ray/circle test in the plane perpendicular to a unit
- *     axis. That test is `intersectRaycastCircle` in `raycast_intersect.ts`, shared
- *     with `raycast_sphere.ts`.
- *   - The end caps are dropped (skeleton joints are covered by spheres) and
- *     endpoint clipping is added. Without caps every hit lies on the lateral
- *     surface, so the normal never needs a special case.
- *   - Returns depth and a lighting factor rather than a ray distance and normal.
+ * The ends are open, because skeleton joints are drawn as spheres. Each end also
+ * takes a clip radius, which removes the part of the surface that the joint covers.
  */
 
 import { defineRaycastPrimitiveCommon } from "#src/webgl/raycast_primitive.js";
@@ -72,7 +48,7 @@ void emitRaycastCylinder(highp vec3 endpointA, highp vec3 endpointB,
   highp vec3 axisDirection = axisLength > 1e-6 ? axisVector / axisLength : vec3(0.0, 1.0, 0.0);
   vCylinderAxis = vec4(axisDirection, axisLength);
 
-  // Find two perpendicular radius vectors spanning the circular cross-section.
+  // Two perpendicular radius vectors spanning the circular cross-section.
   highp vec3 offAxisVector =
       abs(axisDirection.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
   highp vec3 radiusVectorA = normalize(cross(offAxisVector, axisDirection)) * radius;
@@ -89,48 +65,36 @@ bool cylinderPointClipped(highp vec3 surfacePoint) {
 }
 
 RaycastHit intersectRaycastPrimitive() {
-  RaycastRay ray = getRaycastEyeRay();
+  RaycastRay ray = getModelRayThroughFragment();
   highp vec3 axisDirection = vCylinderAxis.xyz;
   highp float axisLength = vCylinderAxis.w;
 
-  // Splitting the ray about the unit axis turns the cylinder into two independent
-  // problems. Across the axis it is only a circle of vCylinderRadius, which fixes
-  // where the ray crosses the surface. Along the axis it is only the interval
-  // [0, axisLength] from endpoint A, which says whether that crossing is drawn.
-  AxialSplit originAboutAxis =
-      splitAboutAxis(ray.origin - vCylinderEndpointA, axisDirection);
-  AxialSplit directionAboutAxis = splitAboutAxis(ray.direction, axisDirection);
+  VectorSplit originSplit =
+      splitAlongDirection(ray.origin - vCylinderEndpointA, axisDirection);
+  VectorSplit directionSplit = splitAlongDirection(ray.direction, axisDirection);
 
-  // ray.direction is a unit vector, so this length is the sine of the angle between
-  // the ray and the axis. It scales ray distance into in-plane distance, and is zero
-  // exactly when the ray runs parallel to the axis, which never crosses the lateral
-  // surface. Guard that explicitly: the in-plane part is then the zero vector, and
-  // GLSL ES leaves 0.0 / 0.0 undefined rather than promising a NaN we could catch.
-  highp float sinAngleToAxis = length(directionAboutAxis.inPlane);
+  // Zero when the ray runs parallel to the axis, which never meets the lateral
+  // surface. GLSL ES leaves 0.0 / 0.0 undefined, so reject it before the divide.
+  highp float sinAngleToAxis = length(directionSplit.perpendicular);
   if (!(sinAngleToAxis > 0.0)) return raycastMiss();
 
-  // Problem one, the circle. Its distance is measured in the plane, so divide by the
-  // sine to convert it back to a distance along the ray.
+  // Step 1. Across the axis the cylinder is a circle. The distance comes back in
+  // that plane, so scale it onto the ray.
   RaycastCircleHit circleHit = intersectRaycastCircle(
-      originAboutAxis.inPlane, directionAboutAxis.inPlane / sinAngleToAxis,
+      originSplit.perpendicular, directionSplit.perpendicular / sinAngleToAxis,
       vCylinderRadius);
   if (!circleHit.hit) return raycastMiss();
-  highp float hitDistance = circleHit.distanceAlongRay / sinAngleToAxis;
+  highp float hitDist = circleHit.distAlongRay / sinAngleToAxis;
 
-  // Problem two, the interval. axialDistance is the distance from endpoint A to the
-  // hit point H, measured along the axis.
-  highp float axialDistance =
-      originAboutAxis.alongAxis + hitDistance * directionAboutAxis.alongAxis;
-  if (!(axialDistance >= 0.0 && axialDistance <= axisLength)) return raycastMiss();
-  highp vec3 surfacePoint = ray.origin + hitDistance * ray.direction;
+  // Step 2. Along the axis it is an interval.
+  highp float axialDist =
+      originSplit.parallelDist + hitDist * directionSplit.parallelDist;
+  if (!(axialDist >= 0.0 && axialDist <= axisLength)) return raycastMiss();
+  highp vec3 surfacePoint = ray.origin + hitDist * ray.direction;
   if (cylinderPointClipped(surfacePoint)) return raycastMiss();
 
-  // The ends are open, so every hit lies on the lateral surface and the normal is
-  // always H - C. Here C is the axis point level with H, at endpoint A plus
-  // axialDistance along the axis, not the end centre itself. That offset is exactly
-  // what the circle test measured, so no separate normal is needed. A capped
-  // cylinder would need one: the two end discs face along the axis instead.
-  return makeRaycastHit(surfacePoint, circleHit.offsetFromCenter);
+  // Open ends, so the circle normal holds everywhere. Caps would not.
+  return makeRaycastHit(surfacePoint, circleHit.normal);
 }
 `);
 }

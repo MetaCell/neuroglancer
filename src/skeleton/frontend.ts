@@ -161,7 +161,6 @@ class RenderHelper extends RefCounted {
     "vertexData",
   );
   private vertexIdHelper;
-  private readonly clearedTextureUnits = new Set<number>();
   private readonly raycastEnabled: WatchableValueInterface<boolean>;
   get vertexAttributes(): VertexAttributeRenderInfo[] {
     return this.base.vertexAttributes;
@@ -325,7 +324,8 @@ void emitRGBA(vec4 color) {
       vertexMain += `emitCircle(uProjection * vec4(vertexPosition, 1.0), uNodeDiameter, 0.0);\n`;
       builder.addFragmentCode(`
 void emitRGBA(vec4 color) {
-  emit(getCircleColor(color, color), uPickID);
+  vec4 borderColor = color;
+  emit(getCircleColor(color, borderColor), uPickID);
 }
 `);
     }
@@ -521,16 +521,13 @@ void emitDefault() {
     skeletonChunk: SkeletonChunk,
   ) {
     const { vertexAttributes } = this;
+    const numAttributes = vertexAttributes.length;
     const { vertexAttributeTextures } = skeletonChunk;
-    for (
-      let i = 0, numAttributes = vertexAttributes.length;
-      i < numAttributes;
-      ++i
-    ) {
-      gl.activeTexture(
+    for (let i = 0; i < numAttributes; ++i) {
+      const textureUnit =
         WebGL2RenderingContext.TEXTURE0 +
-          shader.textureUnit(vertexAttributeSamplerSymbols[i]),
-      );
+        shader.textureUnit(vertexAttributeSamplerSymbols[i]);
+      gl.activeTexture(textureUnit);
       gl.bindTexture(
         WebGL2RenderingContext.TEXTURE_2D,
         vertexAttributeTextures[i],
@@ -582,20 +579,15 @@ void emitDefault() {
     }
   }
 
-  // Each shader assigns its own texture unit per attribute, so both are asked;
-  // in practice they agree, hence the dedup rather than one loop per shader.
   endLayer(gl: GL, ...shaders: ShaderProgram[]) {
-    const { vertexAttributes, clearedTextureUnits } = this;
+    const { vertexAttributes } = this;
     const numAttributes = vertexAttributes.length;
-    clearedTextureUnits.clear();
     for (const shader of shaders) {
       for (let i = 0; i < numAttributes; ++i) {
-        const textureUnit = shader.textureUnit(
-          vertexAttributeSamplerSymbols[i],
-        );
-        if (clearedTextureUnits.has(textureUnit)) continue;
-        clearedTextureUnits.add(textureUnit);
-        gl.activeTexture(WebGL2RenderingContext.TEXTURE0 + textureUnit);
+        const textureUnit =
+          shader.textureUnit(vertexAttributeSamplerSymbols[i]) +
+          WebGL2RenderingContext.TEXTURE0;
+        gl.activeTexture(textureUnit);
         gl.bindTexture(gl.TEXTURE_2D, null);
       }
     }
@@ -853,7 +845,8 @@ export class SkeletonLayer extends RefCounted {
       renderContext.emitColor,
       renderContext.emitPickID ? renderContext.pickIDs : undefined,
       (objectId, color, pickIndex) => {
-        const skeleton = skeletons.get(getObjectKey(objectId));
+        const key = getObjectKey(objectId);
+        const skeleton = skeletons.get(key);
         if (
           skeleton === undefined ||
           skeleton.state !== ChunkState.GPU_MEMORY

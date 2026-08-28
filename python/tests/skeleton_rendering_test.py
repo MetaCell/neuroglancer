@@ -16,7 +16,6 @@
 import neuroglancer
 import neuroglancer.skeleton
 import numpy as np
-import pytest
 
 dimensions = neuroglancer.CoordinateSpace(
     names=["x", "y", "z"], units="nm", scales=[1, 1, 1]
@@ -42,8 +41,6 @@ class SinglePointSkeletonSource(neuroglancer.skeleton.SkeletonSource):
 
 
 class TwoNodeSkeletonSource(neuroglancer.skeleton.SkeletonSource):
-    """One diagonal edge, so that a cylinder has a real axis to be oriented along."""
-
     def __init__(self):
         super().__init__(dimensions=dimensions)
 
@@ -70,6 +67,7 @@ def render_skeleton(webdriver, source, *, layout, line_width, size, mode=None):
         s.cross_section_background_color = "#000000"
         s.show_axis_lines = False
         s.show_scale_bar = False
+        s.layers.clear()
         s.layers.append(
             name="a",
             layer=neuroglancer.SegmentationLayer(source=source, segments=[1]),
@@ -113,55 +111,57 @@ def test_skeleton_options(webdriver):
     assert_solid_color(screenshot_pixels(webdriver, 10), [0, 0, 0, 255])
 
 
-@pytest.mark.parametrize(
-    "layout,mode",
-    [
-        ("xy", "lines"),
-        ("xy", "lines_and_points"),
-        ("3d", "lines"),
-        ("3d", "lines_and_points"),
-        ("3d", "cylinders"),
-        ("3d", "cylinders_and_spheres"),
-    ],
-)
-def test_skeleton_render_mode(webdriver, layout, mode):
-    image = render_skeleton(
-        webdriver,
-        TwoNodeSkeletonSource(),
-        layout=layout,
-        line_width=10,
-        size=100,
-        mode=mode,
-    )
-    red, green, blue = (image[..., i].astype(int) for i in range(3))
-    # A pure red shader leaves the other channels untouched in every mode.
-    np.testing.assert_array_equal(green, 0)
-    np.testing.assert_array_equal(blue, 0)
-    drawn_red = red[red != 0]
-    assert len(drawn_red) > 200, "nothing recognisable was drawn"
-    if mode in ("cylinders", "cylinders_and_spheres"):
-        # Lit by the surface normal, so the red varies; a billboard would be flat.
-        assert drawn_red.min() < 250
-        assert drawn_red.max() == 255
-    elif layout == "3d":
-        # No feather outside the slice view, so every drawn pixel is the full colour.
-        np.testing.assert_array_equal(drawn_red, 255)
+# Each entry pairs a mode with the only shading signature it produces.
+FEATHERED = "feathered"  # slice view feathers the line edge
+FLAT = "flat"  # no feather outside the slice view
+LIT = "lit"  # shaded by the surface normal
+
+RENDER_MODES = [
+    ("xy", "lines", FEATHERED),
+    ("xy", "lines_and_points", FEATHERED),
+    ("3d", "lines", FLAT),
+    ("3d", "lines_and_points", FLAT),
+    ("3d", "cylinders", LIT),
+    ("3d", "cylinders_and_spheres", LIT),
+]
+
+ENLARGED_PAIRS = [
+    ("xy", "lines", "lines_and_points"),
+    ("3d", "lines", "lines_and_points"),
+    ("3d", "cylinders", "cylinders_and_spheres"),
+]
 
 
-@pytest.mark.parametrize(
-    "plain,enlarged",
-    [("lines", "lines_and_points"), ("cylinders", "cylinders_and_spheres")],
-)
-def test_skeleton_enlarged_nodes_cover_more(webdriver, plain, enlarged):
-    def drawn_pixel_count(mode):
+def test_skeleton_render_mode(webdriver):
+    drawn_counts = {}
+    for layout, mode, shading in RENDER_MODES:
+        case = f"{layout}/{mode}"
         image = render_skeleton(
             webdriver,
             TwoNodeSkeletonSource(),
-            layout="3d",
+            layout=layout,
             line_width=10,
             size=100,
             mode=mode,
         )
-        return int((image[..., 0] != 0).sum())
+        red, green, blue = (image[..., i].astype(int) for i in range(3))
+        # A pure red shader leaves the other channels untouched in every mode.
+        np.testing.assert_array_equal(green, 0, err_msg=case)
+        np.testing.assert_array_equal(blue, 0, err_msg=case)
+        drawn_red = red[red != 0]
+        assert len(drawn_red) > 200, f"{case} drew nothing recognisable"
+        drawn_counts[(layout, mode)] = len(drawn_red)
 
-    assert drawn_pixel_count(enlarged) > drawn_pixel_count(plain)
+        if shading is LIT:
+            assert drawn_red.min() < 250, f"{case} is flat, so it is not lit"
+            assert drawn_red.max() == 255, case
+        elif shading is FLAT:
+            np.testing.assert_array_equal(drawn_red, 255, err_msg=case)
+        else:
+            assert drawn_red.min() < 255, f"{case} has no feathered edge"
+            assert drawn_red.max() == 255, case
+
+    for layout, plain, enlarged in ENLARGED_PAIRS:
+        assert drawn_counts[(layout, enlarged)] > drawn_counts[(layout, plain)], (
+            f"{layout}/{enlarged} covers no more than {layout}/{plain}"
+        )
