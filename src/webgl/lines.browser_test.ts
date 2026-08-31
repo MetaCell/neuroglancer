@@ -29,9 +29,8 @@ const VIEWPORT_SIZE = 64;
 const LINE_WIDTH_IN_PIXELS = 6;
 const CLIP_RADIUS_IN_PIXELS = 10;
 
-// One line, drawn with endpoint clipping, read back as the set of covered pixels.
-// `endpointsClip` gives both endpoints in clip space, so a test can put an
-// endpoint outside the depth range without setting up a projection.
+// `endpointsClip` gives both endpoints in clip space, so a test can put an endpoint
+// outside the depth range without setting up a projection.
 function drawClippedLine(
   gl: GL,
   endpointsClip: string,
@@ -109,9 +108,8 @@ describe("line endpoint clipping", () => {
     });
   });
 
-  // Depth clipping moves the drawn ends inward. Measuring the clip disc from
-  // those moved ends would eat the drawn line at a point where no node exists,
-  // because the node itself was clipped away with the rest of the segment.
+  // Measuring the disc from the depth-clipped ends would eat the drawn line where
+  // no node exists, the node itself having been clipped away with the segment.
   it("measures from the given endpoints, not the depth-clipped ones", () => {
     webglTest((gl) => {
       // z runs from -3 to 3, so only the middle third survives the depth range.

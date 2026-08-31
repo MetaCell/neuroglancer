@@ -15,15 +15,14 @@
  */
 
 /**
- * @file Raycast truncated cone drawn on a camera-facing quad. The vertex stage
- * bounds the cone with a quad and the fragment stage returns depth and a lighting
- * factor. Symbols below say cone for brevity; the surface is always the truncated
- * one, and its ends are open.
+ * @file Raycast truncated cone drawn on a camera-facing quad. Symbols below say
+ * cone for brevity. The surface is always the truncated one, and its ends are
+ * open.
  *
- * The radius is given at each end and runs linearly between them. Equal radii give
- * an exact cylinder, which is the common case. A cone sized for a constant
- * on-screen width needs the taper, because the far end of a receding cone sits at a
- * larger radius than the near end.
+ * The radius is given at each end and runs linearly between them, and equal radii
+ * give an exact cylinder. A cone sized for a constant on-screen width needs the
+ * taper, because the far end of a receding cone sits at a larger radius than the
+ * near end.
  *
  * Each end also takes a clip radius, which removes the part of the surface that a
  * primitive drawn at that end covers.
@@ -45,8 +44,8 @@ void emitRaycastCone(highp vec3 endpointA, highp vec3 endpointB,
                          highp float radiusA, highp float radiusB,
                          highp float clipRadiusA, highp float clipRadiusB) {
   highp float widestRadius = max(radiusA, radiusB);
-  // No radius, no surface to hit. A segment with both endpoints behind the eye
-  // reaches this every frame. Positive form, so a non-finite radius culls too.
+  // A segment with both endpoints behind the eye is given zero radii, so this runs
+  // every frame. Positive form, so a non-finite radius culls too.
   if (!(widestRadius > 0.0)) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     return;
@@ -58,9 +57,8 @@ void emitRaycastCone(highp vec3 endpointA, highp vec3 endpointB,
   highp vec3 axisDirection = axisLength > 1e-6 ? axisVector / axisLength : vec3(0.0, 1.0, 0.0);
   vConeAxis = vec4(axisDirection, axisLength);
 
-  // Two perpendicular radius vectors spanning the widest cross-section. The
-  // scale comes last: a zero radius would otherwise leave the second cross
-  // product normalising the zero vector, which GLSL ES leaves undefined.
+  // Scaling before the second cross product would normalise the zero vector when a
+  // radius is zero, which GLSL ES leaves undefined.
   highp vec3 offAxisVector =
       abs(axisDirection.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
   highp vec3 unitRadiusA = normalize(cross(offAxisVector, axisDirection));
@@ -72,8 +70,8 @@ void emitRaycastCone(highp vec3 endpointA, highp vec3 endpointB,
 }
 `);
   builder.addFragmentCode(`
-// Where the surface point falls between the endpoints, 0.0 at A and 1.0 at B.
-// Only meaningful once intersectRaycastPrimitive has returned a hit.
+// 0.0 at endpoint A and 1.0 at endpoint B. Only meaningful once
+// intersectRaycastPrimitive has returned a hit.
 highp float raycastConeAxialFraction = 0.0;
 
 // A surface point sits one local radius from the axis, so its distance to an
@@ -88,15 +86,14 @@ bool coneEndClipped(highp float axialDist, highp float radiusAtHit) {
 }
 
 // Across the axis the cone is a circle whose radius grows along the axis, so the
-// in-plane test is a quadratic rather than the fixed-radius circle the sphere uses.
-// Equal end radii leave the taper rate at zero, and this reduces to that circle.
+// in-plane test is a quadratic rather than a fixed-radius circle.
 RaycastHit intersectRaycastPrimitive() {
   RaycastRay ray = getRaycastRayThroughFragment();
   highp vec3 axisDirection = vConeAxis.xyz;
   highp float axisLength = vConeAxis.w;
   highp float radiusA = vConeEndRadii.x;
   highp float inverseAxisLength = axisLength > 0.0 ? 1.0 / axisLength : 0.0;
-  // Radius added per unit along the axis. Zero for an exact cylinder.
+  // Radius added per unit along the axis.
   highp float taperRate = (vConeEndRadii.y - radiusA) * inverseAxisLength;
 
   VectorSplit originSplit =
@@ -108,15 +105,13 @@ RaycastHit intersectRaycastPrimitive() {
   highp float radiusRate = taperRate * directionSplit.parallelDist;
 
   // Zero for a ray along the axis, which never meets the surface. Negative for a
-  // ray running inside the taper angle, where the near crossing lies past the
-  // apex. Positive form, so a non-finite value misses. This also guards the
-  // divides below, since a positive value puts perpendicularSpeedSq above zero.
+  // ray inside the taper angle, where the near crossing lies past the apex. Above
+  // zero it also puts perpendicularSpeedSq there, guarding the divides below.
   highp float quadraticA = perpendicularSpeedSq - radiusRate * radiusRate;
   if (!(quadraticA > 0.0)) return raycastMiss();
 
-  // Measured from the closest approach to the axis, so that the constant term is a
-  // difference of two small numbers. Neuroglancer models can sit far from the
-  // origin, and the unshifted form subtracts two large ones.
+  // The quadratic below is measured from here, so that its constant term is a
+  // difference of two small numbers.
   highp float closestDist =
       -dot(originSplit.perpendicular, directionSplit.perpendicular)
       / perpendicularSpeedSq;
@@ -136,8 +131,8 @@ RaycastHit intersectRaycastPrimitive() {
   highp float hitDist = closestDist + root.value;
   if (!(hitDist >= 0.0)) return raycastMiss();
 
-  // Along the axis the cone is an interval. That also holds the radius between the
-  // two end radii, so a surface past a cone apex never draws.
+  // The interval test also holds the radius between the two end radii, so a
+  // surface past a cone apex never draws.
   highp float axialDist =
       originSplit.parallelDist + hitDist * directionSplit.parallelDist;
   if (!(axialDist >= 0.0 && axialDist <= axisLength)) return raycastMiss();
@@ -145,8 +140,7 @@ RaycastHit intersectRaycastPrimitive() {
   if (coneEndClipped(axialDist, radiusAtHit)) return raycastMiss();
   raycastConeAxialFraction = axialDist * inverseAxisLength;
 
-  // The gradient of the surface equation. The axial term is what the taper adds,
-  // and it vanishes for an exact cylinder, leaving the radial direction.
+  // The gradient of the surface equation. The axial term is what the taper adds.
   highp vec3 perpendicularAtHit =
       originSplit.perpendicular + hitDist * directionSplit.perpendicular;
   return makeRaycastHit(

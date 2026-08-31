@@ -38,10 +38,8 @@ export function defineLineShader(
   rounded = false,
   endpointClipping = false,
 ) {
-  // A rounded line takes its alpha from getRoundedLineColor and never calls
-  // getLineAlpha, where the clip lives. Supporting both would mean a second
-  // discard site that no caller exercises, so reject the pair instead of
-  // ignoring the clip radius without a word.
+  // The clip lives in getLineAlpha, which a rounded line never calls. Rejecting
+  // the pair beats ignoring the clip radius without a word.
   if (rounded && endpointClipping) {
     throw new Error(
       "defineLineShader does not support endpoint clipping on rounded lines.",
@@ -56,9 +54,9 @@ export function defineLineShader(
   // max(1e-6, featherWidth) / (lineWidth + featherWidth)
   builder.addVarying("highp float", "vLineFeatherFraction");
   if (endpointClipping) {
-    // Window coordinates, matching gl_FragCoord.xy, of the endpoints as given.
-    // Depth clipping moves the drawn ends, so these are taken before it.
-    // xy: endpoint A, zw: endpoint B.
+    // xy: endpoint A, zw: endpoint B, in the window coordinates gl_FragCoord uses.
+    // Taken before depth clipping, which moves the drawn ends away from them.
+
     builder.addVarying("highp vec4", "vLineEndpointsWindow", "flat");
     builder.addVarying("highp float", "vLineEndpointClipRadius", "flat");
   }

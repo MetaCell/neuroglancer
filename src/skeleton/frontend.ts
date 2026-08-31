@@ -146,8 +146,7 @@ function hasEnlargedNodes(mode: SkeletonRenderMode) {
   );
 }
 
-// One skeleton that is ready to draw, with what both passes need to draw it. The
-// records are pooled across frames, so a steady view allocates nothing.
+// Pooled across frames, so a steady view allocates nothing.
 interface VisibleSkeletonToDraw {
   skeleton: SkeletonChunk;
   pickIndex: number;
@@ -363,10 +362,8 @@ void emitDefault() {
     );
   }
 
-  // `edgeMixExpression` is set only where one draw covers a whole edge, as the
-  // cone does. A vertex attribute has a value at each end, and the expression
-  // gives where the fragment falls between them. Without it every fragment of an
-  // edge would read the same end.
+  // `edgeMixExpression` is set only where one draw covers a whole edge, as the cone
+  // does, and gives where the fragment falls between the two ends.
   private finalizeShaderBuilder(
     builder: ShaderBuilder,
     shaderBuilderState: ShaderControlsBuilderState,
@@ -409,11 +406,11 @@ void emitDefault() {
     builder.setVertexMain(vertexMain);
     addControlsToBuilder(shaderBuilderState, builder);
     builder.addFragmentCode(glsl_string);
-    // Run our main before user main to discard early
     builder.addFragmentCode("void userMain();\n");
     builder.addFragmentCode(
       wrapUserShaderMain(shaderBuilderState.parseResult.code),
     );
+    // The raycast setup runs first so that a miss discards before the user's code.
     builder.setFragmentMain(
       (useRaycast ? glsl_raycastFragmentSetup : "") + "userMain();",
     );
@@ -476,12 +473,10 @@ void emitDefault() {
     this.vertexIdHelper.enable();
   }
 
-  // The raycast solves a true sphere in display space, which is the global space
-  // scaled to canonical voxels. Display space reaches the eye through a rotation
-  // and a uniform scale, so a node is round on screen only when it is round there.
-  // In layer space an anisotropic dataset would draw every node as an ellipsoid.
-  // The light direction is given in display space, so the surface normal that the
-  // raycast returns needs no further transform.
+  // The raycast solves a true sphere in display space, the global space scaled to
+  // canonical voxels. Solving in layer space would draw every node of an
+  // anisotropic dataset as an ellipsoid. The light direction is given in the same
+  // space, so the surface normal needs no further transform.
   private setRaycastUniforms(
     gl: GL,
     shader: ShaderProgram,
@@ -887,9 +882,9 @@ export class SkeletonLayer extends RefCounted {
     renderHelper.endLayer(gl, edgeShader, nodeShader);
   }
 
-  // Walks the visible segments once for both passes. Doing it per pass would run
-  // the walk, the color lookup and the pick ID registration twice per segment, and
-  // would give a segment two pick IDs.
+  // Once for both passes. Per pass would run the walk, the color lookup and the
+  // pick ID registration twice per segment, and give a segment two pick IDs.
+
   private collectVisibleSkeletons(
     layer: RenderLayer,
     renderContext: SliceViewPanelRenderContext | PerspectiveViewRenderContext,
@@ -926,7 +921,7 @@ export class SkeletonLayer extends RefCounted {
       },
     );
     // A no-op while the count holds steady. On a drop it releases the records, so
-    // the pool cannot keep a skeleton alive after it leaves the view.
+    // the pool cannot hold a skeleton alive after it leaves the view.
     visibleSkeletons.length = count;
     this.visibleSkeletonCount = count;
   }
@@ -938,7 +933,6 @@ export class SkeletonLayer extends RefCounted {
     drawChunk: (skeleton: SkeletonChunk) => void,
   ) {
     const { gl, visibleSkeletons, visibleSkeletonCount } = this;
-    // Both are decided per frame, not per segment.
     const { emitColor, emitPickID } = renderContext;
     for (let i = 0; i < visibleSkeletonCount; ++i) {
       const entry = visibleSkeletons[i];

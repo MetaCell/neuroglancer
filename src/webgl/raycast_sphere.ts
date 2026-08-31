@@ -15,8 +15,7 @@
  */
 
 /**
- * @file Raycast sphere drawn on a camera-facing quad. The vertex stage bounds the
- * sphere with a quad and the fragment stage returns depth and a lighting factor.
+ * @file Raycast sphere drawn on a camera-facing quad.
  *
  * Both halves follow Inigo Quilez's sphere functions
  * (https://iquilezles.org/articles/intersectors/ and
@@ -32,8 +31,7 @@
  *   notice and this permission notice shall be included in all copies or
  *   substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS".
  *
- * The bound is the sphere's own silhouette, which is exact and needs no margin.
- * See `nearQuadraticRoot` in `raycast_shader_lib.ts` for how the intersection
+ * `nearQuadraticRoot` in `raycast_shader_lib.ts` records how the intersection
  * differs from the original.
  */
 
@@ -45,13 +43,9 @@ export function defineRaycastSphereShader(builder: ShaderBuilder) {
   // xyz: center, w: radius.
   builder.addVarying("highp vec4", "vSphere", "flat");
   builder.addVertexCode(`
-// The quad covering the sphere's screen-space silhouette.
-//
-// That silhouette is a conic, and its clip-space form is the dual quadric
-// M * Q * transpose(M), for M the x, y and w rows of uProjection and Q the dual of
-// the sphere. Only five entries are needed, and each reduces to a product of two
-// clip-space center components minus radiusSq times a dot product of two rows of
-// uProjection. The extent along an axis is then the pair of roots of
+// The screen-space silhouette of a sphere is a conic. Its clip-space form is the
+// dual quadric M * Q * transpose(M), for M the x, y and w rows of uProjection and Q
+// the dual of the sphere. The extent along an axis is the pair of roots of
 // conicWW * t^2 - 2 * conicCross * t + conicDiagonal.
 void emitRaycastSphereQuad(highp vec3 center, highp float radius) {
   highp vec4 clipCenter = uProjection * vec4(center, 1.0);
@@ -61,8 +55,7 @@ void emitRaycastSphereQuad(highp vec3 center, highp float radius) {
   highp vec3 rowZ = vec3(uProjection[0].z, uProjection[1].z, uProjection[2].z);
   highp vec3 rowW = vec3(uProjection[0].w, uProjection[1].w, uProjection[2].w);
 
-  // Each plane distance is largest at the center plus the radius along that
-  // distance's own gradient.
+  // Largest at the center plus the radius along each distance's own gradient.
   if (raycastOutsideDepthRange(
           raycastDepthPlaneDistances(clipCenter)
           + radius * vec2(length(rowZ + rowW), length(rowW - rowZ)))) {
@@ -71,9 +64,8 @@ void emitRaycastSphereQuad(highp vec3 center, highp float radius) {
   }
 
   // Positive exactly when the sphere clears the eye plane, which is when the conic
-  // is an ellipse. Otherwise part of the sphere projects arbitrarily far and no
-  // quad short of the whole viewport covers it. Positive form, so a non-finite
-  // value takes the whole viewport rather than emitting a garbage quad.
+  // is an ellipse. Otherwise part of the sphere projects arbitrarily far, and no
+  // quad short of the whole viewport covers it.
   highp float conicWW = clipCenter.w * clipCenter.w - radiusSq * dot(rowW, rowW);
   if (!(conicWW > 0.0)) {
     gl_Position = vec4(getQuadVertexPosition(vec2(-1.0), vec2(1.0)), 0.0, 1.0);
@@ -86,7 +78,7 @@ void emitRaycastSphereQuad(highp vec3 center, highp float radius) {
   highp vec2 conicCross = vec2(
       clipCenter.x * clipCenter.w - radiusSq * dot(rowX, rowW),
       clipCenter.y * clipCenter.w - radiusSq * dot(rowY, rowW));
-  // The max guards rounding only. A real ellipse cannot give a negative value.
+  // A real ellipse cannot go negative here, so the max guards rounding only.
   highp vec2 halfExtent =
       sqrt(max(conicCross * conicCross - conicDiagonal * conicWW, vec2(0.0)))
       / conicWW;
@@ -108,7 +100,7 @@ void emitRaycastSphereQuad(highp vec3 center, highp float radius) {
 }
 
 void emitRaycastSphere(highp vec3 center, highp float radius) {
-  // No radius, no surface to hit. A node behind the eye reaches this every frame.
+  // A center behind the eye is given a zero radius, so this runs every frame.
   // Positive form, so a non-finite radius culls too.
   if (!(radius > 0.0)) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
@@ -123,9 +115,8 @@ RaycastHit intersectRaycastPrimitive() {
   RaycastRay ray = getRaycastRayThroughFragment();
   highp float radius = vSphere.w;
 
-  // Split along the ray direction, so the parameter below is measured from the
-  // closest approach to the center. The direction is unit, so the leading
-  // coefficient is one and the linear term vanishes.
+  // Splitting along a unit ray direction leaves the leading coefficient one and
+  // the linear term zero, measured from the closest approach to the center.
   VectorSplit originSplit =
       splitAlongDirection(ray.origin - vSphere.xyz, ray.direction);
   highp float perpendicularDistSq =
@@ -134,13 +125,12 @@ RaycastHit intersectRaycastPrimitive() {
       nearQuadraticRoot(1.0, 0.0, perpendicularDistSq - radius * radius);
   if (!root.exists) return raycastMiss();
 
-  // The near crossing. Taking the far one would fill the view when the camera
-  // clips inside the geometry.
+  // The far crossing would fill the view when the camera clips inside.
   highp float hitDist = -originSplit.parallelDist + root.value;
   if (!(hitDist >= 0.0)) return raycastMiss();
 
-  // Hit point minus center, formed from two small terms rather than by subtracting
-  // the center from a hit point that can be far from the origin.
+  // Two small terms, rather than a hit point far from the origin minus a center
+  // just as far from it.
   return makeRaycastHit(
       ray.origin + hitDist * ray.direction,
       originSplit.perpendicular + root.value * ray.direction);

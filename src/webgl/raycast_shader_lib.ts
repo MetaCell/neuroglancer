@@ -32,10 +32,9 @@
  *   substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS".
  *
  * One change. A caller measures its parameter from the ray's closest approach to
- * the surface's axis and subtracts the perpendicular distance from the radius,
- * rather than forming the original `c = dot(oc, oc) - r * r`. Neuroglancer models
- * can sit far from the origin, and the rearranged form never subtracts two large
- * numbers.
+ * the axis, rather than forming the original `c = dot(oc, oc) - r * r`.
+ * Neuroglancer models can sit far from the origin, and the rearranged form never
+ * subtracts two large numbers.
  */
 
 export const glsl_splitAlongDirection = `
@@ -59,16 +58,13 @@ struct QuadraticNearRoot {
 };
 
 // Smaller root of quadraticA * t^2 + 2 * quadraticB * t + quadraticC, for a
-// quadraticA above zero. quadraticB is half the linear coefficient, which is the
-// form a ray against a quadric produces and which keeps the discriminant free of a
-// factor of four.
+// quadraticA above zero. Note the 2: quadraticB is half the linear coefficient.
 QuadraticNearRoot nearQuadraticRoot(highp float quadraticA, highp float quadraticB,
                                     highp float quadraticC) {
   highp float discriminant = quadraticB * quadraticB - quadraticA * quadraticC;
   QuadraticNearRoot root;
-  // Positive form so that a NaN falls through to no root, and so that sqrt is
-  // never reached with a negative argument. IEEE floats guarantee the NaN half,
-  // GLSL ES does not, so that part is defence and not a promise.
+  // Positive form, so a NaN falls through to no root. GLSL ES does not promise
+  // IEEE NaN comparison, so this is defence and not a guarantee.
   if (!(discriminant >= 0.0)) {
     root.exists = false;
     root.value = 0.0;

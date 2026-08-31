@@ -107,10 +107,9 @@ function renderPrimitive(
   }
 }
 
-// Fraction of the viewport that the bounding quad rasterises.  The fragment
-// shader writes unconditionally, so this measures the vertex stage: an
-// out-of-range quad is counted here but discarded by the real shader, making it
-// invisible to any test of the shaded result.
+// The fragment shader writes unconditionally, so this measures the vertex stage
+// alone. An out-of-range quad is counted here but discarded by the real shader,
+// which makes it invisible to any test of the shaded result.
 function measureQuadCoverage(
   gl: GL,
   definePrimitive: (builder: ShaderBuilder) => void,
@@ -130,9 +129,8 @@ function measureQuadCoverage(
   return covered / (size * size);
 }
 
-// Fraction of the viewport the primitive's own surface shades, with the real
-// fragment setup so a miss discards. Unlike quad coverage this measures the
-// surface, so it falls if a bounding quad clips the primitive.
+// Runs the real fragment setup, so a miss discards. Unlike quad coverage this
+// measures the surface, so it falls if a bounding quad clips the primitive.
 function measureShadedCoverage(
   gl: GL,
   definePrimitive: (builder: ShaderBuilder) => void,
@@ -238,9 +236,8 @@ describe("raycast primitives", () => {
     });
   });
 
-  // An upright cone one unit in front of the camera, shaded with the axial
-  // fraction. Endpoint A is the lower end, and readPixels returns rows bottom up,
-  // so the result runs from endpoint A to endpoint B. Values are 0 to 255.
+  // Endpoint A is the lower end and readPixels returns rows bottom up, so the
+  // result runs from endpoint A to endpoint B. Values are 0 to 255.
   function renderUprightCone(
     gl: GL,
     radiusA: string,
@@ -300,9 +297,8 @@ describe("raycast primitives", () => {
     return widthByRow;
   }
 
-  // A skeleton edge carries a vertex attribute at each end, and the consumer mixes
-  // the two by this fraction. A constant value would colour a whole edge from one
-  // endpoint, so the test checks that it runs the length of the cone.
+  // A consumer mixes an attribute's two end values by this fraction. A constant
+  // would colour a whole edge from one endpoint.
   it("reports where a cone hit falls between the endpoints", () => {
     webglTest((gl) => {
       const fractionByRow = shadedConeAxialFractionByRow(gl, 0, 0);
@@ -317,8 +313,8 @@ describe("raycast primitives", () => {
   });
 
   // Equal end radii must leave the taper rate at zero, so the quadratic collapses
-  // to the fixed-radius circle test. A cylinder is the common case, and any drift
-  // here would show as a width that changes along a cone that should not taper.
+  // to the fixed-radius circle test. Drift would show as a width that changes along
+  // a cone that should not taper.
   it("draws an exact cylinder when both end radii match", () => {
     webglTest((gl) => {
       const widthByRow = coneWidthByRow(
@@ -334,10 +330,8 @@ describe("raycast primitives", () => {
     });
   });
 
-  // The taper is what holds one on-screen width along a receding edge. Endpoint A
-  // is the lower end here, so the drawn width has to grow from bottom to top.
-  //
-  // The rows nearest each end are left out. The ends are open, so the rim there
+  // Endpoint A is the lower end here, so the drawn width has to grow from bottom to
+  // top. The rows nearest each end are left out: the ends are open, so the rim
   // projects as an ellipse and the silhouette closes over the last few rows.
   it("tapers between two different end radii", () => {
     webglTest((gl) => {
@@ -357,9 +351,8 @@ describe("raycast primitives", () => {
     });
   });
 
-  // Both ends at the same depth ask for the same radius, and the requested pixel
-  // radius has to come back as the drawn width. This checks the whole chain from a
-  // pixel radius through the per-end radii to the rasterised silhouette.
+  // The whole chain, from a pixel radius through the per-end radii to the
+  // rasterised silhouette.
   it("draws a segment at the requested pixel radius", () => {
     webglTest((gl) => {
       const endpoints = "vec3(0.0, -0.3, -1.0), vec3(0.0, 0.3, -1.0)";
@@ -367,7 +360,6 @@ describe("raycast primitives", () => {
       const widthByRow = coneWidthByRow(gl, `${radii}.x`, `${radii}.y`);
       expect(widthByRow.length).toBeGreaterThan(8);
       // A radius of 6 device pixels is a 12 pixel width, plus or minus a pixel.
-      // The test above already covers the width holding along the cone.
       expect(Math.max(...widthByRow)).toBeGreaterThan(10);
       expect(Math.max(...widthByRow)).toBeLessThan(14);
     });
@@ -375,7 +367,8 @@ describe("raycast primitives", () => {
 
   // The clip radius hands the region around a joint to the ball drawn there. The
   // surface sits one radius from the axis, so a clip radius of 0.15 reaches
-  // sqrt(0.15^2 - 0.05^2) = 0.1414 along a 0.6 long axis: the lowest 23.6 percent.
+  // sqrt(0.15^2 - 0.05^2) = 0.1414 along a 0.6 long axis. That is the lowest 23.6
+  // percent of it.
   it("clips the cone surface around an endpoint", () => {
     webglTest((gl) => {
       const clipped = shadedConeAxialFractionByRow(gl, 0.15, 0);
@@ -390,10 +383,9 @@ describe("raycast primitives", () => {
     });
   });
 
-  // A radius of zero has no surface for the fragment shader to hit, and reaching
-  // the quad emitters with one leaves the radius vectors degenerate. Both radius
-  // helpers return zero for a point at or behind the eye, so this runs every frame
-  // on any skeleton with geometry behind the camera.
+  // A radius of zero has no surface to hit, so shading its quad is pure waste. Both
+  // radius helpers return zero for a point at or behind the eye, so this runs every
+  // frame on any skeleton with geometry behind the camera.
   it("culls a zero-radius primitive", () => {
     webglTest((gl) => {
       expect(
@@ -428,11 +420,10 @@ describe("raycast primitives", () => {
     });
   });
 
-  // A tighter bound only pays if it still contains the whole surface. The exact
-  // silhouette of a sphere of radius r at distance d has radius r / sqrt(d^2 - r^2),
-  // which for r of 0.2 at one unit is 4 percent more area than the r / d disc. The
-  // conic gives that exactly, so the shaded surface has to exceed the plain disc
-  // rather than fall short of it, which is what a quad clipping the sphere would do.
+  // The silhouette of a sphere of radius r at distance d has radius
+  // r / sqrt(d^2 - r^2), which for r of 0.2 at one unit is 4 percent more area than
+  // the r / d disc. So the shaded surface has to exceed that disc. Falling short of
+  // it is what a quad clipping the sphere would produce.
   it("bounds a sphere without clipping its surface", () => {
     webglTest((gl) => {
       const shaded = measureShadedCoverage(
@@ -449,7 +440,7 @@ describe("raycast primitives", () => {
 
   // The conic is an ellipse only while the sphere clears the eye plane. Past that,
   // part of the sphere projects arbitrarily far, so the whole viewport is the only
-  // honest bound, and nothing may be lost by taking it.
+  // honest bound.
   it("takes the whole viewport when the sphere crosses the eye plane", () => {
     webglTest((gl) => {
       // Centered 0.3 ahead with a radius of 0.5, so the sphere spans the eye plane.

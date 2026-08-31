@@ -18,9 +18,8 @@ import { describe, expect, it } from "vitest";
 import { wrapUserShaderMain } from "#src/webgl/dynamic_shader.js";
 
 describe("wrapUserShaderMain", () => {
-  // The whole output is the contract. Three call sites append generated code after
-  // it, and the trailing reset is what keeps a compile error in that code from
-  // being reported against the user's shader.
+  // The whole output is the contract, the trailing reset most of all: three call
+  // sites append generated code after it.
   it("renames main and hands line attribution back", () => {
     expect(wrapUserShaderMain("void main() {\n  emitDefault();\n}")).toBe(
       "\n#define main userMain\n" +

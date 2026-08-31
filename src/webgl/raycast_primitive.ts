@@ -26,11 +26,7 @@
  * true sphere in raycast space. `uLightDirection` is read in the same space, so
  * the surface normal needs no further transform.
  *
- * `emitRaycastAxialObbQuad`, which a primitive opts into by calling
- * `defineRaycastAxialObbQuad`, bounds an object with one long axis: a cone, a
- * capsule, a cylinder. It takes a segment and two radius vectors, bounds them in
- * raycast space, projects that bound to screen space and emits a quad covering it.
- *
+ * The bound here suits an object with one long axis: a cone, a capsule, a cylinder.
  * A primitive whose own silhouette has a closed form should bound itself in its own
  * file instead, which is both tighter and less code. `raycast_sphere.ts` does.
  */
@@ -94,9 +90,8 @@ RaycastHit makeRaycastHit(highp vec3 surfacePoint, highp vec3 normal) {
 }
 `;
 
-// The emitters below over-cover so that a primitive straddling the near plane is
-// never lost. That also drags an out-of-range primitive back on screen, past a
-// fixed-function clipper that can no longer see where it really is.
+// The emitter below over-covers, so that a primitive straddling the near plane is
+// never lost.
 const glsl_raycastDepthRangeCull = `
 highp vec2 raycastDepthPlaneDistances(highp vec4 clip) {
   return vec2(clip.z + clip.w, clip.w - clip.z);
@@ -115,6 +110,7 @@ const glsl_raycastQuadConstants = `
 const highp float RAYCAST_OFFSCREEN_NDC = 2.0;
 // Smallest clip w a projected point may be treated as having, as a fraction of the
 // local w scale. Relative, so it holds whatever units the projection works in.
+
 const highp float RAYCAST_MIN_RELATIVE_W = 1e-4;
 // Nearest clip w an axis may keep, as a multiple of the depth that the radial
 // half-extents span. The margin over 1.0 is what a corner keeps in front of the
@@ -122,9 +118,6 @@ const highp float RAYCAST_MIN_RELATIVE_W = 1e-4;
 const highp float RAYCAST_MIN_AXIS_W_MARGIN = 1.25;
 `;
 
-// A quad oriented along the projected axis, covering the OBB about the segment
-// endpointA..endpointB with radial half-extents radiusVectorA/B.
-//
 // Depth-clipping the segment first is what makes an oriented quad possible. A
 // primitive crossing the eye plane has an unbounded footprint, and clipping leaves
 // every corner in front of the eye where the projected-corner hull is a valid bound.
@@ -222,15 +215,12 @@ highp float raycastRadiusFromClipW(highp float clipW, highp float radiusInPixels
 highp float getRaycastRadiusForPixels(highp vec3 point, highp float radiusInPixels) {
   return raycastRadiusFromClipW((uProjection * vec4(point, 1.0)).w, radiusInPixels);
 }
-// A radius for each end of a segment, so that the segment holds one on-screen
-// width along its whole length. A single radius cannot: the far end of a receding
-// segment would draw thinner than the near end, and thinner than a node drawn
-// there at the same pixel radius.
+// x at endpointA, y at endpointB. Two radii rather than one, so that the segment
+// holds a single on-screen width along its whole length. A single radius would
+// draw the far end of a receding segment thinner than the near end.
 //
-// x is the radius at endpointA and y the radius at endpointB. An endpoint at or
-// behind the eye has no on-screen size, so it borrows the other end's radius and
-// the segment draws without taper. Both behind the eye leaves both zero, which
-// the emitter culls.
+// An endpoint at or behind the eye has no on-screen size, so it borrows the other
+// end's radius. Both behind the eye leaves both zero, which the emitter culls.
 highp vec2 getRaycastSegmentRadiiForPixels(
     highp vec3 endpointA, highp vec3 endpointB, highp float radiusInPixels) {
   highp vec2 radii = vec2(
@@ -253,8 +243,7 @@ raycastSurfaceDepth = raycastHit.windowDepth;
 raycastLightingFactor = raycastHit.lightingFactor;
 `;
 
-// Everything a raycast primitive needs whatever shape it draws, and whatever bound
-// it uses. A ShaderModule, so requiring it twice adds its code once.
+// A ShaderModule, so requiring it twice adds its code once.
 export function raycastPrimitiveCoreModule(builder: ShaderBuilder) {
   builder.require(projectionMatrixShaderModule);
   builder.addUniform("highp mat4", "uInvProjection");
