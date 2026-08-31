@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { registerSkeletonStatisticsDebugApi } from "#src/skeleton/skeleton_statistics_debug.js";
 import { StatusMessage } from "#src/status.js";
 import {
   bindDefaultCopyHandler,
@@ -33,6 +34,7 @@ declare let NEUROGLANCER_DEFAULT_STATE_FRAGMENT: string | undefined;
 export function setupDefaultViewer(options?: Partial<MinimalViewerOptions>) {
   const viewer = ((<any>window).viewer = makeDefaultViewer(options));
   setDefaultInputEventBindings(viewer.inputEventBindings);
+  registerSkeletonStatisticsDebugApi(viewer);
 
   const hashBinding = viewer.registerDisposer(
     new UrlHashBinding(

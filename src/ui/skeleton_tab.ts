@@ -28,6 +28,7 @@ import svg_origin from "ikonate/icons/origin.svg?raw";
 import svg_redo from "ikonate/icons/redo.svg?raw";
 import svg_retweet from "ikonate/icons/retweet.svg?raw";
 import svg_share_android from "ikonate/icons/share-android.svg?raw";
+import svg_stats from "ikonate/icons/stats.svg?raw";
 import svg_undo from "ikonate/icons/undo.svg?raw";
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import { getSegmentIdFromLayerSelectionValue } from "#src/layer/segmentation/selection.js";
@@ -80,6 +81,8 @@ import {
   SpatialSkeletonDisplayNodeType,
   SpatialSkeletonNodeFilterType,
 } from "#src/skeleton/node_types.js";
+import { formatSkeletonStatistics } from "#src/skeleton/skeleton_statistics.js";
+import { computeSkeletonStatisticsForSegment } from "#src/skeleton/skeleton_statistics_debug.js";
 import { StatusMessage } from "#src/status.js";
 import { observeWatchable, registerNested } from "#src/trackable_value.js";
 import {
@@ -262,6 +265,39 @@ export class SpatialSkeletonEditTab extends Tab {
         })();
       },
     );
+    makeIconButton(
+      toolbarActions,
+      svg_stats,
+      "Print statistics for the selected skeleton to the console",
+      () => {
+        const segmentId = getSelectedSegmentId();
+        if (segmentId === undefined) {
+          StatusMessage.showTemporaryMessage(NO_SEGMENT_SELECTED_MESSAGE);
+          return;
+        }
+        void (async () => {
+          try {
+            const statistics = await computeSkeletonStatisticsForSegment(
+              layer,
+              segmentId,
+            );
+            console.log(formatSkeletonStatistics(statistics));
+            StatusMessage.showTemporaryMessage(
+              `Skeleton ${segmentId}: ${statistics.nodeCount} nodes, ` +
+                `${(statistics.cableLength / 1000).toFixed(2)} um of cable, ` +
+                `${statistics.branchPointCount} branch points. ` +
+                "Full statistics printed to the browser console.",
+              5000,
+            );
+          } catch (error) {
+            StatusMessage.showTemporaryMessage(
+              `Failed to compute skeleton statistics: ${error}`,
+            );
+          }
+        })();
+      },
+    );
+
     const navTools = document.createElement("div");
     navTools.className = "neuroglancer-skeleton-nav-tools";
 
