@@ -279,20 +279,23 @@ highp float raycastRadiusFromClipW(highp float clipW, highp float radiusInPixels
 highp float getRaycastRadiusForPixels(highp vec3 point, highp float radiusInPixels) {
   return raycastRadiusFromClipW((uProjection * vec4(point, 1.0)).w, radiusInPixels);
 }
-// One radius for a whole segment, read at the endpoint nearest the eye.
+// A radius for each end of a segment, so that the segment holds one on-screen
+// width along its whole length. A single radius cannot: the far end of a receding
+// segment would draw thinner than the near end, and thinner than a node drawn
+// there at the same pixel radius.
 //
-// The midpoint drops to zero once it passes behind the eye, which loses a segment
-// whose near half is still in view. The nearest endpoint also holds the radius
-// below what the same endpoint yields for any wider pixel radius, so a cap sized
-// that way still covers the end.
-highp float getRaycastSegmentRadiusForPixels(
+// x is the radius at endpointA and y the radius at endpointB. An endpoint at or
+// behind the eye has no on-screen size, so it borrows the other end's radius and
+// the segment draws without taper. Both behind the eye leaves both zero, which
+// the emitter culls.
+highp vec2 getRaycastSegmentRadiiForPixels(
     highp vec3 endpointA, highp vec3 endpointB, highp float radiusInPixels) {
-  highp float clipWA = (uProjection * vec4(endpointA, 1.0)).w;
-  highp float clipWB = (uProjection * vec4(endpointB, 1.0)).w;
-  // Both endpoints behind the eye put the whole segment behind it.
-  highp float nearClipW = min(clipWA, clipWB);
-  return raycastRadiusFromClipW(
-      nearClipW > 0.0 ? nearClipW : max(clipWA, clipWB), radiusInPixels);
+  highp vec2 radii = vec2(
+      getRaycastRadiusForPixels(endpointA, radiusInPixels),
+      getRaycastRadiusForPixels(endpointB, radiusInPixels));
+  if (!(radii.x > 0.0)) radii.x = radii.y;
+  if (!(radii.y > 0.0)) radii.y = radii.x;
+  return radii;
 }
 `;
 

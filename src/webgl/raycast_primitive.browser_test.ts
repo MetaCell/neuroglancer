@@ -137,7 +137,8 @@ function cylinderCoverage(gl: GL, depth: number) {
     defineRaycastCylinderShader,
     `emitRaycastCylinder(vec3(0.0, -0.3, ${depth.toFixed(4)}),
                      vec3(0.0, 0.3, ${depth.toFixed(4)}),
-                     ${PRIMITIVE_TEST_RADIUS}, 0.0, 0.0);`,
+                     ${PRIMITIVE_TEST_RADIUS}, ${PRIMITIVE_TEST_RADIUS},
+                     0.0, 0.0);`,
   );
 }
 
@@ -161,7 +162,9 @@ describe("raycast primitives", () => {
     buildShader(
       defineRaycastCylinderShader,
       `emitRaycastCylinder(vec3(0.0), vec3(0.0, 1.0, 0.0),
-                    getRaycastRadiusForPixels(vec3(0.0), 2.0), 1.0, 1.0);`,
+                    getRaycastRadiusForPixels(vec3(0.0), 2.0),
+                    getRaycastRadiusForPixels(vec3(0.0, 1.0, 0.0), 2.0),
+                    1.0, 1.0);`,
     );
   });
 
@@ -183,51 +186,69 @@ describe("raycast primitives", () => {
         gl,
         defineRaycastCylinderShader,
         `emitRaycastCylinder(vec3(-1.0, 0.0, -0.2), vec3(1.0, 0.0, -0.2),
-                     0.5, 0.0, 0.0);`,
+                     0.5, 0.5, 0.0, 0.0);`,
       );
       expect(coverage).toBe(0);
     });
   });
 
-  // This edge crosses the eye plane, so its midpoint lies behind the camera. A
-  // radius read there is zero and the near half of the edge is lost with it.
-  it("keeps an edge whose midpoint has passed behind the camera", () => {
+  // This edge crosses the eye plane, so one endpoint has no on-screen size and its
+  // own radius is zero. Borrowing the other end's radius keeps the visible half.
+  it("keeps an edge whose endpoint has passed behind the camera", () => {
     webglTest((gl) => {
       const endpoints = "vec3(-0.3, -0.2, -1.0), vec3(0.5, 0.4, 1.0)";
-      const coverage = (radius: string) =>
+      const coverage = (radii: string) =>
         measureQuadCoverage(
           gl,
           defineRaycastCylinderShader,
-          `emitRaycastCylinder(${endpoints}, ${radius}, 0.0, 0.0);`,
+          `emitRaycastCylinder(${endpoints}, ${radii}, 0.0, 0.0);`,
         );
+      // Endpoint B is behind the eye, so its own radius alone leaves nothing.
       expect(
-        coverage("getRaycastRadiusForPixels(vec3(0.1, 0.1, 0.0), 1.0)"),
+        coverage("0.0, getRaycastRadiusForPixels(vec3(0.5, 0.4, 1.0), 1.0)"),
       ).toBe(0);
-      const atNearEndpoint = coverage(
-        `getRaycastSegmentRadiusForPixels(${endpoints}, 1.0)`,
+      const borrowed = coverage(
+        `getRaycastSegmentRadiiForPixels(${endpoints}, 1.0).x,
+         getRaycastSegmentRadiiForPixels(${endpoints}, 1.0).y`,
       );
-      expect(atNearEndpoint).toBeGreaterThan(0.25);
-      expect(atNearEndpoint).toBeLessThan(1);
+      expect(borrowed).toBeGreaterThan(0.25);
+      expect(borrowed).toBeLessThan(1);
     });
   });
 
   // An upright tube one unit in front of the camera, shaded with the axial
   // fraction. Endpoint A is the lower end, and readPixels returns rows bottom up,
   // so the result runs from endpoint A to endpoint B. Values are 0 to 255.
+  function renderUprightCylinder(
+    gl: GL,
+    radiusA: string,
+    radiusB: string,
+    clipRadiusA: number,
+    clipRadiusB: number,
+  ): Uint8Array {
+    return renderPrimitive(
+      gl,
+      defineRaycastCylinderShader,
+      `emitRaycastCylinder(vec3(0.0, -0.3, -1.0), vec3(0.0, 0.3, -1.0),
+                     ${radiusA}, ${radiusB}, ${clipRadiusA.toFixed(4)},
+                     ${clipRadiusB.toFixed(4)});`,
+      glsl_raycastFragmentSetup +
+        "out_color = vec4(raycastCylinderAxialFraction, 1.0, 0.0, 1.0);\n",
+    );
+  }
+
   function shadedCylinderAxialFractionByRow(
     gl: GL,
     clipRadiusA: number,
     clipRadiusB: number,
   ): number[] {
     const size = COVERAGE_VIEWPORT_SIZE;
-    const pixels = renderPrimitive(
+    const pixels = renderUprightCylinder(
       gl,
-      defineRaycastCylinderShader,
-      `emitRaycastCylinder(vec3(0.0, -0.3, -1.0), vec3(0.0, 0.3, -1.0),
-                     ${PRIMITIVE_TEST_RADIUS}, ${clipRadiusA.toFixed(4)},
-                     ${clipRadiusB.toFixed(4)});`,
-      glsl_raycastFragmentSetup +
-        "out_color = vec4(raycastCylinderAxialFraction, 1.0, 0.0, 1.0);\n",
+      PRIMITIVE_TEST_RADIUS,
+      PRIMITIVE_TEST_RADIUS,
+      clipRadiusA,
+      clipRadiusB,
     );
     const fractionByRow: number[] = [];
     for (let row = 0; row < size; ++row) {
@@ -240,6 +261,25 @@ describe("raycast primitives", () => {
       }
     }
     return fractionByRow;
+  }
+
+  // Covered pixels per row, from the endpoint A end to the endpoint B end.
+  function cylinderWidthByRow(
+    gl: GL,
+    radiusA: string,
+    radiusB: string,
+  ): number[] {
+    const size = COVERAGE_VIEWPORT_SIZE;
+    const pixels = renderUprightCylinder(gl, radiusA, radiusB, 0, 0);
+    const widthByRow: number[] = [];
+    for (let row = 0; row < size; ++row) {
+      let width = 0;
+      for (let column = 0; column < size; ++column) {
+        if (pixels[(row * size + column) * 4 + 1] !== 0) ++width;
+      }
+      if (width > 0) widthByRow.push(width);
+    }
+    return widthByRow;
   }
 
   // A skeleton edge carries a vertex attribute at each end, and the consumer mixes
@@ -255,6 +295,63 @@ describe("raycast primitives", () => {
       for (let i = 1; i < fractionByRow.length; ++i) {
         expect(fractionByRow[i]).toBeGreaterThanOrEqual(fractionByRow[i - 1]);
       }
+    });
+  });
+
+  // Equal end radii must leave the taper rate at zero, so the quadratic collapses
+  // to the fixed-radius circle test. A cylinder is the common case, and any drift
+  // here would show as a width that changes along a tube that should not taper.
+  it("draws an exact cylinder when both end radii match", () => {
+    webglTest((gl) => {
+      const widthByRow = cylinderWidthByRow(
+        gl,
+        PRIMITIVE_TEST_RADIUS,
+        PRIMITIVE_TEST_RADIUS,
+      );
+      expect(widthByRow.length).toBeGreaterThan(8);
+      const widest = Math.max(...widthByRow);
+      const narrowest = Math.min(...widthByRow);
+      // One pixel covers where the silhouette falls between sample points.
+      expect(widest - narrowest).toBeLessThanOrEqual(1);
+    });
+  });
+
+  // The taper is what holds one on-screen width along a receding edge. Endpoint A
+  // is the lower end here, so the drawn width has to grow from bottom to top.
+  //
+  // The rows nearest each end are left out. The ends are open, so the rim there
+  // projects as an ellipse and the silhouette closes over the last few rows.
+  it("tapers between two different end radii", () => {
+    webglTest((gl) => {
+      // Wide enough that whole-pixel rasterisation does not dominate the ratio.
+      const widthByRow = cylinderWidthByRow(gl, "0.03", "0.12");
+      expect(widthByRow.length).toBeGreaterThan(16);
+      const interior = widthByRow.slice(
+        Math.round(widthByRow.length * 0.15),
+        Math.round(widthByRow.length * 0.85),
+      );
+      // Radius runs 0.0435 to 0.1065 across this slice, a ratio of 2.45.
+      expect(interior.at(-1)! / interior[0]).toBeGreaterThan(1.8);
+      expect(interior.at(-1)! / interior[0]).toBeLessThan(3.2);
+      for (let i = 1; i < interior.length; ++i) {
+        expect(interior[i]).toBeGreaterThanOrEqual(interior[i - 1] - 1);
+      }
+    });
+  });
+
+  // Both ends at the same depth ask for the same radius, and the requested pixel
+  // radius has to come back as the drawn width. This checks the whole chain from a
+  // pixel radius through the per-end radii to the rasterised silhouette.
+  it("draws a segment at the requested pixel radius", () => {
+    webglTest((gl) => {
+      const endpoints = "vec3(0.0, -0.3, -1.0), vec3(0.0, 0.3, -1.0)";
+      const radii = `getRaycastSegmentRadiiForPixels(${endpoints}, 6.0)`;
+      const widthByRow = cylinderWidthByRow(gl, `${radii}.x`, `${radii}.y`);
+      expect(widthByRow.length).toBeGreaterThan(8);
+      // A radius of 6 device pixels is a 12 pixel width, plus or minus a pixel.
+      // The test above already covers the width holding along the tube.
+      expect(Math.max(...widthByRow)).toBeGreaterThan(10);
+      expect(Math.max(...widthByRow)).toBeLessThan(14);
     });
   });
 
@@ -286,7 +383,7 @@ describe("raycast primitives", () => {
           gl,
           defineRaycastCylinderShader,
           `emitRaycastCylinder(vec3(0.0, -0.3, -1.0), vec3(0.0, 0.3, -1.0),
-                     0.0, 0.0, 0.0);`,
+                     0.0, 0.0, 0.0, 0.0);`,
         ),
       ).toBe(0);
       expect(

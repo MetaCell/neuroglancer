@@ -15,11 +15,16 @@
  */
 
 /**
- * @file Raycast cylinder drawn on a camera-facing quad. The vertex stage bounds the
- * cylinder with a quad and the fragment stage returns depth and a lighting factor.
+ * @file Raycast tube drawn on a camera-facing quad. The vertex stage bounds the
+ * tube with a quad and the fragment stage returns depth and a lighting factor.
  *
- * The ends are open, because skeleton joints are drawn as spheres. Each end also
- * takes a clip radius, which removes the part of the surface that the joint covers.
+ * The radius is given at each end and runs linearly between them, so the surface
+ * is a truncated cone. Equal radii give an exact cylinder. A tube sized for a
+ * constant on-screen width needs the taper, because the far end of a receding tube
+ * sits at a larger radius than the near end.
+ *
+ * The ends are open. Each end also takes a clip radius, which removes the part of
+ * the surface that a primitive drawn at that end covers.
  */
 
 import { defineRaycastPrimitiveCommon } from "#src/webgl/raycast_primitive.js";
@@ -27,40 +32,41 @@ import type { ShaderBuilder } from "#src/webgl/shader.js";
 
 export function defineRaycastCylinderShader(builder: ShaderBuilder) {
   defineRaycastPrimitiveCommon(builder);
-  // The cylinder is a base circle swept along an axis. xyz: center of that
-  // circle, which is endpoint A. w: its radius.
-  builder.addVarying("highp vec4", "vCylinderBaseCircle", "flat");
+  builder.addVarying("highp vec3", "vCylinderEndpointA", "flat");
   // xyz: unit axis direction, w: axis length.
   builder.addVarying("highp vec4", "vCylinderAxis", "flat");
-  // x: clip radius at endpoint A, y: clip radius at endpoint B.
-  builder.addVarying("highp vec2", "vCylinderClipRadii", "flat");
+  // xy: surface radius at endpoint A and at endpoint B.
+  // zw: clip radius at endpoint A and at endpoint B.
+  builder.addVarying("highp vec4", "vCylinderEndRadii", "flat");
   builder.addVertexCode(`
 void emitRaycastCylinder(highp vec3 endpointA, highp vec3 endpointB,
-                         highp float radius,
+                         highp float radiusA, highp float radiusB,
                          highp float clipRadiusA, highp float clipRadiusB) {
+  highp float widestRadius = max(radiusA, radiusB);
   // No radius, no surface to hit. A segment with both endpoints behind the eye
   // reaches this every frame. Positive form, so a non-finite radius culls too.
-  if (!(radius > 0.0)) {
+  if (!(widestRadius > 0.0)) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     return;
   }
-  vCylinderBaseCircle = vec4(endpointA, radius);
-  vCylinderClipRadii = vec2(clipRadiusA, clipRadiusB);
+  vCylinderEndpointA = endpointA;
+  vCylinderEndRadii = vec4(radiusA, radiusB, clipRadiusA, clipRadiusB);
   highp vec3 axisVector = endpointB - endpointA;
   highp float axisLength = length(axisVector);
   highp vec3 axisDirection = axisLength > 1e-6 ? axisVector / axisLength : vec3(0.0, 1.0, 0.0);
   vCylinderAxis = vec4(axisDirection, axisLength);
 
-  // Two perpendicular radius vectors spanning the circular cross-section. The
-  // scale by radius comes last: a zero radius would otherwise leave the second
-  // cross product normalising the zero vector, which GLSL ES leaves undefined.
+  // Two perpendicular radius vectors spanning the widest cross-section. The
+  // scale comes last: a zero radius would otherwise leave the second cross
+  // product normalising the zero vector, which GLSL ES leaves undefined.
   highp vec3 offAxisVector =
       abs(axisDirection.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
   highp vec3 unitRadiusA = normalize(cross(offAxisVector, axisDirection));
   // Already unit length, being the cross product of two perpendicular unit vectors.
   highp vec3 unitRadiusB = cross(axisDirection, unitRadiusA);
   emitRaycastAxialObbQuad(endpointA, endpointB,
-                          unitRadiusA * radius, unitRadiusB * radius);
+                          unitRadiusA * widestRadius,
+                          unitRadiusB * widestRadius);
 }
 `);
   builder.addFragmentCode(`
@@ -68,52 +74,84 @@ void emitRaycastCylinder(highp vec3 endpointA, highp vec3 endpointB,
 // Only meaningful once intersectRaycastPrimitive has returned a hit.
 highp float raycastCylinderAxialFraction = 0.0;
 
-// A surface point sits exactly one radius from the axis, so its distance to an
+// A surface point sits one local radius from the axis, so its distance to an
 // endpoint follows from the axial distance alone.
-bool cylinderEndClipped(highp float axialDist, highp float radius) {
+bool cylinderEndClipped(highp float axialDist, highp float radiusAtHit) {
   highp float axialDistFromB = axialDist - vCylinderAxis.w;
-  highp float radiusSq = radius * radius;
+  highp float radiusSq = radiusAtHit * radiusAtHit;
   return axialDist * axialDist + radiusSq
-             < vCylinderClipRadii.x * vCylinderClipRadii.x ||
+             < vCylinderEndRadii.z * vCylinderEndRadii.z ||
          axialDistFromB * axialDistFromB + radiusSq
-             < vCylinderClipRadii.y * vCylinderClipRadii.y;
+             < vCylinderEndRadii.w * vCylinderEndRadii.w;
 }
 
+// Across the axis the tube is a circle whose radius grows along the axis, so the
+// in-plane test is a quadratic rather than the fixed-radius circle the sphere uses.
+// Equal end radii leave the taper rate at zero, and this reduces to that circle.
 RaycastHit intersectRaycastPrimitive() {
   RaycastRay ray = getRaycastRayThroughFragment();
-  highp vec3 endpointA = vCylinderBaseCircle.xyz;
-  highp float radius = vCylinderBaseCircle.w;
   highp vec3 axisDirection = vCylinderAxis.xyz;
   highp float axisLength = vCylinderAxis.w;
+  highp float radiusA = vCylinderEndRadii.x;
+  highp float inverseAxisLength = axisLength > 0.0 ? 1.0 / axisLength : 0.0;
+  // Radius added per unit along the axis. Zero for a plain cylinder.
+  highp float taperRate = (vCylinderEndRadii.y - radiusA) * inverseAxisLength;
 
   VectorSplit originSplit =
-      splitAlongDirection(ray.origin - endpointA, axisDirection);
+      splitAlongDirection(ray.origin - vCylinderEndpointA, axisDirection);
   VectorSplit directionSplit = splitAlongDirection(ray.direction, axisDirection);
+  highp float perpendicularSpeedSq =
+      dot(directionSplit.perpendicular, directionSplit.perpendicular);
+  // Radius added per unit along the ray.
+  highp float radiusRate = taperRate * directionSplit.parallelDist;
 
-  // Zero when the ray runs parallel to the axis, which never meets the lateral
-  // surface. GLSL ES leaves 0.0 / 0.0 undefined, so reject it before the divide.
-  highp float sinAngleToAxis = length(directionSplit.perpendicular);
-  if (!(sinAngleToAxis > 0.0)) return raycastMiss();
+  // Zero for a ray along the axis, which never meets the surface. Negative for a
+  // ray running inside the taper angle, where the near crossing lies past the
+  // apex. Positive form, so a non-finite value misses. This also guards the
+  // divides below, since a positive value puts perpendicularSpeedSq above zero.
+  highp float quadraticA = perpendicularSpeedSq - radiusRate * radiusRate;
+  if (!(quadraticA > 0.0)) return raycastMiss();
 
-  // Step 1. Across the axis the cylinder is a circle. The distance comes back in
-  // that plane, so scale it onto the ray.
-  RaycastCircleHit circleHit = intersectRaycastCircle(
-      originSplit.perpendicular, directionSplit.perpendicular / sinAngleToAxis,
-      radius);
-  if (!circleHit.hit) return raycastMiss();
-  highp float hitDist = circleHit.distAlongRay / sinAngleToAxis;
+  // Measured from the closest approach to the axis, so that the constant term is a
+  // difference of two small numbers. Neuroglancer models can sit far from the
+  // origin, and the unshifted form subtracts two large ones.
+  highp float closestDist =
+      -dot(originSplit.perpendicular, directionSplit.perpendicular)
+      / perpendicularSpeedSq;
+  highp vec3 perpendicularAtClosest =
+      originSplit.perpendicular + closestDist * directionSplit.perpendicular;
+  highp float radiusAtClosest = radiusA + taperRate *
+      (originSplit.parallelDist + closestDist * directionSplit.parallelDist);
 
-  // Step 2. Along the axis it is an interval.
+  // Half the linear coefficient.
+  highp float quadraticB = -radiusAtClosest * radiusRate;
+  highp float quadraticC =
+      dot(perpendicularAtClosest, perpendicularAtClosest)
+      - radiusAtClosest * radiusAtClosest;
+  highp float discriminant = quadraticB * quadraticB - quadraticA * quadraticC;
+  if (!(discriminant >= 0.0)) return raycastMiss();
+
+  // The near crossing. Taking the far one would fill the view from inside.
+  highp float hitDist =
+      closestDist + (-quadraticB - sqrt(discriminant)) / quadraticA;
+  if (!(hitDist >= 0.0)) return raycastMiss();
+
+  // Along the axis the tube is an interval. That also holds the radius between the
+  // two end radii, so a surface past a cone apex never draws.
   highp float axialDist =
       originSplit.parallelDist + hitDist * directionSplit.parallelDist;
   if (!(axialDist >= 0.0 && axialDist <= axisLength)) return raycastMiss();
-  if (cylinderEndClipped(axialDist, radius)) return raycastMiss();
-  highp vec3 surfacePoint = ray.origin + hitDist * ray.direction;
-  // A zero length axis passes the test above only at axialDist 0.0, which is A.
-  raycastCylinderAxialFraction = axisLength > 0.0 ? axialDist / axisLength : 0.0;
+  highp float radiusAtHit = radiusA + taperRate * axialDist;
+  if (cylinderEndClipped(axialDist, radiusAtHit)) return raycastMiss();
+  raycastCylinderAxialFraction = axialDist * inverseAxisLength;
 
-  // Open ends, so the circle normal holds everywhere. Caps would not.
-  return makeRaycastHit(surfacePoint, circleHit.normal);
+  // The gradient of the surface equation. The axial term is what the taper adds,
+  // and it vanishes for a plain cylinder, leaving the radial direction.
+  highp vec3 perpendicularAtHit =
+      originSplit.perpendicular + hitDist * directionSplit.perpendicular;
+  return makeRaycastHit(
+      ray.origin + hitDist * ray.direction,
+      perpendicularAtHit - radiusAtHit * taperRate * axisDirection);
 }
 `);
 }

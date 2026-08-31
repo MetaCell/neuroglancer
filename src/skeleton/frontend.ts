@@ -261,9 +261,9 @@ highp vec3 vertexB = readAttribute0(aVertexIndex.y);
       vertexMain += `
 highp vec3 displayVertexA = (uModelToDisplay * vec4(vertexA, 1.0)).xyz;
 highp vec3 displayVertexB = (uModelToDisplay * vec4(vertexB, 1.0)).xyz;
-highp float edgeRadius = getRaycastSegmentRadiusForPixels(
+highp vec2 edgeRadii = getRaycastSegmentRadiiForPixels(
     displayVertexA, displayVertexB, uEdgePixelRadius);
-emitRaycastCylinder(displayVertexA, displayVertexB, edgeRadius,
+emitRaycastCylinder(displayVertexA, displayVertexB, edgeRadii.x, edgeRadii.y,
                     getRaycastRadiusForPixels(displayVertexA, uNodeClipPixelRadius),
                     getRaycastRadiusForPixels(displayVertexB, uNodeClipPixelRadius));
 `;
