@@ -414,26 +414,25 @@ describe("raycast primitives", () => {
     });
   });
 
-  // The bound is the silhouette disc, not a projected box, so the quad is the
-  // square around that disc and needs no slack margin. A radius of 0.05 one unit
-  // ahead has a silhouette 3.86 pixels across of a 64 pixel viewport, which is
-  // 0.0115 of it. The square around a disc costs 4 / pi, and the angle margin costs
-  // 1.04 twice, so the quad should land near 0.0157. The projected box it replaced
-  // measured 0.0376, most of that its two pixel margin.
+  // The bound is the exact silhouette conic, so the quad is the square around that
+  // ellipse and needs no margin. A radius of 0.05 one unit ahead has a silhouette
+  // 0.12086 in NDC, which is 3.87 pixels of a 64 pixel viewport, so the square is
+  // 59.8 pixels or 0.0146 of it. The disc itself is 0.0115. The projected box this
+  // replaced measured 0.0376, most of that its fixed two pixel margin.
   it("bounds a sphere to its silhouette, and culls one behind the camera", () => {
     webglTest((gl) => {
       const visible = sphereCoverage(gl, -1);
-      expect(visible).toBeGreaterThan(0.011);
-      expect(visible).toBeLessThan(0.02);
+      expect(visible).toBeGreaterThan(0.012);
+      expect(visible).toBeLessThan(0.017);
       expect(sphereCoverage(gl, 1)).toBe(0);
     });
   });
 
   // A tighter bound only pays if it still contains the whole surface. The exact
   // silhouette of a sphere of radius r at distance d has radius r / sqrt(d^2 - r^2),
-  // which for r of 0.2 at one unit is 4 percent more area than the r / d disc the
-  // bound is built from. The angle margin covers that, so the shaded surface has to
-  // exceed the plain disc rather than fall short of it.
+  // which for r of 0.2 at one unit is 4 percent more area than the r / d disc. The
+  // conic gives that exactly, so the shaded surface has to exceed the plain disc
+  // rather than fall short of it, which is what a quad clipping the sphere would do.
   it("bounds a sphere without clipping its surface", () => {
     webglTest((gl) => {
       const shaded = measureShadedCoverage(
@@ -448,26 +447,18 @@ describe("raycast primitives", () => {
     });
   });
 
-  // Above the angle threshold the bound stops being finite and the projected box
-  // takes over. Nothing may be lost at that switch, so the shaded surface has to
-  // keep following the radius across it.
-  it("loses no surface where the sphere bound falls back to the box", () => {
+  // The conic is an ellipse only while the sphere clears the eye plane. Past that,
+  // part of the sphere projects arbitrarily far, so the whole viewport is the only
+  // honest bound, and nothing may be lost by taking it.
+  it("takes the whole viewport when the sphere crosses the eye plane", () => {
     webglTest((gl) => {
-      const shadedAtRadius = (radius: string) =>
-        measureShadedCoverage(
-          gl,
-          defineRaycastSphereShader,
-          `emitRaycastSphere(vec3(0.0, 0.0, -1.0), ${radius});`,
-        );
-      // The threshold is a silhouette sine of 0.25, which at one unit is a radius
-      // of 0.25. These two straddle it.
-      const belowThreshold = shadedAtRadius("0.24");
-      const aboveThreshold = shadedAtRadius("0.26");
-      expect(belowThreshold).toBeGreaterThan(0);
-      // Area follows the radius squared, so 0.26 over 0.24 predicts 1.174.
-      const ratio = aboveThreshold / belowThreshold;
-      expect(ratio).toBeGreaterThan(1.08);
-      expect(ratio).toBeLessThan(1.28);
+      // Centered 0.3 ahead with a radius of 0.5, so the sphere spans the eye plane.
+      const coverage = measureQuadCoverage(
+        gl,
+        defineRaycastSphereShader,
+        "emitRaycastSphere(vec3(0.0, 0.0, -0.3), 0.5);",
+      );
+      expect(coverage).toBe(1);
     });
   });
 });
