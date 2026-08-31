@@ -26,20 +26,23 @@
  * true sphere in raycast space. `uLightDirection` is read in the same space, so
  * the surface normal needs no further transform.
  *
- * `emitRaycastAabbQuad` and `emitRaycastAxialObbQuad` bound a primitive for
- * rasterisation by bounding the object in raycast space - then projecting to
- * screen space and emit the screen space quad which covers the
- * projected bounding box.
- * Use the AABB (axis aligned bounding box) for objects like spheres, cubes
- * and other fairly uniform geometries.
- * Use the axial OBB (oriented bounding box) for objects with one defined long
- * axis, like cylinders, capsules, cones, etc.
+ * Two bounding strategies live here, and a primitive opts into the one it uses by
+ * calling `defineRaycastAabbQuad` or `defineRaycastAxialObbQuad`. Both bound the
+ * object in raycast space, project that bound to screen space, and emit a quad
+ * covering it. Neither is tied to one shape.
+ * `emitRaycastAabbQuad` takes a box, so it suits a roughly uniform object and it
+ * serves as the fallback wherever a tighter bound stops being finite.
+ * `emitRaycastAxialObbQuad` takes a segment and two radius vectors, so it suits an
+ * object with one long axis: a cone, a capsule, a cylinder.
+ *
+ * A primitive whose own silhouette is cheap to bound exactly should do that in its
+ * own file instead. `raycast_sphere.ts` does.
  */
 
 import { mat4 } from "#src/util/geom.js";
 import { glsl_getQuadVertexPosition } from "#src/webgl/quad.js";
 import {
-  glsl_intersectRaycastCircle,
+  glsl_nearQuadraticRoot,
   glsl_splitAlongDirection,
 } from "#src/webgl/raycast_shader_lib.js";
 import type { ShaderBuilder, ShaderProgram } from "#src/webgl/shader.js";
@@ -310,21 +313,31 @@ raycastSurfaceDepth = raycastHit.windowDepth;
 raycastLightingFactor = raycastHit.lightingFactor;
 `;
 
-export function defineRaycastPrimitiveCommon(builder: ShaderBuilder) {
+// Everything a raycast primitive needs whatever shape it draws, and whatever bound
+// it uses. A ShaderModule, so requiring it twice adds its code once.
+export function raycastPrimitiveCoreModule(builder: ShaderBuilder) {
   builder.require(projectionMatrixShaderModule);
   builder.addUniform("highp mat4", "uInvProjection");
   builder.addUniform("highp vec4", "uLightDirection");
   builder.addUniform("highp vec2", "uViewportSize");
   builder.addVertexCode(glsl_getQuadVertexPosition);
-  builder.addVertexCode(glsl_clipLineToDepthRange);
   builder.addVertexCode(glsl_raycastDepthRangeCull);
   builder.addVertexCode(glsl_raycastQuadConstants);
-  builder.addVertexCode(glsl_raycastAabbQuad);
-  builder.addVertexCode(glsl_raycastAxialObbQuad);
   builder.addVertexCode(glsl_raycastPrimitivePixelRadius);
   builder.addFragmentCode(glsl_raycastPrimitiveFragmentUtil);
   builder.addFragmentCode(glsl_splitAlongDirection);
-  builder.addFragmentCode(glsl_intersectRaycastCircle);
+  builder.addFragmentCode(glsl_nearQuadraticRoot);
+}
+
+export function defineRaycastAabbQuad(builder: ShaderBuilder) {
+  builder.require(raycastPrimitiveCoreModule);
+  builder.addVertexCode(glsl_raycastAabbQuad);
+}
+
+export function defineRaycastAxialObbQuad(builder: ShaderBuilder) {
+  builder.require(raycastPrimitiveCoreModule);
+  builder.addVertexCode(glsl_clipLineToDepthRange);
+  builder.addVertexCode(glsl_raycastAxialObbQuad);
 }
 
 const tempInvProjection = mat4.create();

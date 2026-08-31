@@ -76,13 +76,13 @@ import {
   initializeLineShader,
 } from "#src/webgl/lines.js";
 import { drawQuads } from "#src/webgl/quad.js";
-import { defineRaycastCylinderShader } from "#src/webgl/raycast_cylinder.js";
 import {
   glsl_raycastFragmentSetup,
   initializeRaycastPrimitiveShader,
   projectionMatrixShaderModule,
 } from "#src/webgl/raycast_primitive.js";
 import { defineRaycastSphereShader } from "#src/webgl/raycast_sphere.js";
+import { defineRaycastConeShader } from "#src/webgl/raycast_truncated_cone.js";
 import type {
   ShaderBuilder,
   ShaderProgram,
@@ -255,7 +255,7 @@ highp vec3 vertexA = readAttribute0(aVertexIndex.x);
 highp vec3 vertexB = readAttribute0(aVertexIndex.y);
 `;
     if (useRaycast) {
-      defineRaycastCylinderShader(builder);
+      defineRaycastConeShader(builder);
       builder.addUniform("highp float", "uEdgePixelRadius");
       builder.addUniform("highp mat4", "uModelToDisplay");
       vertexMain += `
@@ -263,7 +263,7 @@ highp vec3 displayVertexA = (uModelToDisplay * vec4(vertexA, 1.0)).xyz;
 highp vec3 displayVertexB = (uModelToDisplay * vec4(vertexB, 1.0)).xyz;
 highp vec2 edgeRadii = getRaycastSegmentRadiiForPixels(
     displayVertexA, displayVertexB, uEdgePixelRadius);
-emitRaycastCylinder(displayVertexA, displayVertexB, edgeRadii.x, edgeRadii.y,
+emitRaycastCone(displayVertexA, displayVertexB, edgeRadii.x, edgeRadii.y,
                     getRaycastRadiusForPixels(displayVertexA, uNodeClipPixelRadius),
                     getRaycastRadiusForPixels(displayVertexB, uNodeClipPixelRadius));
 `;
@@ -298,7 +298,7 @@ void emitDefault() {
       shaderBuilderState,
       vertexMain,
       useRaycast,
-      useRaycast ? "raycastCylinderAxialFraction" : undefined,
+      useRaycast ? "raycastConeAxialFraction" : undefined,
     );
   }
 
@@ -356,7 +356,7 @@ void emitDefault() {
   }
 
   // `edgeMixExpression` is set only where one draw covers a whole edge, as the
-  // cylinder does. A vertex attribute has a value at each end, and the expression
+  // cone does. A vertex attribute has a value at each end, and the expression
   // gives where the fragment falls between them. Without it every fragment of an
   // edge would read the same end.
   private finalizeShaderBuilder(

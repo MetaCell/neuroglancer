@@ -18,12 +18,12 @@ import { describe, expect, it } from "vitest";
 import { mat4 } from "#src/util/geom.js";
 import type { GL } from "#src/webgl/context.js";
 import { drawQuads } from "#src/webgl/quad.js";
-import { defineRaycastCylinderShader } from "#src/webgl/raycast_cylinder.js";
 import {
   glsl_raycastFragmentSetup,
   initializeRaycastPrimitiveShader,
 } from "#src/webgl/raycast_primitive.js";
 import { defineRaycastSphereShader } from "#src/webgl/raycast_sphere.js";
+import { defineRaycastConeShader } from "#src/webgl/raycast_truncated_cone.js";
 import { ShaderBuilder } from "#src/webgl/shader.js";
 import { webglTest } from "#src/webgl/testing.js";
 import { defineVertexId, VertexIdHelper } from "#src/webgl/vertex_id.js";
@@ -54,7 +54,7 @@ void emitShaded() {
 const COVERAGE_VIEWPORT_SIZE = 64;
 const COVERAGE_NEAR_BOUND = 0.1;
 const COVERAGE_FAR_BOUND = 20;
-// Radius of the tube and ball that the shaded tests draw.
+// Radius of the cone and ball that the shaded tests draw.
 const PRIMITIVE_TEST_RADIUS = "0.05";
 
 function renderPrimitive(
@@ -130,12 +130,34 @@ function measureQuadCoverage(
   return covered / (size * size);
 }
 
+// Fraction of the viewport the primitive's own surface shades, with the real
+// fragment setup so a miss discards. Unlike quad coverage this measures the
+// surface, so it falls if a bounding quad clips the primitive.
+function measureShadedCoverage(
+  gl: GL,
+  definePrimitive: (builder: ShaderBuilder) => void,
+  emitPrimitive: string,
+): number {
+  const pixels = renderPrimitive(
+    gl,
+    definePrimitive,
+    emitPrimitive,
+    glsl_raycastFragmentSetup + "out_color = vec4(1.0, 1.0, 1.0, 1.0);\n",
+  );
+  const size = COVERAGE_VIEWPORT_SIZE;
+  let shaded = 0;
+  for (let i = 0; i < size * size; ++i) {
+    if (pixels[i * 4] !== 0) ++shaded;
+  }
+  return shaded / (size * size);
+}
+
 // `depth` is the raycast-space z, negative for in front of the camera.
-function cylinderCoverage(gl: GL, depth: number) {
+function coneCoverage(gl: GL, depth: number) {
   return measureQuadCoverage(
     gl,
-    defineRaycastCylinderShader,
-    `emitRaycastCylinder(vec3(0.0, -0.3, ${depth.toFixed(4)}),
+    defineRaycastConeShader,
+    `emitRaycastCone(vec3(0.0, -0.3, ${depth.toFixed(4)}),
                      vec3(0.0, 0.3, ${depth.toFixed(4)}),
                      ${PRIMITIVE_TEST_RADIUS}, ${PRIMITIVE_TEST_RADIUS},
                      0.0, 0.0);`,
@@ -158,34 +180,34 @@ describe("raycast primitives", () => {
     );
   });
 
-  it("compiles the cylinder shader", () => {
+  it("compiles the cone shader", () => {
     buildShader(
-      defineRaycastCylinderShader,
-      `emitRaycastCylinder(vec3(0.0), vec3(0.0, 1.0, 0.0),
+      defineRaycastConeShader,
+      `emitRaycastCone(vec3(0.0), vec3(0.0, 1.0, 0.0),
                     getRaycastRadiusForPixels(vec3(0.0), 2.0),
                     getRaycastRadiusForPixels(vec3(0.0, 1.0, 0.0), 2.0),
                     1.0, 1.0);`,
     );
   });
 
-  it("bounds a cylinder tightly, and culls one behind the camera", () => {
+  it("bounds a cone tightly, and culls one behind the camera", () => {
     webglTest((gl) => {
-      const visible = cylinderCoverage(gl, -1);
+      const visible = coneCoverage(gl, -1);
       expect(visible).toBeGreaterThan(0);
       expect(visible).toBeLessThan(0.5);
-      expect(cylinderCoverage(gl, 1)).toBe(0);
+      expect(coneCoverage(gl, 1)).toBe(0);
     });
   });
 
-  // The camera sits inside this tube, whose surface then has no bounded screen
+  // The camera sits inside this cone, whose surface then has no bounded screen
   // footprint. Covering the viewport instead would shade every pixel of a
   // depth-writing fragment shader, once for each such edge.
-  it("culls a cylinder that wraps the camera", () => {
+  it("culls a cone that wraps the camera", () => {
     webglTest((gl) => {
       const coverage = measureQuadCoverage(
         gl,
-        defineRaycastCylinderShader,
-        `emitRaycastCylinder(vec3(-1.0, 0.0, -0.2), vec3(1.0, 0.0, -0.2),
+        defineRaycastConeShader,
+        `emitRaycastCone(vec3(-1.0, 0.0, -0.2), vec3(1.0, 0.0, -0.2),
                      0.5, 0.5, 0.0, 0.0);`,
       );
       expect(coverage).toBe(0);
@@ -200,8 +222,8 @@ describe("raycast primitives", () => {
       const coverage = (radii: string) =>
         measureQuadCoverage(
           gl,
-          defineRaycastCylinderShader,
-          `emitRaycastCylinder(${endpoints}, ${radii}, 0.0, 0.0);`,
+          defineRaycastConeShader,
+          `emitRaycastCone(${endpoints}, ${radii}, 0.0, 0.0);`,
         );
       // Endpoint B is behind the eye, so its own radius alone leaves nothing.
       expect(
@@ -216,10 +238,10 @@ describe("raycast primitives", () => {
     });
   });
 
-  // An upright tube one unit in front of the camera, shaded with the axial
+  // An upright cone one unit in front of the camera, shaded with the axial
   // fraction. Endpoint A is the lower end, and readPixels returns rows bottom up,
   // so the result runs from endpoint A to endpoint B. Values are 0 to 255.
-  function renderUprightCylinder(
+  function renderUprightCone(
     gl: GL,
     radiusA: string,
     radiusB: string,
@@ -228,22 +250,22 @@ describe("raycast primitives", () => {
   ): Uint8Array {
     return renderPrimitive(
       gl,
-      defineRaycastCylinderShader,
-      `emitRaycastCylinder(vec3(0.0, -0.3, -1.0), vec3(0.0, 0.3, -1.0),
+      defineRaycastConeShader,
+      `emitRaycastCone(vec3(0.0, -0.3, -1.0), vec3(0.0, 0.3, -1.0),
                      ${radiusA}, ${radiusB}, ${clipRadiusA.toFixed(4)},
                      ${clipRadiusB.toFixed(4)});`,
       glsl_raycastFragmentSetup +
-        "out_color = vec4(raycastCylinderAxialFraction, 1.0, 0.0, 1.0);\n",
+        "out_color = vec4(raycastConeAxialFraction, 1.0, 0.0, 1.0);\n",
     );
   }
 
-  function shadedCylinderAxialFractionByRow(
+  function shadedConeAxialFractionByRow(
     gl: GL,
     clipRadiusA: number,
     clipRadiusB: number,
   ): number[] {
     const size = COVERAGE_VIEWPORT_SIZE;
-    const pixels = renderUprightCylinder(
+    const pixels = renderUprightCone(
       gl,
       PRIMITIVE_TEST_RADIUS,
       PRIMITIVE_TEST_RADIUS,
@@ -264,13 +286,9 @@ describe("raycast primitives", () => {
   }
 
   // Covered pixels per row, from the endpoint A end to the endpoint B end.
-  function cylinderWidthByRow(
-    gl: GL,
-    radiusA: string,
-    radiusB: string,
-  ): number[] {
+  function coneWidthByRow(gl: GL, radiusA: string, radiusB: string): number[] {
     const size = COVERAGE_VIEWPORT_SIZE;
-    const pixels = renderUprightCylinder(gl, radiusA, radiusB, 0, 0);
+    const pixels = renderUprightCone(gl, radiusA, radiusB, 0, 0);
     const widthByRow: number[] = [];
     for (let row = 0; row < size; ++row) {
       let width = 0;
@@ -284,10 +302,10 @@ describe("raycast primitives", () => {
 
   // A skeleton edge carries a vertex attribute at each end, and the consumer mixes
   // the two by this fraction. A constant value would colour a whole edge from one
-  // endpoint, so the test checks that it runs the length of the tube.
-  it("reports where a cylinder hit falls between the endpoints", () => {
+  // endpoint, so the test checks that it runs the length of the cone.
+  it("reports where a cone hit falls between the endpoints", () => {
     webglTest((gl) => {
-      const fractionByRow = shadedCylinderAxialFractionByRow(gl, 0, 0);
+      const fractionByRow = shadedConeAxialFractionByRow(gl, 0, 0);
       expect(fractionByRow.length).toBeGreaterThan(8);
       const [first, last] = [fractionByRow[0], fractionByRow.at(-1)!];
       expect(first).toBeLessThan(16);
@@ -300,10 +318,10 @@ describe("raycast primitives", () => {
 
   // Equal end radii must leave the taper rate at zero, so the quadratic collapses
   // to the fixed-radius circle test. A cylinder is the common case, and any drift
-  // here would show as a width that changes along a tube that should not taper.
+  // here would show as a width that changes along a cone that should not taper.
   it("draws an exact cylinder when both end radii match", () => {
     webglTest((gl) => {
-      const widthByRow = cylinderWidthByRow(
+      const widthByRow = coneWidthByRow(
         gl,
         PRIMITIVE_TEST_RADIUS,
         PRIMITIVE_TEST_RADIUS,
@@ -324,7 +342,7 @@ describe("raycast primitives", () => {
   it("tapers between two different end radii", () => {
     webglTest((gl) => {
       // Wide enough that whole-pixel rasterisation does not dominate the ratio.
-      const widthByRow = cylinderWidthByRow(gl, "0.03", "0.12");
+      const widthByRow = coneWidthByRow(gl, "0.03", "0.12");
       expect(widthByRow.length).toBeGreaterThan(16);
       const interior = widthByRow.slice(
         Math.round(widthByRow.length * 0.15),
@@ -346,10 +364,10 @@ describe("raycast primitives", () => {
     webglTest((gl) => {
       const endpoints = "vec3(0.0, -0.3, -1.0), vec3(0.0, 0.3, -1.0)";
       const radii = `getRaycastSegmentRadiiForPixels(${endpoints}, 6.0)`;
-      const widthByRow = cylinderWidthByRow(gl, `${radii}.x`, `${radii}.y`);
+      const widthByRow = coneWidthByRow(gl, `${radii}.x`, `${radii}.y`);
       expect(widthByRow.length).toBeGreaterThan(8);
       // A radius of 6 device pixels is a 12 pixel width, plus or minus a pixel.
-      // The test above already covers the width holding along the tube.
+      // The test above already covers the width holding along the cone.
       expect(Math.max(...widthByRow)).toBeGreaterThan(10);
       expect(Math.max(...widthByRow)).toBeLessThan(14);
     });
@@ -358,17 +376,17 @@ describe("raycast primitives", () => {
   // The clip radius hands the region around a joint to the ball drawn there. The
   // surface sits one radius from the axis, so a clip radius of 0.15 reaches
   // sqrt(0.15^2 - 0.05^2) = 0.1414 along a 0.6 long axis: the lowest 23.6 percent.
-  it("clips the cylinder surface around an endpoint", () => {
+  it("clips the cone surface around an endpoint", () => {
     webglTest((gl) => {
-      const clipped = shadedCylinderAxialFractionByRow(gl, 0.15, 0);
+      const clipped = shadedConeAxialFractionByRow(gl, 0.15, 0);
       expect(clipped.length).toBeGreaterThan(8);
       // 0.236 of the way along, as a 0-to-255 value, is 60.
       expect(clipped[0]).toBeGreaterThan(45);
       expect(clipped[0]).toBeLessThan(78);
       expect(clipped.at(-1)!).toBeGreaterThan(239);
-      // A clip radius under the tube radius cannot reach the surface at all.
-      const unreachable = shadedCylinderAxialFractionByRow(gl, 0.04, 0);
-      expect(unreachable).toEqual(shadedCylinderAxialFractionByRow(gl, 0, 0));
+      // A clip radius under the cone radius cannot reach the surface at all.
+      const unreachable = shadedConeAxialFractionByRow(gl, 0.04, 0);
+      expect(unreachable).toEqual(shadedConeAxialFractionByRow(gl, 0, 0));
     });
   });
 
@@ -381,8 +399,8 @@ describe("raycast primitives", () => {
       expect(
         measureQuadCoverage(
           gl,
-          defineRaycastCylinderShader,
-          `emitRaycastCylinder(vec3(0.0, -0.3, -1.0), vec3(0.0, 0.3, -1.0),
+          defineRaycastConeShader,
+          `emitRaycastCone(vec3(0.0, -0.3, -1.0), vec3(0.0, 0.3, -1.0),
                      0.0, 0.0, 0.0, 0.0);`,
         ),
       ).toBe(0);
@@ -396,12 +414,60 @@ describe("raycast primitives", () => {
     });
   });
 
-  it("bounds a sphere tightly, and culls one behind the camera", () => {
+  // The bound is the silhouette disc, not a projected box, so the quad is the
+  // square around that disc and needs no slack margin. A radius of 0.05 one unit
+  // ahead has a silhouette 3.86 pixels across of a 64 pixel viewport, which is
+  // 0.0115 of it. The square around a disc costs 4 / pi, and the angle margin costs
+  // 1.04 twice, so the quad should land near 0.0157. The projected box it replaced
+  // measured 0.0376, most of that its two pixel margin.
+  it("bounds a sphere to its silhouette, and culls one behind the camera", () => {
     webglTest((gl) => {
       const visible = sphereCoverage(gl, -1);
-      expect(visible).toBeGreaterThan(0);
-      expect(visible).toBeLessThan(0.5);
+      expect(visible).toBeGreaterThan(0.011);
+      expect(visible).toBeLessThan(0.02);
       expect(sphereCoverage(gl, 1)).toBe(0);
+    });
+  });
+
+  // A tighter bound only pays if it still contains the whole surface. The exact
+  // silhouette of a sphere of radius r at distance d has radius r / sqrt(d^2 - r^2),
+  // which for r of 0.2 at one unit is 4 percent more area than the r / d disc the
+  // bound is built from. The angle margin covers that, so the shaded surface has to
+  // exceed the plain disc rather than fall short of it.
+  it("bounds a sphere without clipping its surface", () => {
+    webglTest((gl) => {
+      const shaded = measureShadedCoverage(
+        gl,
+        defineRaycastSphereShader,
+        "emitRaycastSphere(vec3(0.0, 0.0, -1.0), 0.2);",
+      );
+      // A radius of 0.2 one unit ahead spans 15.5 pixels of a 64 pixel viewport,
+      // so the r / d disc is 0.1831 of it.
+      expect(shaded).toBeGreaterThan(0.1831);
+      expect(shaded).toBeLessThan(0.21);
+    });
+  });
+
+  // Above the angle threshold the bound stops being finite and the projected box
+  // takes over. Nothing may be lost at that switch, so the shaded surface has to
+  // keep following the radius across it.
+  it("loses no surface where the sphere bound falls back to the box", () => {
+    webglTest((gl) => {
+      const shadedAtRadius = (radius: string) =>
+        measureShadedCoverage(
+          gl,
+          defineRaycastSphereShader,
+          `emitRaycastSphere(vec3(0.0, 0.0, -1.0), ${radius});`,
+        );
+      // The threshold is a silhouette sine of 0.25, which at one unit is a radius
+      // of 0.25. These two straddle it.
+      const belowThreshold = shadedAtRadius("0.24");
+      const aboveThreshold = shadedAtRadius("0.26");
+      expect(belowThreshold).toBeGreaterThan(0);
+      // Area follows the radius squared, so 0.26 over 0.24 predicts 1.174.
+      const ratio = aboveThreshold / belowThreshold;
+      expect(ratio).toBeGreaterThan(1.08);
+      expect(ratio).toBeLessThan(1.28);
     });
   });
 });

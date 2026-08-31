@@ -15,9 +15,10 @@
  */
 
 /**
- * @file Small GLSL geometry helpers for ray casting.
+ * @file General GLSL algebra for ray casting against a quadric surface.
  *
- * `intersectRaycastCircle` is adapted from Inigo Quilez's sphere intersector
+ * `nearQuadraticRoot`, and the way callers form the coefficients they pass it, are
+ * adapted from Inigo Quilez's sphere intersector
  * (https://iquilezles.org/articles/intersectors/), MIT licensed:
  *
  *   The MIT License. Copyright (c) 2016 Inigo Quilez.
@@ -30,9 +31,11 @@
  *   notice and this permission notice shall be included in all copies or
  *   substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS".
  *
- * The hit test subtracts the perpendicular distance from the radius rather than
- * forming the original `c = dot(oc, oc) - r * r`. Neuroglancer models can sit far
- * from the origin, and the rearranged form never subtracts two large numbers.
+ * One change. A caller measures its parameter from the ray's closest approach to
+ * the surface's axis and subtracts the perpendicular distance from the radius,
+ * rather than forming the original `c = dot(oc, oc) - r * r`. Neuroglancer models
+ * can sit far from the origin, and the rearranged form never subtracts two large
+ * numbers.
  */
 
 export const glsl_splitAlongDirection = `
@@ -49,44 +52,30 @@ VectorSplit splitAlongDirection(highp vec3 vectorToSplit, highp vec3 unitDirecti
 }
 `;
 
-export const glsl_intersectRaycastCircle = `
-struct RaycastCircleHit {
-  bool hit;
-  // To the near crossing.
-  highp float distAlongRay;
-  // Hit point minus centre, not normalised.
-  highp vec3 normal;
+export const glsl_nearQuadraticRoot = `
+struct QuadraticNearRoot {
+  bool exists;
+  highp float value;
 };
 
-RaycastCircleHit raycastCircleMiss() {
-  RaycastCircleHit hit;
-  hit.hit = false;
-  return hit;
-}
-
-// Also a sphere test, when the vectors are not confined to one plane.
-RaycastCircleHit intersectRaycastCircle(highp vec3 centerToOrigin,
-                                        highp vec3 unitDirection,
-                                        highp float radius) {
-  VectorSplit originSplit = splitAlongDirection(centerToOrigin, unitDirection);
-  highp float radiusSq = radius * radius;
-  highp float perpendicularDistSq =
-      dot(originSplit.perpendicular, originSplit.perpendicular);
-
-  // Positive form so that a NaN falls through to the miss. IEEE floats guarantee
-  // that, GLSL ES does not, so this is defence and not a promise.
-  if (!(perpendicularDistSq <= radiusSq)) return raycastCircleMiss();
-
-  highp float halfChord = sqrt(radiusSq - perpendicularDistSq);
-  // Taking the far crossing instead would fill the view when the camera clips
-  // inside the geometry.
-  highp float distAlongRay = -originSplit.parallelDist - halfChord;
-  if (!(distAlongRay >= 0.0)) return raycastCircleMiss();
-
-  RaycastCircleHit hit;
-  hit.hit = true;
-  hit.distAlongRay = distAlongRay;
-  hit.normal = originSplit.perpendicular - halfChord * unitDirection;
-  return hit;
+// Smaller root of quadraticA * t^2 + 2 * quadraticB * t + quadraticC, for a
+// quadraticA above zero. quadraticB is half the linear coefficient, which is the
+// form a ray against a quadric produces and which keeps the discriminant free of a
+// factor of four.
+QuadraticNearRoot nearQuadraticRoot(highp float quadraticA, highp float quadraticB,
+                                    highp float quadraticC) {
+  highp float discriminant = quadraticB * quadraticB - quadraticA * quadraticC;
+  QuadraticNearRoot root;
+  // Positive form so that a NaN falls through to no root, and so that sqrt is
+  // never reached with a negative argument. IEEE floats guarantee the NaN half,
+  // GLSL ES does not, so that part is defence and not a promise.
+  if (!(discriminant >= 0.0)) {
+    root.exists = false;
+    root.value = 0.0;
+    return root;
+  }
+  root.exists = true;
+  root.value = (-quadraticB - sqrt(discriminant)) / quadraticA;
+  return root;
 }
 `;

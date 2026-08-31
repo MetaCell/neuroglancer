@@ -15,31 +15,33 @@
  */
 
 /**
- * @file Raycast tube drawn on a camera-facing quad. The vertex stage bounds the
- * tube with a quad and the fragment stage returns depth and a lighting factor.
+ * @file Raycast truncated cone drawn on a camera-facing quad. The vertex stage
+ * bounds the cone with a quad and the fragment stage returns depth and a lighting
+ * factor. Symbols below say cone for brevity; the surface is always the truncated
+ * one, and its ends are open.
  *
- * The radius is given at each end and runs linearly between them, so the surface
- * is a truncated cone. Equal radii give an exact cylinder. A tube sized for a
- * constant on-screen width needs the taper, because the far end of a receding tube
- * sits at a larger radius than the near end.
+ * The radius is given at each end and runs linearly between them. Equal radii give
+ * an exact cylinder, which is the common case. A cone sized for a constant
+ * on-screen width needs the taper, because the far end of a receding cone sits at a
+ * larger radius than the near end.
  *
- * The ends are open. Each end also takes a clip radius, which removes the part of
- * the surface that a primitive drawn at that end covers.
+ * Each end also takes a clip radius, which removes the part of the surface that a
+ * primitive drawn at that end covers.
  */
 
-import { defineRaycastPrimitiveCommon } from "#src/webgl/raycast_primitive.js";
+import { defineRaycastAxialObbQuad } from "#src/webgl/raycast_primitive.js";
 import type { ShaderBuilder } from "#src/webgl/shader.js";
 
-export function defineRaycastCylinderShader(builder: ShaderBuilder) {
-  defineRaycastPrimitiveCommon(builder);
-  builder.addVarying("highp vec3", "vCylinderEndpointA", "flat");
+export function defineRaycastConeShader(builder: ShaderBuilder) {
+  defineRaycastAxialObbQuad(builder);
+  builder.addVarying("highp vec3", "vConeEndpointA", "flat");
   // xyz: unit axis direction, w: axis length.
-  builder.addVarying("highp vec4", "vCylinderAxis", "flat");
+  builder.addVarying("highp vec4", "vConeAxis", "flat");
   // xy: surface radius at endpoint A and at endpoint B.
   // zw: clip radius at endpoint A and at endpoint B.
-  builder.addVarying("highp vec4", "vCylinderEndRadii", "flat");
+  builder.addVarying("highp vec4", "vConeEndRadii", "flat");
   builder.addVertexCode(`
-void emitRaycastCylinder(highp vec3 endpointA, highp vec3 endpointB,
+void emitRaycastCone(highp vec3 endpointA, highp vec3 endpointB,
                          highp float radiusA, highp float radiusB,
                          highp float clipRadiusA, highp float clipRadiusB) {
   highp float widestRadius = max(radiusA, radiusB);
@@ -49,12 +51,12 @@ void emitRaycastCylinder(highp vec3 endpointA, highp vec3 endpointB,
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     return;
   }
-  vCylinderEndpointA = endpointA;
-  vCylinderEndRadii = vec4(radiusA, radiusB, clipRadiusA, clipRadiusB);
+  vConeEndpointA = endpointA;
+  vConeEndRadii = vec4(radiusA, radiusB, clipRadiusA, clipRadiusB);
   highp vec3 axisVector = endpointB - endpointA;
   highp float axisLength = length(axisVector);
   highp vec3 axisDirection = axisLength > 1e-6 ? axisVector / axisLength : vec3(0.0, 1.0, 0.0);
-  vCylinderAxis = vec4(axisDirection, axisLength);
+  vConeAxis = vec4(axisDirection, axisLength);
 
   // Two perpendicular radius vectors spanning the widest cross-section. The
   // scale comes last: a zero radius would otherwise leave the second cross
@@ -72,33 +74,33 @@ void emitRaycastCylinder(highp vec3 endpointA, highp vec3 endpointB,
   builder.addFragmentCode(`
 // Where the surface point falls between the endpoints, 0.0 at A and 1.0 at B.
 // Only meaningful once intersectRaycastPrimitive has returned a hit.
-highp float raycastCylinderAxialFraction = 0.0;
+highp float raycastConeAxialFraction = 0.0;
 
 // A surface point sits one local radius from the axis, so its distance to an
 // endpoint follows from the axial distance alone.
-bool cylinderEndClipped(highp float axialDist, highp float radiusAtHit) {
-  highp float axialDistFromB = axialDist - vCylinderAxis.w;
+bool coneEndClipped(highp float axialDist, highp float radiusAtHit) {
+  highp float axialDistFromB = axialDist - vConeAxis.w;
   highp float radiusSq = radiusAtHit * radiusAtHit;
   return axialDist * axialDist + radiusSq
-             < vCylinderEndRadii.z * vCylinderEndRadii.z ||
+             < vConeEndRadii.z * vConeEndRadii.z ||
          axialDistFromB * axialDistFromB + radiusSq
-             < vCylinderEndRadii.w * vCylinderEndRadii.w;
+             < vConeEndRadii.w * vConeEndRadii.w;
 }
 
-// Across the axis the tube is a circle whose radius grows along the axis, so the
+// Across the axis the cone is a circle whose radius grows along the axis, so the
 // in-plane test is a quadratic rather than the fixed-radius circle the sphere uses.
 // Equal end radii leave the taper rate at zero, and this reduces to that circle.
 RaycastHit intersectRaycastPrimitive() {
   RaycastRay ray = getRaycastRayThroughFragment();
-  highp vec3 axisDirection = vCylinderAxis.xyz;
-  highp float axisLength = vCylinderAxis.w;
-  highp float radiusA = vCylinderEndRadii.x;
+  highp vec3 axisDirection = vConeAxis.xyz;
+  highp float axisLength = vConeAxis.w;
+  highp float radiusA = vConeEndRadii.x;
   highp float inverseAxisLength = axisLength > 0.0 ? 1.0 / axisLength : 0.0;
-  // Radius added per unit along the axis. Zero for a plain cylinder.
-  highp float taperRate = (vCylinderEndRadii.y - radiusA) * inverseAxisLength;
+  // Radius added per unit along the axis. Zero for an exact cylinder.
+  highp float taperRate = (vConeEndRadii.y - radiusA) * inverseAxisLength;
 
   VectorSplit originSplit =
-      splitAlongDirection(ray.origin - vCylinderEndpointA, axisDirection);
+      splitAlongDirection(ray.origin - vConeEndpointA, axisDirection);
   VectorSplit directionSplit = splitAlongDirection(ray.direction, axisDirection);
   highp float perpendicularSpeedSq =
       dot(directionSplit.perpendicular, directionSplit.perpendicular);
@@ -123,30 +125,28 @@ RaycastHit intersectRaycastPrimitive() {
   highp float radiusAtClosest = radiusA + taperRate *
       (originSplit.parallelDist + closestDist * directionSplit.parallelDist);
 
-  // Half the linear coefficient.
-  highp float quadraticB = -radiusAtClosest * radiusRate;
-  highp float quadraticC =
+  QuadraticNearRoot root = nearQuadraticRoot(
+      quadraticA,
+      -radiusAtClosest * radiusRate,
       dot(perpendicularAtClosest, perpendicularAtClosest)
-      - radiusAtClosest * radiusAtClosest;
-  highp float discriminant = quadraticB * quadraticB - quadraticA * quadraticC;
-  if (!(discriminant >= 0.0)) return raycastMiss();
+          - radiusAtClosest * radiusAtClosest);
+  if (!root.exists) return raycastMiss();
 
   // The near crossing. Taking the far one would fill the view from inside.
-  highp float hitDist =
-      closestDist + (-quadraticB - sqrt(discriminant)) / quadraticA;
+  highp float hitDist = closestDist + root.value;
   if (!(hitDist >= 0.0)) return raycastMiss();
 
-  // Along the axis the tube is an interval. That also holds the radius between the
+  // Along the axis the cone is an interval. That also holds the radius between the
   // two end radii, so a surface past a cone apex never draws.
   highp float axialDist =
       originSplit.parallelDist + hitDist * directionSplit.parallelDist;
   if (!(axialDist >= 0.0 && axialDist <= axisLength)) return raycastMiss();
   highp float radiusAtHit = radiusA + taperRate * axialDist;
-  if (cylinderEndClipped(axialDist, radiusAtHit)) return raycastMiss();
-  raycastCylinderAxialFraction = axialDist * inverseAxisLength;
+  if (coneEndClipped(axialDist, radiusAtHit)) return raycastMiss();
+  raycastConeAxialFraction = axialDist * inverseAxisLength;
 
   // The gradient of the surface equation. The axial term is what the taper adds,
-  // and it vanishes for a plain cylinder, leaving the radial direction.
+  // and it vanishes for an exact cylinder, leaving the radial direction.
   highp vec3 perpendicularAtHit =
       originSplit.perpendicular + hitDist * directionSplit.perpendicular;
   return makeRaycastHit(
