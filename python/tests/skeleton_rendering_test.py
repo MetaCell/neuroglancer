@@ -122,13 +122,13 @@ RENDER_MODES = [
     ("3d", "lines", FLAT),
     ("3d", "lines_and_points", FLAT),
     ("3d", "cylinders", LIT),
-    ("3d", "cylinders_and_spheres", LIT),
+    ("3d", "cylinders_and_balls", LIT),
 ]
 
 ENLARGED_PAIRS = [
     ("xy", "lines", "lines_and_points"),
     ("3d", "lines", "lines_and_points"),
-    ("3d", "cylinders", "cylinders_and_spheres"),
+    ("3d", "cylinders", "cylinders_and_balls"),
 ]
 
 

@@ -122,7 +122,7 @@ export enum SkeletonRenderMode3d {
   LINES = 0,
   LINES_AND_POINTS = 1,
   CYLINDERS = 2,
-  CYLINDERS_AND_SPHERES = 3,
+  CYLINDERS_AND_BALLS = 3,
 }
 
 export enum SkeletonRenderMode2d {
@@ -135,14 +135,14 @@ export type SkeletonRenderMode = SkeletonRenderMode2d | SkeletonRenderMode3d;
 function isRaycastMode(mode: SkeletonRenderMode) {
   return (
     mode === SkeletonRenderMode3d.CYLINDERS ||
-    mode === SkeletonRenderMode3d.CYLINDERS_AND_SPHERES
+    mode === SkeletonRenderMode3d.CYLINDERS_AND_BALLS
   );
 }
 
 function hasEnlargedNodes(mode: SkeletonRenderMode) {
   return (
     mode === SkeletonRenderMode3d.LINES_AND_POINTS ||
-    mode === SkeletonRenderMode3d.CYLINDERS_AND_SPHERES
+    mode === SkeletonRenderMode3d.CYLINDERS_AND_BALLS
   );
 }
 
@@ -259,7 +259,6 @@ highp vec3 vertexB = readAttribute0(aVertexIndex.y);
       builder.addUniform("highp float", "uEdgePixelRadius");
       builder.addUniform("highp mat4", "uModelToDisplay");
       vertexMain += `
-highp uint vertexIndex = aVertexIndex.x;
 highp vec3 displayVertexA = (uModelToDisplay * vec4(vertexA, 1.0)).xyz;
 highp vec3 displayVertexB = (uModelToDisplay * vec4(vertexB, 1.0)).xyz;
 highp float edgeRadius = getRaycastSegmentRadiusForPixels(
@@ -299,6 +298,7 @@ void emitDefault() {
       shaderBuilderState,
       vertexMain,
       useRaycast,
+      useRaycast ? "raycastCylinderAxialFraction" : undefined,
     );
   }
 
@@ -355,11 +355,16 @@ void emitDefault() {
     );
   }
 
+  // `edgeMixExpression` is set only where one draw covers a whole edge, as the
+  // cylinder does. A vertex attribute has a value at each end, and the expression
+  // gives where the fragment falls between them. Without it every fragment of an
+  // edge would read the same end.
   private finalizeShaderBuilder(
     builder: ShaderBuilder,
     shaderBuilderState: ShaderControlsBuilderState,
     vertexMain: string,
     useRaycast: boolean,
+    edgeMixExpression?: string,
   ) {
     if (shaderBuilderState.parseResult.errors.length !== 0) {
       throw new Error("Invalid UI control specification");
@@ -368,10 +373,30 @@ void emitDefault() {
     const { vertexAttributes } = this;
     for (let i = 1; i < vertexAttributes.length; ++i) {
       const info = vertexAttributes[i];
-      builder.addVarying(`highp ${info.glslDataType}`, `vCustom${i}`);
-      vertexMain += `vCustom${i} = readAttribute${i}(vertexIndex);\n`;
-      builder.addFragmentCode(`#define ${info.name} vCustom${i}\n`);
-      builder.addFragmentCode(`#define prop_${info.name}() vCustom${i}\n`);
+      let attributeExpression: string;
+      if (edgeMixExpression === undefined) {
+        builder.addVarying(`highp ${info.glslDataType}`, `vCustom${i}`);
+        vertexMain += `vCustom${i} = readAttribute${i}(vertexIndex);\n`;
+        attributeExpression = `vCustom${i}`;
+      } else {
+        builder.addVarying(
+          `highp ${info.glslDataType}`,
+          `vCustomA${i}`,
+          "flat",
+        );
+        builder.addVarying(
+          `highp ${info.glslDataType}`,
+          `vCustomB${i}`,
+          "flat",
+        );
+        vertexMain += `vCustomA${i} = readAttribute${i}(aVertexIndex.x);\n`;
+        vertexMain += `vCustomB${i} = readAttribute${i}(aVertexIndex.y);\n`;
+        attributeExpression = `mix(vCustomA${i}, vCustomB${i}, ${edgeMixExpression})`;
+      }
+      builder.addFragmentCode(`#define ${info.name} ${attributeExpression}\n`);
+      builder.addFragmentCode(
+        `#define prop_${info.name}() ${attributeExpression}\n`,
+      );
     }
     builder.setVertexMain(vertexMain);
     addControlsToBuilder(shaderBuilderState, builder);

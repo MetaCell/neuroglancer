@@ -54,6 +54,8 @@ void emitShaded() {
 const COVERAGE_VIEWPORT_SIZE = 64;
 const COVERAGE_NEAR_BOUND = 0.1;
 const COVERAGE_FAR_BOUND = 20;
+// Radius of the tube and ball that the shaded tests draw.
+const PRIMITIVE_TEST_RADIUS = "0.05";
 
 function renderPrimitive(
   gl: GL,
@@ -134,7 +136,8 @@ function cylinderCoverage(gl: GL, depth: number) {
     gl,
     defineRaycastCylinderShader,
     `emitRaycastCylinder(vec3(0.0, -0.3, ${depth.toFixed(4)}),
-                     vec3(0.0, 0.3, ${depth.toFixed(4)}), 0.05, 0.0, 0.0);`,
+                     vec3(0.0, 0.3, ${depth.toFixed(4)}),
+                     ${PRIMITIVE_TEST_RADIUS}, 0.0, 0.0);`,
   );
 }
 
@@ -142,7 +145,7 @@ function sphereCoverage(gl: GL, depth: number) {
   return measureQuadCoverage(
     gl,
     defineRaycastSphereShader,
-    `emitRaycastSphere(vec3(0.0, 0.0, ${depth.toFixed(4)}), 0.05);`,
+    `emitRaycastSphere(vec3(0.0, 0.0, ${depth.toFixed(4)}), ${PRIMITIVE_TEST_RADIUS});`,
   );
 }
 
@@ -208,31 +211,43 @@ describe("raycast primitives", () => {
     });
   });
 
+  // An upright tube one unit in front of the camera, shaded with the axial
+  // fraction. Endpoint A is the lower end, and readPixels returns rows bottom up,
+  // so the result runs from endpoint A to endpoint B. Values are 0 to 255.
+  function shadedCylinderAxialFractionByRow(
+    gl: GL,
+    clipRadiusA: number,
+    clipRadiusB: number,
+  ): number[] {
+    const size = COVERAGE_VIEWPORT_SIZE;
+    const pixels = renderPrimitive(
+      gl,
+      defineRaycastCylinderShader,
+      `emitRaycastCylinder(vec3(0.0, -0.3, -1.0), vec3(0.0, 0.3, -1.0),
+                     ${PRIMITIVE_TEST_RADIUS}, ${clipRadiusA.toFixed(4)},
+                     ${clipRadiusB.toFixed(4)});`,
+      glsl_raycastFragmentSetup +
+        "out_color = vec4(raycastCylinderAxialFraction, 1.0, 0.0, 1.0);\n",
+    );
+    const fractionByRow: number[] = [];
+    for (let row = 0; row < size; ++row) {
+      for (let column = 0; column < size; ++column) {
+        const offset = (row * size + column) * 4;
+        if (pixels[offset + 1] !== 0) {
+          fractionByRow.push(pixels[offset]);
+          break;
+        }
+      }
+    }
+    return fractionByRow;
+  }
+
   // A skeleton edge carries a vertex attribute at each end, and the consumer mixes
   // the two by this fraction. A constant value would colour a whole edge from one
   // endpoint, so the test checks that it runs the length of the tube.
   it("reports where a cylinder hit falls between the endpoints", () => {
     webglTest((gl) => {
-      const size = COVERAGE_VIEWPORT_SIZE;
-      const pixels = renderPrimitive(
-        gl,
-        defineRaycastCylinderShader,
-        `emitRaycastCylinder(vec3(0.0, -0.3, -1.0), vec3(0.0, 0.3, -1.0),
-                     0.05, 0.0, 0.0);`,
-        glsl_raycastFragmentSetup +
-          "out_color = vec4(raycastCylinderAxialFraction, 1.0, 0.0, 1.0);\n",
-      );
-      // Endpoint A is the lower end, and readPixels returns rows bottom up.
-      const fractionByRow: number[] = [];
-      for (let row = 0; row < size; ++row) {
-        for (let column = 0; column < size; ++column) {
-          const offset = (row * size + column) * 4;
-          if (pixels[offset + 1] !== 0) {
-            fractionByRow.push(pixels[offset]);
-            break;
-          }
-        }
-      }
+      const fractionByRow = shadedCylinderAxialFractionByRow(gl, 0, 0);
       expect(fractionByRow.length).toBeGreaterThan(8);
       const [first, last] = [fractionByRow[0], fractionByRow.at(-1)!];
       expect(first).toBeLessThan(16);
@@ -240,6 +255,23 @@ describe("raycast primitives", () => {
       for (let i = 1; i < fractionByRow.length; ++i) {
         expect(fractionByRow[i]).toBeGreaterThanOrEqual(fractionByRow[i - 1]);
       }
+    });
+  });
+
+  // The clip radius hands the region around a joint to the ball drawn there. The
+  // surface sits one radius from the axis, so a clip radius of 0.15 reaches
+  // sqrt(0.15^2 - 0.05^2) = 0.1414 along a 0.6 long axis: the lowest 23.6 percent.
+  it("clips the cylinder surface around an endpoint", () => {
+    webglTest((gl) => {
+      const clipped = shadedCylinderAxialFractionByRow(gl, 0.15, 0);
+      expect(clipped.length).toBeGreaterThan(8);
+      // 0.236 of the way along, as a 0-to-255 value, is 60.
+      expect(clipped[0]).toBeGreaterThan(45);
+      expect(clipped[0]).toBeLessThan(78);
+      expect(clipped.at(-1)!).toBeGreaterThan(239);
+      // A clip radius under the tube radius cannot reach the surface at all.
+      const unreachable = shadedCylinderAxialFractionByRow(gl, 0.04, 0);
+      expect(unreachable).toEqual(shadedCylinderAxialFractionByRow(gl, 0, 0));
     });
   });
 

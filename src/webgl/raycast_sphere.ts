@@ -24,8 +24,8 @@ import type { ShaderBuilder } from "#src/webgl/shader.js";
 
 export function defineRaycastSphereShader(builder: ShaderBuilder) {
   defineRaycastPrimitiveCommon(builder);
-  builder.addVarying("highp vec3", "vSphereCenter", "flat");
-  builder.addVarying("highp float", "vSphereRadius", "flat");
+  // xyz: center, w: radius.
+  builder.addVarying("highp vec4", "vSphere", "flat");
   builder.addVertexCode(`
 void emitRaycastSphere(highp vec3 center, highp float radius) {
   // No radius, no surface to hit. A node behind the eye reaches this every frame.
@@ -34,8 +34,7 @@ void emitRaycastSphere(highp vec3 center, highp float radius) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     return;
   }
-  vSphereCenter = center;
-  vSphereRadius = radius;
+  vSphere = vec4(center, radius);
   emitRaycastAabbQuad(center, vec3(radius));
 }
 `);
@@ -43,7 +42,7 @@ void emitRaycastSphere(highp vec3 center, highp float radius) {
 RaycastHit intersectRaycastPrimitive() {
   RaycastRay ray = getRaycastRayThroughFragment();
   RaycastCircleHit circleHit = intersectRaycastCircle(
-      ray.origin - vSphereCenter, ray.direction, vSphereRadius);
+      ray.origin - vSphere.xyz, ray.direction, vSphere.w);
   if (!circleHit.hit) return raycastMiss();
   return makeRaycastHit(ray.origin + circleHit.distAlongRay * ray.direction,
                         circleHit.normal);
