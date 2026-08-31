@@ -68,7 +68,7 @@ import type { WatchableShaderError } from "#src/webgl/dynamic_shader.js";
 import {
   makeTrackableFragmentMain,
   parameterizedEmitterDependentShaderGetter,
-  shaderCodeWithLineDirective,
+  wrapUserShaderMain,
 } from "#src/webgl/dynamic_shader.js";
 import {
   defineLineShader,
@@ -144,6 +144,14 @@ function hasEnlargedNodes(mode: SkeletonRenderMode) {
     mode === SkeletonRenderMode3d.LINES_AND_POINTS ||
     mode === SkeletonRenderMode3d.CYLINDERS_AND_BALLS
   );
+}
+
+// One skeleton that is ready to draw, with what both passes need to draw it. The
+// records are pooled across frames, so a steady view allocates nothing.
+interface VisibleSkeletonToDraw {
+  skeleton: SkeletonChunk;
+  pickIndex: number;
+  readonly color: Float32Array;
 }
 
 interface VertexAttributeRenderInfo extends VertexAttributeInfo {
@@ -404,9 +412,7 @@ void emitDefault() {
     // Run our main before user main to discard early
     builder.addFragmentCode("void userMain();\n");
     builder.addFragmentCode(
-      "\n#define main userMain\n" +
-        shaderCodeWithLineDirective(shaderBuilderState.parseResult.code) +
-        "\n#undef main\n",
+      wrapUserShaderMain(shaderBuilderState.parseResult.code),
     );
     builder.setFragmentMain(
       (useRaycast ? glsl_raycastFragmentSetup : "") + "userMain();",
@@ -738,6 +744,8 @@ export class SkeletonLayer extends RefCounted {
   fallbackShaderParameters = new WatchableValue(
     getFallbackBuilderState(parseShaderUiControls(DEFAULT_FRAGMENT_MAIN)),
   );
+  private readonly visibleSkeletons: VisibleSkeletonToDraw[] = [];
+  private visibleSkeletonCount = 0;
 
   get visibility() {
     return this.sharedObject.visibility;
@@ -835,6 +843,8 @@ export class SkeletonLayer extends RefCounted {
     const { shaderControlState } = this.displayState.skeletonRenderingOptions;
     const { projectionParameters } = renderContext;
 
+    this.collectVisibleSkeletons(layer, renderContext);
+
     edgeShader.bind();
     renderHelper.beginLayer(gl, edgeShader, renderContext, modelMatrix);
     setControlsInShader(
@@ -851,7 +861,7 @@ export class SkeletonLayer extends RefCounted {
       nodeDiameter,
     );
     const aVertexIndex = renderHelper.beginEdges(edgeShader);
-    this.drawPass(layer, renderContext, renderHelper, edgeShader, (skeleton) =>
+    this.drawPass(renderContext, renderHelper, edgeShader, (skeleton) =>
       renderHelper.drawEdges(gl, edgeShader, aVertexIndex, skeleton),
     );
     renderHelper.endEdges(aVertexIndex);
@@ -870,46 +880,72 @@ export class SkeletonLayer extends RefCounted {
       shaderControlState,
       nodeShaderParameters.parseResult,
     );
-    this.drawPass(layer, renderContext, renderHelper, nodeShader, (skeleton) =>
+    this.drawPass(renderContext, renderHelper, nodeShader, (skeleton) =>
       renderHelper.drawNodes(gl, nodeShader, skeleton),
     );
 
     renderHelper.endLayer(gl, edgeShader, nodeShader);
   }
 
-  // Each pass registers pick IDs again, so a segment ends up with one ID for its
-  // edges and another for its nodes.  Both map to that segment, so picking is
-  // unaffected.
-  private drawPass(
+  // Walks the visible segments once for both passes. Doing it per pass would run
+  // the walk, the color lookup and the pick ID registration twice per segment, and
+  // would give a segment two pick IDs.
+  private collectVisibleSkeletons(
     layer: RenderLayer,
     renderContext: SliceViewPanelRenderContext | PerspectiveViewRenderContext,
-    renderHelper: RenderHelper,
-    shader: ShaderProgram,
-    drawChunk: (skeleton: SkeletonChunk) => void,
   ) {
-    const { gl, displayState } = this;
+    const { displayState, visibleSkeletons } = this;
     const skeletons = this.source.chunks;
+    let count = 0;
     forEachVisibleSegmentToDraw(
       displayState,
       layer,
       renderContext.emitColor,
       renderContext.emitPickID ? renderContext.pickIDs : undefined,
       (objectId, color, pickIndex) => {
-        const key = getObjectKey(objectId);
-        const skeleton = skeletons.get(key);
+        const skeleton = skeletons.get(getObjectKey(objectId));
         if (
           skeleton === undefined ||
           skeleton.state !== ChunkState.GPU_MEMORY
         ) {
           return;
         }
-        if (color !== undefined) renderHelper.setColor(gl, shader, color);
-        if (pickIndex !== undefined) {
-          renderHelper.setPickID(gl, shader, pickIndex);
+        let entry = visibleSkeletons[count];
+        if (entry === undefined) {
+          entry = visibleSkeletons[count] = {
+            skeleton,
+            pickIndex: 0,
+            color: new Float32Array(4),
+          };
         }
-        drawChunk(skeleton);
+        entry.skeleton = skeleton;
+        entry.pickIndex = pickIndex ?? 0;
+        // getObjectColor hands back a shared temporary, so this has to be a copy.
+        if (color !== undefined) entry.color.set(color);
+        ++count;
       },
     );
+    // A no-op while the count holds steady. On a drop it releases the records, so
+    // the pool cannot keep a skeleton alive after it leaves the view.
+    visibleSkeletons.length = count;
+    this.visibleSkeletonCount = count;
+  }
+
+  private drawPass(
+    renderContext: SliceViewPanelRenderContext | PerspectiveViewRenderContext,
+    renderHelper: RenderHelper,
+    shader: ShaderProgram,
+    drawChunk: (skeleton: SkeletonChunk) => void,
+  ) {
+    const { gl, visibleSkeletons, visibleSkeletonCount } = this;
+    // Both are decided per frame, not per segment.
+    const { emitColor, emitPickID } = renderContext;
+    for (let i = 0; i < visibleSkeletonCount; ++i) {
+      const entry = visibleSkeletons[i];
+      if (emitColor) renderHelper.setColor(gl, shader, entry.color);
+      if (emitPickID) renderHelper.setPickID(gl, shader, entry.pickIndex);
+      drawChunk(entry.skeleton);
+    }
   }
 
   isReady() {
