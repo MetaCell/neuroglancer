@@ -47,9 +47,10 @@ export function defineLineShader(
   // max(1e-6, featherWidth) / (lineWidth + featherWidth)
   builder.addVarying("highp float", "vLineFeatherFraction");
   if (endpointClipping) {
-    builder.addVarying("highp float", "vLineOffsetX");
-    builder.addVarying("highp float", "vLineLengthInPixels", "flat");
-    builder.addVarying("highp float", "vLineHalfWidthInPixels", "flat");
+    // Window coordinates, matching gl_FragCoord.xy, of the endpoints as given.
+    // Depth clipping moves the drawn ends, so these are taken before it.
+    // xy: endpoint A, zw: endpoint B.
+    builder.addVarying("highp vec4", "vLineEndpointsWindow", "flat");
     builder.addVarying("highp float", "vLineEndpointClipRadius", "flat");
   }
   if (rounded) {
@@ -61,12 +62,29 @@ export function defineLineShader(
   }
   builder.addVertexCode(glsl_clipLineToDepthRange);
   builder.addVertexCode(`
+${
+  endpointClipping
+    ? `// Far off screen for a point at or behind the eye, which has no window position
+// and so no clip disc to draw.
+highp vec2 lineClipToWindow(vec4 clip) {
+  if (!(clip.w > 0.0)) return vec2(-1e6);
+  return (clip.xy / clip.w * 0.5 + 0.5) / uLineParams.xy;
+}`
+    : ""
+}
 vec2 getLineOffset() { return getQuadVertexPosition(vec2(0.0, -1.0), vec2(1.0, 1.0)); }
 float getLineEndpointCoefficient() { return getLineOffset().x; }
 uint getLineEndpointIndex() { return uint(getLineEndpointCoefficient()); }
 void emitLine(vec4 vertexAClip, vec4 vertexBClip, float lineWidthInPixels
               ${rounded ? ", float borderWidth" : ""}
               ${endpointClipping ? ", float endpointClipRadiusInPixels" : ""}) {
+  ${
+    endpointClipping
+      ? `vLineEndpointsWindow = vec4(lineClipToWindow(vertexAClip),
+                              lineClipToWindow(vertexBClip));
+  vLineEndpointClipRadius = endpointClipRadiusInPixels;`
+      : ""
+  }
   if (!clipLineToDepthRange(vertexAClip, vertexBClip)) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     return;
@@ -101,14 +119,6 @@ void emitLine(vec4 vertexAClip, vec4 vertexBClip, float lineWidthInPixels
                      })
                   * totalLineWidth * uLineParams.xy;
   vLineCoord = lineOffset.y;
-  ${
-    endpointClipping
-      ? `vLineOffsetX = lineOffset.x;
-  vLineLengthInPixels = linePixelLength;
-  vLineHalfWidthInPixels = totalLineWidth * 0.5;
-  vLineEndpointClipRadius = endpointClipRadiusInPixels;`
-      : ""
-  }
   ${
     rounded
       ? "vEndpointFraction = totalLineWidth / (linePixelLength + totalLineWidth * 2.0);"
@@ -155,9 +165,8 @@ float getLineAlpha() {
   ${
     endpointClipping
       ? `if (vLineEndpointClipRadius > 0.0) {
-    float offsetY = vLineCoord * vLineHalfWidthInPixels;
-    float distFromA = length(vec2(vLineOffsetX * vLineLengthInPixels, offsetY));
-    float distFromB = length(vec2((1.0 - vLineOffsetX) * vLineLengthInPixels, offsetY));
+    float distFromA = distance(gl_FragCoord.xy, vLineEndpointsWindow.xy);
+    float distFromB = distance(gl_FragCoord.xy, vLineEndpointsWindow.zw);
     if (min(distFromA, distFromB) < vLineEndpointClipRadius) discard;
   }`
       : ""
