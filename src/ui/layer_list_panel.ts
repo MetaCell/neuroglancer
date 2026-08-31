@@ -25,6 +25,7 @@ import type {
 } from "#src/layer/index.js";
 import { deleteLayer } from "#src/layer/index.js";
 import { TrackableBooleanCheckbox } from "#src/trackable_boolean.js";
+import type { WatchableValueInterface } from "#src/trackable_value.js";
 import type { DropLayers } from "#src/ui/layer_drag_and_drop.js";
 import {
   registerLayerBarDragLeaveHandler,
@@ -338,11 +339,34 @@ export class LayerListPanel extends SidePanel {
     sidePanelManager: SidePanelManager,
     public manager: TopLevelLayerListSpecification,
     public state: LayerListPanelState,
+    public layerPanelVisibility: WatchableValueInterface<boolean>,
+    public showLayerPanel?: WatchableValueInterface<boolean>,
   ) {
     super(sidePanelManager, state.location);
     const { itemContainer, layerDropZone } = this;
-    const { titleElement } = this.addTitleBar({ title: "" });
+    const { titleElement, titleBar } = this.addTitleBar({ title: "" });
     this.titleElement = titleElement!;
+
+    // Add layer panel toggle button to title bar.
+    if (showLayerPanel !== undefined) {
+      const toggleButton = new CheckboxIcon(this.layerPanelVisibility, {
+        svg: svg_eye,
+        backgroundScheme: "dark",
+        enableTitle: "Show layer panel",
+        disableTitle: "Hide layer panel",
+      });
+      toggleButton.element.style.order = "50"; // Position before close button (order: 100)
+      titleBar.appendChild(toggleButton.element);
+      this.registerDisposer(toggleButton);
+
+      // The toggle is only meaningful while the configuration permits the
+      // panel, so track the configuration rather than sampling it once.
+      const updateToggleVisibility = () => {
+        toggleButton.element.style.display = showLayerPanel.value ? "" : "none";
+      };
+      this.registerDisposer(showLayerPanel.changed.add(updateToggleVisibility));
+      updateToggleVisibility();
+    }
     itemContainer.classList.add("neuroglancer-layer-list-panel-items");
     this.addBody(itemContainer);
     layerDropZone.style.flex = "1";
