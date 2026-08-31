@@ -38,6 +38,15 @@ export function defineLineShader(
   rounded = false,
   endpointClipping = false,
 ) {
+  // A rounded line takes its alpha from getRoundedLineColor and never calls
+  // getLineAlpha, where the clip lives. Supporting both would mean a second
+  // discard site that no caller exercises, so reject the pair instead of
+  // ignoring the clip radius without a word.
+  if (rounded && endpointClipping) {
+    throw new Error(
+      "defineLineShader does not support endpoint clipping on rounded lines.",
+    );
+  }
   builder.addVertexCode(glsl_getQuadVertexPosition);
   // x: 1 / viewportWidth
   // y: 1 / viewportHeight
