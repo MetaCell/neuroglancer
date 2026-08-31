@@ -55,22 +55,19 @@ const COVERAGE_VIEWPORT_SIZE = 64;
 const COVERAGE_NEAR_BOUND = 0.1;
 const COVERAGE_FAR_BOUND = 20;
 
-// Fraction of the viewport that the bounding quad rasterises.  The fragment
-// shader writes unconditionally, so this measures the vertex stage: an
-// out-of-range quad is counted here but discarded by the real shader, making it
-// invisible to any test of the shaded result.
-function measureQuadCoverage(
+function renderPrimitive(
   gl: GL,
   definePrimitive: (builder: ShaderBuilder) => void,
   emitPrimitive: string,
-): number {
+  fragmentMain: string,
+): Uint8Array {
   const size = COVERAGE_VIEWPORT_SIZE;
   const builder = new ShaderBuilder(gl);
   builder.addOutputBuffer("vec4", "out_color", 0);
   defineVertexId(builder);
   definePrimitive(builder);
   builder.setVertexMain(emitPrimitive);
-  builder.setFragmentMain("out_color = vec4(1.0, 1.0, 1.0, 1.0);\n");
+  builder.setFragmentMain(fragmentMain);
   const shader = builder.build();
   const vertexIdHelper = VertexIdHelper.get(gl);
   try {
@@ -101,15 +98,34 @@ function measureQuadCoverage(
       WebGL2RenderingContext.UNSIGNED_BYTE,
       pixels,
     );
-    let covered = 0;
-    for (let i = 0; i < size * size; ++i) {
-      if (pixels[i * 4] !== 0) ++covered;
-    }
-    return covered / (size * size);
+    return pixels;
   } finally {
     vertexIdHelper.disable();
     shader.dispose();
   }
+}
+
+// Fraction of the viewport that the bounding quad rasterises.  The fragment
+// shader writes unconditionally, so this measures the vertex stage: an
+// out-of-range quad is counted here but discarded by the real shader, making it
+// invisible to any test of the shaded result.
+function measureQuadCoverage(
+  gl: GL,
+  definePrimitive: (builder: ShaderBuilder) => void,
+  emitPrimitive: string,
+): number {
+  const pixels = renderPrimitive(
+    gl,
+    definePrimitive,
+    emitPrimitive,
+    "out_color = vec4(1.0, 1.0, 1.0, 1.0);\n",
+  );
+  const size = COVERAGE_VIEWPORT_SIZE;
+  let covered = 0;
+  for (let i = 0; i < size * size; ++i) {
+    if (pixels[i * 4] !== 0) ++covered;
+  }
+  return covered / (size * size);
 }
 
 // `depth` is the raycast-space z, negative for in front of the camera.
@@ -189,6 +205,65 @@ describe("raycast primitives", () => {
       );
       expect(atNearEndpoint).toBeGreaterThan(0.25);
       expect(atNearEndpoint).toBeLessThan(1);
+    });
+  });
+
+  // A skeleton edge carries a vertex attribute at each end, and the consumer mixes
+  // the two by this fraction. A constant value would colour a whole edge from one
+  // endpoint, so the test checks that it runs the length of the tube.
+  it("reports where a cylinder hit falls between the endpoints", () => {
+    webglTest((gl) => {
+      const size = COVERAGE_VIEWPORT_SIZE;
+      const pixels = renderPrimitive(
+        gl,
+        defineRaycastCylinderShader,
+        `emitRaycastCylinder(vec3(0.0, -0.3, -1.0), vec3(0.0, 0.3, -1.0),
+                     0.05, 0.0, 0.0);`,
+        glsl_raycastFragmentSetup +
+          "out_color = vec4(raycastCylinderAxialFraction, 1.0, 0.0, 1.0);\n",
+      );
+      // Endpoint A is the lower end, and readPixels returns rows bottom up.
+      const fractionByRow: number[] = [];
+      for (let row = 0; row < size; ++row) {
+        for (let column = 0; column < size; ++column) {
+          const offset = (row * size + column) * 4;
+          if (pixels[offset + 1] !== 0) {
+            fractionByRow.push(pixels[offset]);
+            break;
+          }
+        }
+      }
+      expect(fractionByRow.length).toBeGreaterThan(8);
+      const [first, last] = [fractionByRow[0], fractionByRow.at(-1)!];
+      expect(first).toBeLessThan(16);
+      expect(last).toBeGreaterThan(239);
+      for (let i = 1; i < fractionByRow.length; ++i) {
+        expect(fractionByRow[i]).toBeGreaterThanOrEqual(fractionByRow[i - 1]);
+      }
+    });
+  });
+
+  // A radius of zero has no surface for the fragment shader to hit, and reaching
+  // the quad emitters with one leaves the radius vectors degenerate. Both radius
+  // helpers return zero for a point at or behind the eye, so this runs every frame
+  // on any skeleton with geometry behind the camera.
+  it("culls a zero-radius primitive", () => {
+    webglTest((gl) => {
+      expect(
+        measureQuadCoverage(
+          gl,
+          defineRaycastCylinderShader,
+          `emitRaycastCylinder(vec3(0.0, -0.3, -1.0), vec3(0.0, 0.3, -1.0),
+                     0.0, 0.0, 0.0);`,
+        ),
+      ).toBe(0);
+      expect(
+        measureQuadCoverage(
+          gl,
+          defineRaycastSphereShader,
+          "emitRaycastSphere(vec3(0.0, 0.0, -1.0), 0.0);",
+        ),
+      ).toBe(0);
     });
   });
 

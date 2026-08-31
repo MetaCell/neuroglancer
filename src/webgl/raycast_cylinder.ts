@@ -38,6 +38,12 @@ export function defineRaycastCylinderShader(builder: ShaderBuilder) {
 void emitRaycastCylinder(highp vec3 endpointA, highp vec3 endpointB,
                          highp float radius,
                          highp float clipRadiusA, highp float clipRadiusB) {
+  // No radius, no surface to hit. A segment with both endpoints behind the eye
+  // reaches this every frame. Positive form, so a non-finite radius culls too.
+  if (!(radius > 0.0)) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    return;
+  }
   vCylinderEndpointA = endpointA;
   vCylinderEndpointB = endpointB;
   vCylinderRadius = radius;
