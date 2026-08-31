@@ -182,10 +182,10 @@ void emitRaycastAxialObbQuad(highp vec3 endpointA, highp vec3 endpointB,
   highp float axisLengthPixels = length(axisPixels);
   highp vec2 alongDirection =
       axisLengthPixels > 1e-3 ? axisPixels / axisLengthPixels : vec2(1.0, 0.0);
-  highp vec2 perpDirection = vec2(-alongDirection.y, alongDirection.x);
+  highp vec2 perpendicularDirection = vec2(-alongDirection.y, alongDirection.x);
   highp vec2 pixelCenter = (pixelsA + pixelsB) * 0.5;
   highp float halfAlongPixels = 0.0;
-  highp float halfPerpPixels = 0.0;
+  highp float halfPerpendicularPixels = 0.0;
   highp float ndcNearZ = 1.0;
 
   for (int corner = 0; corner < 8; ++corner) {
@@ -194,14 +194,14 @@ void emitRaycastAxialObbQuad(highp vec3 endpointA, highp vec3 endpointB,
         + ((corner & 4) == 0 ? -clipVectorB : clipVectorB);
     highp vec2 offset = raycastClipToPixels(clip) - pixelCenter;
     halfAlongPixels = max(halfAlongPixels, abs(dot(offset, alongDirection)));
-    halfPerpPixels = max(halfPerpPixels, abs(dot(offset, perpDirection)));
+    halfPerpendicularPixels = max(halfPerpendicularPixels, abs(dot(offset, perpendicularDirection)));
     ndcNearZ = min(ndcNearZ, clamp(clip.z / clip.w, -1.0, 1.0));
   }
 
   // The corner bound is exact. One pixel covers numerical error.
   highp vec2 pixels = pixelCenter
       + alongDirection * (quadCoefficient.x * (halfAlongPixels + 1.0))
-      + perpDirection * (quadCoefficient.y * (halfPerpPixels + 1.0));
+      + perpendicularDirection * (quadCoefficient.y * (halfPerpendicularPixels + 1.0));
   gl_Position = vec4(pixels * 2.0 / uViewportSize, ndcNearZ, 1.0);
 }
 `;
