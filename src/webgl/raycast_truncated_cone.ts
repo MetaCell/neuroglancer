@@ -16,8 +16,7 @@
 
 /**
  * @file Raycast truncated cone drawn on a camera-facing quad. Symbols below say
- * cone for brevity. The surface is always the truncated one, and its ends are
- * open.
+ * cone for brevity. The surface is always the truncated one, and its ends are open.
  *
  * The radius is given at each end and runs linearly between them, and equal radii
  * give an exact cylinder. A cone sized for a constant on-screen width needs the
@@ -31,18 +30,16 @@
 import { defineRaycastAxialObbQuad } from "#src/webgl/raycast_primitive.js";
 import type { ShaderBuilder } from "#src/webgl/shader.js";
 
-export function defineRaycastConeShader(builder: ShaderBuilder) {
-  defineRaycastAxialObbQuad(builder);
-  builder.addVarying("highp vec3", "vConeEndpointA", "flat");
-  // xyz: unit axis direction, w: axis length.
-  builder.addVarying("highp vec4", "vConeAxis", "flat");
-  // xy: surface radius at endpoint A and at endpoint B.
-  // zw: clip radius at endpoint A and at endpoint B.
-  builder.addVarying("highp vec4", "vConeEndRadii", "flat");
-  builder.addVertexCode(`
+// Scaling the two radius vectors comes last. Scaling before the second cross
+// product would normalise the zero vector when a radius is zero, which GLSL ES
+// leaves undefined. The second product is already unit length, being the cross of
+// two perpendicular unit vectors.
+//
+// The bound uses the wider of the two radii, which covers the whole surface.
+const glsl_emitRaycastCone = `
 void emitRaycastCone(highp vec3 endpointA, highp vec3 endpointB,
-                         highp float radiusA, highp float radiusB,
-                         highp float clipRadiusA, highp float clipRadiusB) {
+                     highp float radiusA, highp float radiusB,
+                     highp float clipRadiusA, highp float clipRadiusB) {
   highp float widestRadius = max(radiusA, radiusB);
   // A segment with both endpoints behind the eye is given zero radii, so this runs
   // every frame. Positive form, so a non-finite radius culls too.
@@ -54,28 +51,23 @@ void emitRaycastCone(highp vec3 endpointA, highp vec3 endpointB,
   vConeEndRadii = vec4(radiusA, radiusB, clipRadiusA, clipRadiusB);
   highp vec3 axisVector = endpointB - endpointA;
   highp float axisLength = length(axisVector);
-  highp vec3 axisDirection = axisLength > 1e-6 ? axisVector / axisLength : vec3(0.0, 1.0, 0.0);
-  vConeAxis = vec4(axisDirection, axisLength);
+  highp vec3 axisDir =
+      axisLength > 1e-6 ? axisVector / axisLength : vec3(0.0, 1.0, 0.0);
+  vConeAxis = vec4(axisDir, axisLength);
 
-  // Scaling before the second cross product would normalise the zero vector when a
-  // radius is zero, which GLSL ES leaves undefined.
   highp vec3 offAxisVector =
-      abs(axisDirection.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
-  highp vec3 unitRadiusA = normalize(cross(offAxisVector, axisDirection));
-  // Already unit length, being the cross product of two perpendicular unit vectors.
-  highp vec3 unitRadiusB = cross(axisDirection, unitRadiusA);
+      abs(axisDir.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+  highp vec3 unitRadiusA = normalize(cross(offAxisVector, axisDir));
+  highp vec3 unitRadiusB = cross(axisDir, unitRadiusA);
   emitRaycastAxialObbQuad(endpointA, endpointB,
                           unitRadiusA * widestRadius,
                           unitRadiusB * widestRadius);
 }
-`);
-  builder.addFragmentCode(`
-// 0.0 at endpoint A and 1.0 at endpoint B. Only meaningful once
-// intersectRaycastPrimitive has returned a hit.
-highp float raycastConeAxialFraction = 0.0;
+`;
 
 // A surface point sits one local radius from the axis, so its distance to an
 // endpoint follows from the axial distance alone.
+const glsl_coneEndClipped = `
 bool coneEndClipped(highp float axialDist, highp float radiusAtHit) {
   highp float axialDistFromB = axialDist - vConeAxis.w;
   highp float radiusSq = radiusAtHit * radiusAtHit;
@@ -84,68 +76,79 @@ bool coneEndClipped(highp float axialDist, highp float radiusAtHit) {
          axialDistFromB * axialDistFromB + radiusSq
              < vConeEndRadii.w * vConeEndRadii.w;
 }
+`;
 
 // Across the axis the cone is a circle whose radius grows along the axis, so the
 // in-plane test is a quadratic rather than a fixed-radius circle.
+//
+// quadraticA is zero for a ray along the axis, which never meets the surface, and
+// negative for a ray inside the taper angle, where the near root lies past the
+// apex. Above zero it also puts perpSpeedSq there, which guards the divides after
+// it.
+//
+// The quadratic is measured from the ray's closest approach to the axis, so that
+// its constant term is a difference of two small numbers. The near root is the one
+// taken. The far one would fill the view from inside.
+//
+// The interval test also holds the radius between the two end radii, so a surface
+// past a cone apex never draws. The normal is the gradient of the surface equation,
+// whose axial term is what the taper adds.
+const glsl_intersectRaycastCone = `
+highp float raycastConeAxialFraction = 0.0;
+
 RaycastHit intersectRaycastPrimitive() {
   RaycastRay ray = getRaycastRayThroughFragment();
-  highp vec3 axisDirection = vConeAxis.xyz;
+  highp vec3 axisDir = vConeAxis.xyz;
   highp float axisLength = vConeAxis.w;
   highp float radiusA = vConeEndRadii.x;
   highp float inverseAxisLength = axisLength > 0.0 ? 1.0 / axisLength : 0.0;
-  // Radius added per unit along the axis.
   highp float taperRate = (vConeEndRadii.y - radiusA) * inverseAxisLength;
 
-  VectorSplit originSplit =
-      splitAlongDirection(ray.origin - vConeEndpointA, axisDirection);
-  VectorSplit directionSplit = splitAlongDirection(ray.direction, axisDirection);
-  highp float perpendicularSpeedSq =
-      dot(directionSplit.perpendicular, directionSplit.perpendicular);
-  // Radius added per unit along the ray.
-  highp float radiusRate = taperRate * directionSplit.parallelDist;
+  VectorSplit originSplit = splitAlongDir(ray.origin - vConeEndpointA, axisDir);
+  VectorSplit dirSplit = splitAlongDir(ray.direction, axisDir);
+  highp float perpSpeedSq = dot(dirSplit.perp, dirSplit.perp);
+  highp float radiusRate = taperRate * dirSplit.parallelDist;
 
-  // Zero for a ray along the axis, which never meets the surface. Negative for a
-  // ray inside the taper angle, where the near crossing lies past the apex. Above
-  // zero it also puts perpendicularSpeedSq there, guarding the divides below.
-  highp float quadraticA = perpendicularSpeedSq - radiusRate * radiusRate;
+  highp float quadraticA = perpSpeedSq - radiusRate * radiusRate;
   if (!(quadraticA > 0.0)) return raycastMiss();
 
-  // The quadratic below is measured from here, so that its constant term is a
-  // difference of two small numbers.
-  highp float closestDist =
-      -dot(originSplit.perpendicular, directionSplit.perpendicular)
-      / perpendicularSpeedSq;
-  highp vec3 perpendicularAtClosest =
-      originSplit.perpendicular + closestDist * directionSplit.perpendicular;
+  highp float closestDist = -dot(originSplit.perp, dirSplit.perp) / perpSpeedSq;
+  highp vec3 perpAtClosest = originSplit.perp + closestDist * dirSplit.perp;
   highp float radiusAtClosest = radiusA + taperRate *
-      (originSplit.parallelDist + closestDist * directionSplit.parallelDist);
+      (originSplit.parallelDist + closestDist * dirSplit.parallelDist);
 
-  QuadraticNearRoot root = nearQuadraticRoot(
+  QuadraticRoots roots = solveQuadratic(
       quadraticA,
       -radiusAtClosest * radiusRate,
-      dot(perpendicularAtClosest, perpendicularAtClosest)
-          - radiusAtClosest * radiusAtClosest);
-  if (!root.exists) return raycastMiss();
+      dot(perpAtClosest, perpAtClosest) - radiusAtClosest * radiusAtClosest);
+  if (!roots.exist) return raycastMiss();
 
-  // The near crossing. Taking the far one would fill the view from inside.
-  highp float hitDist = closestDist + root.value;
+  highp float hitDist = closestDist + roots.nearRoot;
   if (!(hitDist >= 0.0)) return raycastMiss();
 
-  // The interval test also holds the radius between the two end radii, so a
-  // surface past a cone apex never draws.
   highp float axialDist =
-      originSplit.parallelDist + hitDist * directionSplit.parallelDist;
+      originSplit.parallelDist + hitDist * dirSplit.parallelDist;
   if (!(axialDist >= 0.0 && axialDist <= axisLength)) return raycastMiss();
   highp float radiusAtHit = radiusA + taperRate * axialDist;
   if (coneEndClipped(axialDist, radiusAtHit)) return raycastMiss();
   raycastConeAxialFraction = axialDist * inverseAxisLength;
 
-  // The gradient of the surface equation. The axial term is what the taper adds.
-  highp vec3 perpendicularAtHit =
-      originSplit.perpendicular + hitDist * directionSplit.perpendicular;
+  highp vec3 perpAtHit = originSplit.perp + hitDist * dirSplit.perp;
   return makeRaycastHit(
       ray.origin + hitDist * ray.direction,
-      perpendicularAtHit - radiusAtHit * taperRate * axisDirection);
+      perpAtHit - radiusAtHit * taperRate * axisDir);
 }
-`);
+`;
+
+export function defineRaycastConeShader(builder: ShaderBuilder) {
+  defineRaycastAxialObbQuad(builder);
+  builder.addVarying("highp vec3", "vConeEndpointA", "flat");
+  // xyz: unit axis direction, w: axis length.
+  builder.addVarying("highp vec4", "vConeAxis", "flat");
+  // xy: surface radius at endpoint A and at endpoint B.
+  // zw: clip radius at endpoint A and at endpoint B.
+  builder.addVarying("highp vec4", "vConeEndRadii", "flat");
+  builder.addVertexCode(glsl_emitRaycastCone);
+  builder.addFragmentCode(glsl_coneEndClipped);
+  builder.addFragmentCode(glsl_intersectRaycastCone);
 }

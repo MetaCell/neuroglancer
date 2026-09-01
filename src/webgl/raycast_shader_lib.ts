@@ -17,7 +17,7 @@
 /**
  * @file General GLSL algebra for ray casting against a quadric surface.
  *
- * `nearQuadraticRoot`, and the way callers form the coefficients they pass it, are
+ * `solveQuadratic`, and the way callers form the coefficients they pass it, are
  * adapted from Inigo Quilez's sphere intersector
  * (https://iquilezles.org/articles/intersectors/), MIT licensed:
  *
@@ -37,41 +37,50 @@
  * subtracts two large numbers.
  */
 
-export const glsl_splitAlongDirection = `
+// Splits a vector into the part along a unit direction and the part across it.
+export const glsl_splitAlongDir = `
 struct VectorSplit {
   highp float parallelDist;
-  highp vec3 perpendicular;
+  highp vec3 perp;
 };
 
-VectorSplit splitAlongDirection(highp vec3 vectorToSplit, highp vec3 unitDirection) {
+VectorSplit splitAlongDir(highp vec3 vectorToSplit, highp vec3 unitDir) {
   VectorSplit split;
-  split.parallelDist = dot(unitDirection, vectorToSplit);
-  split.perpendicular = vectorToSplit - split.parallelDist * unitDirection;
+  split.parallelDist = dot(unitDir, vectorToSplit);
+  split.perp = vectorToSplit - split.parallelDist * unitDir;
   return split;
 }
 `;
 
-export const glsl_nearQuadraticRoot = `
-struct QuadraticNearRoot {
-  bool exists;
-  highp float value;
+// Both roots of quadraticA * t^2 + 2 * quadraticB * t + quadraticC, for a
+// quadraticA above zero.
+//
+// Note the 2. quadraticB is half the linear coefficient, which is the form a ray
+// against a quadric produces and the one thing a caller cannot guess.
+//
+// The discriminant is the whole cost, and both roots share it, so returning both
+// is barely more than returning one. Positive form on the discriminant test, so a
+// NaN falls through to no roots. GLSL ES does not promise IEEE NaN comparison, so
+// that is defence and not a guarantee.
+export const glsl_solveQuadratic = `
+struct QuadraticRoots {
+  bool exist;
+  highp float nearRoot;
+  highp float farRoot;
 };
 
-// Smaller root of quadraticA * t^2 + 2 * quadraticB * t + quadraticC, for a
-// quadraticA above zero. Note the 2: quadraticB is half the linear coefficient.
-QuadraticNearRoot nearQuadraticRoot(highp float quadraticA, highp float quadraticB,
-                                    highp float quadraticC) {
+QuadraticRoots solveQuadratic(highp float quadraticA, highp float quadraticB,
+                              highp float quadraticC) {
   highp float discriminant = quadraticB * quadraticB - quadraticA * quadraticC;
-  QuadraticNearRoot root;
-  // Positive form, so a NaN falls through to no root. GLSL ES does not promise
-  // IEEE NaN comparison, so this is defence and not a guarantee.
-  if (!(discriminant >= 0.0)) {
-    root.exists = false;
-    root.value = 0.0;
-    return root;
-  }
-  root.exists = true;
-  root.value = (-quadraticB - sqrt(discriminant)) / quadraticA;
-  return root;
+  QuadraticRoots roots;
+  roots.exist = false;
+  roots.nearRoot = 0.0;
+  roots.farRoot = 0.0;
+  if (!(discriminant >= 0.0)) return roots;
+  highp float rootOffset = sqrt(discriminant);
+  roots.exist = true;
+  roots.nearRoot = (-quadraticB - rootOffset) / quadraticA;
+  roots.farRoot = (-quadraticB + rootOffset) / quadraticA;
+  return roots;
 }
 `;

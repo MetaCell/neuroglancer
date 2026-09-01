@@ -11,7 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests that skeleton rendering can be controlled via ViewerState."""
+"""Screenshot tests for skeleton rendering.
+
+`test_skeleton_options` checks that a skeleton layer draws, and that turning its
+subsource off stops it. `test_skeleton_render_mode` checks that each render mode
+produces the shading it is supposed to, and that the modes which enlarge the nodes
+cover more than the ones that do not.
+"""
 
 import neuroglancer
 import neuroglancer.skeleton
@@ -111,10 +117,28 @@ def test_skeleton_options(webdriver):
     assert_solid_color(screenshot_pixels(webdriver, 10), [0, 0, 0, 255])
 
 
-# Each entry pairs a mode with the only shading signature it produces.
-FEATHERED = "feathered"  # slice view feathers the line edge
-FLAT = "flat"  # no feather outside the slice view
-LIT = "lit"  # shaded by the surface normal
+# Each entry pairs a mode with the only shading signature it produces. What
+# separates them is how the brightness of the drawn pixels is distributed, not how
+# dark the darkest one is: a feathered edge and a lit surface both reach down toward
+# zero, so the minimum alone cannot tell them apart.
+#
+# FLAT       every drawn pixel is fully bright
+# FEATHERED  a majority fully bright, with a thin partial rim
+# LIT        few fully bright, because the surface normal turns across the whole
+#            surface. The lighting factor is `abs(dot(normal, light)) + ambient`
+#            with ambient 0.2 and directional 0.8, so a lit pixel runs over
+#            [0.2, 1.0] of full brightness.
+FEATHERED = "feathered"
+FLAT = "flat"
+LIT = "lit"
+
+FULL_BRIGHTNESS = 255
+# A feathered rim is a perimeter effect, so most of the line is still fully bright.
+MIN_FULLY_BRIGHT_FRACTION_WHEN_FEATHERED = 0.5
+# A lit surface varies everywhere, so almost nothing sits at exactly full.
+MAX_FULLY_BRIGHT_FRACTION_WHEN_LIT = 0.2
+# Lighting runs over [0.2, 1.0], and a side-on view sweeps most of that range.
+MIN_BRIGHTNESS_SPREAD_WHEN_LIT = 0.4 * FULL_BRIGHTNESS
 
 RENDER_MODES = [
     ("xy", "lines", FEATHERED),
@@ -146,22 +170,57 @@ def test_skeleton_render_mode(webdriver):
         )
         red, green, blue = (image[..., i].astype(int) for i in range(3))
         # A pure red shader leaves the other channels untouched in every mode.
-        np.testing.assert_array_equal(green, 0, err_msg=case)
-        np.testing.assert_array_equal(blue, 0, err_msg=case)
+        np.testing.assert_array_equal(
+            green, 0, err_msg=f"{case} put light in the green channel"
+        )
+        np.testing.assert_array_equal(
+            blue, 0, err_msg=f"{case} put light in the blue channel"
+        )
         drawn_red = red[red != 0]
-        assert len(drawn_red) > 200, f"{case} drew nothing recognisable"
+        assert len(drawn_red) > 200, (
+            f"{case} drew {len(drawn_red)} pixels, too few to judge the shading"
+        )
         drawn_counts[(layout, mode)] = len(drawn_red)
 
-        if shading is LIT:
-            assert drawn_red.min() < 250, f"{case} is flat, so it is not lit"
-            assert drawn_red.max() == 255, case
-        elif shading is FLAT:
-            np.testing.assert_array_equal(drawn_red, 255, err_msg=case)
+        fully_bright = (drawn_red == FULL_BRIGHTNESS).mean()
+        brightest, darkest = drawn_red.max(), drawn_red.min()
+
+        if shading is FLAT:
+            np.testing.assert_array_equal(
+                drawn_red,
+                FULL_BRIGHTNESS,
+                err_msg=(
+                    f"{case} should shade nothing, so every drawn pixel should be "
+                    f"{FULL_BRIGHTNESS}, but they run {darkest} to {brightest}"
+                ),
+            )
+        elif shading is FEATHERED:
+            assert fully_bright < 1.0, (
+                f"{case} has every drawn pixel at {FULL_BRIGHTNESS}, so its edge "
+                "is not feathered"
+            )
+            assert fully_bright > MIN_FULLY_BRIGHT_FRACTION_WHEN_FEATHERED, (
+                f"{case} has only {fully_bright:.0%} of drawn pixels at full "
+                "brightness. A feather is a rim, so the interior should stay full. "
+                "This looks like shading across the whole surface"
+            )
         else:
-            assert drawn_red.min() < 255, f"{case} has no feathered edge"
-            assert drawn_red.max() == 255, case
+            assert fully_bright < MAX_FULLY_BRIGHT_FRACTION_WHEN_LIT, (
+                f"{case} has {fully_bright:.0%} of drawn pixels at full brightness. "
+                "A lit surface turns its normal everywhere, so few should be flat "
+                "out. This looks like a feathered edge on flat colour"
+            )
+            assert brightest - darkest > MIN_BRIGHTNESS_SPREAD_WHEN_LIT, (
+                f"{case} spans only {brightest - darkest} brightness levels "
+                f"({darkest} to {brightest}). Lighting runs over "
+                f"[0.2, 1.0], so a side-on view should sweep most of it"
+            )
 
     for layout, plain, enlarged in ENLARGED_PAIRS:
-        assert drawn_counts[(layout, enlarged)] > drawn_counts[(layout, plain)], (
-            f"{layout}/{enlarged} covers no more than {layout}/{plain}"
+        plain_count = drawn_counts[(layout, plain)]
+        enlarged_count = drawn_counts[(layout, enlarged)]
+        assert enlarged_count > plain_count, (
+            f"{layout}/{enlarged} drew {enlarged_count} pixels against "
+            f"{plain_count} for {layout}/{plain}. Enlarging the nodes should cover "
+            "strictly more"
         )

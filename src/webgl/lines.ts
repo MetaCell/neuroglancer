@@ -28,21 +28,25 @@ import { glsl_clipLineToDepthRange } from "#src/webgl/shader_lib.js";
 
 export const VERTICES_PER_LINE = VERTICES_PER_QUAD;
 
-/**
- * @param rounded adds a borderWidth argument to emitLine.
- * @param endpointClipping adds an endpointClipRadiusInPixels argument to emitLine,
- *   and discards fragments within that radius of either endpoint.
- */
+export interface LineShaderOptions {
+  /** Adds a borderWidth argument to emitLine, and rounds the two ends. */
+  readonly rounded?: boolean;
+  /**
+   * Adds an endpointClipRadiusInPixels argument to emitLine, and discards
+   * fragments within that radius of either endpoint as it was given.
+   */
+  readonly endpointClipping?: boolean;
+}
+
 export function defineLineShader(
   builder: ShaderBuilder,
-  rounded = false,
-  endpointClipping = false,
+  options: LineShaderOptions = {},
 ) {
-  // The clip lives in getLineAlpha, which a rounded line never calls. Rejecting
-  // the pair beats ignoring the clip radius without a word.
+  const { rounded = false, endpointClipping = false } = options;
   if (rounded && endpointClipping) {
     throw new Error(
-      "defineLineShader does not support endpoint clipping on rounded lines.",
+      "defineLineShader does not support endpoint clipping on rounded lines. " +
+        "The clip lives in getLineAlpha, which a rounded line never calls.",
     );
   }
   builder.addVertexCode(glsl_getQuadVertexPosition);
@@ -71,9 +75,8 @@ export function defineLineShader(
   builder.addVertexCode(`
 ${
   endpointClipping
-    ? `// Far off screen for a point at or behind the eye, which has no window position
-// and so no clip disc to draw.
-highp vec2 lineClipToWindow(vec4 clip) {
+    ? `highp vec2 lineClipToWindow(vec4 clip) {
+  // Far off screen for a point at or behind the eye, which has no clip disc.
   if (!(clip.w > 0.0)) return vec2(-1e6);
   return (clip.xy / clip.w * 0.5 + 0.5) / uLineParams.xy;
 }`

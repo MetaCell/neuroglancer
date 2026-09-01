@@ -31,22 +31,25 @@
  *   notice and this permission notice shall be included in all copies or
  *   substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS".
  *
- * `nearQuadraticRoot` in `raycast_shader_lib.ts` records how the intersection
- * differs from the original.
+ * `solveQuadratic` in `raycast_shader_lib.ts` records how the intersection differs
+ * from the original.
  */
 
 import { raycastPrimitiveCoreModule } from "#src/webgl/raycast_primitive.js";
 import type { ShaderBuilder } from "#src/webgl/shader.js";
 
-export function defineRaycastSphereShader(builder: ShaderBuilder) {
-  builder.require(raycastPrimitiveCoreModule);
-  // xyz: center, w: radius.
-  builder.addVarying("highp vec4", "vSphere", "flat");
-  builder.addVertexCode(`
-// The screen-space silhouette of a sphere is a conic. Its clip-space form is the
+// The screen space silhouette of a sphere is a conic. Its clip space form is the
 // dual quadric M * Q * transpose(M), for M the x, y and w rows of uProjection and Q
 // the dual of the sphere. The extent along an axis is the pair of roots of
 // conicWW * t^2 - 2 * conicCross * t + conicDiagonal.
+//
+// conicWW is positive exactly when the sphere clears the eye plane, which is when
+// that conic is an ellipse. Otherwise part of the sphere projects arbitrarily far,
+// and no quad short of the whole viewport covers it.
+//
+// The fragment shader writes gl_FragDepth and discards a depth outside the range,
+// so the quad's own depth only has to survive clipping. Zero always does.
+const glsl_emitRaycastSphere = `
 void emitRaycastSphereQuad(highp vec3 center, highp float radius) {
   highp vec4 clipCenter = uProjection * vec4(center, 1.0);
   highp float radiusSq = radius * radius;
@@ -55,7 +58,6 @@ void emitRaycastSphereQuad(highp vec3 center, highp float radius) {
   highp vec3 rowZ = vec3(uProjection[0].z, uProjection[1].z, uProjection[2].z);
   highp vec3 rowW = vec3(uProjection[0].w, uProjection[1].w, uProjection[2].w);
 
-  // Largest at the center plus the radius along each distance's own gradient.
   if (raycastOutsideDepthRange(
           raycastDepthPlaneDistances(clipCenter)
           + radius * vec2(length(rowZ + rowW), length(rowW - rowZ)))) {
@@ -63,9 +65,6 @@ void emitRaycastSphereQuad(highp vec3 center, highp float radius) {
     return;
   }
 
-  // Positive exactly when the sphere clears the eye plane, which is when the conic
-  // is an ellipse. Otherwise part of the sphere projects arbitrarily far, and no
-  // quad short of the whole viewport covers it.
   highp float conicWW = clipCenter.w * clipCenter.w - radiusSq * dot(rowW, rowW);
   if (!(conicWW > 0.0)) {
     gl_Position = vec4(getQuadVertexPosition(vec2(-1.0), vec2(1.0)), 0.0, 1.0);
@@ -91,12 +90,14 @@ void emitRaycastSphereQuad(highp vec3 center, highp float radius) {
     return;
   }
 
-  // The fragment shader writes gl_FragDepth and discards a depth outside the
-  // range, so the quad's own depth only has to survive clipping. Zero always does.
+  highp vec3 clipZGradient =
+      vec3(uProjection[0].z, uProjection[1].z, uProjection[2].z);
+  highp float ndcNearZ = clamp(
+      (clipCenter.z - radius * length(clipZGradient)) / clipCenter.w, -1.0, 1.0);
   gl_Position = vec4(
       clamp(getQuadVertexPosition(ndcMin, ndcMax),
             vec2(-RAYCAST_OFFSCREEN_NDC), vec2(RAYCAST_OFFSCREEN_NDC)),
-      0.0, 1.0);
+      ndcNearZ, 1.0);
 }
 
 void emitRaycastSphere(highp vec3 center, highp float radius) {
@@ -109,31 +110,38 @@ void emitRaycastSphere(highp vec3 center, highp float radius) {
   vSphere = vec4(center, radius);
   emitRaycastSphereQuad(center, radius);
 }
-`);
-  builder.addFragmentCode(`
+`;
+
+// Splitting along a unit ray direction leaves the leading coefficient one and the
+// linear term zero, measured from the closest approach to the center.
+//
+// The near root is the one taken. The far one would fill the view when the camera
+// clips inside. The normal is formed from two small terms, rather than a hit point
+// far from the origin minus a center just as far from it.
+const glsl_intersectRaycastSphere = `
 RaycastHit intersectRaycastPrimitive() {
   RaycastRay ray = getRaycastRayThroughFragment();
   highp float radius = vSphere.w;
 
-  // Splitting along a unit ray direction leaves the leading coefficient one and
-  // the linear term zero, measured from the closest approach to the center.
-  VectorSplit originSplit =
-      splitAlongDirection(ray.origin - vSphere.xyz, ray.direction);
-  highp float perpendicularDistSq =
-      dot(originSplit.perpendicular, originSplit.perpendicular);
-  QuadraticNearRoot root =
-      nearQuadraticRoot(1.0, 0.0, perpendicularDistSq - radius * radius);
-  if (!root.exists) return raycastMiss();
+  VectorSplit originSplit = splitAlongDir(ray.origin - vSphere.xyz, ray.direction);
+  highp float perpDistSq = dot(originSplit.perp, originSplit.perp);
+  QuadraticRoots roots =
+      solveQuadratic(1.0, 0.0, perpDistSq - radius * radius);
+  if (!roots.exist) return raycastMiss();
 
-  // The far crossing would fill the view when the camera clips inside.
-  highp float hitDist = -originSplit.parallelDist + root.value;
+  highp float hitDist = -originSplit.parallelDist + roots.nearRoot;
   if (!(hitDist >= 0.0)) return raycastMiss();
 
-  // Two small terms, rather than a hit point far from the origin minus a center
-  // just as far from it.
   return makeRaycastHit(
       ray.origin + hitDist * ray.direction,
-      originSplit.perpendicular + root.value * ray.direction);
+      originSplit.perp + roots.nearRoot * ray.direction);
 }
-`);
+`;
+
+export function defineRaycastSphereShader(builder: ShaderBuilder) {
+  builder.require(raycastPrimitiveCoreModule);
+  // xyz: center, w: radius.
+  builder.addVarying("highp vec4", "vSphere", "flat");
+  builder.addVertexCode(glsl_emitRaycastSphere);
+  builder.addFragmentCode(glsl_intersectRaycastSphere);
 }

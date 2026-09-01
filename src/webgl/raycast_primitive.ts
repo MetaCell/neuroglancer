@@ -15,27 +15,30 @@
  */
 
 /**
- * @file Shared GLSL for raycast primitives: a camera facing screen space quad
- * whose fragment shader ray casts to find the 3D surface.
- * Emits the depth and a lighting factor.
+ * @file Shared GLSL for raycast primitives. Each is a camera-facing screen space
+ * quad whose fragment shader casts a ray to find the 3D surface, then emits a depth
+ * and a lighting factor.
  *
- * Positions, radii and normals are in raycast space, the space that `uProjection`
- * maps to clip space. That space must reach clip space through a rotation, a
- * uniform scale and the projection alone. Any anisotropic scale left in
- * `uProjection` draws a sphere as an ellipsoid, because the intersection solves a
- * true sphere in raycast space. `uLightDirection` is read in the same space, so
- * the surface normal needs no further transform.
+ * Positions, radii and normals are in whatever space `uProjection` maps to clip
+ * space. That space must reach clip space through a rotation, a uniform scale and
+ * the projection alone. Any anisotropic scale left in `uProjection` draws a sphere
+ * as an ellipsoid, because the intersection solves a true sphere. `uLightDirection`
+ * is read in the same space, so the surface normal needs no further transform.
+ * `skeleton/frontend.ts` passes global coordinates scaled to canonical voxels.
  *
- * The bound here suits an object with one long axis: a cone, a capsule, a cylinder.
- * A primitive whose own silhouette has a closed form should bound itself in its own
- * file instead, which is both tighter and less code. `raycast_sphere.ts` does.
+ * The file holds three things: the setup a primitive needs whatever its shape, the
+ * general algebra it solves with, and bounding boxes. One bounding box lives here
+ * so far, the axial OBB for an object with one long axis. An AABB would fit the
+ * same way, but nothing needs one. A primitive whose silhouette has a closed form
+ * should bound itself in its own file, which is both tighter and less code. See
+ * `raycast_sphere.ts`.
  */
 
 import { mat4 } from "#src/util/geom.js";
 import { glsl_getQuadVertexPosition } from "#src/webgl/quad.js";
 import {
-  glsl_nearQuadraticRoot,
-  glsl_splitAlongDirection,
+  glsl_solveQuadratic,
+  glsl_splitAlongDir,
 } from "#src/webgl/raycast_shader_lib.js";
 import type { ShaderBuilder, ShaderProgram } from "#src/webgl/shader.js";
 import { glsl_clipLineToDepthRange } from "#src/webgl/shader_lib.js";
@@ -44,6 +47,11 @@ export function projectionMatrixShaderModule(builder: ShaderBuilder) {
   builder.addUniform("highp mat4", "uProjection");
 }
 
+// The fragment side of the contract. A primitive supplies
+// `intersectRaycastPrimitive`, and gets the ray, the depth conversion and the
+// lighting from here. `raycastSurfaceDepth` and `raycastLightingFactor` are file
+// scope globals rather than locals of main, so that a consumer's own emit helper
+// can read them.
 const glsl_raycastPrimitiveFragmentUtil = `
 struct RaycastRay {
   highp vec3 origin;
@@ -90,40 +98,53 @@ RaycastHit makeRaycastHit(highp vec3 surfacePoint, highp vec3 normal) {
 }
 `;
 
-// The emitter below over-covers, so that a primitive straddling the near plane is
-// never lost.
+// Distance to the near and the far clip plane, both linear in position. A caller
+// passes the maximum over its own shape: the value at the centre plus how far the
+// shape reaches along each distance's own gradient.
+//
+// Negative form on the test, so a non-finite value fails open and leaves the shape
+// drawn. An emitter over-covers for the same reason, so that a primitive straddling
+// the near plane is never lost.
 const glsl_raycastDepthRangeCull = `
 highp vec2 raycastDepthPlaneDistances(highp vec4 clip) {
   return vec2(clip.z + clip.w, clip.w - clip.z);
 }
-// Both distances are linear, so callers pass the maximum over the shape: the base
-// value plus how far the shape reaches along each distance's own gradient. Negative
-// form, so a non-finite value fails open and leaves the shape drawn.
 bool raycastOutsideDepthRange(highp vec2 maxDepthDistances) {
   return maxDepthDistances.x < 0.0 || maxDepthDistances.y < 0.0;
 }
 `;
 
+// RAYCAST_OFFSCREEN_NDC must exceed 1.0. Pinned exactly at the viewport edge, the
+// margin an emitter adds would drag a fully off-screen primitive back on screen as
+// a sliver.
+//
+// RAYCAST_MIN_RELATIVE_W is the smallest clip w a projected point may be treated as
+// having, as a fraction of the local w scale. Relative, so it holds whatever units
+// the projection works in.
+//
+// RAYCAST_MIN_AXIS_W_MARGIN is the nearest clip w an axis may keep, as a multiple of
+// the depth its radial half-extents span. The margin over 1.0 is what a corner keeps
+// in front of the eye, and so what caps how far outside the viewport it can project.
 const glsl_raycastQuadConstants = `
-// Must exceed 1.0. Pinned exactly at the viewport edge, the margin an emitter adds
-// would drag a fully off-screen primitive back on screen as a sliver.
 const highp float RAYCAST_OFFSCREEN_NDC = 2.0;
-// Smallest clip w a projected point may be treated as having, as a fraction of the
-// local w scale. Relative, so it holds whatever units the projection works in.
-
 const highp float RAYCAST_MIN_RELATIVE_W = 1e-4;
-// Nearest clip w an axis may keep, as a multiple of the depth that the radial
-// half-extents span. The margin over 1.0 is what a corner keeps in front of the
-// eye, and so what caps how far outside the viewport a corner can project.
 const highp float RAYCAST_MIN_AXIS_W_MARGIN = 1.25;
 `;
 
+// A screen space quad oriented along the projected axis, covering the box about the
+// segment endpointA..endpointB with radial half-extents radiusVectorA and B.
+//
 // Depth-clipping the segment first is what makes an oriented quad possible. A
 // primitive crossing the eye plane has an unbounded footprint, and clipping leaves
-// every corner in front of the eye where the projected-corner hull is a valid bound.
-// The radial half-extents reach nearer than the axis does, so the near end is
-// trimmed again by their own depth. The part dropped there wraps the eye, and no
-// quad of bounded size covers it.
+// every corner in front of the eye, where the hull of the projected corners is a
+// valid bound. The radial half-extents reach nearer than the axis does, so the near
+// end is trimmed again by their own depth. The part dropped there wraps the eye, and
+// no quad of bounded size covers it.
+//
+// `clipLineToDepthRange` rewrites clipA and clipB in place. Everything after it uses
+// the clipped segment. Its result is tested in positive form, so a non-finite value
+// culls rather than proceeding, and the equal depth case trims nothing, which leaves
+// the corner test to reject it.
 const glsl_raycastAxialObbQuad = `
 highp vec2 raycastClipToPixels(highp vec4 clip) {
   return clip.xy / clip.w * uViewportSize * 0.5;
@@ -144,7 +165,6 @@ void emitRaycastAxialObbQuad(highp vec3 endpointA, highp vec3 endpointB,
     return;
   }
 
-  // Clips clipA and clipB in place, so everything below uses the clipped segment.
   bool clipped = clipLineToDepthRange(clipA, clipB);
 
   // w runs linearly along the axis, so one crossing bounds the near end.
@@ -162,8 +182,6 @@ void emitRaycastAxialObbQuad(highp vec3 endpointA, highp vec3 endpointB,
   highp vec4 axisA = mix(clipA, clipB, startT);
   highp vec4 axisB = mix(clipA, clipB, endT);
 
-  // Positive form, so a non-finite result culls rather than proceeding. The equal
-  // depth case trims nothing, so the corner test still has to reject it.
   if (!(clipped && startT < endT && min(axisA.w, axisB.w) >= radialW)) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     return;
@@ -173,12 +191,12 @@ void emitRaycastAxialObbQuad(highp vec3 endpointA, highp vec3 endpointB,
   highp vec2 pixelsB = raycastClipToPixels(axisB);
   highp vec2 axisPixels = pixelsB - pixelsA;
   highp float axisLengthPixels = length(axisPixels);
-  highp vec2 alongDirection =
+  highp vec2 alongDir =
       axisLengthPixels > 1e-3 ? axisPixels / axisLengthPixels : vec2(1.0, 0.0);
-  highp vec2 perpendicularDirection = vec2(-alongDirection.y, alongDirection.x);
+  highp vec2 perpDir = vec2(-alongDir.y, alongDir.x);
   highp vec2 pixelCenter = (pixelsA + pixelsB) * 0.5;
   highp float halfAlongPixels = 0.0;
-  highp float halfPerpendicularPixels = 0.0;
+  highp float halfPerpPixels = 0.0;
   highp float ndcNearZ = 1.0;
 
   for (int corner = 0; corner < 8; ++corner) {
@@ -186,41 +204,35 @@ void emitRaycastAxialObbQuad(highp vec3 endpointA, highp vec3 endpointB,
         + ((corner & 2) == 0 ? -clipVectorA : clipVectorA)
         + ((corner & 4) == 0 ? -clipVectorB : clipVectorB);
     highp vec2 offset = raycastClipToPixels(clip) - pixelCenter;
-    halfAlongPixels = max(halfAlongPixels, abs(dot(offset, alongDirection)));
-    halfPerpendicularPixels = max(halfPerpendicularPixels, abs(dot(offset, perpendicularDirection)));
+    halfAlongPixels = max(halfAlongPixels, abs(dot(offset, alongDir)));
+    halfPerpPixels = max(halfPerpPixels, abs(dot(offset, perpDir)));
     ndcNearZ = min(ndcNearZ, clamp(clip.z / clip.w, -1.0, 1.0));
   }
 
   // The corner bound is exact. One pixel covers numerical error.
   highp vec2 pixels = pixelCenter
-      + alongDirection * (quadCoefficient.x * (halfAlongPixels + 1.0))
-      + perpendicularDirection * (quadCoefficient.y * (halfPerpendicularPixels + 1.0));
+      + alongDir * (quadCoefficient.x * (halfAlongPixels + 1.0))
+      + perpDir * (quadCoefficient.y * (halfPerpPixels + 1.0));
   gl_Position = vec4(pixels * 2.0 / uViewportSize, ndcNearZ, 1.0);
 }
 `;
 
-// Raycast-space radius projecting to `radiusInPixels` device px, measured on the
+// The radius that projects to `radiusInPixels` device pixels, measured on the
 // vertical viewport extent. A primitive sized this way holds a constant on-screen
 // size as the camera moves.
+// A point at or behind the eye has no on-screen size to match, and gets zero.
+//
+// Column 1 of uInvProjection is one NDC unit of y, so its length converts between
+// the two. The space reaches the eye through a rotation and a uniform scale, so that
+// length does not turn with the camera.
 const glsl_raycastPrimitivePixelRadius = `
 highp float raycastRadiusFromClipW(highp float clipW, highp float radiusInPixels) {
-  // At or behind the eye there is no on-screen size to match.
   if (!(clipW > 0.0)) return 0.0;
-  // uInvProjection column 1 is one NDC unit of y in raycast space. The positive
-  // scalar factors straight out of the length. Raycast space reaches the eye
-  // through a rotation and a uniform scale, so the length does not turn with the
-  // camera.
   return length(uInvProjection[1].xyz) * (2.0 / uViewportSize.y) * clipW * radiusInPixels;
 }
 highp float getRaycastRadiusForPixels(highp vec3 point, highp float radiusInPixels) {
   return raycastRadiusFromClipW((uProjection * vec4(point, 1.0)).w, radiusInPixels);
 }
-// x at endpointA, y at endpointB. Two radii rather than one, so that the segment
-// holds a single on-screen width along its whole length. A single radius would
-// draw the far end of a receding segment thinner than the near end.
-//
-// An endpoint at or behind the eye has no on-screen size, so it borrows the other
-// end's radius. Both behind the eye leaves both zero, which the emitter culls.
 highp vec2 getRaycastSegmentRadiiForPixels(
     highp vec3 endpointA, highp vec3 endpointB, highp float radiusInPixels) {
   highp vec2 radii = vec2(
@@ -232,11 +244,15 @@ highp vec2 getRaycastSegmentRadiiForPixels(
 }
 `;
 
+// Runs a primitive's own `intersectRaycastPrimitive` and publishes the result. A
+// consumer places this at the top of its fragment main, so that a miss discards
+// before any of its own code runs.
+//
+// The depth range test is in positive form, so a non-finite depth fails closed
+// rather than poisoning the order-independent transparency weight.
 export const glsl_raycastFragmentSetup = `
 RaycastHit raycastHit = intersectRaycastPrimitive();
 if (!raycastHit.hit) discard;
-// Positive form, so a non-finite depth fails closed rather than poisoning the OIT
-// weight.
 if (!(raycastHit.windowDepth >= 0.0 && raycastHit.windowDepth <= 1.0)) discard;
 gl_FragDepth = raycastHit.windowDepth;
 raycastSurfaceDepth = raycastHit.windowDepth;
@@ -254,8 +270,8 @@ export function raycastPrimitiveCoreModule(builder: ShaderBuilder) {
   builder.addVertexCode(glsl_raycastQuadConstants);
   builder.addVertexCode(glsl_raycastPrimitivePixelRadius);
   builder.addFragmentCode(glsl_raycastPrimitiveFragmentUtil);
-  builder.addFragmentCode(glsl_splitAlongDirection);
-  builder.addFragmentCode(glsl_nearQuadraticRoot);
+  builder.addFragmentCode(glsl_splitAlongDir);
+  builder.addFragmentCode(glsl_solveQuadratic);
 }
 
 export function defineRaycastAxialObbQuad(builder: ShaderBuilder) {
@@ -266,16 +282,16 @@ export function defineRaycastAxialObbQuad(builder: ShaderBuilder) {
 
 const tempInvProjection = mat4.create();
 
-// `raycastClip` maps raycast space to clip space. See the constraint on that
-// space at the top of this file.
+// `primitiveToClip` maps the space a primitive's positions are given in to clip
+// space. See the constraint on that space at the top of this file.
 export function initializeRaycastPrimitiveShader(
   shader: ShaderProgram,
-  raycastClip: mat4,
+  primitiveToClip: mat4,
   projectionParameters: { width: number; height: number },
 ) {
   const { gl } = shader;
-  gl.uniformMatrix4fv(shader.uniform("uProjection"), false, raycastClip);
-  mat4.invert(tempInvProjection, raycastClip);
+  gl.uniformMatrix4fv(shader.uniform("uProjection"), false, primitiveToClip);
+  mat4.invert(tempInvProjection, primitiveToClip);
   gl.uniformMatrix4fv(
     shader.uniform("uInvProjection"),
     false,

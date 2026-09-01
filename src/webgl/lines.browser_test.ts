@@ -25,25 +25,31 @@ import { ShaderBuilder } from "#src/webgl/shader.js";
 import { webglTest } from "#src/webgl/testing.js";
 import { defineVertexId, VertexIdHelper } from "#src/webgl/vertex_id.js";
 
-const VIEWPORT_SIZE = 64;
-const LINE_WIDTH_IN_PIXELS = 6;
-const CLIP_RADIUS_IN_PIXELS = 10;
+// A 64 pixel square viewport. Endpoints are given in clip space, so a test can put
+// one outside the depth range without setting up a projection.
+const VIEWPORT = 64;
 
-// `endpointsClip` gives both endpoints in clip space, so a test can put an endpoint
-// outside the depth range without setting up a projection.
-function drawClippedLine(
-  gl: GL,
-  endpointsClip: string,
-  clipRadiusInPixels: number,
-): Uint8Array {
-  const size = VIEWPORT_SIZE;
+type ClipPoint = readonly [number, number, number, number];
+
+interface LineSpec {
+  readonly endpointA: ClipPoint;
+  readonly endpointB: ClipPoint;
+  readonly widthInPixels: number;
+  readonly clipRadiusInPixels: number;
+}
+
+function glslClipPoint(point: ClipPoint): string {
+  return `vec4(${point.map((value) => value.toFixed(4)).join(", ")})`;
+}
+
+function drawLine(gl: GL, spec: LineSpec): Uint8Array {
   const builder = new ShaderBuilder(gl);
   builder.addOutputBuffer("vec4", "out_color", 0);
   defineVertexId(builder);
-  defineLineShader(builder, /*rounded=*/ false, /*endpointClipping=*/ true);
+  defineLineShader(builder, { endpointClipping: true });
   builder.setVertexMain(
-    `emitLine(${endpointsClip}, ${LINE_WIDTH_IN_PIXELS.toFixed(1)}, ` +
-      `${clipRadiusInPixels.toFixed(1)});`,
+    `emitLine(${glslClipPoint(spec.endpointA)}, ${glslClipPoint(spec.endpointB)},
+              ${spec.widthInPixels.toFixed(1)}, ${spec.clipRadiusInPixels.toFixed(1)});`,
   );
   builder.setFragmentMain("out_color = vec4(getLineAlpha());\n");
   const shader = builder.build();
@@ -53,73 +59,92 @@ function drawClippedLine(
     vertexIdHelper.enable();
     initializeLineShader(
       shader,
-      { width: size, height: size },
+      { width: VIEWPORT, height: VIEWPORT },
       /*featherWidthInPixels=*/ 0,
     );
-    gl.viewport(0, 0, size, size);
+    gl.viewport(0, 0, VIEWPORT, VIEWPORT);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
     drawLines(gl, 1, 1);
-    const pixels = new Uint8Array(size * size * 4);
+    const pixels = new Uint8Array(VIEWPORT * VIEWPORT * 4);
     gl.readPixels(
       0,
       0,
-      size,
-      size,
+      VIEWPORT,
+      VIEWPORT,
       WebGL2RenderingContext.RGBA,
       WebGL2RenderingContext.UNSIGNED_BYTE,
       pixels,
     );
-    const covered = new Uint8Array(size * size);
-    for (let i = 0; i < size * size; ++i) {
-      covered[i] = pixels[i * 4] !== 0 ? 1 : 0;
-    }
-    return covered;
+    return pixels;
   } finally {
     vertexIdHelper.disable();
     shader.dispose();
   }
 }
 
-function countCovered(covered: Uint8Array): number {
-  let total = 0;
-  for (const value of covered) total += value;
-  return total;
+function coveredCount(pixels: Uint8Array): number {
+  let covered = 0;
+  for (let i = 0; i < VIEWPORT * VIEWPORT; ++i) {
+    if (pixels[i * 4] !== 0) ++covered;
+  }
+  return covered;
 }
 
-function isCovered(covered: Uint8Array, x: number, y: number): boolean {
-  return covered[y * VIEWPORT_SIZE + x] === 1;
+function isCovered(pixels: Uint8Array, x: number, y: number): boolean {
+  return pixels[(y * VIEWPORT + x) * 4] !== 0;
 }
 
 describe("line endpoint clipping", () => {
-  // A clip disc belongs at each endpoint, so that a node drawn there has room.
-  it("removes a disc at each endpoint", () => {
+  it("removes a disc at each endpoint, so a node drawn there has room", () => {
     webglTest((gl) => {
-      const endpoints = "vec4(-0.5, 0.0, 0.0, 1.0), vec4(0.5, 0.0, 0.0, 1.0)";
-      const unclipped = drawClippedLine(gl, endpoints, 0);
-      const clipped = drawClippedLine(gl, endpoints, CLIP_RADIUS_IN_PIXELS);
-      expect(countCovered(clipped)).toBeGreaterThan(0);
-      expect(countCovered(clipped)).toBeLessThan(countCovered(unclipped));
-      // Endpoint A sits at NDC x of -0.5, which is a quarter across the viewport.
-      const endpointAX = VIEWPORT_SIZE / 4;
-      const centerY = VIEWPORT_SIZE / 2;
-      expect(isCovered(unclipped, endpointAX, centerY)).toBe(true);
-      expect(isCovered(clipped, endpointAX, centerY)).toBe(false);
+      // Horizontal across the middle, from NDC x of -0.5 to 0.5. Endpoint A lands
+      // a quarter across the viewport, at pixel 16.
+      const spec = {
+        endpointA: [-0.5, 0, 0, 1],
+        endpointB: [0.5, 0, 0, 1],
+        widthInPixels: 6,
+      } as const;
+      const unclipped = drawLine(gl, { ...spec, clipRadiusInPixels: 0 });
+      const clipped = drawLine(gl, { ...spec, clipRadiusInPixels: 10 });
+
+      expect(coveredCount(clipped)).toBeGreaterThan(0);
+      expect(coveredCount(clipped)).toBeLessThan(coveredCount(unclipped));
+      expect(isCovered(unclipped, 16, VIEWPORT / 2)).toBe(true);
+      expect(isCovered(clipped, 16, VIEWPORT / 2)).toBe(false);
     });
   });
 
-  // Measuring the disc from the depth-clipped ends would eat the drawn line where
-  // no node exists, the node itself having been clipped away with the segment.
-  it("measures from the given endpoints, not the depth-clipped ones", () => {
+  it("measures the disc from the endpoints as given, not the clipped ends", () => {
     webglTest((gl) => {
-      // z runs from -3 to 3, so only the middle third survives the depth range.
-      // Both given endpoints end up more than one clip radius clear of what is
-      // drawn, so the discs must remove nothing.
-      const endpoints = "vec4(-1.0, 0.0, -3.0, 1.0), vec4(1.0, 0.0, 3.0, 1.0)";
-      const unclipped = drawClippedLine(gl, endpoints, 0);
-      const clipped = drawClippedLine(gl, endpoints, CLIP_RADIUS_IN_PIXELS);
-      expect(countCovered(unclipped)).toBeGreaterThan(0);
-      expect(countCovered(clipped)).toBe(countCovered(unclipped));
+      // z runs -3 to 3, so only the middle third of the line survives the depth
+      // range. Measuring the disc from those moved ends would eat the drawn line
+      // where no node exists, the node itself having been clipped away with the
+      // rest of the segment. Both given endpoints end up more than one clip radius
+      // clear of what is drawn, so the discs must remove nothing.
+      const spec = {
+        endpointA: [-1, 0, -3, 1],
+        endpointB: [1, 0, 3, 1],
+        widthInPixels: 6,
+      } as const;
+      const unclipped = drawLine(gl, { ...spec, clipRadiusInPixels: 0 });
+      const clipped = drawLine(gl, { ...spec, clipRadiusInPixels: 10 });
+
+      expect(coveredCount(unclipped)).toBeGreaterThan(0);
+      expect(coveredCount(clipped)).toBe(coveredCount(unclipped));
+    });
+  });
+
+  it("rejects endpoint clipping on a rounded line", () => {
+    webglTest((gl) => {
+      // The clip lives in getLineAlpha, which a rounded line never calls, so the
+      // pair would silently ignore the clip radius.
+      expect(() =>
+        defineLineShader(new ShaderBuilder(gl), {
+          rounded: true,
+          endpointClipping: true,
+        }),
+      ).toThrow(/rounded/);
     });
   });
 });
