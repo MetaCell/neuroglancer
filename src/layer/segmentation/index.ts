@@ -132,7 +132,10 @@ import {
   showSpatialSkeletonActionError,
   undoSpatialSkeletonCommand,
 } from "#src/skeleton/commands.js";
-import { SkeletonDataSourceState } from "#src/skeleton/find_path.js";
+import {
+  SkeletonDataSourceState,
+  type SkeletonFindPathState,
+} from "#src/skeleton/find_path.js";
 import { SpatialSkeletonFindPathAnnotationController } from "#src/skeleton/find_path_annotations.js";
 import {
   PerspectiveViewSkeletonLayer,
@@ -805,8 +808,7 @@ interface SelectedSpatialSkeletonNodeInfo {
 
 export interface SpatialSkeletonFindPathContext {
   readonly skeletonLayer: SpatiallyIndexedSkeletonLayer;
-  readonly dataSourceState: SkeletonDataSourceState;
-  readonly loadedSubsource: LoadedDataSubsource;
+  readonly state: SkeletonFindPathState;
   readonly annotationController: SpatialSkeletonFindPathAnnotationController;
 }
 
@@ -837,10 +839,9 @@ export class SegmentationUserLayer extends Base {
   readonly spatialSkeletonState = this.registerDisposer(
     new SpatialSkeletonState(),
   );
-  private readonly spatialSkeletonFindPathContexts = new Map<
-    SpatiallyIndexedSkeletonLayer,
-    SpatialSkeletonFindPathContext
-  >();
+  private spatialSkeletonFindPathContext:
+    | SpatialSkeletonFindPathContext
+    | undefined;
   readonly selectedSpatialSkeletonNodeInfo = new WatchableValue<
     SelectedSpatialSkeletonNodeInfo | undefined
   >(undefined);
@@ -1046,14 +1047,10 @@ export class SegmentationUserLayer extends Base {
 
   ensureSpatialSkeletonInspectionFromSelection = () => {
     const selectedNodeId = this.selectedSpatialSkeletonNodeInfo.value?.nodeId;
-    const skeletonLayer = this.getSpatiallyIndexedSkeletonLayer();
     const selectedNode =
       selectedNodeId === undefined
         ? undefined
-        : this.spatialSkeletonState.getCachedNode(
-            selectedNodeId,
-            skeletonLayer,
-          );
+        : this.spatialSkeletonState.getCachedNode(selectedNodeId);
     const visibleSegments = getVisibleSegments(
       this.displayState.segmentationGroupState.value,
     );
@@ -1124,11 +1121,6 @@ export class SegmentationUserLayer extends Base {
   constructor(managedLayer: Borrowed<ManagedUserLayer>) {
     super(managedLayer);
     this.codeVisible.changed.add(this.specificationChanged.dispatch);
-    this.registerDisposer(
-      this.dataSourcesChanged.add(() => {
-        this.reconcileSpatialSkeletonFindPathStates();
-      }),
-    );
     this.registerDisposer(
       registerNestedSync((context, group) => {
         context.registerDisposer(
@@ -1383,110 +1375,16 @@ export class SegmentationUserLayer extends Base {
   };
 
   getSpatialSkeletonFindPathContext(
-    skeletonLayer:
-      | SpatiallyIndexedSkeletonLayer
-      | undefined = this.getSpatiallyIndexedSkeletonLayer(),
+    skeletonLayer?: SpatiallyIndexedSkeletonLayer,
   ) {
-    return skeletonLayer === undefined
-      ? undefined
-      : this.spatialSkeletonFindPathContexts.get(skeletonLayer);
-  }
-
-  private compareSpatialSkeletonFindPathContexts(
-    a: SpatialSkeletonFindPathContext,
-    b: SpatialSkeletonFindPathContext,
-  ) {
-    const aDataSourceIndex = this.dataSources.indexOf(
-      a.loadedSubsource.loadedDataSource.layerDataSource,
-    );
-    const bDataSourceIndex = this.dataSources.indexOf(
-      b.loadedSubsource.loadedDataSource.layerDataSource,
-    );
-    return (
-      (aDataSourceIndex === -1 ? Number.MAX_SAFE_INTEGER : aDataSourceIndex) -
-        (bDataSourceIndex === -1
-          ? Number.MAX_SAFE_INTEGER
-          : bDataSourceIndex) ||
-      a.loadedSubsource.subsourceIndex - b.loadedSubsource.subsourceIndex
-    );
-  }
-
-  getSpatialSkeletonFindPathContexts() {
-    return [...this.spatialSkeletonFindPathContexts.values()].sort((a, b) =>
-      this.compareSpatialSkeletonFindPathContexts(a, b),
-    );
-  }
-
-  private getUniqueSpatialSkeletonFindPathContexts() {
-    const states = new Set<SkeletonDataSourceState>();
-    return this.getSpatialSkeletonFindPathContexts().filter((context) => {
-      if (states.has(context.dataSourceState)) return false;
-      states.add(context.dataSourceState);
-      return true;
-    });
-  }
-
-  private getSkeletonDataSourceStates() {
-    const states: SkeletonDataSourceState[] = [];
-    const seen = new Set<SkeletonDataSourceState>();
-    for (const layerDataSource of this.dataSources) {
-      const loadState = layerDataSource.loadState;
-      const state =
-        loadState !== undefined && "dataSource" in loadState
-          ? loadState.dataSource.state
-          : undefined;
-      if (!(state instanceof SkeletonDataSourceState) || seen.has(state)) {
-        continue;
-      }
-      seen.add(state);
-      states.push(state);
+    const context = this.spatialSkeletonFindPathContext;
+    if (
+      skeletonLayer !== undefined &&
+      context?.skeletonLayer !== skeletonLayer
+    ) {
+      return undefined;
     }
-    // Contexts cover the brief activation/disposal transition and lightweight
-    // test layers that do not construct the full LayerDataSource machinery.
-    for (const context of this.getSpatialSkeletonFindPathContexts()) {
-      const { dataSourceState } = context;
-      if (seen.has(dataSourceState)) continue;
-      seen.add(dataSourceState);
-      states.push(dataSourceState);
-    }
-    return states;
-  }
-
-  private reconcileSpatialSkeletonFindPathStates() {
-    let retainedState: SkeletonDataSourceState | undefined;
-    for (const dataSourceState of this.getSkeletonDataSourceStates()) {
-      if (dataSourceState.findPathState.toJSON() === undefined) continue;
-      if (retainedState === undefined) {
-        retainedState = dataSourceState;
-      } else {
-        dataSourceState.findPathState.reset();
-      }
-    }
-  }
-
-  getInitialSpatialSkeletonFindPathContext(
-    preferredSkeletonLayer?: SpatiallyIndexedSkeletonLayer,
-  ) {
-    const contexts = this.getUniqueSpatialSkeletonFindPathContexts();
-    const nonEmptyContexts = contexts.filter(
-      (context) => context.dataSourceState.findPathState.toJSON() !== undefined,
-    );
-    if (nonEmptyContexts.length !== 0) return nonEmptyContexts[0];
-    if (preferredSkeletonLayer !== undefined) {
-      const preferred = this.spatialSkeletonFindPathContexts.get(
-        preferredSkeletonLayer,
-      );
-      if (preferred !== undefined) return preferred;
-    }
-    return contexts[0];
-  }
-
-  claimSpatialSkeletonFindPathContext(context: SpatialSkeletonFindPathContext) {
-    for (const dataSourceState of this.getSkeletonDataSourceStates()) {
-      if (dataSourceState === context.dataSourceState) continue;
-      dataSourceState.findPathState.reset();
-    }
-    return context.dataSourceState.findPathState;
+    return context;
   }
 
   private registerSpatialSkeletonFindPathContext(
@@ -1499,10 +1397,6 @@ export class SegmentationUserLayer extends Base {
         "Cannot register find-path annotations for an inactive spatial skeleton source.",
       );
     }
-    this.spatialSkeletonState.registerSkeletonLayerCache(skeletonLayer);
-    activated.registerDisposer(() => {
-      this.spatialSkeletonState.releaseSkeletonLayerCache(skeletonLayer);
-    });
     const dataSourceState = loadedSubsource.loadedDataSource.dataSource.state;
     if (!(dataSourceState instanceof SkeletonDataSourceState)) {
       return undefined;
@@ -1516,15 +1410,13 @@ export class SegmentationUserLayer extends Base {
     );
     const context: SpatialSkeletonFindPathContext = {
       skeletonLayer,
-      dataSourceState,
-      loadedSubsource,
+      state: dataSourceState.findPathState,
       annotationController,
     };
-    this.spatialSkeletonFindPathContexts.set(skeletonLayer, context);
-    this.reconcileSpatialSkeletonFindPathStates();
+    this.spatialSkeletonFindPathContext = context;
     activated.registerDisposer(() => {
-      if (this.spatialSkeletonFindPathContexts.get(skeletonLayer) === context) {
-        this.spatialSkeletonFindPathContexts.delete(skeletonLayer);
+      if (this.spatialSkeletonFindPathContext === context) {
+        this.spatialSkeletonFindPathContext = undefined;
       }
     });
     return context;
@@ -1696,10 +1588,8 @@ export class SegmentationUserLayer extends Base {
   }
 
   getCachedSpatialSkeletonSegmentNodesForEdit(segmentId: number) {
-    const segmentNodes = this.spatialSkeletonState.getCachedSegmentNodes(
-      segmentId,
-      this.getSpatiallyIndexedSkeletonLayer(),
-    );
+    const segmentNodes =
+      this.spatialSkeletonState.getCachedSegmentNodes(segmentId);
     if (segmentNodes === undefined) {
       throw new Error(
         `Segment ${segmentId} is not available in the inspected skeleton cache. Load the full skeleton before editing it.`,
@@ -1775,9 +1665,7 @@ export class SegmentationUserLayer extends Base {
   markSpatialSkeletonNodeDataChanged(options?: {
     invalidateFullSkeletonCache?: boolean;
   }) {
-    for (const dataSourceState of this.getSkeletonDataSourceStates()) {
-      dataSourceState.findPathState.invalidateResult();
-    }
+    this.spatialSkeletonFindPathContext?.state.invalidateResult();
     this.spatialSkeletonState.markNodeDataChanged(options);
   }
 
@@ -1806,13 +1694,30 @@ export class SegmentationUserLayer extends Base {
     return changed;
   }
 
+  private getSpatialSkeletonFindPathSubsource(
+    loadedSubsources: readonly LoadedDataSubsource[],
+  ) {
+    return loadedSubsources.find((loadedSubsource) => {
+      const { mesh } = loadedSubsource.subsourceEntry.subsource;
+      return (
+        (mesh instanceof MultiscaleSpatiallyIndexedSkeletonSource ||
+          mesh instanceof SpatiallyIndexedSkeletonSource) &&
+        loadedSubsource.loadedDataSource.dataSource.state instanceof
+          SkeletonDataSourceState
+      );
+    });
+  }
+
   activateDataSubsources(subsources: Iterable<LoadedDataSubsource>) {
+    const loadedSubsources = [...subsources];
+    const findPathSubsource =
+      this.getSpatialSkeletonFindPathSubsource(loadedSubsources);
     const updatedSegmentPropertyMaps: SegmentPropertyMap[] = [];
     const isGroupRoot =
       this.displayState.linkedSegmentationGroup.root.value === this;
     let updatedGraph: SegmentationGraphSource | undefined;
     let hasVolume = false;
-    for (const loadedSubsource of subsources) {
+    for (const loadedSubsource of loadedSubsources) {
       if (this.addStaticAnnotations(loadedSubsource)) continue;
       const { volume, mesh, segmentPropertyMap, segmentationGraph, local } =
         loadedSubsource.subsourceEntry.subsource;
@@ -1839,40 +1744,91 @@ export class SegmentationUserLayer extends Base {
           this.displayState.segmentationGroupState.value,
         );
       } else if (mesh !== undefined) {
-        loadedSubsource.activate(() => {
-          const displayState = {
-            ...this.displayState,
-            transform: loadedSubsource.getRenderLayerTransform(),
-            localPosition: this.localPosition,
-          };
-          if (mesh instanceof MeshSource) {
-            loadedSubsource.addRenderLayer(
-              new MeshLayer(this.manager.chunkManager, mesh, displayState),
-            );
-          } else if (mesh instanceof MultiscaleMeshSource) {
-            loadedSubsource.addRenderLayer(
-              new MultiscaleMeshLayer(
+        loadedSubsource.activate(
+          () => {
+            const displayState = {
+              ...this.displayState,
+              transform: loadedSubsource.getRenderLayerTransform(),
+              localPosition: this.localPosition,
+            };
+            if (mesh instanceof MeshSource) {
+              loadedSubsource.addRenderLayer(
+                new MeshLayer(this.manager.chunkManager, mesh, displayState),
+              );
+            } else if (mesh instanceof MultiscaleMeshSource) {
+              loadedSubsource.addRenderLayer(
+                new MultiscaleMeshLayer(
+                  this.manager.chunkManager,
+                  mesh,
+                  displayState,
+                ),
+              );
+            } else if (
+              mesh instanceof MultiscaleSpatiallyIndexedSkeletonSource
+            ) {
+              const perspectiveSources = mesh.getPerspectiveSources();
+              const slicePanelSources = mesh.getSliceViewPanelSources();
+              const sharedSpatialSkeletonSources =
+                perspectiveSources.length > 0
+                  ? perspectiveSources
+                  : slicePanelSources;
+              if (sharedSpatialSkeletonSources.length > 0) {
+                // Share one mutable skeleton base across 2D/3D projections so
+                // local edit state stays consistent across panels.
+                const base = new SpatiallyIndexedSkeletonLayer(
+                  this.manager.chunkManager,
+                  sharedSpatialSkeletonSources,
+                  displayState,
+                  {
+                    sources2d: slicePanelSources,
+                    selectedNodeInfo: this.selectedSpatialSkeletonNodeInfo,
+                    suppressSelectedNodeHighlight:
+                      this.spatialSkeletonState.suppressSelectedNodeHighlight,
+                    hoveredNodeInfo: this.hoveredSpatialSkeletonNodeInfo,
+                    pendingNodePositionVersion:
+                      this.spatialSkeletonState.pendingNodePositionVersion,
+                    getPendingNodePosition: (nodeId) =>
+                      this.spatialSkeletonState.getPendingNodePosition(nodeId),
+                    getPendingNodeIds: () =>
+                      this.spatialSkeletonState.getPendingNodeIds(),
+                    getCachedNode: (nodeId) =>
+                      this.spatialSkeletonState.getCachedNode(nodeId),
+                    resolveGlobalPosition: (modelPosition) =>
+                      this.getGlobalSelectionPositionFromModelPosition(
+                        modelPosition,
+                      ),
+                    inspectionState: this.spatialSkeletonState,
+                  },
+                );
+                if (loadedSubsource === findPathSubsource) {
+                  this.registerSpatialSkeletonFindPathContext(
+                    base,
+                    loadedSubsource,
+                  );
+                }
+                if (perspectiveSources.length > 0) {
+                  loadedSubsource.addRenderLayer(
+                    new PerspectiveViewSpatiallyIndexedSkeletonLayer(
+                      base.addRef(),
+                    ),
+                  );
+                }
+                if (slicePanelSources.length > 0) {
+                  loadedSubsource.addRenderLayer(
+                    new SliceViewPanelSpatiallyIndexedSkeletonLayer(
+                      /* transfer ownership */ base,
+                    ),
+                  );
+                } else {
+                  base.dispose();
+                }
+              }
+            } else if (mesh instanceof SpatiallyIndexedSkeletonSource) {
+              const base = new SpatiallyIndexedSkeletonLayer(
                 this.manager.chunkManager,
                 mesh,
                 displayState,
-              ),
-            );
-          } else if (mesh instanceof MultiscaleSpatiallyIndexedSkeletonSource) {
-            const perspectiveSources = mesh.getPerspectiveSources();
-            const slicePanelSources = mesh.getSliceViewPanelSources();
-            const sharedSpatialSkeletonSources =
-              perspectiveSources.length > 0
-                ? perspectiveSources
-                : slicePanelSources;
-            if (sharedSpatialSkeletonSources.length > 0) {
-              // Share one mutable skeleton base across 2D/3D projections so
-              // local edit state stays consistent across panels.
-              const base = new SpatiallyIndexedSkeletonLayer(
-                this.manager.chunkManager,
-                sharedSpatialSkeletonSources,
-                displayState,
                 {
-                  sources2d: slicePanelSources,
                   selectedNodeInfo: this.selectedSpatialSkeletonNodeInfo,
                   suppressSelectedNodeHighlight:
                     this.spatialSkeletonState.suppressSelectedNodeHighlight,
@@ -1883,11 +1839,8 @@ export class SegmentationUserLayer extends Base {
                     this.spatialSkeletonState.getPendingNodePosition(nodeId),
                   getPendingNodeIds: () =>
                     this.spatialSkeletonState.getPendingNodeIds(),
-                  getCachedNode: (nodeId, skeletonLayer) =>
-                    this.spatialSkeletonState.getCachedNode(
-                      nodeId,
-                      skeletonLayer,
-                    ),
+                  getCachedNode: (nodeId) =>
+                    this.spatialSkeletonState.getCachedNode(nodeId),
                   resolveGlobalPosition: (modelPosition) =>
                     this.getGlobalSelectionPositionFromModelPosition(
                       modelPosition,
@@ -1895,78 +1848,37 @@ export class SegmentationUserLayer extends Base {
                   inspectionState: this.spatialSkeletonState,
                 },
               );
-              this.registerSpatialSkeletonFindPathContext(
-                base,
-                loadedSubsource,
+              if (loadedSubsource === findPathSubsource) {
+                this.registerSpatialSkeletonFindPathContext(
+                  base,
+                  loadedSubsource,
+                );
+              }
+              loadedSubsource.addRenderLayer(
+                new PerspectiveViewSpatiallyIndexedSkeletonLayer(base.addRef()),
               );
-              if (perspectiveSources.length > 0) {
-                loadedSubsource.addRenderLayer(
-                  new PerspectiveViewSpatiallyIndexedSkeletonLayer(
-                    base.addRef(),
-                  ),
-                );
-              }
-              if (slicePanelSources.length > 0) {
-                loadedSubsource.addRenderLayer(
-                  new SliceViewPanelSpatiallyIndexedSkeletonLayer(
-                    /* transfer ownership */ base,
-                  ),
-                );
-              } else {
-                base.dispose();
-              }
+              loadedSubsource.addRenderLayer(
+                new SliceViewPanelSpatiallyIndexedSkeletonLayer(
+                  /* transfer ownership */ base,
+                ),
+              );
+            } else {
+              const base = new SkeletonLayer(
+                this.manager.chunkManager,
+                mesh,
+                displayState,
+              );
+              loadedSubsource.addRenderLayer(
+                new PerspectiveViewSkeletonLayer(base.addRef()),
+              );
+              loadedSubsource.addRenderLayer(
+                new SliceViewPanelSkeletonLayer(/* transfer ownership */ base),
+              );
             }
-          } else if (mesh instanceof SpatiallyIndexedSkeletonSource) {
-            const base = new SpatiallyIndexedSkeletonLayer(
-              this.manager.chunkManager,
-              mesh,
-              displayState,
-              {
-                selectedNodeInfo: this.selectedSpatialSkeletonNodeInfo,
-                suppressSelectedNodeHighlight:
-                  this.spatialSkeletonState.suppressSelectedNodeHighlight,
-                hoveredNodeInfo: this.hoveredSpatialSkeletonNodeInfo,
-                pendingNodePositionVersion:
-                  this.spatialSkeletonState.pendingNodePositionVersion,
-                getPendingNodePosition: (nodeId) =>
-                  this.spatialSkeletonState.getPendingNodePosition(nodeId),
-                getPendingNodeIds: () =>
-                  this.spatialSkeletonState.getPendingNodeIds(),
-                getCachedNode: (nodeId, skeletonLayer) =>
-                  this.spatialSkeletonState.getCachedNode(
-                    nodeId,
-                    skeletonLayer,
-                  ),
-                resolveGlobalPosition: (modelPosition) =>
-                  this.getGlobalSelectionPositionFromModelPosition(
-                    modelPosition,
-                  ),
-                inspectionState: this.spatialSkeletonState,
-              },
-            );
-            this.registerSpatialSkeletonFindPathContext(base, loadedSubsource);
-            loadedSubsource.addRenderLayer(
-              new PerspectiveViewSpatiallyIndexedSkeletonLayer(base.addRef()),
-            );
-            loadedSubsource.addRenderLayer(
-              new SliceViewPanelSpatiallyIndexedSkeletonLayer(
-                /* transfer ownership */ base,
-              ),
-            );
-          } else {
-            const base = new SkeletonLayer(
-              this.manager.chunkManager,
-              mesh,
-              displayState,
-            );
-            loadedSubsource.addRenderLayer(
-              new PerspectiveViewSkeletonLayer(base.addRef()),
-            );
-            loadedSubsource.addRenderLayer(
-              new SliceViewPanelSkeletonLayer(/* transfer ownership */ base),
-            );
-          }
-        }, this.displayState.segmentationGroupState.value);
+          },
+          this.displayState.segmentationGroupState.value,
+          loadedSubsource === findPathSubsource,
+        );
       } else if (segmentPropertyMap !== undefined) {
         if (!isGroupRoot) {
           loadedSubsource.deactivate(
@@ -2697,10 +2609,7 @@ export class SegmentationUserLayer extends Base {
 
     const selectedSegmentId = getSegmentIdFromLayerSelectionValue(state);
     const skeletonLayer = this.getSpatiallyIndexedSkeletonLayer();
-    const cachedNodeInfo = this.spatialSkeletonState.getCachedNode(
-      nodeId,
-      skeletonLayer,
-    );
+    const cachedNodeInfo = this.spatialSkeletonState.getCachedNode(nodeId);
     const completeNodeInfo = skeletonLayer?.getNode(nodeId) ?? cachedNodeInfo;
     const selectedNodeInfo = this.selectedSpatialSkeletonNodeInfo.value;
     const previewNodeInfo =
@@ -2775,10 +2684,8 @@ export class SegmentationUserLayer extends Base {
     const fullNodeInfo = completeNodeInfo;
     const segmentId = fullNodeInfo.segmentId;
     const nodePosition = fullNodeInfo.position;
-    const segmentNodes = this.spatialSkeletonState.getCachedSegmentNodes(
-      segmentId,
-      skeletonLayer,
-    );
+    const segmentNodes =
+      this.spatialSkeletonState.getCachedSegmentNodes(segmentId);
     const directChildNodeIds =
       segmentNodes
         ?.filter((candidate) => candidate.parentNodeId === fullNodeInfo.nodeId)
@@ -3063,7 +2970,6 @@ export class SegmentationUserLayer extends Base {
           try {
             const currentNode = this.spatialSkeletonState.getCachedNode(
               fullNodeInfo.nodeId,
-              skeletonLayer,
             );
             if (currentNode === undefined) {
               throw new Error(
@@ -3129,7 +3035,6 @@ export class SegmentationUserLayer extends Base {
     const getCachedNodeForPropertyEdit = () => {
       const currentNode = this.spatialSkeletonState.getCachedNode(
         fullNodeInfo.nodeId,
-        skeletonLayer,
       );
       if (currentNode === undefined) {
         throw new Error(
@@ -3397,7 +3302,6 @@ export class SegmentationUserLayer extends Base {
           try {
             const currentNode = this.spatialSkeletonState.getCachedNode(
               fullNodeInfo.nodeId,
-              skeletonLayer,
             );
             if (currentNode === undefined) {
               throw new Error(

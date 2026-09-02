@@ -2075,10 +2075,7 @@ interface SpatiallyIndexedSkeletonLayerOptions {
   getPendingNodePosition?: (nodeId: number) => ArrayLike<number> | undefined;
   // Node ids that currently have a pending (drag) position override.
   getPendingNodeIds?: () => Iterable<number>;
-  getCachedNode?: (
-    nodeId: number,
-    skeletonLayer?: SpatiallyIndexedSkeletonLayer,
-  ) => SpatiallyIndexedSkeletonNode | undefined;
+  getCachedNode?: (nodeId: number) => SpatiallyIndexedSkeletonNode | undefined;
   // Transforms a node's model-space position into the global coordinate space
   // used by the panels, so node highlights can be projected to screen.
   resolveGlobalPosition?: (
@@ -2093,16 +2090,12 @@ interface SpatiallyIndexedSkeletonInspectionState {
   readonly pendingNodePositionVersion: WatchableValueInterface<number>;
   getCachedSegmentNodes(
     segmentId: number,
-    skeletonLayer?: SpatiallyIndexedSkeletonLayer,
   ): readonly SpatiallyIndexedSkeletonNode[] | undefined;
   getFullSegmentNodes(
     skeletonLayer: SpatiallyIndexedSkeletonLayer,
     segmentId: number,
   ): Promise<readonly SpatiallyIndexedSkeletonNode[]>;
-  evictInactiveSegmentNodes(
-    activeSegmentIds: Iterable<number>,
-    skeletonLayer?: SpatiallyIndexedSkeletonLayer,
-  ): void;
+  evictInactiveSegmentNodes(activeSegmentIds: Iterable<number>): void;
 }
 
 class SkeletonOverlayChunk implements SkeletonGPUGeometry {
@@ -2263,10 +2256,7 @@ export class SpatiallyIndexedSkeletonLayer
   // position override without scanning all nodes; one entry during a drag.
   private getPendingNodeIds: (() => Iterable<number>) | undefined;
   private getCachedNodeInfo:
-    | ((
-        nodeId: number,
-        skeletonLayer?: SpatiallyIndexedSkeletonLayer,
-      ) => SpatiallyIndexedSkeletonNode | undefined)
+    | ((nodeId: number) => SpatiallyIndexedSkeletonNode | undefined)
     | undefined;
   private resolveGlobalPosition:
     | ((modelPosition: ArrayLike<number>) => Float32Array | undefined)
@@ -2641,15 +2631,12 @@ export class SpatiallyIndexedSkeletonLayer
       this.disposeOverlayChunk();
       return undefined;
     }
-    this.inspectionState.evictInactiveSegmentNodes(overlaySegmentIds, this);
+    this.inspectionState.evictInactiveSegmentNodes(overlaySegmentIds);
 
     // Pass 1: cheap scan to determine which segments are loaded and check cache.
     const loadedSegmentIds: number[] = [];
     for (const segmentId of overlaySegmentIds) {
-      if (
-        this.inspectionState.getCachedSegmentNodes(segmentId, this) !==
-        undefined
-      ) {
+      if (this.inspectionState.getCachedSegmentNodes(segmentId) !== undefined) {
         loadedSegmentIds.push(segmentId);
       } else {
         this.requestOverlaySegmentLoad(segmentId);
@@ -2676,10 +2663,8 @@ export class SpatiallyIndexedSkeletonLayer
     // Topology cache miss — collect node sets and rebuild.
     const segmentNodeSets: (readonly SpatiallyIndexedSkeletonNode[])[] = [];
     for (const segmentId of loadedSegmentIds) {
-      const segmentNodes = this.inspectionState.getCachedSegmentNodes(
-        segmentId,
-        this,
-      );
+      const segmentNodes =
+        this.inspectionState.getCachedSegmentNodes(segmentId);
       if (segmentNodes !== undefined) {
         segmentNodeSets.push(segmentNodes);
       }
@@ -2989,7 +2974,7 @@ export class SpatiallyIndexedSkeletonLayer
   }
 
   private getCachedNodeSnapshot(nodeId: number) {
-    const cachedNode = this.getCachedNodeInfo?.(nodeId, this);
+    const cachedNode = this.getCachedNodeInfo?.(nodeId);
     if (cachedNode === undefined) {
       return undefined;
     }
@@ -3377,7 +3362,7 @@ export class SpatiallyIndexedSkeletonLayer
     const nodes = new Map<number, SpatiallyIndexedSkeletonNode>();
     for (const segmentId of segmentIds) {
       const segmentNodes =
-        this.inspectionState?.getCachedSegmentNodes(segmentId, this) ?? [];
+        this.inspectionState?.getCachedSegmentNodes(segmentId) ?? [];
       for (const node of segmentNodes) {
         if (nodes.has(node.nodeId)) continue;
         const cachedNode = this.getCachedNodeSnapshot(node.nodeId);

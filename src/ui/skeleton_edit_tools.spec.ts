@@ -232,7 +232,6 @@ function makeFindPathNode(
 function makeFindPathToolHarness(
   options: {
     cachedSegmentNodes?: readonly SpatiallyIndexedSkeletonNode[];
-    secondCachedSegmentNodes?: readonly SpatiallyIndexedSkeletonNode[];
     disabledReason?: string;
     hasSource?: boolean;
     hasSecondSource?: boolean;
@@ -241,7 +240,6 @@ function makeFindPathToolHarness(
   } = {},
 ) {
   const state = new SkeletonFindPathState();
-  const secondState = new SkeletonFindPathState();
   const mouseState: any = {
     pickedRenderLayer: undefined,
     pickedSpatialSkeleton: undefined,
@@ -252,15 +250,8 @@ function makeFindPathToolHarness(
     number,
     readonly SpatiallyIndexedSkeletonNode[]
   >();
-  const secondCachedSegmentNodes = new Map<
-    number,
-    readonly SpatiallyIndexedSkeletonNode[]
-  >();
   if (options.cachedSegmentNodes !== undefined) {
     cachedSegmentNodes.set(11, options.cachedSegmentNodes);
-  }
-  if (options.secondCachedSegmentNodes !== undefined) {
-    secondCachedSegmentNodes.set(11, options.secondCachedSegmentNodes);
   }
   const getFullSegmentNodes = vi.fn();
   const visibleSegmentsState = makeVisibleSegmentsState(
@@ -280,23 +271,18 @@ function makeFindPathToolHarness(
           getNode: vi.fn(),
         }
       : undefined;
-  const makeContext = (
-    candidateSkeletonLayer: typeof skeletonLayer,
-    candidateState: SkeletonFindPathState,
-  ) => ({
-    skeletonLayer: candidateSkeletonLayer,
-    dataSourceState: { findPathState: candidateState },
-    annotationController: {
-      annotationState: {
-        source: [],
-      },
-    },
-  });
-  const context = makeContext(skeletonLayer, state);
-  const secondContext = makeContext(secondSkeletonLayer, secondState);
-  const contexts = [context, secondContext].filter(
-    (candidate) => candidate.skeletonLayer !== undefined,
-  );
+  const context =
+    skeletonLayer === undefined
+      ? undefined
+      : {
+          skeletonLayer,
+          state,
+          annotationController: {
+            annotationState: {
+              source: [],
+            },
+          },
+        };
   let activeSkeletonLayer = skeletonLayer;
   const getSpatialSkeletonActionsDisabledReason = vi.fn(
     () => options.disabledReason,
@@ -311,11 +297,8 @@ function makeFindPathToolHarness(
     },
     spatialSkeletonState: {
       getFullSegmentNodes,
-      getCachedSegmentNodes: vi.fn(
-        (segmentId: number, candidateSkeletonLayer: unknown) =>
-          candidateSkeletonLayer === secondSkeletonLayer
-            ? secondCachedSegmentNodes.get(segmentId)
-            : cachedSegmentNodes.get(segmentId),
+      getCachedSegmentNodes: vi.fn((segmentId: number) =>
+        cachedSegmentNodes.get(segmentId),
       ),
     },
     manager: {
@@ -324,26 +307,10 @@ function makeFindPathToolHarness(
       },
     },
     getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
-    getSpatialSkeletonFindPathContext: (candidate: unknown) =>
-      contexts.find(
-        (candidateContext) => candidateContext.skeletonLayer === candidate,
-      ),
-    getSpatialSkeletonFindPathContexts: () => contexts,
-    getInitialSpatialSkeletonFindPathContext: (preferred: unknown) =>
-      contexts.find(
-        (candidate) =>
-          candidate.dataSourceState.findPathState.toJSON() !== undefined,
-      ) ??
-      contexts.find((candidate) => candidate.skeletonLayer === preferred) ??
-      contexts[0],
-    claimSpatialSkeletonFindPathContext: (claimed: typeof context) => {
-      for (const candidate of contexts) {
-        if (candidate !== claimed) {
-          candidate.dataSourceState.findPathState.reset();
-        }
-      }
-      return claimed.dataSourceState.findPathState;
-    },
+    getSpatialSkeletonFindPathContext: (candidate?: unknown) =>
+      candidate === undefined || context?.skeletonLayer === candidate
+        ? context
+        : undefined,
     getSpatialSkeletonActionsDisabledReason,
     layersChanged: makeChangedSignal(),
   };
@@ -381,9 +348,7 @@ function makeFindPathToolHarness(
     mouseState,
     pickNode,
     skeletonLayer,
-    secondContext,
     secondSkeletonLayer,
-    secondState,
     state,
     visibleSegmentsState,
   };
@@ -1157,7 +1122,7 @@ describe("spatial_skeleton_edit_tool", () => {
     }
   });
 
-  it("rejects a cross-source second pick and switches sources only after Clear", () => {
+  it("rejects picks from a non-owning spatial skeleton source", () => {
     suppressStatusMessages();
     const harness = makeFindPathToolHarness({ hasSecondSource: true });
 
@@ -1167,15 +1132,16 @@ describe("spatial_skeleton_edit_tool", () => {
 
       expect(harness.state.source?.nodeId).toBe(1n);
       expect(harness.state.target).toBeUndefined();
-      expect(harness.secondState.toJSON()).toBeUndefined();
       expect(StatusMessage.showTemporaryMessage).toHaveBeenLastCalledWith(
-        "Find Path endpoints must come from the same spatial skeleton datasource. Clear the current route before switching sources.",
+        "Find Path is only available for the first active spatial skeleton datasource in this layer.",
       );
 
       harness.state.clear();
       harness.pickNode(makeFindPathNode(2), harness.secondSkeletonLayer);
       expect(harness.state.toJSON()).toBeUndefined();
-      expect(harness.secondState.source?.nodeId).toBe(2n);
+      expect(StatusMessage.showTemporaryMessage).toHaveBeenLastCalledWith(
+        "Find Path is only available for the first active spatial skeleton datasource in this layer.",
+      );
     } finally {
       harness.dispose();
     }
@@ -1206,7 +1172,7 @@ describe("spatial_skeleton_edit_tool", () => {
       expect(harness.getFullSegmentNodes).not.toHaveBeenCalled();
       expect(
         harness.layer.spatialSkeletonState.getCachedSegmentNodes,
-      ).toHaveBeenCalledWith(11, harness.skeletonLayer);
+      ).toHaveBeenCalledWith(11);
       expect(harness.state.result?.map(({ position }) => position)).toEqual([
         nodes[2].position,
         nodes[1].position,

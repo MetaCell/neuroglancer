@@ -52,32 +52,6 @@ function makeEditableSourceCommands() {
   };
 }
 
-function makeInspectionLayer(getSkeleton: (...args: any[]) => any) {
-  return {
-    source: {
-      readonly: true,
-      listSkeletons: async () => [],
-      getSkeleton,
-      fetchNodes: async () => [],
-      getSpatialIndexMetadata: async () => null,
-    },
-  } as any;
-}
-
-function makeInspectedNode(
-  nodeId: number,
-  segmentId: number,
-  position: readonly [number, number, number],
-) {
-  return {
-    nodeId,
-    segmentId,
-    position: new Float32Array(position),
-    parentNodeId: undefined,
-    isTrueEnd: false,
-  };
-}
-
 describe("skeleton/spatial_skeleton_manager", () => {
   it("returns an editable source when mandatory edit actions are present", () => {
     const source = {
@@ -293,25 +267,27 @@ describe("skeleton/spatial_skeleton_manager", () => {
   it("clears the full skeleton cache before notifying node data listeners", () => {
     const state = new SpatialSkeletonState();
     const cachedSegmentId = 11;
-    state.upsertCachedNode(
+    (state as any).fullSegmentNodeCache.set(cachedSegmentId, [
       {
         nodeId: 1,
         segmentId: cachedSegmentId,
         position: new Float32Array([1, 2, 3]),
       },
-      { allowUncachedSegment: true },
-    );
+    ]);
 
     let cachePresentDuringNotification: boolean | undefined;
     state.nodeDataVersion.changed.add(() => {
-      cachePresentDuringNotification =
-        state.getCachedSegmentNodes(cachedSegmentId) !== undefined;
+      cachePresentDuringNotification = (state as any).fullSegmentNodeCache.has(
+        cachedSegmentId,
+      );
     });
 
     state.markNodeDataChanged();
 
     expect(cachePresentDuringNotification).toBe(false);
-    expect(state.getCachedSegmentNodes(cachedSegmentId)).toBeUndefined();
+    expect((state as any).fullSegmentNodeCache.has(cachedSegmentId)).toBe(
+      false,
+    );
   });
 
   it("clears inspected cache state and pending node positions together", () => {
@@ -703,214 +679,6 @@ describe("skeleton/spatial_skeleton_manager", () => {
     expect(state.getCachedNode(5)).toBeUndefined();
   });
 
-  it("keeps identical segment ids cached independently for each layer", async () => {
-    const state = new SpatialSkeletonState();
-    const getFirstSkeleton = vi.fn(async () => [
-      makeInspectedNode(5, 11, [1, 2, 3]),
-    ]);
-    const getSecondSkeleton = vi.fn(async () => [
-      makeInspectedNode(5, 11, [7, 8, 9]),
-    ]);
-    const firstLayer = makeInspectionLayer(getFirstSkeleton);
-    const secondLayer = makeInspectionLayer(getSecondSkeleton);
-
-    await expect(state.getFullSegmentNodes(firstLayer, 11)).resolves.toEqual([
-      expect.objectContaining({
-        nodeId: 5,
-        position: new Float32Array([1, 2, 3]),
-      }),
-    ]);
-    await expect(state.getFullSegmentNodes(secondLayer, 11)).resolves.toEqual([
-      expect.objectContaining({
-        nodeId: 5,
-        position: new Float32Array([7, 8, 9]),
-      }),
-    ]);
-
-    await state.getFullSegmentNodes(firstLayer, 11);
-    await state.getFullSegmentNodes(secondLayer, 11);
-    expect(getFirstSkeleton).toHaveBeenCalledTimes(1);
-    expect(getSecondSkeleton).toHaveBeenCalledTimes(1);
-    expect(state.getCachedNode(5, firstLayer)?.position).toEqual(
-      new Float32Array([1, 2, 3]),
-    );
-    expect(state.getCachedNode(5, secondLayer)?.position).toEqual(
-      new Float32Array([7, 8, 9]),
-    );
-    expect(state.getCachedSegmentNodes(11)).toBeUndefined();
-    expect(state.getCachedNode(5)).toBeUndefined();
-    expect(state.invalidateCachedSegments([11])).toBe(false);
-    expect(
-      state.updateCachedNode(5, (node) => ({
-        ...node,
-        position: new Float32Array([0, 0, 0]),
-      })),
-    ).toBe(false);
-    expect(state.getCachedNode(5, firstLayer)?.position).toEqual(
-      new Float32Array([1, 2, 3]),
-    );
-    expect(state.getCachedNode(5, secondLayer)?.position).toEqual(
-      new Float32Array([7, 8, 9]),
-    );
-    expect(
-      state.upsertCachedNode(makeInspectedNode(99, 12, [9, 9, 9]), {
-        allowUncachedSegment: true,
-      }),
-    ).toBe(false);
-  });
-
-  it("routes an unscoped new-segment mutation to the sole registered layer", () => {
-    const state = new SpatialSkeletonState();
-    const layer = makeInspectionLayer(vi.fn());
-    state.registerSkeletonLayerCache(layer);
-
-    expect(
-      state.upsertCachedNode(makeInspectedNode(5, 11, [1, 2, 3]), {
-        allowUncachedSegment: true,
-      }),
-    ).toBe(true);
-    expect(state.getCachedNode(5, layer)?.position).toEqual(
-      new Float32Array([1, 2, 3]),
-    );
-  });
-
-  it("isolates pending same-segment fetches and scoped invalidation", async () => {
-    const state = new SpatialSkeletonState();
-    let firstSignal: AbortSignal | undefined;
-    let secondSignal: AbortSignal | undefined;
-    let resolveSecond:
-      | ((value: ReturnType<typeof makeInspectedNode>[]) => void)
-      | undefined;
-    const firstLayer = makeInspectionLayer(
-      (_segmentId: number, options?: { signal?: AbortSignal }) =>
-        new Promise<never>((_resolve, reject) => {
-          firstSignal = options?.signal;
-          options?.signal?.addEventListener(
-            "abort",
-            () => reject(options.signal?.reason),
-            { once: true },
-          );
-        }),
-    );
-    const secondLayer = makeInspectionLayer(
-      (_segmentId: number, options?: { signal?: AbortSignal }) =>
-        new Promise<ReturnType<typeof makeInspectedNode>[]>(
-          (resolve, reject) => {
-            secondSignal = options?.signal;
-            resolveSecond = resolve;
-            options?.signal?.addEventListener(
-              "abort",
-              () => reject(options.signal?.reason),
-              { once: true },
-            );
-          },
-        ),
-    );
-
-    const firstPending = state.getFullSegmentNodes(firstLayer, 11);
-    const secondPending = state.getFullSegmentNodes(secondLayer, 11);
-    expect(firstSignal?.aborted).toBe(false);
-    expect(secondSignal?.aborted).toBe(false);
-
-    state.invalidateCachedSegments([11], firstLayer);
-    expect(firstSignal?.aborted).toBe(true);
-    expect(secondSignal?.aborted).toBe(false);
-    await expect(firstPending).rejects.toMatchObject({ name: "AbortError" });
-
-    resolveSecond?.([makeInspectedNode(8, 11, [8, 8, 8])]);
-    await expect(secondPending).resolves.toEqual([
-      expect.objectContaining({ nodeId: 8 }),
-    ]);
-    expect(state.getCachedNode(8, secondLayer)).toBeDefined();
-  });
-
-  it("still deduplicates pending and cached fetches within one layer", async () => {
-    const state = new SpatialSkeletonState();
-    let resolveFetch:
-      | ((value: ReturnType<typeof makeInspectedNode>[]) => void)
-      | undefined;
-    const getSkeleton = vi.fn(
-      () =>
-        new Promise<ReturnType<typeof makeInspectedNode>[]>((resolve) => {
-          resolveFetch = resolve;
-        }),
-    );
-    const layer = makeInspectionLayer(getSkeleton);
-
-    const firstPending = state.getFullSegmentNodes(layer, 11);
-    const secondPending = state.getFullSegmentNodes(layer, 11);
-    expect(getSkeleton).toHaveBeenCalledTimes(1);
-
-    resolveFetch?.([makeInspectedNode(5, 11, [1, 2, 3])]);
-    await expect(firstPending).resolves.toEqual([
-      expect.objectContaining({ nodeId: 5 }),
-    ]);
-    await expect(secondPending).resolves.toEqual([
-      expect.objectContaining({ nodeId: 5 }),
-    ]);
-    await state.getFullSegmentNodes(layer, 11);
-    expect(getSkeleton).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not let an old pending fetch overwrite a replacement source", async () => {
-    const state = new SpatialSkeletonState();
-    let oldSignal: AbortSignal | undefined;
-    let resolveOld:
-      | ((value: ReturnType<typeof makeInspectedNode>[]) => void)
-      | undefined;
-    let resolveReplacement:
-      | ((value: ReturnType<typeof makeInspectedNode>[]) => void)
-      | undefined;
-    const layer = makeInspectionLayer(
-      (_segmentId: number, options?: { signal?: AbortSignal }) =>
-        new Promise<ReturnType<typeof makeInspectedNode>[]>((resolve) => {
-          oldSignal = options?.signal;
-          resolveOld = resolve;
-        }),
-    );
-    const oldPending = state.getFullSegmentNodes(layer, 11);
-
-    layer.source = makeInspectionLayer(
-      () =>
-        new Promise<ReturnType<typeof makeInspectedNode>[]>((resolve) => {
-          resolveReplacement = resolve;
-        }),
-    ).source;
-    const replacementPending = state.getFullSegmentNodes(layer, 11);
-    expect(oldSignal?.aborted).toBe(true);
-
-    resolveReplacement?.([makeInspectedNode(9, 11, [9, 9, 9])]);
-    await expect(replacementPending).resolves.toEqual([
-      expect.objectContaining({ nodeId: 9 }),
-    ]);
-    resolveOld?.([makeInspectedNode(5, 11, [1, 2, 3])]);
-    await expect(oldPending).resolves.toEqual([
-      expect.objectContaining({ nodeId: 5 }),
-    ]);
-
-    expect(
-      state.getCachedSegmentNodes(11, layer)?.map((node) => node.nodeId),
-    ).toEqual([9]);
-    expect(state.getCachedNode(5, layer)).toBeUndefined();
-  });
-
-  it("releases a disposed layer's scoped cache", async () => {
-    const state = new SpatialSkeletonState();
-    const getSkeleton = vi.fn(async () => [
-      makeInspectedNode(5, 11, [1, 2, 3]),
-    ]);
-    const layer = makeInspectionLayer(getSkeleton);
-
-    await state.getFullSegmentNodes(layer, 11);
-    expect(state.getCachedSegmentNodes(11, layer)).toBeDefined();
-    expect(state.releaseSkeletonLayerCache(layer)).toBe(true);
-    expect(state.getCachedSegmentNodes(11, layer)).toBeUndefined();
-    expect(state.releaseSkeletonLayerCache(layer)).toBe(false);
-
-    await state.getFullSegmentNodes(layer, 11);
-    expect(getSkeleton).toHaveBeenCalledTimes(2);
-  });
-
   it("keeps stale cached nodes while a cache-bypassing refresh is pending", async () => {
     const state = new SpatialSkeletonState();
     const staleNode = {
@@ -920,6 +688,7 @@ describe("skeleton/spatial_skeleton_manager", () => {
       parentNodeId: undefined,
       isTrueEnd: false,
     };
+    state.replaceCachedSegmentSnapshots([[11, [staleNode]]]);
     let resolveFetch:
       | ((value: SpatiallyIndexedSkeletonNode[]) => void)
       | undefined;
@@ -938,9 +707,6 @@ describe("skeleton/spatial_skeleton_manager", () => {
         getSpatialIndexMetadata: async () => null,
       },
     } as any;
-    state.replaceCachedSegmentSnapshots([[11, [staleNode]]], {
-      skeletonLayer,
-    });
     let notifications = 0;
     state.nodeDataVersion.changed.add(() => {
       notifications += 1;
@@ -949,9 +715,9 @@ describe("skeleton/spatial_skeleton_manager", () => {
     const pending = state.refreshCachedSegments(skeletonLayer, [11]);
 
     expect(getSkeleton).toHaveBeenCalledTimes(1);
-    expect(
-      state.getCachedSegmentNodes(11, skeletonLayer)?.[0]?.position,
-    ).toEqual(new Float32Array([1, 2, 3]));
+    expect(state.getCachedSegmentNodes(11)?.[0]?.position).toEqual(
+      new Float32Array([1, 2, 3]),
+    );
     expect(notifications).toBe(0);
 
     resolveFetch?.([
@@ -961,9 +727,9 @@ describe("skeleton/spatial_skeleton_manager", () => {
       },
     ]);
     await expect(pending).resolves.toBe(true);
-    expect(
-      state.getCachedSegmentNodes(11, skeletonLayer)?.[0]?.position,
-    ).toEqual(new Float32Array([7, 8, 9]));
+    expect(state.getCachedSegmentNodes(11)?.[0]?.position).toEqual(
+      new Float32Array([7, 8, 9]),
+    );
     expect(notifications).toBe(1);
   });
 

@@ -205,11 +205,11 @@ still loading, wait and submit again. Click **Clear** to remove the endpoints an
 route. If a generic skeleton contains cycles, **Find Path** selects a
 deterministic route with the fewest edges.
 
-When a segmentation layer has multiple spatial skeleton datasources, both
-endpoints must be picked from the same datasource. A pick from another source
-is rejected after the first endpoint; use **Clear** before switching sources.
-Each datasource keeps its own saved Find Path state, while the segmentation
-layer displays one active route at a time.
+The spatial skeleton tool supports one owning
+datasource per segmentation layer. If multiple spatial skeleton datasources are
+enabled, the first one in datasource order owns Find Path; skeletons from the
+other sources may still be visible, but cannot be selected by this tool. Find
+Path state is saved with the owning datasource.
 
 Edit Tool
 ~~~~~~~~~
