@@ -117,11 +117,9 @@ describe("line endpoint clipping", () => {
 
   it("measures the disc from the endpoints as given, not the clipped ends", () => {
     webglTest((gl) => {
-      // z runs -3 to 3, so only the middle third of the line survives the depth
-      // range. Measuring the disc from those moved ends would eat the drawn line
-      // where no node exists, the node itself having been clipped away with the
-      // rest of the segment. Both given endpoints end up more than one clip radius
-      // clear of what is drawn, so the discs must remove nothing.
+      // z runs -3 to 3, so only the middle third survives the depth range. Both
+      // given endpoints end up over one clip radius clear of what is drawn, so the
+      // discs must remove nothing.
       const spec = {
         endpointA: [-1, 0, -3, 1],
         endpointB: [1, 0, 3, 1],

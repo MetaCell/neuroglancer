@@ -139,6 +139,21 @@ function drawSphere(
   );
 }
 
+function buildWithEmitHelper(
+  gl: GL,
+  definePrimitive: (builder: ShaderBuilder) => void,
+  emitPrimitive: string,
+  emitHelperBody: string,
+): void {
+  const builder = new ShaderBuilder(gl);
+  builder.addOutputBuffer("vec4", "out_color", 0);
+  definePrimitive(builder);
+  builder.setVertexMain(emitPrimitive);
+  builder.addFragmentCode(`void emitShaded() {\n${emitHelperBody}}\n`);
+  builder.setFragmentMain(`${glsl_raycastFragmentSetup}emitShaded();\n`);
+  builder.build().dispose();
+}
+
 function coveredFraction(pixels: Uint8Array): number {
   let covered = 0;
   for (let i = 0; i < VIEWPORT * VIEWPORT; ++i) {
@@ -176,30 +191,24 @@ function axialFractionByRow(pixels: Uint8Array): number[] {
 }
 
 describe("raycast cone", () => {
-  it("publishes its depth and lighting to a consumer's own emit helper", () => {
+  it("exposes its depth, lighting and axial fraction to a helper function", () => {
     webglTest((gl) => {
-      const builder = new ShaderBuilder(gl);
-      builder.addOutputBuffer("vec4", "out_color", 0);
-      defineRaycastConeShader(builder);
-      builder.setVertexMain(
-        `emitRaycastCone(vec3(0.0), vec3(0.0, 1.0, 0.0), 0.1, 0.2, 0.0, 0.0);`,
-      );
-      // A helper sees the published globals, not main's locals.
-      builder.addFragmentCode(`
-void emitShaded() {
-  out_color = vec4(raycastLightingFactor, raycastSurfaceDepth,
-                   raycastConeAxialFraction, 1.0);
-}
-`);
-      builder.setFragmentMain(`${glsl_raycastFragmentSetup}emitShaded();\n`);
-      builder.build().dispose();
+      expect(() =>
+        buildWithEmitHelper(
+          gl,
+          defineRaycastConeShader,
+          "emitRaycastCone(vec3(0.0), vec3(0.0, 1.0, 0.0), 0.1, 0.2, 0.0, 0.0);",
+          `  out_color = vec4(raycastLightingFactor, raycastSurfaceDepth,
+                    raycastConeAxialFraction, 1.0);\n`,
+        ),
+      ).not.toThrow();
     });
   });
 
   it("bounds a visible cone to a small part of the viewport", () => {
     webglTest((gl) => {
-      // Upright, one unit ahead, 0.6 long and 0.1 across. Its silhouette is about
-      // 0.6 by 0.1 in raycast units, which is well under a tenth of the viewport.
+      // Upright, one unit ahead, 0.6 long and 0.1 across. That silhouette is well
+      // under a tenth of the viewport.
       const pixels = drawCone(
         gl,
         {
@@ -234,10 +243,8 @@ void emitShaded() {
 
   it("culls a cone that wraps the camera", () => {
     webglTest((gl) => {
-      // The axis passes 0.2 in front of the camera and the radius is 0.5, so the
-      // camera is inside. That surface has no bounded screen footprint, and
-      // covering the viewport instead would shade every pixel of a depth-writing
-      // shader once per such edge.
+      // The axis passes 0.2 ahead and the radius is 0.5, so the camera is inside.
+      // That surface has no bounded screen footprint at all.
       const pixels = drawCone(
         gl,
         {
@@ -254,9 +261,7 @@ void emitShaded() {
 
   it("culls a cone with no radius", () => {
     webglTest((gl) => {
-      // Both radius helpers return zero for a point at or behind the eye, so this
-      // runs every frame on a skeleton with geometry behind the camera. There is
-      // no surface to hit, so shading its quad would be pure waste.
+      // No radius, so no surface anywhere for a fragment to hit.
       const pixels = drawCone(
         gl,
         {
@@ -275,8 +280,7 @@ void emitShaded() {
     webglTest((gl) => {
       const endpointA: Point = [-0.3, -0.2, -1];
       const endpointB: Point = [0.5, 0.4, 1];
-      // Endpoint B is behind the camera, so its own pixel radius is zero and it
-      // alone leaves nothing to draw.
+      // Endpoint B is behind the camera, so its own pixel radius is zero.
       expect(
         coveredFraction(
           drawCone(
@@ -292,8 +296,7 @@ void emitShaded() {
         ),
       ).toBe(0);
 
-      // The segment helper makes that end borrow the other's radius, which keeps
-      // the half that is still in view.
+      // The segment helper makes it borrow endpoint A's radius instead.
       const radii = `getRaycastSegmentRadiiForPixels(${glslPoint(endpointA)}, ${glslPoint(endpointB)}, 1.0)`;
       const borrowed = coveredFraction(
         drawCone(
@@ -314,9 +317,8 @@ void emitShaded() {
 
   it("draws a constant width when both end radii match", () => {
     webglTest((gl) => {
-      // Equal radii must leave the taper rate at zero, so the quadratic collapses
-      // to the fixed-radius circle test. Any drift shows as a width that changes
-      // along a cone that should not taper.
+      // Equal radii leave the taper rate at zero, so the quadratic collapses to
+      // the fixed-radius circle test and the width must not change.
       const widths = coveredWidthByRow(
         drawCone(
           gl,
@@ -337,7 +339,7 @@ void emitShaded() {
 
   it("tapers the width between two different end radii", () => {
     webglTest((gl) => {
-      // Endpoint A is the lower end, so the width grows from bottom to top. The
+      // Endpoint A is the lower end, so the width grows from bottom to top. These
       // radii are wide enough that whole-pixel rasterisation does not dominate.
       const widths = coveredWidthByRow(
         drawCone(
@@ -352,8 +354,8 @@ void emitShaded() {
         ),
       );
       expect(widths.length).toBeGreaterThan(16);
-      // The rows nearest each end are left out. The ends are open, so the rim
-      // there projects as an ellipse and the silhouette closes over them.
+      // The ends are open, so the rim projects as an ellipse and closes the
+      // silhouette over the last few rows. Leave those out.
       const interior = widths.slice(
         Math.round(widths.length * 0.15),
         Math.round(widths.length * 0.85),
@@ -394,8 +396,7 @@ void emitShaded() {
 
   it("reports the axial fraction from 0 at endpoint A to 1 at endpoint B", () => {
     webglTest((gl) => {
-      // A consumer mixes an attribute's two end values by this fraction, so a
-      // constant would colour a whole edge from one endpoint.
+      // Endpoint A is the lower end, so the fraction rises with the row.
       const fractions = axialFractionByRow(
         drawCone(
           gl,
@@ -419,10 +420,9 @@ void emitShaded() {
 
   it("clips the surface around an endpoint", () => {
     webglTest((gl) => {
-      // The clip radius hands the region around a joint to the ball drawn there.
-      // The surface sits one radius from the axis, so a clip radius of 0.15
-      // reaches sqrt(0.15^2 - 0.05^2) = 0.1414 along a 0.6 long axis. That is the
-      // lowest 23.6 percent of it, or 60 as a 0 to 255 value.
+      // The surface sits one radius from the axis, so a clip radius of 0.15 reaches
+      // sqrt(0.15^2 - 0.05^2) = 0.1414 along a 0.6 long axis. That is the lowest
+      // 23.6 percent of it, or 60 as a 0 to 255 value.
       const clipped = axialFractionByRow(
         drawCone(
           gl,
@@ -451,8 +451,7 @@ void emitShaded() {
         radiusA: 0.05,
         radiusB: 0.05,
       };
-      // A clip radius under the cone's own radius never reaches the surface, which
-      // is already 0.05 from the axis everywhere.
+      // A clip radius of 0.04 cannot reach a surface 0.05 from the axis.
       expect(
         axialFractionByRow(
           drawCone(gl, { ...spec, clipRadiusA: 0.04 }, SHADE_AXIAL_FRACTION),
@@ -463,29 +462,24 @@ void emitShaded() {
 });
 
 describe("raycast sphere", () => {
-  it("publishes its depth and lighting to a consumer's own emit helper", () => {
+  it("exposes its depth and lighting to a helper function", () => {
     webglTest((gl) => {
-      const builder = new ShaderBuilder(gl);
-      builder.addOutputBuffer("vec4", "out_color", 0);
-      defineRaycastSphereShader(builder);
-      builder.setVertexMain("emitRaycastSphere(vec3(0.0, 0.0, -1.0), 0.2);");
-      builder.addFragmentCode(`
-void emitShaded() {
-  out_color = vec4(vec3(raycastLightingFactor), raycastSurfaceDepth);
-}
-`);
-      builder.setFragmentMain(`${glsl_raycastFragmentSetup}emitShaded();\n`);
-      builder.build().dispose();
+      expect(() =>
+        buildWithEmitHelper(
+          gl,
+          defineRaycastSphereShader,
+          "emitRaycastSphere(vec3(0.0, 0.0, -1.0), 0.2);",
+          "  out_color = vec4(vec3(raycastLightingFactor), raycastSurfaceDepth);\n",
+        ),
+      ).not.toThrow();
     });
   });
 
   it("bounds a sphere to the square around its silhouette", () => {
     webglTest((gl) => {
-      // A radius of 0.05 one unit ahead has a silhouette 0.12086 in NDC, which is
-      // 3.87 pixels of a 64 pixel viewport. The square around that disc is 59.8
-      // pixels, or 0.0146 of the viewport. The disc itself is 0.0115. The
-      // projected box this replaced measured 0.0376, most of that a fixed two
-      // pixel margin the exact bound does not need.
+      // A radius of 0.05 one unit ahead has a silhouette 0.12086 in NDC, so 3.87
+      // pixels of a 64 pixel viewport. The square around that disc is 59.8 pixels,
+      // or 0.0146 of the viewport, against 0.0115 for the disc itself.
       const pixels = drawSphere(
         gl,
         { center: [0, 0, -1], radius: 0.05 },
@@ -520,14 +514,10 @@ void emitShaded() {
 
   it("bounds a sphere without clipping its surface", () => {
     webglTest((gl) => {
-      // The silhouette of a sphere of radius r at distance d has radius
-      // r / sqrt(d^2 - r^2), which for r of 0.2 at one unit is 4 percent more area
-      // than the plain r / d disc. The conic gives that exactly, so the shaded
-      // surface has to exceed the plain disc. Falling short of it is what a quad
-      // clipping the sphere would produce.
-      //
       // A radius of 0.2 one unit ahead spans 15.5 pixels of a 64 pixel viewport,
-      // so the r / d disc is 0.1831 of it.
+      // so the plain r / d disc is 0.1831 of it. The true silhouette radius is
+      // r / sqrt(d^2 - r^2), which is 4 percent more area, so the shaded surface
+      // must exceed the plain disc rather than fall short of it.
       const shaded = coveredFraction(
         drawSphere(gl, { center: [0, 0, -1], radius: 0.2 }, SHADE_SURFACE),
       );
@@ -539,9 +529,8 @@ void emitShaded() {
   it("takes the whole viewport when the sphere crosses the eye plane", () => {
     webglTest((gl) => {
       // Centred 0.3 ahead with a radius of 0.5, so the sphere spans the eye plane.
-      // The silhouette conic is an ellipse only while the sphere clears that
-      // plane. Past it, part of the sphere projects arbitrarily far, so the whole
-      // viewport is the only honest bound.
+      // Past that plane the conic is no longer an ellipse and part of the sphere
+      // projects arbitrarily far.
       const pixels = drawSphere(
         gl,
         { center: [0, 0, -0.3], radius: 0.5 },
