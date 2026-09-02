@@ -109,6 +109,7 @@ import { defineVertexId, VertexIdHelper } from "#src/webgl/vertex_id.js";
 const tempModelClip = mat4.create();
 const tempCanonicalVoxelClip = mat4.create();
 const tempModelToCanonicalVoxel = mat4.create();
+const tempCameraOffset = vec3.create();
 const tempCanonicalVoxelScaleMatrix = mat4.create();
 const tempCanonicalVoxelScale = vec3.create();
 const tempInverseCanonicalVoxelScale = vec3.create();
@@ -512,16 +513,34 @@ void emitDefault() {
       canonicalVoxelFactors[1],
       canonicalVoxelFactors[2],
     );
+    // Camera-relative, so that both the geometry and the ray origin the fragment
+    // shader reconstructs sit near zero. Without it both carry the camera's own
+    // coordinates, and float32 cannot hold their difference finely enough: a
+    // dataset 1e4 canonical voxels from the origin loses the surface normal
+    // outright, which shows as dark patches and banding along a tube.
+    const { invViewMatrix } = projectionParameters;
+    const cameraOffset = vec3.set(
+      tempCameraOffset,
+      invViewMatrix[12] * canonicalVoxelScale[0],
+      invViewMatrix[13] * canonicalVoxelScale[1],
+      invViewMatrix[14] * canonicalVoxelScale[2],
+    );
     const modelToCanonicalVoxel = mat4.multiply(
       tempModelToCanonicalVoxel,
       mat4.fromScaling(tempCanonicalVoxelScaleMatrix, canonicalVoxelScale),
       modelMatrix,
     );
+    modelToCanonicalVoxel[12] -= cameraOffset[0];
+    modelToCanonicalVoxel[13] -= cameraOffset[1];
+    modelToCanonicalVoxel[14] -= cameraOffset[2];
     const canonicalVoxelClip = mat4.scale(
       tempCanonicalVoxelClip,
       projectionParameters.viewProjectionMat,
       vec3.inverse(tempInverseCanonicalVoxelScale, canonicalVoxelScale),
     );
+    // Puts the offset back, so the pair still maps model coordinates to the same
+    // clip coordinates as before.
+    mat4.translate(canonicalVoxelClip, canonicalVoxelClip, cameraOffset);
     gl.uniformMatrix4fv(
       shader.uniform("uModelToCanonicalVoxel"),
       false,

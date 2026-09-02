@@ -26,6 +26,13 @@
  * is read in the same space, so the surface normal needs no further transform.
  * `skeleton/frontend.ts` passes global coordinates scaled to canonical voxels.
  *
+ * That space must also be centred near the camera. The fragment shader
+ * reconstructs its ray origin there through `uInvProjection`, then subtracts a
+ * primitive's own position from it, so both carry whatever the space's origin is.
+ * A radius of a few units against coordinates of 1e4 leaves float32 nothing to
+ * work with, and the surface normal is destroyed rather than merely noisy. Since
+ * `mat4` is a Float32Array, the projection cannot help beyond roughly 1e4 either.
+ *
  * The file holds three things: the setup a primitive needs whatever its shape, the
  * general algebra it solves with, and bounding boxes. One bounding box lives here
  * so far, the axial OBB for an object with one long axis. An AABB would fit the
@@ -47,6 +54,14 @@ export function projectionMatrixShaderModule(builder: ShaderBuilder) {
   builder.addUniform("highp mat4", "uProjection");
 }
 
+// The ray direction comes from the near plane and the middle of the depth range,
+// not from the far plane. Once far over near is large enough, the projection's z
+// coefficient rounds to exactly -1 in float32 and the far plane stops being
+// reachable through uInvProjection, which leaves the direction a zero vector and
+// discards every fragment. At a near of 0.1 that happens by a far of 4e6. The
+// middle of the range stays a fixed distance behind the near plane whatever the
+// far plane does.
+//
 // The fragment side of the contract. A primitive supplies
 // `intersectRaycastPrimitive`, and gets the ray, the depth conversion and the
 // lighting from here. `raycastSurfaceDepth` and `raycastLightingFactor` are file
@@ -69,12 +84,10 @@ highp float raycastLightingFactor = 1.0;
 RaycastRay getRaycastRayThroughFragment() {
   highp vec2 ndc = (gl_FragCoord.xy / uViewportSize) * 2.0 - 1.0;
   highp vec4 nearClip = uInvProjection * vec4(ndc, -1.0, 1.0);
-  highp vec4 farClip = uInvProjection * vec4(ndc, 1.0, 1.0);
-  highp vec3 nearPoint = nearClip.xyz / nearClip.w;
-  highp vec3 farPoint = farClip.xyz / farClip.w;
+  highp vec4 midClip = uInvProjection * vec4(ndc, 0.0, 1.0);
   RaycastRay ray;
-  ray.origin = nearPoint;
-  ray.direction = normalize(farPoint - nearPoint);
+  ray.origin = nearClip.xyz / nearClip.w;
+  ray.direction = normalize(midClip.xyz / midClip.w - ray.origin);
   return ray;
 }
 highp float getRaycastWindowDepth(highp vec3 point) {

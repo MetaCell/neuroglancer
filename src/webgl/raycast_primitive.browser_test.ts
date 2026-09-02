@@ -40,6 +40,8 @@ const SHADE_WHOLE_QUAD = "out_color = vec4(1.0);\n";
 // Runs the real hit test first, so a miss discards and the result measures the
 // primitive's own surface.
 const SHADE_SURFACE = `${glsl_raycastFragmentSetup}out_color = vec4(1.0);\n`;
+// The lighting factor, which reads the surface normal.
+const SHADE_LIGHTING = `${glsl_raycastFragmentSetup}out_color = vec4(vec3(raycastLightingFactor), 1.0);\n`;
 // Red carries the axial fraction. Green marks a fragment that survived the hit
 // test, since a fraction of zero is indistinguishable from an unwritten pixel.
 const SHADE_AXIAL_FRACTION = `${glsl_raycastFragmentSetup}out_color = vec4(raycastConeAxialFraction, 1.0, 0.0, 1.0);\n`;
@@ -71,11 +73,38 @@ function glslRadius(radius: Radius): string {
   return typeof radius === "number" ? radius.toFixed(5) : radius;
 }
 
+function cameraAtOrigin(): mat4 {
+  return mat4.perspective(mat4.create(), FIELD_OF_VIEW, 1, 0.1, 20);
+}
+
+// As perspective_view/panel.ts builds it: the near bound clamps at 0.1 while the
+// far bound grows with the depth range, and the geometry sits at a depth of 1.
+function depthRange(relativeDepthRange: number): mat4 {
+  const range = relativeDepthRange / (1 / Math.tan(FIELD_OF_VIEW / 2));
+  return mat4.perspective(
+    mat4.create(),
+    FIELD_OF_VIEW,
+    1,
+    Math.max(0.1, 1 - range),
+    1 + range,
+  );
+}
+
+// The same view, with the space's origin moved away from the camera by `offset`.
+// A consumer subtracts the offset from its geometry, so the pair still lands the
+// same pixels while the coordinates the fragment shader works in grow.
+function cameraOffsetFromOrigin(offset: number): mat4 {
+  const projection = cameraAtOrigin();
+  mat4.translate(projection, projection, [-offset, -offset, -offset]);
+  return mat4.translate(projection, projection, [offset, offset, offset]);
+}
+
 function render(
   gl: GL,
   definePrimitive: (builder: ShaderBuilder) => void,
   emitPrimitive: string,
   fragmentMain: string,
+  projection: mat4 = cameraAtOrigin(),
 ): Uint8Array {
   const builder = new ShaderBuilder(gl);
   builder.addOutputBuffer("vec4", "out_color", 0);
@@ -88,11 +117,10 @@ function render(
   try {
     shader.bind();
     vertexIdHelper.enable();
-    initializeRaycastPrimitiveShader(
-      shader,
-      mat4.perspective(mat4.create(), FIELD_OF_VIEW, 1, 0.1, 20),
-      { width: VIEWPORT, height: VIEWPORT },
-    );
+    initializeRaycastPrimitiveShader(shader, projection, {
+      width: VIEWPORT,
+      height: VIEWPORT,
+    });
     gl.viewport(0, 0, VIEWPORT, VIEWPORT);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(WebGL2RenderingContext.COLOR_BUFFER_BIT);
@@ -114,7 +142,12 @@ function render(
   }
 }
 
-function drawCone(gl: GL, spec: ConeSpec, fragmentMain: string): Uint8Array {
+function drawCone(
+  gl: GL,
+  spec: ConeSpec,
+  fragmentMain: string,
+  projection?: mat4,
+): Uint8Array {
   const { clipRadiusA = 0, clipRadiusB = 0 } = spec;
   return render(
     gl,
@@ -123,6 +156,7 @@ function drawCone(gl: GL, spec: ConeSpec, fragmentMain: string): Uint8Array {
                      ${glslRadius(spec.radiusA)}, ${glslRadius(spec.radiusB)},
                      ${glslRadius(clipRadiusA)}, ${glslRadius(clipRadiusB)});`,
     fragmentMain,
+    projection,
   );
 }
 
@@ -152,6 +186,14 @@ function buildWithEmitHelper(
   builder.addFragmentCode(`void emitShaded() {\n${emitHelperBody}}\n`);
   builder.setFragmentMain(`${glsl_raycastFragmentSetup}emitShaded();\n`);
   builder.build().dispose();
+}
+
+function largestPixelDifference(a: Uint8Array, b: Uint8Array): number {
+  let largest = 0;
+  for (let i = 0; i < VIEWPORT * VIEWPORT; ++i) {
+    largest = Math.max(largest, Math.abs(a[i * 4] - b[i * 4]));
+  }
+  return largest;
 }
 
 function coveredFraction(pixels: Uint8Array): number {
@@ -440,6 +482,51 @@ describe("raycast cone", () => {
       expect(clipped[0]).toBeGreaterThan(45);
       expect(clipped[0]).toBeLessThan(78);
       expect(clipped.at(-1)!).toBeGreaterThan(239);
+    });
+  });
+
+  it("survives a depth range wide enough to flatten the projection", () => {
+    webglTest((gl) => {
+      // The ray direction used to come from the far plane. Past a far of about
+      // 4e6 the projection's z coefficient rounds to exactly -1 in float32, the
+      // far plane stops being reachable through the inverse, and the direction
+      // came out a zero vector. Lines never hit this because they only ever
+      // project forward, and never invert.
+      const spec: ConeSpec = {
+        endpointA: [0, -0.3, -1],
+        endpointB: [0, 0.3, -1],
+        radiusA: 0.05,
+        radiusB: 0.05,
+      };
+      const shaded = (relativeDepthRange: number) =>
+        coveredFraction(
+          drawCone(gl, spec, SHADE_SURFACE, depthRange(relativeDepthRange)),
+        );
+      expect(shaded(1e10)).toBeGreaterThan(0);
+      expect(shaded(1e10)).toBeCloseTo(shaded(1), 3);
+    });
+  });
+
+  it("keeps the surface normal with the space's origin 1e4 away", () => {
+    webglTest((gl) => {
+      // The fragment shader subtracts the cone's position from a ray origin it
+      // reconstructs in the same space, so both carry the space's origin. At 1e4
+      // against a radius of 0.05, float32 destroys the normal outright. A consumer
+      // has to centre the space near the camera, and this is what that buys.
+      const spec: ConeSpec = {
+        endpointA: [0, -0.3, -1],
+        endpointB: [0, 0.3, -1],
+        radiusA: 0.05,
+        radiusB: 0.05,
+      };
+      const atOrigin = drawCone(gl, spec, SHADE_LIGHTING);
+      const farFromOrigin = drawCone(
+        gl,
+        spec,
+        SHADE_LIGHTING,
+        cameraOffsetFromOrigin(1e4),
+      );
+      expect(largestPixelDifference(atOrigin, farFromOrigin)).toBeLessThan(3);
     });
   });
 
