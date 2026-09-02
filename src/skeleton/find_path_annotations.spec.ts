@@ -145,6 +145,15 @@ describe("SpatialSkeletonFindPathAnnotationController", () => {
     expect(
       Array.from(controller.annotationState.displayState.color.value),
     ).toEqual([1, 1, 1]);
+    expect(controller.annotationState.displayState.shader.value).toContain(
+      "setLineWidth(3.0)",
+    );
+    expect(controller.annotationState.displayState.shader.value).toContain(
+      "setPointMarkerSize(9.0)",
+    );
+    expect(controller.annotationState.displayState.shader.value).toContain(
+      "setPointMarkerBorderWidth(2.0)",
+    );
     const relationship =
       controller.annotationState.displayState.relationshipStates.get(
         "associated segments",

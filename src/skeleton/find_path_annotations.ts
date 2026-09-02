@@ -45,6 +45,16 @@ export const SPATIAL_SKELETON_FIND_PATH_SOURCE_DESCRIPTION = "find path source";
 export const SPATIAL_SKELETON_FIND_PATH_TARGET_DESCRIPTION = "find path target";
 export const SPATIAL_SKELETON_FIND_PATH_RESULT_DESCRIPTION = "find path result";
 
+const SPATIAL_SKELETON_FIND_PATH_SHADER = `
+void main() {
+  setColor(defaultColor());
+  setLineWidth(3.0);
+  setPointMarkerSize(9.0);
+  setPointMarkerBorderWidth(2.0);
+  setPointMarkerBorderColor(vec4(0.0, 0.0, 0.0, 1.0));
+}
+`;
+
 export interface SpatialSkeletonFindPathAnnotationControllerOptions {
   layer: SegmentationUserLayer;
   loadedSubsource: LoadedDataSubsource;
@@ -106,6 +116,7 @@ export class SpatialSkeletonFindPathAnnotationController extends RefCounted {
 
     const displayState = new AnnotationDisplayState();
     displayState.color.value.set([1, 1, 1]);
+    displayState.shader.value = SPATIAL_SKELETON_FIND_PATH_SHADER;
     displayState.relationshipStates.set(ASSOCIATED_SEGMENTS_RELATIONSHIP, {
       segmentationState: new WatchableValue(layer.displayState),
       showMatches: new TrackableBoolean(false),
