@@ -95,7 +95,10 @@ import {
   type SpatialSkeletonSegmentRenderRow,
   type SpatialSkeletonSegmentRenderState,
 } from "#src/ui/skeleton_tab_render.js";
-import { makeToolButton } from "#src/ui/tool.js";
+import {
+  CONTEXTUAL_PANEL_BINDING_PRIORITY,
+  makeToolButton,
+} from "#src/ui/tool.js";
 import type { ArraySpliceOp } from "#src/util/array.js";
 import {
   registerActionListener,
@@ -370,9 +373,12 @@ export class SpatialSkeletonEditTab extends Tab {
     // Add the tab navigation map to the viewer's slice and perspective view
     // panels so shortcuts work when the user's focus is on a viewport, not just
     // the sidebar.  Scoped to this Tab's lifetime via `this` as the context.
+    // Bound below `USER_TOOL_BINDING_PRIORITY` so that a tool the user has bound
+    // to one of these letters still wins while the tab is open.
     layer.manager.root.toolBinder.bindInputEventMap(
       getDefaultSkeletonTabBindings(),
       this,
+      CONTEXTUAL_PANEL_BINDING_PRIORITY,
     );
 
     let allNodes: SpatiallyIndexedSkeletonNode[] = [];
@@ -384,6 +390,11 @@ export class SpatialSkeletonEditTab extends Tab {
     let nodeDeletionAllowed = false;
     let nodeRerootAllowed = false;
     let pendingScrollToSelectedNode = false;
+    const MAX_SCROLL_RETRY_FRAMES = 6;
+    const SCROLL_CENTER_EPSILON = 2;
+    let scrollRetryHandle: number | undefined;
+    let scrollRetriesRemaining = 0;
+    let scrollRetryNodeId: number | undefined;
     let loadedNodeSummarySuffix = "";
     let hoveredViewerNodeId: number | undefined;
     let hoveredListNodeId: number | undefined;
@@ -616,14 +627,127 @@ export class SpatialSkeletonEditTab extends Tab {
       }
     };
 
-    const scrollListItemIntoView = (index: number) => {
-      if (nodesList.getItemElement(index) !== undefined) {
-        nodesList.scrollItemIntoView(index);
+    const cancelScrollRetry = () => {
+      if (scrollRetryHandle !== undefined) {
+        cancelAnimationFrame(scrollRetryHandle);
+        scrollRetryHandle = undefined;
+      }
+    };
+
+    // The area below the sticky header in which rows are actually visible.
+    const getRowViewport = () => {
+      const listRect = nodesList.element.getBoundingClientRect();
+      const top = listRect.top + nodesList.header.offsetHeight;
+      return { top, bottom: listRect.bottom, height: listRect.bottom - top };
+    };
+
+    // The `anchorClientOffset` (distance from the top of the list element to the
+    // top of the anchored row) that vertically centers a row of the given height
+    // in the viewport below the sticky header.  Rows taller than the viewport are
+    // clamped to align their top with the header.
+    const getCenteringAnchorClientOffset = (rowHeight: number) => {
+      const headerHeight = nodesList.header.offsetHeight;
+      const availableHeight = getRowViewport().height;
+      return headerHeight + Math.max(0, (availableHeight - rowHeight) / 2);
+    };
+
+    // True when the row is vertically centered in the viewport, within epsilon.
+    // Rows taller than the viewport count as centered once their top reaches the
+    // header, since they cannot be centered any better.
+    const isRowCentered = (element: HTMLElement) => {
+      const viewport = getRowViewport();
+      const rowRect = element.getBoundingClientRect();
+      if (rowRect.height >= viewport.height) {
+        return Math.abs(rowRect.top - viewport.top) <= SCROLL_CENTER_EPSILON;
+      }
+      const rowCenter = rowRect.top + rowRect.height / 2;
+      const viewportCenter = viewport.top + viewport.height / 2;
+      return Math.abs(rowCenter - viewportCenter) <= SCROLL_CENTER_EPSILON;
+    };
+
+    // Center the currently selected node's row in the virtual list.  Aligning it
+    // to the middle (rather than merely scrolling it barely into view) keeps it
+    // clear of UI overlays anchored to the bottom of the list, which could
+    // otherwise obscure a row revealed at the very bottom.  The virtual list
+    // renders asynchronously (animation-frame debounced) and positions unrendered
+    // rows using size *estimates*, so a single synchronous attempt is unreliable.
+    // We keep `pendingScrollToSelectedNode` set until the target row is genuinely
+    // rendered and centered, correcting the scroll position against the real
+    // measured geometry across a bounded number of frames.
+    const attemptScrollToSelectedNode = () => {
+      scrollRetryHandle = undefined;
+      const selectedNodeId =
+        layer.selectedSpatialSkeletonNodeInfo.value?.nodeId;
+      if (selectedNodeId === undefined) {
+        pendingScrollToSelectedNode = false;
         return;
       }
+      // A newer selection superseded this loop.
+      if (selectedNodeId !== scrollRetryNodeId) return;
+
+      const index = listIndexByNodeId.get(selectedNodeId);
+      if (index === undefined) {
+        // The node is not in the current list yet (async load, or a different
+        // segment).  Leave the pending flag set without scheduling a frame or
+        // consuming the retry budget; `updateList` re-triggers this once the
+        // list is rebuilt with the node present.
+        return;
+      }
+
+      const renderedElement = nodesList.getItemElement(index);
+      if (renderedElement !== undefined && isRowCentered(renderedElement)) {
+        pendingScrollToSelectedNode = false;
+        return;
+      }
+      if (scrollRetriesRemaining <= 0) {
+        // Found and rendered but still not centered after several corrections
+        // (e.g. the row is near a list edge and cannot be centered further); stop
+        // retrying so `updateList` doesn't loop forever.
+        pendingScrollToSelectedNode = false;
+        return;
+      }
+      scrollRetriesRemaining--;
+
       nodesList.state.anchorIndex = index;
-      nodesList.state.anchorClientOffset = 0;
+      if (renderedElement === undefined) {
+        // Not rendered: the row's real height is unknown, so anchor its top at the
+        // viewport center and let the next frame render + measure it before
+        // correcting to a true center.
+        nodesList.state.anchorClientOffset = getCenteringAnchorClientOffset(0);
+      } else {
+        // Rendered but off-center: center it using the real measured height.
+        const rowRect = renderedElement.getBoundingClientRect();
+        nodesList.state.anchorClientOffset = getCenteringAnchorClientOffset(
+          rowRect.height,
+        );
+      }
+      // Drives VirtualList's own debouncedUpdateView; its rAF is registered
+      // before ours below, so it runs first and our next attempt measures the
+      // freshly rendered row.
       virtualListRenderChanged.dispatch();
+      scrollRetryHandle = requestAnimationFrame(attemptScrollToSelectedNode);
+    };
+
+    const scrollSelectedNodeIntoView = () => {
+      const selectedNodeId =
+        layer.selectedSpatialSkeletonNodeInfo.value?.nodeId;
+      if (selectedNodeId === undefined) {
+        pendingScrollToSelectedNode = false;
+        cancelScrollRetry();
+        return;
+      }
+      // A loop is already converging on this node; let it continue rather than
+      // restarting (and resetting) it on every list rebuild / hover update.
+      if (
+        scrollRetryHandle !== undefined &&
+        scrollRetryNodeId === selectedNodeId
+      ) {
+        return;
+      }
+      cancelScrollRetry();
+      scrollRetryNodeId = selectedNodeId;
+      scrollRetriesRemaining = MAX_SCROLL_RETRY_FRAMES;
+      attemptScrollToSelectedNode();
     };
 
     const applyRowInteractionState = (
@@ -643,14 +767,7 @@ export class SpatialSkeletonEditTab extends Tab {
         entry.dataset.listHovered = String(isListHovered);
       });
       if (options.scrollSelectedIntoView) {
-        pendingScrollToSelectedNode = false;
-        const selectedIndex =
-          selectedNodeId === undefined
-            ? undefined
-            : listIndexByNodeId.get(selectedNodeId);
-        if (selectedIndex !== undefined) {
-          scrollListItemIntoView(selectedIndex);
-        }
+        scrollSelectedNodeIntoView();
       }
     };
 
@@ -1198,9 +1315,6 @@ export class SpatialSkeletonEditTab extends Tab {
     const makeListHeader = () => {
       const listHeader = document.createElement("div");
       listHeader.className = "neuroglancer-skeleton-list-header";
-      const headerActionsSpacer = document.createElement("span");
-      headerActionsSpacer.className =
-        "neuroglancer-skeleton-list-header-spacer neuroglancer-skeleton-list-header-actions";
       const headerTypeSpacer = document.createElement("span");
       headerTypeSpacer.className =
         "neuroglancer-skeleton-list-header-spacer neuroglancer-skeleton-list-header-type";
@@ -1216,7 +1330,6 @@ export class SpatialSkeletonEditTab extends Tab {
         dimSpan.textContent = dimLabel;
         headerCoordinates.appendChild(dimSpan);
       }
-      listHeader.appendChild(headerActionsSpacer);
       listHeader.appendChild(headerTypeSpacer);
       listHeader.appendChild(headerId);
       listHeader.appendChild(headerCoordinates);
@@ -1237,9 +1350,6 @@ export class SpatialSkeletonEditTab extends Tab {
       const segmentRow = document.createElement("div");
       segmentRow.className =
         "neuroglancer-skeleton-tree-row neuroglancer-skeleton-segment-row";
-      const segmentActionsSpacer = document.createElement("span");
-      segmentActionsSpacer.className =
-        "neuroglancer-skeleton-list-header-spacer neuroglancer-skeleton-list-header-actions";
       const segmentTypeSpacer = document.createElement("span");
       segmentTypeSpacer.className =
         "neuroglancer-skeleton-list-header-spacer neuroglancer-skeleton-list-header-type";
@@ -1268,7 +1378,6 @@ export class SpatialSkeletonEditTab extends Tab {
       segmentMetaLine.appendChild(segmentName);
       segmentMetaLine.appendChild(segmentRatio);
       segmentMeta.appendChild(segmentMetaLine);
-      segmentRow.appendChild(segmentActionsSpacer);
       segmentRow.appendChild(segmentTypeSpacer);
       segmentRow.appendChild(segmentIdCell);
       segmentRow.appendChild(segmentMeta);
@@ -1433,26 +1542,6 @@ export class SpatialSkeletonEditTab extends Tab {
 
       const actions = document.createElement("div");
       actions.className = "neuroglancer-skeleton-node-actions";
-      let rerootActionTitle =
-        node.parentNodeId === undefined
-          ? "Already root"
-          : nodeIsTrueEnd
-            ? "Clear true end state first to set as root"
-            : "Set as root";
-      if (pendingRerootNodes.has(node.nodeId)) {
-        rerootActionTitle = "Setting root";
-      }
-      actions.appendChild(
-        makeRowActionButton(
-          svg_origin,
-          rerootActionTitle,
-          () => rerootNode(node),
-          !nodeRerootAllowed ||
-            pendingRerootNodes.has(node.nodeId) ||
-            node.parentNodeId === undefined ||
-            nodeIsTrueEnd,
-        ),
-      );
       let deleteActionTitle = "Delete node";
       if (pendingDeleteNodes.has(node.nodeId)) {
         deleteActionTitle = "Deleting node";
@@ -1466,10 +1555,10 @@ export class SpatialSkeletonEditTab extends Tab {
         ),
       );
 
-      row.appendChild(actions);
       row.appendChild(typeIcon);
       row.appendChild(idCell);
       row.appendChild(coordinatesCell);
+      row.appendChild(actions);
       entry.appendChild(row);
       return entry;
     };
@@ -1710,13 +1799,18 @@ export class SpatialSkeletonEditTab extends Tab {
       const undoLabel = commandHistory.undoLabel.value;
       const redoLabel = commandHistory.redoLabel.value;
       const busy = commandHistory.isBusy.value;
-      undoButton.disabled = busy || !commandHistory.canUndo.value;
+      const canUndoOptimistic =
+        layer.spatialSkeletonState.canUndoOptimisticEdit();
+      undoButton.disabled =
+        busy || (!canUndoOptimistic && !commandHistory.canUndo.value);
       redoButton.disabled = busy || !commandHistory.canRedo.value;
       undoButton.title = busy
         ? "Wait for the current skeleton edit to finish."
-        : undoLabel === undefined
-          ? "Nothing to undo."
-          : `Undo ${undoLabel}`;
+        : canUndoOptimistic
+          ? "Undo latest optimistic edit."
+          : undoLabel === undefined
+            ? "Nothing to undo."
+            : `Undo ${undoLabel}`;
       redoButton.title = busy
         ? "Wait for the current skeleton edit to finish."
         : redoLabel === undefined
@@ -1800,6 +1894,12 @@ export class SpatialSkeletonEditTab extends Tab {
       }),
     );
     this.registerDisposer(
+      layer.spatialSkeletonState.optimisticEditQueueVersion.changed.add(() => {
+        updateGateStatus();
+        updateHistoryButtons();
+      }),
+    );
+    this.registerDisposer(
       layer.manager.root.selectionState.changed.add(() => {
         const nextActiveSegmentId = getSelectedSegmentId();
         if (nextActiveSegmentId !== activeSegmentId) {
@@ -1828,6 +1928,7 @@ export class SpatialSkeletonEditTab extends Tab {
         );
       }, layer.displayState.segmentationColorGroupState),
     );
+    this.registerDisposer(() => cancelScrollRetry());
     this.registerDisposer(
       layer.selectedSpatialSkeletonNodeInfo.changed.add(() => {
         pendingScrollToSelectedNode = true;

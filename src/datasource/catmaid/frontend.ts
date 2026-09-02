@@ -88,6 +88,8 @@ export class CatmaidSpatiallyIndexedSkeletonSource extends WithParameters(
   private readonly spatialSkeletonEditCommands =
     new CatmaidSpatialSkeletonEditCommands({
       getClient: () => this.client,
+      getOptimisticSkeletonEdits: (layer) =>
+        layer.optimisticSkeletonEdits.value,
     });
   private client_?: CatmaidClient;
 
@@ -353,7 +355,11 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
       ) as CredentialsProvider<CatmaidToken>;
 
     const client = makeCatmaidClient(
-      { url: baseUrl, projectId, readonly: true },
+      {
+        url: baseUrl,
+        projectId,
+        readonly: true,
+      },
       credentialsProvider,
     );
 
@@ -478,6 +484,9 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
         id: "skeletons-chunked",
         default: true,
         subsource: { mesh: multiscaleSource },
+        layerRuntimeStateDisposal: {
+          kind: "spatiallyIndexedSkeleton",
+        },
       },
       {
         id: "skeletons",

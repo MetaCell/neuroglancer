@@ -29,8 +29,8 @@ import { getVisibleSegments } from "#src/segmentation_display_state/base.js";
 import {
   SKELETON_ADD_NODE,
   SKELETON_CLEAR_SELECTION,
-  SKELETON_DELETE_NODE,
   SKELETON_ENTER_CREATE,
+  SKELETON_ENTER_DELETE_MODE,
   SKELETON_ENTER_MERGE_MODE,
   SKELETON_ENTER_SPLIT_MODE,
   SKELETON_PIN_NODE,
@@ -77,15 +77,21 @@ import {
   getDefaultSkeletonEditNodeBindings,
   getDefaultSkeletonEditToolBindings,
 } from "#src/ui/default_input_event_bindings.js";
-import type { SpatialSkeletonToolPointInfo } from "#src/ui/skeleton_edit_tool_messages.js";
 import {
-  SPATIAL_SKELETON_CREATE_BANNER_MESSAGE,
-  SPATIAL_SKELETON_HIDDEN_SELECTED_BANNER_MESSAGE,
-  SPATIAL_SKELETON_MERGE_SELECTED_BANNER_MESSAGE,
-  SPATIAL_SKELETON_MOVING_NODE_MESSAGE,
-  getSpatialSkeletonEditBannerMessage,
-  getSpatialSkeletonToolPointStatusFields,
+  getSpatialSkeletonCreateIdleStatusText,
+  getSpatialSkeletonCreatingStatusText,
+  getSpatialSkeletonDefaultStatusText,
+  getSpatialSkeletonDeleteIdleStatusText,
+  getSpatialSkeletonDeletingStatusText,
+  getSpatialSkeletonMergeStatusText,
+  getSpatialSkeletonMovingStatusText,
+  getSpatialSkeletonSplitIdleStatusText,
 } from "#src/ui/skeleton_edit_tool_messages.js";
+import type { SpatialSkeletonToolStatusText } from "#src/ui/skeleton_edit_tool_shortcuts.js";
+import {
+  SPATIAL_SKELETON_EDIT_TOOL_NAME,
+  renderSpatialSkeletonShortcut,
+} from "#src/ui/skeleton_edit_tool_shortcuts.js";
 import type { ToolActivation } from "#src/ui/tool.js";
 import {
   LayerTool,
@@ -112,16 +118,22 @@ const enum SkeletonEditMode {
   Merge = 1,
   Create = 2,
   Split = 3,
+  Delete = 4,
 }
 
-// In edit mode, left click is selection-only — it never rotates or pans.
-// Navigation (rotate in perspective, pan in slice) is handled exclusively by
-// middle mouse (mousedown1).  mousedown0 is therefore handled only via the
+// In edit mode, plain left click is selection-only — it never rotates or
+// pans. Navigation (rotate in perspective, pan in slice) is handled by
+// middle mouse (mousedown1), plus trackpad-friendly aliases on the
+// navigation modifier + left mouse (control+mousedown0 on most platforms,
+// cmd+mousedown0 on Mac — see hasNavigationModifier below): the modifier
+// alone mirrors plain middle-click, and modifier+shift mirrors
+// control+middle-click. mousedown0 is therefore handled only via the
 // capture-phase DOM listeners in activate(); it is not in the EventActionMap.
 //
-// mousedown1 → rotate-via-mouse-drag covers perspective panels via the
-// EventActionMap.  Slice panels intercept middle mouse in the capture listener
-// and call translateByViewportPixels directly, consuming the event before
+// mousedown1 / control?+mousedown0 → rotate-via-mouse-drag covers perspective
+// panels via the EventActionMap. Slice panels intercept middle mouse and the
+// navigation-modifier chords in the capture listener and call
+// translateByViewportPixels directly, consuming the event before
 // MouseEventBinder can dispatch this action.
 //
 // Default bindings are defined in getDefaultSkeletonEditToolBindings() /
@@ -136,6 +148,22 @@ const SPATIAL_SKELETON_FIND_PATH_INPUT_EVENT_MAP = EventActionMap.fromObject({
 
 const DRAG_START_DISTANCE_PX = 2;
 
+// Physical key codes that exit the corresponding momentary mode on keyup
+// (see the onKeyUp handler in activate()). Centralized here so the "which
+// key exits which mode" association — inherently duplicated between the
+// exit trigger and the status-bar hint that describes it — lives in exactly
+// one place. Tool-scoped bindings like these aren't wired into the app's
+// input-event-map rebinding system, so this can't be derived generically.
+const MERGE_EXIT_KEY_CODE = "KeyM";
+const SPLIT_EXIT_KEY_CODE = "KeyS";
+const CREATE_EXIT_KEY_CODE = "KeyN";
+const DELETE_EXIT_KEY_CODE = "KeyD";
+
+function hasNavigationModifier(event: { ctrlKey: boolean; metaKey: boolean }) {
+  // TODO replace by mac check
+  return event.metaKey || event.ctrlKey;
+}
+
 function waitForNextAnimationFrame() {
   return new Promise<void>((resolve) => {
     if (typeof requestAnimationFrame !== "function") {
@@ -148,36 +176,23 @@ function waitForNextAnimationFrame() {
 
 function renderSpatialSkeletonToolStatus(
   body: HTMLElement,
-  options: {
-    message: string;
-    point?: SpatialSkeletonToolPointInfo;
-  },
+  text: SpatialSkeletonToolStatusText,
 ) {
   removeChildren(body);
   body.classList.add("neuroglancer-skeleton-tool-status");
-  const message = document.createElement("span");
-  message.className = "neuroglancer-skeleton-tool-status-message";
-  message.textContent = options.message;
-  body.appendChild(message);
-  if (options.point === undefined) {
+  const statusElement = document.createElement("span");
+  statusElement.className = "neuroglancer-skeleton-tool-status-text";
+  statusElement.textContent = text.status;
+  body.appendChild(statusElement);
+  if (text.actions.length === 0) {
     return;
   }
-  const point = document.createElement("span");
-  point.className = "neuroglancer-skeleton-tool-status-point";
-  for (const field of getSpatialSkeletonToolPointStatusFields(options.point)) {
-    const fieldElement = document.createElement("span");
-    fieldElement.className = "neuroglancer-skeleton-tool-status-point-field";
-    const label = document.createElement("span");
-    label.className = "neuroglancer-skeleton-tool-status-point-field-label";
-    label.textContent = field.label;
-    fieldElement.appendChild(label);
-    const value = document.createElement("span");
-    value.className = "neuroglancer-skeleton-tool-status-point-field-value";
-    value.textContent = field.value;
-    fieldElement.appendChild(value);
-    point.appendChild(fieldElement);
+  const actionsElement = document.createElement("span");
+  actionsElement.className = "neuroglancer-skeleton-tool-status-actions";
+  for (const shortcut of text.actions) {
+    actionsElement.appendChild(renderSpatialSkeletonShortcut(shortcut));
   }
-  body.appendChild(point);
+  body.appendChild(actionsElement);
 }
 
 abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> {
@@ -307,44 +322,6 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
       segmentId: nodeHit.segmentId ?? resolvedNodeInfo?.segmentId,
       position: nodeHit.position ?? resolvedNodeInfo?.position,
       sourceState: nodeHit.sourceState ?? resolvedNodeInfo?.sourceState,
-    };
-  }
-
-  protected getSelectedSpatialSkeletonNodeForTool(
-    skeletonLayer: SpatiallyIndexedSkeletonLayer | undefined,
-  ):
-    | {
-        nodeId: number;
-        segmentId?: number;
-        position?: SpatialSkeletonVector;
-        sourceState?: SpatialSkeletonSourceState;
-      }
-    | undefined {
-    const nodeId = this.layer.selectedSpatialSkeletonNodeInfo.value?.nodeId;
-    if (
-      typeof nodeId !== "number" ||
-      !Number.isSafeInteger(nodeId) ||
-      nodeId <= 0
-    ) {
-      return undefined;
-    }
-    const resolvedNodeInfo =
-      skeletonLayer?.getNode(nodeId) ??
-      this.layer.spatialSkeletonState.getCachedNode(nodeId, skeletonLayer);
-    const selectedNodeInfo = this.layer.selectedSpatialSkeletonNodeInfo.value;
-    const layerSelectionState =
-      this.layer.manager.root.selectionState.value?.layers.find(
-        (entry) => entry.layer === this.layer,
-      )?.state;
-    return {
-      nodeId,
-      segmentId:
-        resolvedNodeInfo?.segmentId ??
-        selectedNodeInfo?.segmentId ??
-        getSegmentIdFromLayerSelectionValue(layerSelectionState),
-      position: resolvedNodeInfo?.position ?? selectedNodeInfo?.position,
-      sourceState:
-        resolvedNodeInfo?.sourceState ?? selectedNodeInfo?.sourceState,
     };
   }
 
@@ -593,10 +570,19 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
   // One-shot guards: prevent repeated fires while a key is held down.
   private mergeKeyHeld = false;
   private splitKeyHeld = false;
+  private deleteKeyHeld = false;
   // Modifier-held state drives cursor indicators and blocks node actions.
   private shiftHeld = false;
-  private statusOverride: string | undefined = undefined;
-  private statusPoint: SpatialSkeletonToolPointInfo | undefined = undefined;
+  // Navigation modifier (ctrl, or cmd on Mac — see hasNavigationModifier).
+  // While held, the shift-driven "add node" cursor/status must be
+  // suppressed, since modifier+shift now means pan, not add-node.
+  private ctrlHeld = false;
+  // Physical key codes currently held down — used only to decide whether the
+  // status actions text should show a "release <key> to exit" hint. Merge/
+  // split/create can also be entered via a synthetic dispatched action (no
+  // physical keydown), in which case that hint would be misleading.
+  private heldPhysicalKeyCodes = new Set<string>();
+  private statusOverride: SpatialSkeletonToolStatusText | undefined = undefined;
   // Set at activation start; cleared by the activation disposer to prevent
   // post-deactivation UI writes.
   private statusBody: HTMLElement | undefined = undefined;
@@ -625,10 +611,12 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
       this.setModeAttribute("create");
     } else if (this.currentMode === SkeletonEditMode.Split) {
       this.setModeAttribute("split");
-    } else if (this.shiftHeld) {
+    } else if (this.currentMode === SkeletonEditMode.Delete) {
+      this.setModeAttribute("delete");
+    } else if (this.shiftHeld && !this.ctrlHeld) {
       this.setModeAttribute("add");
     } else {
-      this.setModeAttribute(undefined);
+      this.setModeAttribute("default");
     }
   }
 
@@ -638,57 +626,61 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
     if (this.statusBody === undefined) return;
     const body = this.statusBody;
     if (this.statusOverride !== undefined) {
-      renderSpatialSkeletonToolStatus(body, {
-        message: this.statusOverride,
-        point: this.statusPoint,
-      });
+      renderSpatialSkeletonToolStatus(body, this.statusOverride);
       return;
     }
     if (this.currentMode === SkeletonEditMode.Merge) {
       const anchorNodeId =
         this.layer.spatialSkeletonState.mergeAnchorNodeId.value;
+      const canExitWithKey = this.heldPhysicalKeyCodes.has(MERGE_EXIT_KEY_CODE);
       if (anchorNodeId !== undefined) {
         const cachedNode =
           this.getActiveSpatiallyIndexedSkeletonLayer()?.getNode(
             anchorNodeId,
           ) ?? this.layer.spatialSkeletonState.getCachedNode(anchorNodeId);
-        const point: SpatialSkeletonToolPointInfo = {
-          nodeId: anchorNodeId,
-          segmentId: cachedNode?.segmentId,
-          position: cachedNode?.position,
-        };
-        if (
+        const isHidden =
           cachedNode?.segmentId !== undefined &&
-          !this.isSpatialSkeletonSegmentVisible(cachedNode.segmentId)
-        ) {
-          renderSpatialSkeletonToolStatus(body, {
-            message:
-              "Make this segment visible, then select a 2nd node to merge with · release m to exit",
-            point,
-          });
-        } else {
-          renderSpatialSkeletonToolStatus(body, {
-            message: SPATIAL_SKELETON_MERGE_SELECTED_BANNER_MESSAGE,
-            point,
-          });
-        }
+          !this.isSpatialSkeletonSegmentVisible(cachedNode.segmentId);
+        renderSpatialSkeletonToolStatus(
+          body,
+          getSpatialSkeletonMergeStatusText(
+            isHidden ? "from-node-hidden" : "from-node-visible",
+            canExitWithKey,
+          ),
+        );
       } else {
-        renderSpatialSkeletonToolStatus(body, {
-          message: "Click a node to set as merge anchor · release m to exit",
-        });
+        renderSpatialSkeletonToolStatus(
+          body,
+          getSpatialSkeletonMergeStatusText("no-from-node", canExitWithKey),
+        );
       }
       return;
     }
     if (this.currentMode === SkeletonEditMode.Split) {
-      renderSpatialSkeletonToolStatus(body, {
-        message: "Click a node to split · release s to exit",
-      });
+      renderSpatialSkeletonToolStatus(
+        body,
+        getSpatialSkeletonSplitIdleStatusText(
+          this.heldPhysicalKeyCodes.has(SPLIT_EXIT_KEY_CODE),
+        ),
+      );
       return;
     }
     if (this.currentMode === SkeletonEditMode.Create) {
-      renderSpatialSkeletonToolStatus(body, {
-        message: SPATIAL_SKELETON_CREATE_BANNER_MESSAGE,
-      });
+      renderSpatialSkeletonToolStatus(
+        body,
+        getSpatialSkeletonCreateIdleStatusText(
+          this.heldPhysicalKeyCodes.has(CREATE_EXIT_KEY_CODE),
+        ),
+      );
+      return;
+    }
+    if (this.currentMode === SkeletonEditMode.Delete) {
+      renderSpatialSkeletonToolStatus(
+        body,
+        getSpatialSkeletonDeleteIdleStatusText(
+          this.heldPhysicalKeyCodes.has(DELETE_EXIT_KEY_CODE),
+        ),
+      );
       return;
     }
     // Default mode
@@ -696,54 +688,82 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
     const isHidden =
       selectedPoint?.segmentId !== undefined &&
       !this.isSpatialSkeletonSegmentVisible(selectedPoint.segmentId);
-    renderSpatialSkeletonToolStatus(body, {
-      message: isHidden
-        ? SPATIAL_SKELETON_HIDDEN_SELECTED_BANNER_MESSAGE
-        : getSpatialSkeletonEditBannerMessage(selectedPoint),
-      point: selectedPoint,
-    });
+    renderSpatialSkeletonToolStatus(
+      body,
+      getSpatialSkeletonDefaultStatusText(
+        selectedPoint === undefined
+          ? "none"
+          : isHidden
+            ? "selected-hidden"
+            : "selected-visible",
+        this.shiftHeld && !this.ctrlHeld,
+      ),
+    );
   }
 
-  private setStatus(
-    message: string | undefined,
-    point?: SpatialSkeletonToolPointInfo,
-  ) {
-    this.statusOverride = message;
-    this.statusPoint = point;
+  private setStatus(text: SpatialSkeletonToolStatusText | undefined) {
+    this.statusOverride = text;
     this.renderStatus();
   }
 
   private clearStatus() {
-    this.setStatus(undefined, undefined);
+    this.setStatus(undefined);
   }
 
   // --- Modifier tracking ---
 
-  // Sync shiftHeld from the logical modifier flag on any event that carries it.
-  // This mirrors what NG's EventActionMap does via getEventModifierMask, so
-  // OS-level modifier rebindings are transparent — we never inspect key codes.
-  private syncModifiers(event: { shiftKey: boolean }) {
+  // Sync shiftHeld/ctrlHeld from the logical modifier flags on any event
+  // that carries them. This mirrors what NG's EventActionMap does via
+  // getEventModifierMask, so OS-level modifier rebindings are transparent —
+  // we never inspect key codes.
+  private syncModifiers(event: {
+    shiftKey: boolean;
+    ctrlKey: boolean;
+    metaKey: boolean;
+  }) {
     const isShift = event.shiftKey;
-    if (this.shiftHeld === isShift) return;
+    const isCtrl = hasNavigationModifier(event);
+    if (this.shiftHeld === isShift && this.ctrlHeld === isCtrl) return;
     this.shiftHeld = isShift;
+    this.ctrlHeld = isCtrl;
     this.updateModeAttribute();
+    this.renderStatus();
   }
 
   // --- Mode transitions ---
 
-  private enterMerge(anchorNode?: {
-    nodeId: number;
-    segmentId?: number;
-    position?: SpatialSkeletonVector;
-    sourceState?: SpatialSkeletonSourceState;
-  }) {
-    if (anchorNode !== undefined) {
-      if (anchorNode.segmentId !== undefined) {
-        this.pinSegmentByNumber(anchorNode.segmentId);
-      }
-      this.layer.selectSpatialSkeletonNode(anchorNode.nodeId, true, anchorNode);
-      this.layer.setSpatialSkeletonMergeAnchor(anchorNode.nodeId);
-    }
+  // Return merge to its "waiting for the first pick" state: no active anchor
+  // and the selected-node highlight hidden. Used both when entering merge and
+  // after a merge completes. The node selection itself is preserved (only its
+  // highlight is suppressed) — merge never clears the selection, it only hides
+  // it. Merge mode itself is left untouched.
+  private resetMergeToFreshState() {
+    this.layer.clearSpatialSkeletonMergeAnchor();
+    this.layer.spatialSkeletonSuppressSelectedNodeHighlight.value = true;
+    // Drop any transient override so the idle "click a node to merge from"
+    // prompt shows again — the tool stays held, so it just waits for the next
+    // pick rather than lingering on a stale status.
+    this.statusOverride = undefined;
+    this.renderStatus();
+  }
+
+  // Split has no anchor, but like merge it stays active while held; reset the
+  // selection/highlight and status after a split so it prompts for the next
+  // node instead of lingering.
+  private resetSplitToFreshState() {
+    this.layer.clearSpatialSkeletonNodeSelection("force-unpin");
+    this.layer.spatialSkeletonSuppressSelectedNodeHighlight.value = true;
+    this.statusOverride = undefined;
+    this.renderStatus();
+  }
+
+  private enterMerge() {
+    // Merge always starts without an active anchor — it can never begin with a
+    // pre-set anchor. The anchor is set solely by the first in-mode pick
+    // (handleMergeFirstPick), which also sets the selected node. Entering merge
+    // preserves the current node selection and only hides its highlight, so the
+    // selection reappears if the user exits merge without picking.
+    this.resetMergeToFreshState();
     this.layer.spatialSkeletonMergeMode.value = true;
     this.currentMode = SkeletonEditMode.Merge;
     this.updateModeAttribute();
@@ -754,6 +774,7 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
     if (this.currentMode !== SkeletonEditMode.Merge) return;
     this.layer.clearSpatialSkeletonMergeAnchor();
     this.layer.spatialSkeletonMergeMode.value = false;
+    this.layer.spatialSkeletonSuppressSelectedNodeHighlight.value = false;
     this.currentMode = SkeletonEditMode.Default;
     this.updateModeAttribute();
     this.clearStatus();
@@ -777,6 +798,9 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
   private enterSplit() {
     this.currentMode = SkeletonEditMode.Split;
     this.layer.spatialSkeletonSplitMode.value = true;
+    // In split mode the selected-node highlight stays hidden until the user
+    // clicks a node to split (or exits back to default mode).
+    this.layer.spatialSkeletonSuppressSelectedNodeHighlight.value = true;
     this.updateModeAttribute();
     this.renderStatus();
   }
@@ -785,6 +809,20 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
     if (this.currentMode !== SkeletonEditMode.Split) return;
     this.currentMode = SkeletonEditMode.Default;
     this.layer.spatialSkeletonSplitMode.value = false;
+    this.layer.spatialSkeletonSuppressSelectedNodeHighlight.value = false;
+    this.updateModeAttribute();
+    this.clearStatus();
+  }
+
+  private enterDelete() {
+    this.currentMode = SkeletonEditMode.Delete;
+    this.updateModeAttribute();
+    this.renderStatus();
+  }
+
+  private exitDelete() {
+    if (this.currentMode !== SkeletonEditMode.Delete) return;
+    this.currentMode = SkeletonEditMode.Default;
     this.updateModeAttribute();
     this.clearStatus();
   }
@@ -865,10 +903,10 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
             return;
           }
           dragStarted = true;
-          this.dragInProgress = true;
+          this.setNodeMoveActive(true);
           skeletonLayer!.markSegmentEdited(nodeInfo!.segmentId);
           panel.element.dataset.skeletonPressMode = "move";
-          this.setStatus(SPATIAL_SKELETON_MOVING_NODE_MESSAGE);
+          this.setStatus(getSpatialSkeletonMovingStatusText());
         }
         panel.translateDataPointByViewportPixels(
           this.dragGlobalPosition,
@@ -901,7 +939,7 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
         if (finished) return;
         finished = true;
         if (this.dragInProgress) {
-          this.dragInProgress = false;
+          this.setNodeMoveActive(false);
           delete panel.element.dataset.skeletonPressMode;
           this.clearStatus();
         }
@@ -940,13 +978,9 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
   }) {
     this.pinSegmentByNumber(pickedNode.segmentId);
     this.layer.selectSpatialSkeletonNode(pickedNode.nodeId, true, pickedNode);
-    const splitPoint: SpatialSkeletonToolPointInfo = {
-      nodeId: pickedNode.nodeId,
-      segmentId: pickedNode.segmentId,
-      position: pickedNode.position,
-    };
+    // A node was clicked: reveal the selected-node highlight for it.
+    this.layer.spatialSkeletonSuppressSelectedNodeHighlight.value = false;
     this.pending = true;
-    this.setStatus("Splitting selected node.", splitPoint);
     void (async () => {
       try {
         await executeSpatialSkeletonSplit(this.layer, {
@@ -957,7 +991,9 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
         showSpatialSkeletonActionError("split skeleton", error);
       } finally {
         this.pending = false;
-        this.renderStatus();
+        // Reset to a fresh split so it prompts for the next node (the user may
+        // still be holding s) rather than lingering on a "splitting…" status.
+        this.resetSplitToFreshState();
       }
     })();
   }
@@ -1011,6 +1047,8 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
     }
     this.layer.selectSpatialSkeletonNode(pickedNode.nodeId, true, pickedNode);
     this.layer.setSpatialSkeletonMergeAnchor(pickedNode.nodeId);
+    // First click made: reveal the selected-node highlight for the from node.
+    this.layer.spatialSkeletonSuppressSelectedNodeHighlight.value = false;
     this.renderStatus();
   }
 
@@ -1056,12 +1094,28 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
     const pickedNode = this.resolvePickedNodeSelectionForMerge(skeletonLayer);
     if (pickedNode === undefined || pickedNode.segmentId === undefined) return;
 
-    if (
-      pickedNode.nodeId === anchorNodeId ||
-      pickedNode.segmentId === firstNode.segmentId
-    ) {
+    if (pickedNode.nodeId === anchorNodeId) {
+      // Clicked the anchor node again — nothing to do.
+      return;
+    }
+    if (pickedNode.segmentId === firstNode.segmentId) {
+      // The second pick is on the SAME skeleton as the anchor. Rather than
+      // blocking the edit and leaving the old anchor armed, treat this as the
+      // user re-choosing the "from" node: move the merge anchor here and stay
+      // in merge mode so they can now pick a node on a different skeleton.
+      if (!this.isSpatialSkeletonSegmentVisible(pickedNode.segmentId)) {
+        StatusMessage.showTemporaryMessage(
+          `Make skeleton ${pickedNode.segmentId} visible before merging.`,
+        );
+        return;
+      }
+      this.pinSegmentByNumber(pickedNode.segmentId);
+      this.layer.selectSpatialSkeletonNode(pickedNode.nodeId, true, pickedNode);
+      this.layer.setSpatialSkeletonMergeAnchor(pickedNode.nodeId);
+      this.layer.spatialSkeletonSuppressSelectedNodeHighlight.value = false;
+      this.renderStatus();
       StatusMessage.showTemporaryMessage(
-        "Select a node from a different skeleton to merge with.",
+        "Moved the merge start here — now select a node on a different skeleton.",
       );
       return;
     }
@@ -1083,7 +1137,6 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
     this.pinSegmentByNumber(pickedNode.segmentId);
     this.layer.selectSpatialSkeletonNode(pickedNode.nodeId, true, pickedNode);
     this.pending = true;
-    this.setStatus("Merging selected nodes.");
 
     void (async () => {
       try {
@@ -1107,7 +1160,15 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
         showSpatialSkeletonActionError("merge skeletons", error);
       } finally {
         this.pending = false;
-        this.renderStatus(); // Keep merge mode — user may still be holding m.
+        // If the user released M while the merge was in flight, exitMerge has
+        // already left merge mode and restored the highlight — do not re-hide
+        // it here (that would leave the selection permanently hidden). Only
+        // reset when still in merge mode: clear the anchor and re-hide the
+        // highlight (the selection is kept) so the next click starts a fresh
+        // merge. Applies on both success and error.
+        if (this.currentMode === SkeletonEditMode.Merge) {
+          this.resetMergeToFreshState();
+        }
       }
     })();
   }
@@ -1142,7 +1203,7 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
 
     this.createPlacedThisHold = true;
     this.pending = true;
-    this.setStatus("Creating new skeleton.");
+    this.setStatus(getSpatialSkeletonCreatingStatusText());
 
     void (async () => {
       try {
@@ -1217,6 +1278,33 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
       return;
     }
     this.enterSplit();
+  }
+
+  // Delete (d): enters delete mode — click a node to delete it.
+  private onEnterDeleteModeAction() {
+    if (
+      this.deleteKeyHeld ||
+      this.dragInProgress ||
+      this.pending ||
+      this.currentMode !== SkeletonEditMode.Default
+    )
+      return;
+    this.deleteKeyHeld = true;
+    const disabledReason = this.layer.getSpatialSkeletonActionsDisabledReason(
+      SpatialSkeletonActions.deleteNodes,
+    );
+    if (disabledReason !== undefined) {
+      StatusMessage.showTemporaryMessage(disabledReason);
+      return;
+    }
+    const skeletonLayer = this.getActiveSpatiallyIndexedSkeletonLayer();
+    if (skeletonLayer === undefined) {
+      StatusMessage.showTemporaryMessage(
+        "No spatially indexed skeleton source is currently loaded.",
+      );
+      return;
+    }
+    this.enterDelete();
   }
 
   private onAddNodeAction(event: ActionEvent<MouseEvent>) {
@@ -1316,9 +1404,10 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
     );
   }
 
-  private onDeleteNodeAction(event: ActionEvent<MouseEvent>) {
-    event.stopPropagation();
-    event.detail.preventDefault();
+  private handleDeletePick() {
+    // Caller (capture listener) already called stopPropagation/preventDefault.
+    if (this.pending) return;
+
     const disabledReason = this.layer.getSpatialSkeletonActionsDisabledReason(
       SpatialSkeletonActions.deleteNodes,
     );
@@ -1335,6 +1424,7 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
     }
     const pickedNode = this.getPickedSpatialSkeletonNode();
     if (pickedNode === undefined) {
+      StatusMessage.showTemporaryMessage("Click a skeleton node to delete.");
       return;
     }
     const nodeInfo = skeletonLayer.getNode(pickedNode.nodeId);
@@ -1344,12 +1434,31 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
       );
       return;
     }
+    this.pending = true;
+    this.setStatus(getSpatialSkeletonDeletingStatusText());
     void this.layer
       .getSpatialSkeletonDeleteOperationContext(nodeInfo)
       .then(() => executeSpatialSkeletonDeleteNode(this.layer, nodeInfo))
       .catch((error) => {
         showSpatialSkeletonActionError("delete node", error);
+      })
+      .finally(() => {
+        this.pending = false;
+        this.renderStatus();
       });
+  }
+
+  // Keeps `dragInProgress` and the global picking-indicator suppression in
+  // lockstep. While a node is being moved, the on-screen node is driven by the
+  // drag preview (a shader uniform), not by picking, so the picking-indicator
+  // ring — which tracks the (now stale) pick buffer — is hidden.
+  private setNodeMoveActive(active: boolean) {
+    this.dragInProgress = active;
+    const { mouseState } = this;
+    if (mouseState.pickingIndicatorSuppressed !== active) {
+      mouseState.pickingIndicatorSuppressed = active;
+      mouseState.changed.dispatch();
+    }
   }
 
   activate(activation: ToolActivation<this>) {
@@ -1358,19 +1467,22 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
 
     // 1. Reset all activation-scoped state.
     this.currentMode = SkeletonEditMode.Default;
-    this.dragInProgress = false;
+    this.setNodeMoveActive(false);
     this.pending = false;
     this.createPlacedThisHold = false;
     this.mergeKeyHeld = false;
     this.splitKeyHeld = false;
+    this.deleteKeyHeld = false;
     this.shiftHeld = false;
+    this.ctrlHeld = false;
+    this.heldPhysicalKeyCodes = new Set();
     this.statusOverride = undefined;
-    this.statusPoint = undefined;
+    layer.spatialSkeletonSuppressSelectedNodeHighlight.value = false;
 
     // 2. Create status UI.
     const { body, header } =
       makeToolActivationStatusMessageWithHeader(activation);
-    header.textContent = "Skeleton edit";
+    header.textContent = SPATIAL_SKELETON_EDIT_TOOL_NAME;
     this.statusBody = body;
 
     // 3. Precondition checks.
@@ -1380,14 +1492,17 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
     );
     if (disabledReason !== undefined) {
       StatusMessage.showTemporaryMessage(disabledReason);
-      renderSpatialSkeletonToolStatus(body, { message: disabledReason });
+      renderSpatialSkeletonToolStatus(body, {
+        status: disabledReason,
+        actions: [],
+      });
       queueMicrotask(() => activation.cancel());
       return;
     }
     if (this.getActiveSpatiallyIndexedSkeletonLayer() === undefined) {
       const msg = "No spatially indexed skeleton source is currently loaded.";
       StatusMessage.showTemporaryMessage(msg);
-      renderSpatialSkeletonToolStatus(body, { message: msg });
+      renderSpatialSkeletonToolStatus(body, { status: msg, actions: [] });
       queueMicrotask(() => activation.cancel());
       return;
     }
@@ -1399,6 +1514,7 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
       this.setModeAttribute(undefined);
       layer.spatialSkeletonMergeMode.value = false;
       layer.spatialSkeletonSplitMode.value = false;
+      layer.spatialSkeletonSuppressSelectedNodeHighlight.value = false;
       layer.spatialSkeletonState.clearPendingNodePositions();
     });
 
@@ -1449,16 +1565,27 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
     );
 
     // 9. Global key/mouse listeners — thin lambda wrappers delegating to class methods.
-    const onKeyDown = (event: KeyboardEvent) => this.syncModifiers(event);
+    const onKeyDown = (event: KeyboardEvent) => {
+      this.syncModifiers(event);
+      if (!this.heldPhysicalKeyCodes.has(event.code)) {
+        this.heldPhysicalKeyCodes.add(event.code);
+        this.renderStatus();
+      }
+    };
     const onKeyUp = (event: KeyboardEvent) => {
-      if (event.code === "KeyM") {
+      this.heldPhysicalKeyCodes.delete(event.code);
+      if (event.code === MERGE_EXIT_KEY_CODE) {
         this.mergeKeyHeld = false;
         this.exitMerge();
       }
-      if (event.code === "KeyN") this.exitCreate();
-      if (event.code === "KeyS") {
+      if (event.code === CREATE_EXIT_KEY_CODE) this.exitCreate();
+      if (event.code === SPLIT_EXIT_KEY_CODE) {
         this.splitKeyHeld = false;
         this.exitSplit();
+      }
+      if (event.code === DELETE_EXIT_KEY_CODE) {
+        this.deleteKeyHeld = false;
+        this.exitDelete();
       }
       this.syncModifiers(event);
     };
@@ -1468,10 +1595,14 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
     const onBlur = () => {
       this.mergeKeyHeld = false;
       this.splitKeyHeld = false;
+      this.deleteKeyHeld = false;
       this.shiftHeld = false;
+      this.ctrlHeld = false;
+      this.heldPhysicalKeyCodes = new Set();
       this.exitMerge();
       this.exitCreate();
       this.exitSplit();
+      this.exitDelete();
       this.updateModeAttribute();
     };
     window.addEventListener("keydown", onKeyDown);
@@ -1488,9 +1619,11 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
     // 10. Per-panel capture listeners — closures per panel; body delegates to class methods.
     // Left click (mousedown0) is handled here rather than in the EventActionMap so that
     // we can consume off-node clicks without accidentally shadowing EventActionMap actions
-    // at lower priority.  All left clicks are now owned by the edit tool — they either
-    // select a node or do nothing.  Navigation (rotate/pan) belongs exclusively to middle
-    // mouse and is handled via the EventActionMap + the slice-panel path below.
+    // at lower priority.  All plain/shift left clicks are owned by the edit tool — they
+    // either select a node, add a node, or do nothing.  Navigation (rotate/pan) belongs to
+    // middle mouse and to the navigation-modifier + left-click aliases below (for trackpad
+    // users without a reliable middle-click), handled via the EventActionMap + the
+    // slice-panel path below.
     for (const panel of layer.manager.root.display.panels) {
       if (!(panel instanceof RenderedDataPanel)) continue;
       const captureMousedown = (event: MouseEvent) => {
@@ -1499,13 +1632,63 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
         // Ctrl+middle: translate in 3D (EventActionMap control+mousedown1 → translate-via-mouse-drag),
         // translate in 2D (intercepted here, same as plain middle).
         if (event.button === 1) {
-          if (!(panel instanceof PerspectivePanel)) {
+          if (panel instanceof PerspectivePanel) {
+            panel.element.dataset.skeletonPressMode = "rotate";
+            const onMouseUp = () => {
+              delete panel.element.dataset.skeletonPressMode;
+              window.removeEventListener("mouseup", onMouseUp);
+            };
+            window.addEventListener("mouseup", onMouseUp);
+          } else {
             event.stopPropagation();
             event.preventDefault();
-            startRelativeMouseDrag(event, (_dragEvent, deltaX, deltaY) => {
-              panel.context.flagContinuousCameraMotion();
-              panel.translateByViewportPixels(deltaX, deltaY);
-            });
+            panel.element.dataset.skeletonPressMode = "pan";
+            startRelativeMouseDrag(
+              event,
+              (_dragEvent, deltaX, deltaY) => {
+                panel.context.flagContinuousCameraMotion();
+                panel.translateByViewportPixels(deltaX, deltaY);
+              },
+              () => {
+                delete panel.element.dataset.skeletonPressMode;
+              },
+            );
+          }
+          return;
+        }
+
+        // Trackpad-friendly aliases for the middle-mouse scheme above.
+        // Navigation modifier + left (plain): rotate in 3D (EventActionMap
+        // control+mousedown0 → rotate-via-mouse-drag), pan in 2D
+        // (intercepted here) — mirrors plain middle mouse.
+        // Navigation modifier + shift + left: translate in 3D
+        // (EventActionMap control+shift+mousedown0 → translate-via-mouse-drag),
+        // pan in 2D (intercepted here, same as above) — mirrors ctrl+middle
+        // mouse. Checked before the shift guard below so it takes priority
+        // over the shift+mousedown0 add-node chord; hasNavigationModifier is
+        // the discriminator (add-node never has the modifier held).
+        if (event.button === 0 && hasNavigationModifier(event)) {
+          if (panel instanceof PerspectivePanel) {
+            panel.element.dataset.skeletonPressMode = "rotate";
+            const onMouseUp = () => {
+              delete panel.element.dataset.skeletonPressMode;
+              window.removeEventListener("mouseup", onMouseUp);
+            };
+            window.addEventListener("mouseup", onMouseUp);
+          } else {
+            event.stopPropagation();
+            event.preventDefault();
+            panel.element.dataset.skeletonPressMode = "pan";
+            startRelativeMouseDrag(
+              event,
+              (_dragEvent, deltaX, deltaY) => {
+                panel.context.flagContinuousCameraMotion();
+                panel.translateByViewportPixels(deltaX, deltaY);
+              },
+              () => {
+                delete panel.element.dataset.skeletonPressMode;
+              },
+            );
           }
           return;
         }
@@ -1529,6 +1712,12 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
           event.stopPropagation();
           event.preventDefault();
           this.handleCreatePlace();
+          return;
+        }
+        if (this.currentMode === SkeletonEditMode.Delete) {
+          event.stopPropagation();
+          event.preventDefault();
+          this.handleDeletePick();
           return;
         }
         // Default mode: only consume if hovering a node.
@@ -1557,8 +1746,8 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
     activation.bindAction(SKELETON_ADD_NODE, (event) =>
       this.onAddNodeAction(event as ActionEvent<MouseEvent>),
     );
-    activation.bindAction(SKELETON_DELETE_NODE, (event) =>
-      this.onDeleteNodeAction(event as ActionEvent<MouseEvent>),
+    activation.bindAction(SKELETON_ENTER_DELETE_MODE, () =>
+      this.onEnterDeleteModeAction(),
     );
     activation.bindAction(SKELETON_TOGGLE_TRUE_END, () => {
       const skeletonLayer = this.getActiveSpatiallyIndexedSkeletonLayer();

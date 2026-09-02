@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+import "#src/skeleton/frontend.css";
+
 import { ChunkState, LayerChunkProgressInfo } from "#src/chunk_manager/base.js";
 import type { ChunkManager } from "#src/chunk_manager/frontend.js";
 import {
@@ -30,6 +32,10 @@ import type {
   PickState,
   VisibleLayerInfo,
 } from "#src/layer/index.js";
+import type {
+  PanelOverlayContext,
+  PanelOverlaySource,
+} from "#src/panel_overlay.js";
 import type { PerspectivePanel } from "#src/perspective_view/panel.js";
 import type {
   PerspectiveViewReadyRenderContext,
@@ -56,6 +62,8 @@ import {
   forEachVisibleSegment,
   getVisibleSegments,
   getObjectKey,
+  onTemporaryVisibleSegmentsStateChanged,
+  onVisibleSegmentsStateChanged,
 } from "#src/segmentation_display_state/base.js";
 import type { SegmentationDisplayState3D } from "#src/segmentation_display_state/frontend.js";
 import {
@@ -87,8 +95,16 @@ import {
   mergeSpatiallyIndexedSkeletonOverlaySegmentIds,
   retainSpatiallyIndexedSkeletonOverlaySegment,
 } from "#src/skeleton/segment_overlay.js";
+import type { EdgeShadingGlsl } from "#src/skeleton/skeleton_shader_color.js";
+import {
+  edgeColorPathsGlsl,
+  raycastFragmentSetup,
+  nodeColorPathsGlsl,
+} from "#src/skeleton/skeleton_shader_color.js";
 import type { SpatiallyIndexedSkeletonView } from "#src/skeleton/source_selection.js";
 import {
+  getChunkKey,
+  type SliceViewChunkSpecification,
   type SliceViewSourceOptions,
   type TransformedSource,
 } from "#src/sliceview/base.js";
@@ -110,6 +126,7 @@ import { SliceViewPanelRenderLayer } from "#src/sliceview/renderlayer.js";
 import { TrackableBoolean } from "#src/trackable_boolean.js";
 import type { WatchableValueInterface } from "#src/trackable_value.js";
 import {
+  makeCachedDerivedWatchableValue,
   makeCachedLazyDerivedWatchableValue,
   TrackableValue,
   WatchableValue,
@@ -118,6 +135,7 @@ import {
 import { Uint64Set } from "#src/uint64_set.js";
 import { gatherUpdate } from "#src/util/array.js";
 import {
+  getRelativeLuminance,
   getSaturation,
   pickHighestContrastColor,
   saturateColor,
@@ -158,6 +176,9 @@ import {
   drawLines,
   initializeLineShader,
 } from "#src/webgl/lines.js";
+import { drawQuads } from "#src/webgl/quad.js";
+import { defineRaycastCylinderShader } from "#src/webgl/raycast_cylinder.js";
+import { defineRaycastSphereShader } from "#src/webgl/raycast_sphere.js";
 import type {
   ShaderModule,
   ShaderProgram,
@@ -195,11 +216,22 @@ const DEFAULT_FRAGMENT_MAIN = `void main() {
   emitDefault();
 }
 `;
-// If use values like 8.0, need to ensure JS keeps the decimal place for GLSL
-const ACTIVE_NODE_BORDER_MIN_WIDTH = 3.5;
-const ACTIVE_NODE_BORDER_MAX_WIDTH = 8.5;
-const ACTIVE_NODE_BORDER_DIAMETER_FRACTION = 0.5;
-const ACTIVE_NODE_OUTLINE_DIAMETER_FRACTION = 0.25;
+const SELECTED_NODE_OUTLINE_FALLBACK_COLOR = vec3.fromValues(1.0, 0.95, 0.35);
+
+// Converts a linear 0..1 RGB triple to a CSS `rgb(...)` string for DOM markers.
+function vec3ToCssColor(color: vec3): string {
+  return `rgb(${Math.round(color[0] * 255)}, ${Math.round(
+    color[1] * 255,
+  )}, ${Math.round(color[2] * 255)})`;
+}
+const SELECTED_NODE_OUTLINE_MIN_WIDTH_2D = "3.5";
+const SELECTED_NODE_OUTLINE_MAX_WIDTH_2D = "8.0";
+const SELECTED_NODE_OUTLINE_MIN_WIDTH_3D = "3.0";
+const SELECTED_NODE_OUTLINE_MAX_WIDTH_3D = "7.0";
+// Fraction of the node diameter used as the highlight outline width before
+// clamping to the min/max above. Nodes are small (~5-6px), so this mostly hits
+// the min for typical nodes and scales up the ring for larger nodes.
+const SELECTED_NODE_OUTLINE_DIAMETER_FRACTION = "0.5";
 
 // Saturation adjustment factor and threshold for the highlighted (hovered) node border: each
 // moves the segment's color away from (>1) or towards (<1) the perceptual-grey
@@ -211,10 +243,7 @@ const ACTIVE_NODE_OUTLINE_DIAMETER_FRACTION = 0.25;
 const HIGHLIGHTED_NODE_BORDER_SATURATION_FACTOR = 0.5;
 const HIGHLIGHTED_NODE_BORDER_SATURATION_THRESHOLD = 0.5;
 
-const SELECTED_NODE_BORDER_OUTLINE_GLSL_COLOR = "1.0, 1.0, 1.0";
-const HIGHLIGHTED_NODE_BORDER_OUTLINE_GLSL_COLOR = "0.0, 0.0, 0.0";
-const ACTIVE_NODE_BORDER_FALLBACK_COLOR = vec3.fromValues(1.0, 0.95, 0.35);
-// Muted colors for the selected (pinned) node
+// Muted colors for the selected (pinned) node -- less vibrant.
 const SELECTED_NODE_HIGHLIGHT_COLORS: readonly vec3[] = [
   vec3.fromValues(0.1, 0.1, 0.1), // near-black
   vec3.fromValues(0.7, 0.67, 0.6), // stone (light warm gray)
@@ -224,6 +253,11 @@ const SELECTED_NODE_HIGHLIGHT_COLORS: readonly vec3[] = [
 // Used for debugging chunks via a different color for each chunk
 const tempChunkKeyToColorMap = new Map<string, Float32Array>();
 const tempMat4 = mat4.create();
+// Scratch matrices/vectors for raycast uniform computation in beginLayer.
+const tempInvProjection = mat4.create();
+const tempInvModel = mat4.create();
+const tempNormalTransform = mat4.create();
+const tempLightVec = new Float32Array(4);
 
 interface VertexAttributeRenderInfo extends VertexAttributeInfo {
   name: string;
@@ -258,7 +292,6 @@ interface SkeletonShaderContext {
   fallbackShaderParameters: WatchableValue<ShaderControlsBuilderState>;
   displayState: SkeletonLayerDisplayState;
   skeletonShaderParameters: WatchableValueInterface<SkeletonShaderParameters>;
-  segmentColorAttributeIndex?: number;
 }
 
 interface SkeletonGPUGeometry {
@@ -301,14 +334,26 @@ type SpatiallyIndexedSkeletonPickData =
       chunk: SpatiallyIndexedSkeletonChunk;
     };
 
+interface EdgeGeometry {
+  vertexMain: string;
+  fragmentSetup: string;
+  shading: EdgeShadingGlsl;
+}
+
+interface NodeGeometry {
+  vertexMain: string;
+  fragmentSetup: string;
+  // Whether the legacy path premultiplies rgb by alpha before emitting (raycast
+  // does; the billboard preserves its original un-premultiplied behavior).
+  legacyPremultiply: boolean;
+}
+
 class RenderHelper extends RefCounted {
   private textureAccessHelper = new OneDimensionalTextureAccessHelper(
     "vertexData",
   );
   private vertexIdHelper;
   private segmentAttributeIndex: number | undefined;
-  private segmentColorAttributeIndex: number | undefined;
-  private nodeIdAttributeIndex: number | undefined;
   private visibleSegmentsShaderManager = new HashSetShaderManager(
     "visibleSegments",
   );
@@ -346,19 +391,47 @@ class RenderHelper extends RefCounted {
     builder.addVarying("highp uint", "vPickID", "flat");
     builder.addUniform("highp uint", "uPickInstanceStride");
     this.defineAttributeAccess(builder);
+    // Live node drag: override a single vertex's position via a uniform instead
+    // of re-uploading the position texture. `uOverrideVertexIndex` is -1 when no
+    // node is being dragged (set in beginLayer), so this is a no-op fast path.
+    builder.addUniform("highp int", "uOverrideVertexIndex");
+    builder.addUniform("highp vec3", "uOverridePosition");
+    builder.addVertexCode(`
+highp vec3 applyNodePositionOverride(highp uint vertexIndex, highp vec3 position) {
+  return (int(vertexIndex) == uOverrideVertexIndex) ? uOverridePosition : position;
+}
+`);
     if (skeletonParams.dynamicSegmentAppearance) {
       this.defineDynamicSegmentAppearance(builder, skeletonParams);
+    }
+    // Perspective (3D) views render cylinders/spheres as raycasts; slice (2D)
+    // views keep the screen-space line/circle billboards.
+    const raycast = !this.targetIsSliceView;
+    if (raycast) {
+      builder.addUniform("highp mat4", "uInvProjection");
+      builder.addUniform("highp mat4", "uNormalTransform");
+      builder.addUniform("highp vec4", "uLightDirection");
+      builder.addUniform("highp vec2", "uViewportSize");
+      // Set per-fragment by the raycast setup; the emit bodies multiply the
+      // color by it.
+      builder.addFragmentCode("highp float raycastLightingFactor = 1.0;\n");
     }
     if (skeletonParams.spatialChunkCulling) {
       builder.addUniform("highp vec3", "uChunkOrigin");
       builder.addUniform("highp vec3", "uChunkBound");
-      builder.addVarying("highp vec3", "vCullPos");
       builder.addFragmentCode(`
-void spatialChunkCull() {
-  if (any(lessThan(vCullPos, uChunkOrigin)) ||
-      any(greaterThanEqual(vCullPos, uChunkBound))) discard;
+void spatialChunkCull(highp vec3 cullPos) {
+  if (any(lessThan(cullPos, uChunkOrigin)) ||
+      any(greaterThanEqual(cullPos, uChunkBound))) discard;
 }
 `);
+      if (!raycast) {
+        // Billboard path culls using the interpolated per-fragment position.
+        builder.addVarying("highp vec3", "vCullPos");
+        builder.addFragmentCode(`
+void spatialChunkCull() { spatialChunkCull(vCullPos); }
+`);
+      }
     }
   }
 
@@ -373,6 +446,7 @@ void spatialChunkCull() {
     shaderBuilderState: ShaderControlsBuilderState,
     skeletonParams: SkeletonShaderParameters,
     vertexMain: string,
+    fragmentSetup = "",
   ): void {
     builder.addFragmentCode(glsl_COLORMAPS);
     const { vertexAttributes } = this;
@@ -391,7 +465,7 @@ void spatialChunkCull() {
       );
     }
     for (let i = 1; i < numAttributes; ++i) {
-      if (i === this.segmentAttributeIndex || i === this.nodeIdAttributeIndex) {
+      if (i === this.segmentAttributeIndex) {
         continue;
       }
       const info = vertexAttributes[i];
@@ -409,19 +483,9 @@ void spatialChunkCull() {
         shaderCodeWithLineDirective(shaderBuilderState.parseResult.code) +
         "\n#undef main\n",
     );
-    builder.setFragmentMain(
-      skeletonParams.spatialChunkCulling
-        ? "spatialChunkCull();\nuserMain();"
-        : "userMain();",
-    );
-  }
-
-  private getSegmentColorExpression() {
-    const index = this.segmentColorAttributeIndex;
-    if (index === undefined) {
-      return "uColor";
-    }
-    return `vCustom${index}`;
+    // `fragmentSetup` runs the raycast intersection (writing gl_FragDepth /
+    // lighting) or the billboard chunk cull before the user's fragment main.
+    builder.setFragmentMain(fragmentSetup + "userMain();");
   }
 
   edgeShaderGetter;
@@ -617,12 +681,6 @@ vec4 getSegmentAppearance(highp uint segmentValue) {
     );
     this.segmentAttributeIndex =
       segmentAttrIndex >= 0 ? segmentAttrIndex : undefined;
-    this.segmentColorAttributeIndex = base.segmentColorAttributeIndex;
-    const nodeIdAttrIndex = this.vertexAttributes.findIndex(
-      (x) => x.name === nodeIdAttribute.name,
-    );
-    this.nodeIdAttributeIndex =
-      nodeIdAttrIndex >= 0 ? nodeIdAttrIndex : undefined;
 
     const segmentationGroupState =
       base.displayState.segmentationGroupState.value;
@@ -661,100 +719,8 @@ vec4 getSegmentAppearance(highp uint segmentValue) {
             .builderState,
         extraParameters: this.base.skeletonShaderParameters,
         shaderError: this.base.displayState.shaderError,
-        defineShader: (
-          builder: ShaderBuilder,
-          shaderBuilderState: ShaderControlsBuilderState,
-          skeletonParams: SkeletonShaderParameters,
-        ) => {
-          this.defineCommonShader(builder, shaderBuilderState, skeletonParams);
-          defineLineShader(builder);
-          builder.addAttribute("highp uvec2", "aVertexIndex");
-          builder.addUniform("highp float", "uLineWidth");
-          let vertexMain = `
-highp uint pickOffset = uint(gl_InstanceID) * uPickInstanceStride;
-vPickID = uPickID + pickOffset;
-highp vec3 vertexA = readAttribute0(aVertexIndex.x);
-highp vec3 vertexB = readAttribute0(aVertexIndex.y);
-emitLine(uProjection, vertexA, vertexB, uLineWidth);
-highp uint lineEndpointIndex = getLineEndpointIndex();
-highp uint vertexIndex = aVertexIndex.x * (1u - lineEndpointIndex) + aVertexIndex.y * lineEndpointIndex;
-`;
-          if (skeletonParams.spatialChunkCulling) {
-            vertexMain += `vCullPos = mix(vertexA, vertexB, float(lineEndpointIndex));\n`;
-          }
-          if (
-            skeletonParams.dynamicSegmentAppearance &&
-            this.segmentAttributeIndex !== undefined
-          ) {
-            vertexMain += `vSegmentValue = toRaw(readAttribute${this.segmentAttributeIndex}(aVertexIndex.x));\n`;
-          }
-
-          const segmentColorExpression = this.getSegmentColorExpression();
-          const segmentAlphaExpression =
-            this.segmentColorAttributeIndex === undefined
-              ? "uColor.a"
-              : `${segmentColorExpression}.a`;
-          if (skeletonParams.dynamicSegmentAppearance) {
-            // Dynamic path (spatial skeletons): per-segment color, visibility,
-            // saturation and hover highlight all resolved in the shader via
-            // getSegmentAppearance(). uColor is unused in this path.
-            builder.addFragmentCode(`
-vec4 segmentColor() {
-  return getSegmentAppearance(vSegmentValue);
-}
-void emitRGB(vec3 color) {
-  vec4 baseColor = segmentColor();
-  highp float alpha = baseColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()};
-  if (alpha <= 0.0) discard;
-  emit(vec4(color * alpha, alpha), vPickID);
-}
-void emitDefault() {
-  vec4 baseColor = segmentColor();
-  highp float alpha = baseColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()};
-  if (alpha <= 0.0) discard;
-  emit(vec4(baseColor.rgb * alpha, alpha), vPickID);
-}
-`);
-          } else if (this.segmentColorAttributeIndex === undefined) {
-            // Legacy path (non-spatial skeletons): one skeleton drawn per call;
-            // uColor is set per-skeleton by the CPU via getObjectColor(), which
-            // already incorporates saturation and hover highlighting.
-            builder.addFragmentCode(`
-vec4 segmentColor() {
-  return ${segmentColorExpression};
-}
-void emitRGB(vec3 color) {
-  emit(vec4(color * uColor.a, uColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()}), vPickID);
-}
-void emitDefault() {
-  emit(vec4(uColor.rgb, uColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()}), vPickID);
-}
-`);
-          } else {
-            // Per-vertex color attribute path: color comes from a per-vertex
-            // attribute; alpha is taken from uColor.
-            builder.addFragmentCode(`
-vec4 segmentColor() {
-  return ${segmentColorExpression};
-}
-void emitRGB(vec3 color) {
-  highp float alpha = ${segmentAlphaExpression} * getLineAlpha() * ${this.getCrossSectionFadeFactor()};
-  emit(vec4(color * alpha, alpha), vPickID);
-}
-void emitDefault() {
-  vec4 baseColor = segmentColor();
-  highp float alpha = baseColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()};
-  emit(vec4(baseColor.rgb * alpha, alpha), vPickID);
-}
-`);
-          }
-          this.finalizeShaderBuilder(
-            builder,
-            shaderBuilderState,
-            skeletonParams,
-            vertexMain,
-          );
-        },
+        defineShader: (builder, shaderBuilderState, skeletonParams) =>
+          this.defineEdgeShader(builder, shaderBuilderState, skeletonParams),
       },
     );
 
@@ -772,160 +738,203 @@ void emitDefault() {
             .builderState,
         extraParameters: this.base.skeletonShaderParameters,
         shaderError: this.base.displayState.shaderError,
-        defineShader: (
-          builder: ShaderBuilder,
-          shaderBuilderState: ShaderControlsBuilderState,
-          skeletonParams: SkeletonShaderParameters,
-        ) => {
-          this.defineCommonShader(builder, shaderBuilderState, skeletonParams);
-          defineCircleShader(
-            builder,
-            /*crossSectionFade=*/ this.targetIsSliceView,
-          );
-          builder.addUniform("highp float", "uNodeDiameter");
-          let selectedOutlineWidthExpression = "0.0";
-          let borderOutlineWidthExpression = "0.0";
-          if (this.nodeIdAttributeIndex !== undefined) {
-            builder.addUniform("highp vec3", "uSelectedNodeOutlineColor");
-            builder.addUniform("highp int", "uSelectedNodeId");
-            builder.addVarying("highp float", "vSelectedNode", "flat");
-            builder.addUniform("highp vec3", "uHighlightedNodeOutlineColor");
-            builder.addUniform("highp int", "uHighlightedNodeId");
-            builder.addVarying("highp float", "vHighlightedNode", "flat");
-            selectedOutlineWidthExpression = `(max(vSelectedNode, vHighlightedNode) * clamp(${ACTIVE_NODE_BORDER_DIAMETER_FRACTION} * uNodeDiameter, ${ACTIVE_NODE_BORDER_MIN_WIDTH}, ${ACTIVE_NODE_BORDER_MAX_WIDTH}))`;
-            const borderOutlineMinWidth =
-              ACTIVE_NODE_BORDER_MIN_WIDTH *
-              ACTIVE_NODE_OUTLINE_DIAMETER_FRACTION;
-            const borderOutlineMaxWidth =
-              ACTIVE_NODE_BORDER_MAX_WIDTH *
-              ACTIVE_NODE_OUTLINE_DIAMETER_FRACTION;
-            borderOutlineWidthExpression = `(max(vSelectedNode, vHighlightedNode) * clamp(${ACTIVE_NODE_OUTLINE_DIAMETER_FRACTION} * uNodeDiameter, ${borderOutlineMinWidth}, ${borderOutlineMaxWidth}))`;
-          }
-          let vertexMain = `
+        defineShader: (builder, shaderBuilderState, skeletonParams) =>
+          this.defineNodeShader(builder, shaderBuilderState, skeletonParams),
+      },
+    );
+  }
+
+  private dynamicColorPath(skeletonParams: SkeletonShaderParameters): boolean {
+    return (
+      skeletonParams.dynamicSegmentAppearance &&
+      this.segmentAttributeIndex !== undefined
+    );
+  }
+
+  // Vertex-shader assignment of `vSegmentValue`, read by the dynamic color path.
+  private readSegmentValueGlsl(
+    skeletonParams: SkeletonShaderParameters,
+    indexExpression: string,
+  ): string {
+    if (!this.dynamicColorPath(skeletonParams)) return "";
+    return `vSegmentValue = toRaw(readAttribute${this.segmentAttributeIndex}(${indexExpression}));\n`;
+  }
+
+  private defineEdgeShader(
+    builder: ShaderBuilder,
+    shaderBuilderState: ShaderControlsBuilderState,
+    skeletonParams: SkeletonShaderParameters,
+  ) {
+    this.defineCommonShader(builder, shaderBuilderState, skeletonParams);
+    const geometry = this.targetIsSliceView
+      ? this.defineEdgeLineBillboard(builder, skeletonParams)
+      : this.defineEdgeRaycastCylinder(builder, skeletonParams);
+    const path = this.dynamicColorPath(skeletonParams) ? "dynamic" : "legacy";
+    builder.addFragmentCode(edgeColorPathsGlsl(path, geometry.shading));
+    builder.addFragmentCode(glsl_string);
+    this.finalizeShaderBuilder(
+      builder,
+      shaderBuilderState,
+      skeletonParams,
+      geometry.vertexMain,
+      geometry.fragmentSetup,
+    );
+  }
+
+  private defineNodeShader(
+    builder: ShaderBuilder,
+    shaderBuilderState: ShaderControlsBuilderState,
+    skeletonParams: SkeletonShaderParameters,
+  ) {
+    this.defineCommonShader(builder, shaderBuilderState, skeletonParams);
+    const geometry = this.targetIsSliceView
+      ? this.defineNodeCircleBillboard(builder, skeletonParams)
+      : this.defineNodeRaycastSphere(builder, skeletonParams);
+    const path = this.dynamicColorPath(skeletonParams) ? "dynamic" : "legacy";
+    builder.addFragmentCode(
+      nodeColorPathsGlsl(path, geometry.legacyPremultiply),
+    );
+    builder.addFragmentCode(glsl_string);
+    this.finalizeShaderBuilder(
+      builder,
+      shaderBuilderState,
+      skeletonParams,
+      geometry.vertexMain,
+      geometry.fragmentSetup,
+    );
+  }
+
+  // Slice view: screen-space anti-aliased line billboard (constant pixel width).
+  private defineEdgeLineBillboard(
+    builder: ShaderBuilder,
+    skeletonParams: SkeletonShaderParameters,
+  ): EdgeGeometry {
+    defineLineShader(builder);
+    builder.addAttribute("highp uvec2", "aVertexIndex");
+    builder.addUniform("highp float", "uLineWidth");
+    let vertexMain = `
+highp uint pickOffset = uint(gl_InstanceID) * uPickInstanceStride;
+vPickID = uPickID + pickOffset;
+highp vec3 vertexA = applyNodePositionOverride(aVertexIndex.x, readAttribute0(aVertexIndex.x));
+highp vec3 vertexB = applyNodePositionOverride(aVertexIndex.y, readAttribute0(aVertexIndex.y));
+emitLine(uProjection, vertexA, vertexB, uLineWidth);
+highp uint lineEndpointIndex = getLineEndpointIndex();
+highp uint vertexIndex = aVertexIndex.x * (1u - lineEndpointIndex) + aVertexIndex.y * lineEndpointIndex;
+`;
+    let fragmentSetup = "";
+    if (skeletonParams.spatialChunkCulling) {
+      vertexMain += `vCullPos = mix(vertexA, vertexB, float(lineEndpointIndex));\n`;
+      fragmentSetup = `spatialChunkCull();\n`;
+    }
+    vertexMain += this.readSegmentValueGlsl(skeletonParams, "aVertexIndex.x");
+    return {
+      vertexMain,
+      fragmentSetup,
+      shading: {
+        coverageAlpha: ` * getLineAlpha() * ${this.getCrossSectionFadeFactor()}`,
+        shadeColor: "",
+        legacyDefaultPremultiply: "",
+      },
+    };
+  }
+
+  // Perspective view: raycast cylinder (2 triangles).  Each end is
+  // clipped by the node radius so it does not overlap the node sphere (which
+  // would double-blend under order-independent transparency).
+  private defineEdgeRaycastCylinder(
+    builder: ShaderBuilder,
+    skeletonParams: SkeletonShaderParameters,
+  ): EdgeGeometry {
+    defineRaycastCylinderShader(builder, { capped: false });
+    builder.addAttribute("highp uvec2", "aVertexIndex");
+    builder.addUniform("highp float", "uEdgePixelRadius");
+    builder.addUniform("highp float", "uNodePixelRadius");
+    let vertexMain = `
+highp uint pickOffset = uint(gl_InstanceID) * uPickInstanceStride;
+vPickID = uPickID + pickOffset;
+highp vec3 vertexA = applyNodePositionOverride(aVertexIndex.x, readAttribute0(aVertexIndex.x));
+highp vec3 vertexB = applyNodePositionOverride(aVertexIndex.y, readAttribute0(aVertexIndex.y));
+highp uint vertexIndex = aVertexIndex.x;
+highp vec3 edgeMidpoint = mix(vertexA, vertexB, 0.5);
+highp float edgeRadius = getRaycastModelRadiusForPixels(edgeMidpoint, uEdgePixelRadius);
+highp float clipRadiusA = getRaycastModelRadiusForPixels(vertexA, uNodePixelRadius);
+highp float clipRadiusB = getRaycastModelRadiusForPixels(vertexB, uNodePixelRadius);
+`;
+    vertexMain += this.readSegmentValueGlsl(skeletonParams, "aVertexIndex.x");
+    vertexMain += `emitRaycastCylinder(vertexA, vertexB, edgeRadius, clipRadiusA, clipRadiusB);\n`;
+    return {
+      vertexMain,
+      fragmentSetup: raycastFragmentSetup(
+        "intersectRaycastCylinder",
+        skeletonParams.spatialChunkCulling,
+      ),
+      shading: {
+        coverageAlpha: "",
+        shadeColor: " * raycastLightingFactor",
+        legacyDefaultPremultiply: " * uColor.a",
+      },
+    };
+  }
+
+  // Slice view: screen-space anti-aliased circle billboard (constant pixel
+  // diameter).  Feather/border are applied by `getCircleColor`.
+  private defineNodeCircleBillboard(
+    builder: ShaderBuilder,
+    skeletonParams: SkeletonShaderParameters,
+  ): NodeGeometry {
+    defineCircleShader(builder, /*crossSectionFade=*/ this.targetIsSliceView);
+    builder.addUniform("highp float", "uNodeDiameter");
+    builder.addFragmentCode(`
+vec4 finishNodeColor(vec4 color) {
+  return getCircleColor(color, color);
+}
+`);
+    let vertexMain = `
 highp uint vertexIndex = uint(gl_InstanceID);
 highp uint pickOffset = vertexIndex * uPickInstanceStride;
 vPickID = uPickID + pickOffset;
-highp vec3 vertexPosition = readAttribute0(vertexIndex);
+highp vec3 vertexPosition = applyNodePositionOverride(vertexIndex, readAttribute0(vertexIndex));
 `;
-          if (skeletonParams.spatialChunkCulling) {
-            vertexMain += `vCullPos = vertexPosition;\n`;
-          }
-          if (this.nodeIdAttributeIndex !== undefined) {
-            vertexMain += `vSelectedNode = float(readAttribute${this.nodeIdAttributeIndex}(vertexIndex).value == uSelectedNodeId);\n`;
-            vertexMain += `vHighlightedNode = float(readAttribute${this.nodeIdAttributeIndex}(vertexIndex).value == uHighlightedNodeId);\n`;
-          }
-          if (
-            skeletonParams.dynamicSegmentAppearance &&
-            this.segmentAttributeIndex !== undefined
-          ) {
-            vertexMain += `vSegmentValue = toRaw(readAttribute${this.segmentAttributeIndex}(vertexIndex));\n`;
-          }
-          vertexMain += `
-emitCircle(
-  uProjection * vec4(vertexPosition, 1.0),
-  uNodeDiameter,
-  ${selectedOutlineWidthExpression},
-  ${borderOutlineWidthExpression}
-);
+    let fragmentSetup = "";
+    if (skeletonParams.spatialChunkCulling) {
+      vertexMain += `vCullPos = vertexPosition;\n`;
+      fragmentSetup = `spatialChunkCull();\n`;
+    }
+    vertexMain += this.readSegmentValueGlsl(skeletonParams, "vertexIndex");
+    vertexMain += `emitCircle(uProjection * vec4(vertexPosition, 1.0), uNodeDiameter, 0.0);\n`;
+    // The legacy path emits the circle color un-premultiplied (preserved).
+    return { vertexMain, fragmentSetup, legacyPremultiply: false };
+  }
+
+  // Perspective view: raycast sphere (2 triangles).
+  private defineNodeRaycastSphere(
+    builder: ShaderBuilder,
+    skeletonParams: SkeletonShaderParameters,
+  ): NodeGeometry {
+    defineRaycastSphereShader(builder);
+    builder.addUniform("highp float", "uNodePixelRadius");
+    builder.addFragmentCode(`
+vec4 finishNodeColor(vec4 color) {
+  return vec4(color.rgb * raycastLightingFactor, color.a);
+}
+`);
+    let vertexMain = `
+highp uint vertexIndex = uint(gl_InstanceID);
+highp uint pickOffset = vertexIndex * uPickInstanceStride;
+vPickID = uPickID + pickOffset;
+highp vec3 vertexPosition = applyNodePositionOverride(vertexIndex, readAttribute0(vertexIndex));
+highp float nodeRadius = getRaycastModelRadiusForPixels(vertexPosition, uNodePixelRadius);
 `;
-          const segmentColorExpression = this.getSegmentColorExpression();
-          if (
-            skeletonParams.dynamicSegmentAppearance &&
-            this.segmentAttributeIndex !== undefined
-          ) {
-            // Dynamic path (spatial skeletons): per-segment color, visibility,
-            // saturation and hover highlight all resolved in the shader via
-            // getSegmentAppearance(). uColor is unused in this path.
-            const segmentExpression = `vSegmentValue`;
-            const hasNodeIdSelection = this.nodeIdAttributeIndex !== undefined;
-            // Apply the selected outline first, then the hovered outline, so the
-            // hovered color wins when a node is both selected and hovered.
-            const borderColorExpression = hasNodeIdSelection
-              ? `mix(mix(renderColor, vec4(uSelectedNodeOutlineColor, renderColor.a), vSelectedNode), vec4(uHighlightedNodeOutlineColor, renderColor.a), vHighlightedNode)`
-              : "renderColor";
-            const borderOutlineColorExpression = hasNodeIdSelection
-              ? `mix(mix(renderColor, vec4(${SELECTED_NODE_BORDER_OUTLINE_GLSL_COLOR}, renderColor.a), vSelectedNode), vec4(${HIGHLIGHTED_NODE_BORDER_OUTLINE_GLSL_COLOR}, renderColor.a), vHighlightedNode)`
-              : "renderColor";
-            builder.addFragmentCode(`
-vec4 segmentColor() {
-  return getSegmentAppearance(${segmentExpression});
-}
-void emitRGBA(vec4 color) {
-  vec4 baseColor = segmentColor();
-  highp float alpha = color.a * baseColor.a;
-  if (alpha <= 0.0) discard;
-  vec4 renderColor = vec4(color.rgb, alpha);
-  vec4 borderColor = ${borderColorExpression};
-  vec4 borderOutlineColor = ${borderOutlineColorExpression};
-  vec4 circleColor = getCircleColor(renderColor, borderColor, borderOutlineColor);
-  emit(vec4(circleColor.rgb * circleColor.a, circleColor.a), vPickID);
-}
-void emitRGB(vec3 color) {
-  emitRGBA(vec4(color, 1.0));
-}
-void emitDefault() {
-  emitRGBA(vec4(segmentColor().rgb, 1.0));
-}
-`);
-          } else if (this.segmentColorAttributeIndex === undefined) {
-            // Legacy path (non-spatial skeletons): one skeleton drawn per call;
-            // uColor is set per-skeleton by the CPU via getObjectColor(), which
-            // already incorporates saturation and hover highlighting.
-            builder.addFragmentCode(`
-vec4 segmentColor() {
-  return ${segmentColorExpression};
-}
-void emitRGBA(vec4 color) {
-  vec4 borderColor = color;
-  emit(getCircleColor(color, borderColor), vPickID);
-}
-void emitRGB(vec3 color) {
-  emitRGBA(vec4(color, 1.0));
-}
-void emitDefault() {
-  emitRGBA(uColor);
-}
-`);
-          } else {
-            // Per-vertex color attribute path: color comes from a per-vertex
-            // attribute; alpha is taken from the attribute's alpha component.
-            const hasNodeIdSelection = this.nodeIdAttributeIndex !== undefined;
-            // Apply the selected outline first, then the hovered outline, so the
-            // hovered color wins when a node is both selected and hovered.
-            const borderColorExpression = hasNodeIdSelection
-              ? `mix(mix(renderColor, vec4(uSelectedNodeOutlineColor, renderColor.a), vSelectedNode), vec4(uHighlightedNodeOutlineColor, renderColor.a), vHighlightedNode)`
-              : "renderColor";
-            const borderOutlineColorExpression = hasNodeIdSelection
-              ? `mix(mix(renderColor, vec4(${SELECTED_NODE_BORDER_OUTLINE_GLSL_COLOR}, renderColor.a), vSelectedNode), vec4(${HIGHLIGHTED_NODE_BORDER_OUTLINE_GLSL_COLOR}, renderColor.a), vHighlightedNode)`
-              : "renderColor";
-            builder.addFragmentCode(`
-vec4 segmentColor() {
-  return ${segmentColorExpression};
-}
-void emitRGBA(vec4 color) {
-  vec4 renderColor = color;
-  vec4 borderColor = ${borderColorExpression};
-  vec4 borderOutlineColor = ${borderOutlineColorExpression};
-  vec4 circleColor = getCircleColor(renderColor, borderColor, borderOutlineColor);
-  emit(vec4(circleColor.rgb * circleColor.a, circleColor.a), vPickID);
-}
-void emitRGB(vec3 color) {
-  emitRGBA(vec4(color, 1.0));
-}
-void emitDefault() {
-  emitRGBA(segmentColor());
-}
-`);
-          }
-          this.finalizeShaderBuilder(
-            builder,
-            shaderBuilderState,
-            skeletonParams,
-            vertexMain,
-          );
-        },
-      },
-    );
+    vertexMain += this.readSegmentValueGlsl(skeletonParams, "vertexIndex");
+    vertexMain += `emitRaycastSphere(vertexPosition, nodeRadius);\n`;
+    return {
+      vertexMain,
+      fragmentSetup: raycastFragmentSetup(
+        "intersectRaycastSphere",
+        skeletonParams.spatialChunkCulling,
+      ),
+      legacyPremultiply: true,
+    };
   }
 
   defineAttributeAccess(builder: ShaderBuilder) {
@@ -972,11 +981,68 @@ void emitDefault() {
     const { viewProjectionMat } = renderContext.projectionParameters;
     const mat = mat4.multiply(tempMat4, viewProjectionMat, modelMatrix);
     gl.uniformMatrix4fv(shader.uniform("uProjection"), false, mat);
+    if (!this.targetIsSliceView) {
+      // Raycast uniforms (perspective view).  Intersection is done in model
+      // space, so we provide clip->model and the model-normal->display normal
+      // transform (inverse-transpose of the model matrix), plus the light and
+      // viewport size.  Mirrors src/annotation/ellipsoid.ts.
+      const invProjection = mat4.invert(tempInvProjection, mat);
+      if (invProjection !== null) {
+        gl.uniformMatrix4fv(
+          shader.uniform("uInvProjection"),
+          false,
+          invProjection,
+        );
+      }
+      const invModel = mat4.invert(tempInvModel, modelMatrix);
+      if (invModel !== null) {
+        const normalTransform = mat4.transpose(tempNormalTransform, invModel);
+        gl.uniformMatrix4fv(
+          shader.uniform("uNormalTransform"),
+          false,
+          normalTransform,
+        );
+      }
+      const { width, height } = renderContext.projectionParameters;
+      gl.uniform2f(shader.uniform("uViewportSize"), width, height);
+      const perspectiveContext = renderContext as PerspectiveViewRenderContext;
+      const lightVec = tempLightVec as unknown as vec3;
+      vec3.scale(
+        lightVec,
+        perspectiveContext.lightDirection,
+        perspectiveContext.directionalLighting,
+      );
+      tempLightVec[3] = perspectiveContext.ambientLighting;
+      gl.uniform4fv(shader.uniform("uLightDirection"), tempLightVec);
+    }
+    // Default: no live-drag position override. Must be set for every pass —
+    // including the shared browse pass — since a uniform left at its 0 default
+    // would wrongly override vertex 0. The overlay pass sets a real value below.
+    gl.uniform1i(shader.uniform("uOverrideVertexIndex"), -1);
     this.vertexIdHelper.enable();
   }
 
   setColor(gl: GL, shader: ShaderProgram, color: vec4) {
     gl.uniform4fv(shader.uniform("uColor"), color);
+  }
+
+  // Overrides a single vertex's position (a live node drag) without touching the
+  // position texture. `vertexIndex < 0` disables the override.
+  setNodePositionOverride(
+    gl: GL,
+    shader: ShaderProgram,
+    vertexIndex: number,
+    position: ArrayLike<number>,
+  ) {
+    gl.uniform1i(shader.uniform("uOverrideVertexIndex"), vertexIndex);
+    if (vertexIndex >= 0) {
+      gl.uniform3f(
+        shader.uniform("uOverridePosition"),
+        Number(position[0] ?? 0),
+        Number(position[1] ?? 0),
+        Number(position[2] ?? 0),
+      );
+    }
   }
 
   setPickID(gl: GL, shader: ShaderProgram, pickID: number) {
@@ -995,6 +1061,39 @@ void emitDefault() {
   ) {
     gl.uniform3fv(shader.uniform("uChunkOrigin"), origin);
     gl.uniform3fv(shader.uniform("uChunkBound"), upperBound);
+  }
+
+  // Sets the edge-size uniforms for whichever edge shader variant is active:
+  // the billboard line width (slice view) or the raycast-cylinder pixel radius
+  // (perspective view).
+  setEdgeSizeUniforms(
+    gl: GL,
+    shader: ShaderProgram,
+    lineWidth: number,
+    pointDiameter: number,
+  ) {
+    if (this.targetIsSliceView) {
+      gl.uniform1f(shader.uniform("uLineWidth"), lineWidth);
+      gl.uniform1f(
+        shader.uniform("uLineEndpointClipRadius"),
+        pointDiameter / 2,
+      );
+    } else {
+      gl.uniform1f(shader.uniform("uEdgePixelRadius"), lineWidth * 0.5);
+      // Node radius, used to clip the cylinder ends against the node spheres.
+      gl.uniform1f(shader.uniform("uNodePixelRadius"), pointDiameter * 0.5);
+    }
+  }
+
+  // Sets the node-size uniforms for whichever node shader variant is active:
+  // the billboard circle diameter (slice view) or the raycast-sphere pixel
+  // radius (perspective view).
+  setNodeSizeUniforms(gl: GL, shader: ShaderProgram, pointDiameter: number) {
+    if (this.targetIsSliceView) {
+      gl.uniform1f(shader.uniform("uNodeDiameter"), pointDiameter);
+    } else {
+      gl.uniform1f(shader.uniform("uNodePixelRadius"), pointDiameter * 0.5);
+    }
   }
 
   drawSkeletons(
@@ -1022,7 +1121,10 @@ void emitDefault() {
       );
     }
 
-    // Draw edges
+    const raycast = !this.targetIsSliceView;
+
+    // Draw edges: lines (slice) or raycast cylinders (perspective).  Both are
+    // instanced quads whose per-instance endpoint pair comes from `aVertexIndex`.
     {
       edgeShader.bind();
       const aVertexIndex = edgeShader.attribute("aVertexIndex");
@@ -1032,23 +1134,28 @@ void emitDefault() {
         WebGL2RenderingContext.UNSIGNED_INT,
       );
       gl.vertexAttribDivisor(aVertexIndex, 1);
-      initializeLineShader(
-        edgeShader,
-        projectionParameters,
-        this.targetIsSliceView ? 1.0 : 0.0,
-      );
-      drawLines(gl, 1, skeletonGpuGeometry.numIndices / 2);
+      if (raycast) {
+        drawQuads(gl, 1, skeletonGpuGeometry.numIndices / 2);
+      } else {
+        initializeLineShader(edgeShader, projectionParameters, 1.0);
+        drawLines(gl, 1, skeletonGpuGeometry.numIndices / 2);
+      }
       gl.vertexAttribDivisor(aVertexIndex, 0);
       gl.disableVertexAttribArray(aVertexIndex);
     }
 
-    // Draw nodes
+    // Draw nodes: circles (slice) or raycast spheres (perspective).  Position
+    // is pulled per-instance from the position texture by gl_InstanceID.
     {
       nodeShader.bind();
-      initializeCircleShader(nodeShader, projectionParameters, {
-        featherWidthInPixels: this.targetIsSliceView ? 1.0 : 0.0,
-      });
-      drawCircles(nodeShader.gl, 1, skeletonGpuGeometry.numVertices);
+      if (raycast) {
+        drawQuads(gl, 1, skeletonGpuGeometry.numVertices);
+      } else {
+        initializeCircleShader(nodeShader, projectionParameters, {
+          featherWidthInPixels: 1.0,
+        });
+        drawCircles(nodeShader.gl, 1, skeletonGpuGeometry.numVertices);
+      }
     }
   }
 
@@ -1173,6 +1280,82 @@ function getSkeletonNodeDiameter(
   return lineWidth;
 }
 
+// A selected/hovered node highlight to draw as a DOM ring overlay.  `diameter`
+// and `borderWidth` are in render-viewport device px (matching the node's
+// on-screen size); the panel converts them to CSS px via `cssPerDevicePixel`.
+interface HighlightMarker {
+  position: Float32Array; // global coordinate space
+  kind: "selected" | "hovered";
+  color: string; // CSS ring color, derived from the node's segment color
+  outlineColor: string; // CSS halo color, contrasting with `color`
+  diameter: number;
+  borderWidth: number;
+}
+
+// Reconciles the ring child elements of an overlay source's per-panel container
+// to `markers`, projecting each via the panel context.  Reuses/pools children.
+function updateSkeletonHighlightOverlay(
+  markers: HighlightMarker[],
+  ctx: PanelOverlayContext,
+) {
+  const { container, cssPerDevicePixel } = ctx;
+  let count = 0;
+  for (const marker of markers) {
+    const pos = ctx.project(marker.position);
+    if (pos === undefined) continue;
+    let element = container.children[count] as HTMLElement | undefined;
+    if (element === undefined) {
+      element = document.createElement("div");
+      element.className = "neuroglancer-skeleton-node-highlight";
+      container.appendChild(element);
+    }
+    ++count;
+    const size = marker.diameter * cssPerDevicePixel;
+    const { style } = element;
+    style.display = "";
+    style.width = `${size}px`;
+    style.height = `${size}px`;
+    style.borderWidth = `${Math.max(1, marker.borderWidth * cssPerDevicePixel)}px`;
+    style.borderColor = marker.color;
+    style.setProperty("--ng-node-highlight-outline", marker.outlineColor);
+    style.opacity = `${pos.opacity ?? 1}`;
+    style.transform = `translate(${pos.x - size / 2}px, ${pos.y - size / 2}px)`;
+  }
+  const { children } = container;
+  for (let i = count; i < children.length; ++i) {
+    (children[i] as HTMLElement).style.display = "none";
+  }
+}
+
+// On-screen size (render-viewport device px) of a node's selection ring,
+// matching the old in-shader outline: a band of `borderWidth` sitting just
+// outside the node, so the outer `diameter` = nodeDiameter + 2 * outline.
+function getSkeletonNodeHighlightRing(
+  renderMode: SkeletonRenderMode,
+  lineWidth: number,
+  targetIsSliceView: boolean,
+): { diameter: number; borderWidth: number } {
+  const nodeDiameter = getSkeletonNodeDiameter(renderMode, lineWidth);
+  const minWidth = Number(
+    targetIsSliceView
+      ? SELECTED_NODE_OUTLINE_MIN_WIDTH_2D
+      : SELECTED_NODE_OUTLINE_MIN_WIDTH_3D,
+  );
+  const maxWidth = Number(
+    targetIsSliceView
+      ? SELECTED_NODE_OUTLINE_MAX_WIDTH_2D
+      : SELECTED_NODE_OUTLINE_MAX_WIDTH_3D,
+  );
+  const outline = Math.min(
+    maxWidth,
+    Math.max(
+      minWidth,
+      Number(SELECTED_NODE_OUTLINE_DIAMETER_FRACTION) * nodeDiameter,
+    ),
+  );
+  return { diameter: nodeDiameter + 2 * outline, borderWidth: outline };
+}
+
 function setMouseStatePositionFromSpatialSkeletonNode(
   mouseState: MouseSelectionState,
   nodePosition: Float32Array,
@@ -1263,7 +1446,6 @@ export class SkeletonLayer extends RefCounted implements SkeletonShaderContext {
   redrawNeeded = new NullarySignal();
   private sharedObject: SegmentationLayerSharedObject;
   vertexAttributes: VertexAttributeRenderInfo[];
-  segmentColorAttributeIndex: number | undefined = undefined;
   // Non-spatial skeletons iterate segments individually and pass color/alpha via
   // uniforms (getObjectColor), so the dynamic per-vertex segment appearance path
   // is not needed. Stated colors and default color are likewise handled upstream
@@ -1384,15 +1566,11 @@ export class SkeletonLayer extends RefCounted implements SkeletonShaderContext {
       shaderControlState,
       edgeShaderParameters.parseResult,
     );
-    gl.uniform1f(edgeShader.uniform("uLineWidth"), lineWidth!);
-    gl.uniform1f(
-      edgeShader.uniform("uLineEndpointClipRadius"),
-      pointDiameter / 2,
-    );
+    renderHelper.setEdgeSizeUniforms(gl, edgeShader, lineWidth!, pointDiameter);
 
     nodeShader.bind();
     renderHelper.beginLayer(gl, nodeShader, renderContext, modelMatrix);
-    gl.uniform1f(nodeShader.uniform("uNodeDiameter"), pointDiameter);
+    renderHelper.setNodeSizeUniforms(gl, nodeShader, pointDiameter);
     renderHelper.setPickInstanceStride(gl, nodeShader, 0);
     setControlsInShader(
       gl,
@@ -1599,14 +1777,6 @@ const segmentAttribute: VertexAttributeRenderInfo = {
   glslDataType: getShaderType(DataType.UINT32, 1),
 };
 
-const nodeIdAttribute: VertexAttributeRenderInfo = {
-  dataType: DataType.INT32,
-  numComponents: 1,
-  name: "nodeId",
-  webglDataType: WebGL2RenderingContext.INT,
-  glslDataType: getShaderType(DataType.INT32, 1),
-};
-
 interface SkeletonChunkBase extends SkeletonGPUGeometry {
   vertexAttributes: Uint8Array;
   vertexAttributeOffsets: Uint32Array;
@@ -1722,31 +1892,6 @@ export class SpatiallyIndexedSkeletonChunk
   copyToGPU(gl: GL) {
     super.copyToGPU(gl);
     uploadSkeletonChunkToGPU(gl, this);
-    // Upload nodeIds as the 3rd vertex attribute texture (index 2).
-    // vertexAttributeOffsets only covers position (0) and segment (1), so we
-    // handle nodeId separately here since it is stored outside the packed buffer.
-    const nodeIdFormat = this.source.attributeTextureFormats[2];
-    if (
-      nodeIdFormat !== undefined &&
-      this.nodeIds.length === this.numVertices &&
-      this.numVertices > 0
-    ) {
-      const texture = gl.createTexture();
-      gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, texture);
-      setOneDimensionalTextureData(
-        gl,
-        nodeIdFormat,
-        new Uint8Array(
-          this.nodeIds.buffer,
-          this.nodeIds.byteOffset,
-          this.nodeIds.byteLength,
-        ),
-      );
-      gl.bindTexture(WebGL2RenderingContext.TEXTURE_2D, null);
-      this.vertexAttributeTextures[2] = texture;
-    } else {
-      this.vertexAttributeTextures[2] = null;
-    }
   }
 
   freeGPUMemory(gl: GL) {
@@ -1763,7 +1908,6 @@ type SpatiallyIndexedSkeletonChunkListener = (
 const spatiallyIndexedSkeletonTextureAttributeSpecs = Object.freeze([
   { name: "position", dataType: DataType.FLOAT32, numComponents: 3 },
   { name: "segment", dataType: DataType.UINT32, numComponents: 1 },
-  { name: "nodeId", dataType: DataType.INT32, numComponents: 1 },
 ]);
 
 export class SpatiallyIndexedSkeletonSource extends SliceViewChunkSource<
@@ -1776,11 +1920,7 @@ export class SpatiallyIndexedSkeletonSource extends SliceViewChunkSource<
 
   constructor(chunkManager: ChunkManager, options: any) {
     super(chunkManager, options);
-    this.vertexAttributes = [
-      vertexPositionAttribute,
-      segmentAttribute,
-      nodeIdAttribute,
-    ];
+    this.vertexAttributes = [vertexPositionAttribute, segmentAttribute];
   }
 
   get attributeTextureFormats() {
@@ -1817,6 +1957,46 @@ export class SpatiallyIndexedSkeletonSource extends SliceViewChunkSource<
   }
 }
 
+export interface SpatiallyIndexedSkeletonSourceRuntimeDisposalOptions {
+  invalidateCache?: boolean;
+}
+
+export function disposeSpatiallyIndexedSkeletonSourceRuntimeState(
+  sources: Iterable<SpatiallyIndexedSkeletonSource>,
+  options: SpatiallyIndexedSkeletonSourceRuntimeDisposalOptions = {},
+) {
+  const uniqueSources = new Set(sources);
+  const invalidateCache = options.invalidateCache ?? true;
+  const chunkQueueManagersWithDeletedChunks = new Set<
+    ChunkManager["chunkQueueManager"]
+  >();
+  let changed = false;
+  for (const source of uniqueSources) {
+    if (source.chunks.size !== 0) {
+      for (const chunkKey of source.chunks.keys()) {
+        source.deleteChunk(chunkKey);
+      }
+      chunkQueueManagersWithDeletedChunks.add(
+        source.chunkManager.chunkQueueManager,
+      );
+      changed = true;
+    }
+    if (
+      invalidateCache &&
+      source.wasDisposed !== true &&
+      source.rpc !== null &&
+      source.rpcId !== null
+    ) {
+      source.invalidateCache();
+      changed = true;
+    }
+  }
+  for (const chunkQueueManager of chunkQueueManagersWithDeletedChunks) {
+    chunkQueueManager.visibleChunksChanged.dispatch();
+  }
+  return changed;
+}
+
 // Options are provided by the SliceView framework for scale selection,
 // but spatial skeleton sources expose all grid levels unconditionally.
 // TODO (SKM): validate if this is an ok deviation from the SliceView
@@ -1826,24 +2006,31 @@ export const SPATIAL_SKELETON_SOURCE_OPTIONS: SliceViewSourceOptions = {
   modelChannelDimensionIndices: [],
 };
 
-export function getSpatialSkeletonCellKeyPrefix(
+/**
+ * Returns the key of the chunk containing `position`, given in the source's own voxel coordinates,
+ * or undefined if no single chunk can be named.
+ *
+ * A skeleton node position is 3D, so it identifies exactly one chunk only while the grid is also 3D.
+ * Every spatial skeleton source today is (see `CatmaidMultiscaleSpatiallyIndexedSkeletonSource`); a
+ * higher-rank grid would spread one 3D cell over every combination of the extra dimensions, which
+ * cannot be named without enumerating the source's chunks, so this reports undefined rather than
+ * guessing. The grid is anchored at the origin rather than at the source's lower bound, matching the
+ * chunk index computation in `updateFixedCurPositionInChunks`.
+ */
+export function getSpatialSkeletonChunkKey(
+  spec: SliceViewChunkSpecification,
   position: ArrayLike<number>,
-  chunkDataSize: ArrayLike<number>,
-) {
-  const cell = new Array<number>(3);
-  for (let i = 0; i < 3; ++i) {
-    const coordinate = Number(position[i]);
-    const chunkSize = Number(chunkDataSize[i]);
-    if (
-      !Number.isFinite(coordinate) ||
-      !Number.isFinite(chunkSize) ||
-      chunkSize <= 0
-    ) {
-      return undefined;
-    }
-    cell[i] = Math.floor(coordinate / chunkSize);
+): string | undefined {
+  const { rank, chunkDataSize } = spec;
+  if (rank !== 3) return undefined;
+  const chunkGridPosition = new Array<number>(rank);
+  for (let i = 0; i < rank; ++i) {
+    const coordinate = position[i];
+    const chunkSize = chunkDataSize[i];
+    if (!Number.isFinite(coordinate) || !(chunkSize > 0)) return undefined;
+    chunkGridPosition[i] = Math.floor(coordinate / chunkSize);
   }
-  return `${cell[0]},${cell[1]},${cell[2]}`;
+  return getChunkKey(chunkGridPosition);
 }
 
 export abstract class MultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleSliceViewChunkSource<SpatiallyIndexedSkeletonSource> {
@@ -1870,6 +2057,7 @@ type SpatiallyIndexedSkeletonSourceEntry =
 interface SelectedSkeletonNodeInfo {
   readonly nodeId: number;
   readonly segmentId?: number;
+  readonly position?: Float32Array;
 }
 
 interface SpatiallyIndexedSkeletonLayerOptions {
@@ -1877,15 +2065,25 @@ interface SpatiallyIndexedSkeletonLayerOptions {
   selectedNodeInfo?: WatchableValueInterface<
     SelectedSkeletonNodeInfo | undefined
   >;
+  // When true, the selected-node highlight is hidden even though a node may be
+  // selected (used while entering merge/split modes).
+  suppressSelectedNodeHighlight?: WatchableValueInterface<boolean>;
   hoveredNodeInfo?: WatchableValueInterface<
     SelectedSkeletonNodeInfo | undefined
   >;
   pendingNodePositionVersion?: WatchableValueInterface<number>;
   getPendingNodePosition?: (nodeId: number) => ArrayLike<number> | undefined;
+  // Node ids that currently have a pending (drag) position override.
+  getPendingNodeIds?: () => Iterable<number>;
   getCachedNode?: (
     nodeId: number,
     skeletonLayer?: SpatiallyIndexedSkeletonLayer,
   ) => SpatiallyIndexedSkeletonNode | undefined;
+  // Transforms a node's model-space position into the global coordinate space
+  // used by the panels, so node highlights can be projected to screen.
+  resolveGlobalPosition?: (
+    modelPosition: ArrayLike<number>,
+  ) => Float32Array | undefined;
   inspectionState?: SpatiallyIndexedSkeletonInspectionState;
   maxRetainedOverlaySegments?: number;
 }
@@ -1916,6 +2114,9 @@ class SkeletonOverlayChunk implements SkeletonGPUGeometry {
   readonly pickNodePositions: Float32Array;
   readonly pickSegmentIds: Uint32Array;
   readonly pickEdgeSegmentIds: Uint32Array;
+  // Maps nodeId to packed vertex index, used to target a live node drag's
+  // position override to the correct vertex via a shader uniform (no rebuild).
+  readonly nodeIndex: ReadonlyMap<number, number>;
 
   constructor(
     gl: GL,
@@ -1932,11 +2133,6 @@ class SkeletonOverlayChunk implements SkeletonGPUGeometry {
         geometry.segmentIds.buffer,
         geometry.segmentIds.byteOffset,
         geometry.segmentIds.byteLength,
-      ),
-      new Uint8Array(
-        geometry.nodeIds.buffer,
-        geometry.nodeIds.byteOffset,
-        geometry.nodeIds.byteLength,
       ),
     ];
     const overlayTextures: (WebGLTexture | null)[] =
@@ -1961,6 +2157,7 @@ class SkeletonOverlayChunk implements SkeletonGPUGeometry {
     this.pickNodePositions = geometry.positions;
     this.pickSegmentIds = geometry.pickSegmentIds;
     this.pickEdgeSegmentIds = geometry.pickEdgeSegmentIds;
+    this.nodeIndex = geometry.nodeIndex;
   }
 
   dispose(gl: GL) {
@@ -1980,67 +2177,6 @@ const seenChunkKeysPerFrame = new WeakMap<
 >();
 
 const SPATIAL_SKELETON_RESOLUTION_INDICATOR_BAR_HEIGHT = 10;
-
-function updateSpatialSkeletonSpacingHistogram(
-  histogram: RenderScaleHistogram,
-  frameNumber: number,
-  transformedSources: readonly TransformedSource[][],
-  projectionParameters: ProjectionParameters,
-  localPosition: Float32Array,
-  spacingTarget: number,
-) {
-  histogram.begin(frameNumber);
-  if (transformedSources.length === 0) {
-    return;
-  }
-  let seen = seenChunkKeysPerFrame.get(histogram);
-  if (seen === undefined || seen.frameNumber !== frameNumber) {
-    seen = { frameNumber, keys: new Set() };
-    seenChunkKeysPerFrame.set(histogram, seen);
-  }
-  const seenKeys = seen.keys;
-  for (const scales of transformedSources) {
-    forEachSpatialSkeletonSourceScale(
-      projectionParameters,
-      spacingTarget,
-      scales,
-      (tsource, _, physicalSpacing, pixelSpacing, selected) => {
-        if (selected) return;
-        const source = tsource.source as SpatiallyIndexedSkeletonSource;
-        const indicatorKey = `indicator:${getObjectId(source)}`;
-        if (seenKeys.has(indicatorKey)) return;
-        seenKeys.add(indicatorKey);
-        histogram.add(
-          physicalSpacing,
-          pixelSpacing,
-          0,
-          SPATIAL_SKELETON_RESOLUTION_INDICATOR_BAR_HEIGHT,
-          true,
-        );
-      },
-    );
-    forEachVisibleSpatialSkeletonChunk(
-      projectionParameters,
-      localPosition,
-      spacingTarget,
-      scales,
-      () => {},
-      (tsource, _, physicalSpacing, pixelSpacing) => {
-        const source = tsource.source as SpatiallyIndexedSkeletonSource;
-        const chunkKey = tsource.curPositionInChunks.join();
-        const seenKey = `${getObjectId(source)}:${chunkKey}`;
-        if (seenKeys.has(seenKey)) return;
-        seenKeys.add(seenKey);
-        const chunk = source.chunks.get(chunkKey);
-        if (chunk?.state === ChunkState.GPU_MEMORY) {
-          histogram.add(physicalSpacing, pixelSpacing, 1, 0);
-        } else {
-          histogram.add(physicalSpacing, pixelSpacing, 0, 1);
-        }
-      },
-    );
-  }
-}
 
 export interface SpatiallyIndexedSkeletonLayerDisplayState
   extends SkeletonLayerDisplayState {
@@ -2091,8 +2227,6 @@ export class SpatiallyIndexedSkeletonLayer
   layerChunkProgressInfo = new LayerChunkProgressInfo();
   redrawNeeded = new NullarySignal();
   vertexAttributes: VertexAttributeRenderInfo[];
-  segmentColorAttributeIndex: number | undefined;
-  nodeIdAttributeIndex: number | undefined;
   readonly browsePassLayerView: SkeletonShaderContext;
   readonly skeletonShaderParameters: WatchableValue<SkeletonShaderParameters>;
   readonly browsePassSkeletonShaderParameters: WatchableValueInterface<SkeletonShaderParameters>;
@@ -2116,37 +2250,66 @@ export class SpatiallyIndexedSkeletonLayer
   private selectedNodeInfo:
     | WatchableValueInterface<SelectedSkeletonNodeInfo | undefined>
     | undefined;
+  private suppressSelectedNodeHighlight:
+    | WatchableValueInterface<boolean>
+    | undefined;
   private hoveredNodeInfo:
     | WatchableValueInterface<SelectedSkeletonNodeInfo | undefined>
-    | undefined;
-  private pendingNodePositionVersion:
-    | WatchableValueInterface<number>
     | undefined;
   private getPendingNodePositionOverride:
     | ((nodeId: number) => ArrayLike<number> | undefined)
     | undefined;
+  // Node ids with a live pending (drag) position. Used to target the shader
+  // position override without scanning all nodes; one entry during a drag.
+  private getPendingNodeIds: (() => Iterable<number>) | undefined;
   private getCachedNodeInfo:
     | ((
         nodeId: number,
         skeletonLayer?: SpatiallyIndexedSkeletonLayer,
       ) => SpatiallyIndexedSkeletonNode | undefined)
     | undefined;
+  private resolveGlobalPosition:
+    | ((modelPosition: ArrayLike<number>) => Float32Array | undefined)
+    | undefined;
+  // Fires when the set of highlighted nodes (selected/hovered) changes, so panels
+  // can reposition their DOM node-highlight markers without a full canvas redraw.
+  readonly highlightMarkersChanged = new NullarySignal();
   private inspectionState: SpatiallyIndexedSkeletonInspectionState | undefined;
   private overlayChunk: SkeletonOverlayChunk | undefined;
-  private overlayGeometryKey: string | undefined;
+  // Identifies the overlay geometry topology (which segments are loaded plus the
+  // node-data version). A change forces a full rebuild. Live-drag position
+  // changes do not affect it — they are applied per-draw via a shader uniform.
+  private overlayTopologyKey: string | undefined;
   private overlayRebuildFrame = -1;
   private pendingOverlaySegmentLoads = new Set<number>();
   private browseExcludedSegments = new Uint64Set();
   private gpuBrowseExcludedSegmentsHashTable: GPUHashTable<HashSetUint64>;
   private browseExcludedSegmentsKey: string | undefined;
   private readonly editedSegmentIds = new Set<number>();
-  private retainedOverlaySegmentIds: number[] = [];
+  // Bumped on every mutation of `editedSegmentIds` so the per-frame browse
+  // excluded-segments computation can be skipped when nothing changed.
+  private editedSegmentIdsVersion = 0;
+  private cachedBrowseExcludedResult: Uint64Set | undefined;
+  private cachedBrowseExcludedVersion = -1;
+  // Segment id -> last-touched sequence number; doubles as pool membership
+  // (key) and recency (value).
+  private retainedOverlaySegments: Map<number, number> = new Map();
+  // Shared sequence counter assigned to each touch.
+  private overlaySegmentTouchCounter = 0;
+  // Bumped when the set of keys in `retainedOverlaySegments` changes, so the
+  // merged render segment-id list can be cached across frames. Recency-only
+  // touches don't bump this, since the merged, sorted list is unaffected.
+  private retainedOverlaySegmentIdsVersion = 0;
+  private cachedOverlayRenderSegmentIds: number[] = [];
+  private cachedOverlayRenderVisibleSet: Uint64Set | undefined;
+  private cachedOverlayRenderVisibleGeneration = -1;
+  private cachedOverlayRenderRetainedVersion = -1;
   private maxRetainedOverlaySegments: number;
   private readonly selectedNodeOutlineColor = vec3.clone(
-    ACTIVE_NODE_BORDER_FALLBACK_COLOR,
+    SELECTED_NODE_OUTLINE_FALLBACK_COLOR,
   );
   private readonly highlightedNodeOutlineColor = vec3.clone(
-    ACTIVE_NODE_BORDER_FALLBACK_COLOR,
+    SELECTED_NODE_OUTLINE_FALLBACK_COLOR,
   );
   // The selected and hovered outline colors are derived together from a single
   // source segment color, so they share one cache generation.
@@ -2154,9 +2317,63 @@ export class SpatiallyIndexedSkeletonLayer
   private cachedNodeOutlineColorGeneration = -1;
 
   private disposeOverlayChunk() {
+    const changed =
+      this.overlayChunk !== undefined || this.overlayTopologyKey !== undefined;
     this.overlayChunk?.dispose(this.gl);
     this.overlayChunk = undefined;
-    this.overlayGeometryKey = undefined;
+    this.overlayTopologyKey = undefined;
+    return changed;
+  }
+
+  getUniqueChunkSources() {
+    const sources = new Set<SpatiallyIndexedSkeletonSource>();
+    for (const sourceEntry of [...this.sources, ...this.sources2d]) {
+      sources.add(sourceEntry.chunkSource);
+    }
+    return sources;
+  }
+
+  private clearOverlayRuntimeState() {
+    let changed = this.disposeOverlayChunk();
+    if (this.pendingOverlaySegmentLoads.size !== 0) {
+      this.pendingOverlaySegmentLoads.clear();
+      changed = true;
+    }
+    if (this.editedSegmentIds.size !== 0) {
+      this.editedSegmentIds.clear();
+      ++this.editedSegmentIdsVersion;
+      changed = true;
+    }
+    if (this.retainedOverlaySegments.size !== 0) {
+      this.retainedOverlaySegments = new Map();
+      ++this.retainedOverlaySegmentIdsVersion;
+      changed = true;
+    }
+    if (this.browseExcludedSegments.size !== 0) {
+      this.browseExcludedSegments.clear();
+      changed = true;
+    }
+    if (this.browseExcludedSegmentsKey !== undefined) {
+      this.browseExcludedSegmentsKey = undefined;
+      changed = true;
+    }
+    this.overlayRebuildFrame = -1;
+    return changed;
+  }
+
+  disposeRuntimeState(
+    options: SpatiallyIndexedSkeletonSourceRuntimeDisposalOptions = {},
+  ) {
+    const overlayChanged = this.clearOverlayRuntimeState();
+    const sourceChanged = disposeSpatiallyIndexedSkeletonSourceRuntimeState(
+      this.getUniqueChunkSources(),
+      options,
+    );
+    const changed = overlayChanged || sourceChanged;
+    if (changed) {
+      this.redrawNeeded.dispatch();
+    }
+    return changed;
   }
 
   private requestOverlaySegmentLoad(segmentId: number) {
@@ -2177,10 +2394,9 @@ export class SpatiallyIndexedSkeletonLayer
       });
   }
 
-  private getOverlayGeometryKey(segmentIds: readonly number[]) {
+  private getOverlayTopologyKey(segmentIds: readonly number[]) {
     return [
       segmentIds.join(","),
-      `pending:${this.pendingNodePositionVersion?.value ?? ""}`,
       `data:${this.inspectionState?.nodeDataVersion.value ?? ""}`,
     ].join("|");
   }
@@ -2220,7 +2436,14 @@ export class SpatiallyIndexedSkeletonLayer
     return getBaseObjectColor(this.displayState, segmentId);
   }
 
-  private updateNodeOutlineColors() {
+  // Updates `selectedNodeOutlineColor` and `highlightedNodeOutlineColor` in
+  // place. Each outline is chosen, independently of the other, for high contrast
+  // against its own node's segment color: the selected node uses the muted
+  // palette, and the hovered node uses its own segment color pushed away from
+  // (or, if already very saturated, towards) grey. Because the two are computed
+  // independently, a given segment color always yields the same selected color
+  // and the same hovered color.
+  private updateNodeOutlineColorPair() {
     const currentGeneration = this.nodeOutlineColorGeneration;
     if (this.cachedNodeOutlineColorGeneration === currentGeneration) {
       return;
@@ -2242,7 +2465,7 @@ export class SpatiallyIndexedSkeletonLayer
     } else {
       vec3.copy(
         this.selectedNodeOutlineColor,
-        ACTIVE_NODE_BORDER_FALLBACK_COLOR,
+        SELECTED_NODE_OUTLINE_FALLBACK_COLOR,
       );
     }
 
@@ -2263,57 +2486,103 @@ export class SpatiallyIndexedSkeletonLayer
     } else {
       vec3.copy(
         this.highlightedNodeOutlineColor,
-        ACTIVE_NODE_BORDER_FALLBACK_COLOR,
+        SELECTED_NODE_OUTLINE_FALLBACK_COLOR,
       );
     }
   }
 
   getRetainedOverlaySegmentIds() {
-    return this.retainedOverlaySegmentIds;
+    return [...this.retainedOverlaySegments.keys()];
   }
 
-  retainOverlaySegment(segmentId: number) {
-    this.markSegmentEdited(segmentId);
-    const nextRetainedOverlaySegmentIds =
-      retainSpatiallyIndexedSkeletonOverlaySegment(
-        this.retainedOverlaySegmentIds,
-        segmentId,
-        { maxRetained: this.maxRetainedOverlaySegments },
-      );
+  /**
+   * Stores `nextRetainedOverlaySegments` and reports whether the set of keys
+   * changed. A recency-only touch still updates the stored map, but only a
+   * membership change bumps `retainedOverlaySegmentIdsVersion` and warrants
+   * a redraw. Shared by `retainOverlaySegment` and `markSegmentEdited`.
+   */
+  private applyRetainedOverlaySegments(
+    nextRetainedOverlaySegments: Map<number, number>,
+  ): boolean {
+    const previousRetainedOverlaySegments = this.retainedOverlaySegments;
+    this.retainedOverlaySegments = nextRetainedOverlaySegments;
     if (
-      nextRetainedOverlaySegmentIds.length ===
-        this.retainedOverlaySegmentIds.length &&
-      nextRetainedOverlaySegmentIds.every(
-        (candidateSegmentId, index) =>
-          candidateSegmentId === this.retainedOverlaySegmentIds[index],
+      nextRetainedOverlaySegments.size ===
+        previousRetainedOverlaySegments.size &&
+      [...nextRetainedOverlaySegments.keys()].every((candidateSegmentId) =>
+        previousRetainedOverlaySegments.has(candidateSegmentId),
       )
     ) {
       return false;
     }
-    this.retainedOverlaySegmentIds = nextRetainedOverlaySegmentIds;
-    this.redrawNeeded.dispatch();
+    ++this.retainedOverlaySegmentIdsVersion;
     return true;
+  }
+
+  retainOverlaySegment(segmentId: number) {
+    return this.markSegmentEdited(segmentId);
   }
 
   markSegmentEdited(segmentId: number) {
     const normalizedSegmentId = Math.round(Number(segmentId));
     if (
       !Number.isSafeInteger(normalizedSegmentId) ||
-      normalizedSegmentId <= 0 ||
-      this.editedSegmentIds.has(normalizedSegmentId)
+      normalizedSegmentId <= 0
     ) {
       return false;
     }
-    this.editedSegmentIds.add(normalizedSegmentId);
-    this.redrawNeeded.dispatch();
-    return true;
+    let changed = false;
+    if (!this.editedSegmentIds.has(normalizedSegmentId)) {
+      this.editedSegmentIds.add(normalizedSegmentId);
+      ++this.editedSegmentIdsVersion;
+      changed = true;
+    }
+    // Refresh recency on every edit, not just the first, so a segment under
+    // continuous editing doesn't age out of the pool between retains.
+    if (
+      this.applyRetainedOverlaySegments(
+        retainSpatiallyIndexedSkeletonOverlaySegment(
+          this.retainedOverlaySegments,
+          normalizedSegmentId,
+          ++this.overlaySegmentTouchCounter,
+          { maxRetained: this.maxRetainedOverlaySegments },
+        ),
+      )
+    ) {
+      changed = true;
+    }
+    if (changed) {
+      this.redrawNeeded.dispatch();
+    }
+    return changed;
   }
 
   private getOverlayRenderSegmentIds() {
-    return mergeSpatiallyIndexedSkeletonOverlaySegmentIds(
-      this.getActiveEditableSegmentIds(),
-      this.retainedOverlaySegmentIds,
+    // The merged list depends only on the visible-segment set and the retained
+    // list; both expose a cheap version (the hash-table generation and a counter
+    // bumped on replacement), so the sort/merge can be skipped when unchanged.
+    const visibleSet = getVisibleSegments(
+      this.displayState.segmentationGroupState.value,
     );
+    const visibleGeneration = visibleSet.hashTable.generation;
+    if (
+      this.cachedOverlayRenderVisibleSet === visibleSet &&
+      this.cachedOverlayRenderVisibleGeneration === visibleGeneration &&
+      this.cachedOverlayRenderRetainedVersion ===
+        this.retainedOverlaySegmentIdsVersion
+    ) {
+      return this.cachedOverlayRenderSegmentIds;
+    }
+    const result = mergeSpatiallyIndexedSkeletonOverlaySegmentIds(
+      this.getActiveEditableSegmentIds(),
+      [...this.retainedOverlaySegments.keys()],
+    );
+    this.cachedOverlayRenderVisibleSet = visibleSet;
+    this.cachedOverlayRenderVisibleGeneration = visibleGeneration;
+    this.cachedOverlayRenderRetainedVersion =
+      this.retainedOverlaySegmentIdsVersion;
+    this.cachedOverlayRenderSegmentIds = result;
+    return result;
   }
 
   private getNormalizedBrowsePassExcludedSegmentIds() {
@@ -2321,12 +2590,20 @@ export class SpatiallyIndexedSkeletonLayer
   }
 
   private getBrowsePassExcludedSegments() {
+    // Called once per browse pass per panel per frame. `editedSegmentIds` only
+    // changes on edit operations, so skip the sort/join/set rebuild entirely
+    // while it is unchanged.
+    if (this.cachedBrowseExcludedVersion === this.editedSegmentIdsVersion) {
+      return this.cachedBrowseExcludedResult;
+    }
+    this.cachedBrowseExcludedVersion = this.editedSegmentIdsVersion;
     const segmentIds = this.getNormalizedBrowsePassExcludedSegmentIds();
     if (segmentIds.length === 0) {
       if (this.browseExcludedSegments.size !== 0) {
         this.browseExcludedSegments.clear();
       }
       this.browseExcludedSegmentsKey = undefined;
+      this.cachedBrowseExcludedResult = undefined;
       return undefined;
     }
     const excludedSegmentsKey = segmentIds.join(",");
@@ -2341,6 +2618,7 @@ export class SpatiallyIndexedSkeletonLayer
       );
       this.browseExcludedSegmentsKey = excludedSegmentsKey;
     }
+    this.cachedBrowseExcludedResult = this.browseExcludedSegments;
     return this.browseExcludedSegments;
   }
 
@@ -2382,17 +2660,20 @@ export class SpatiallyIndexedSkeletonLayer
       return undefined;
     }
 
-    const overlayGeometryKey = this.getOverlayGeometryKey(loadedSegmentIds);
+    const topologyKey = this.getOverlayTopologyKey(loadedSegmentIds);
 
-    if (this.overlayChunk !== undefined) {
-      if (this.overlayGeometryKey === overlayGeometryKey) {
-        // Geometry unchanged — selection is driven by uSelectedNodeId uniform
-        // at draw time, so no GPU rebuild is needed when selection changes.
-        return this.overlayChunk;
-      }
+    if (
+      this.overlayChunk !== undefined &&
+      this.overlayTopologyKey === topologyKey
+    ) {
+      // Topology unchanged, so no rebuild. Live node-drag position changes are
+      // applied per-draw via a shader uniform (see applyOverlayNodePositionOverride),
+      // and selection/hover highlights are DOM overlays — none of these rebuild
+      // the GPU geometry.
+      return this.overlayChunk;
     }
 
-    // Geometry cache miss — collect node sets and rebuild.
+    // Topology cache miss — collect node sets and rebuild.
     const segmentNodeSets: (readonly SpatiallyIndexedSkeletonNode[])[] = [];
     for (const segmentId of loadedSegmentIds) {
       const segmentNodes = this.inspectionState.getCachedSegmentNodes(
@@ -2413,7 +2694,7 @@ export class SpatiallyIndexedSkeletonLayer
       geometry,
       this.overlayAttributeTextureFormats,
     );
-    this.overlayGeometryKey = overlayGeometryKey;
+    this.overlayTopologyKey = topologyKey;
     return this.overlayChunk;
   }
 
@@ -2433,7 +2714,7 @@ export class SpatiallyIndexedSkeletonLayer
   ) {
     super();
     this.registerDisposer(() => {
-      this.disposeOverlayChunk();
+      this.disposeRuntimeState();
     });
     let sources3d: SpatiallyIndexedSkeletonSourceEntry[];
     let sources2d = options.sources2d ?? [];
@@ -2472,10 +2753,12 @@ export class SpatiallyIndexedSkeletonLayer
       ),
     );
     this.selectedNodeInfo = options.selectedNodeInfo;
+    this.suppressSelectedNodeHighlight = options.suppressSelectedNodeHighlight;
     this.hoveredNodeInfo = options.hoveredNodeInfo;
-    this.pendingNodePositionVersion = options.pendingNodePositionVersion;
     this.getPendingNodePositionOverride = options.getPendingNodePosition;
+    this.getPendingNodeIds = options.getPendingNodeIds;
     this.getCachedNodeInfo = options.getCachedNode;
+    this.resolveGlobalPosition = options.resolveGlobalPosition;
     this.inspectionState = options.inspectionState;
     this.maxRetainedOverlaySegments = Math.max(
       1,
@@ -2565,26 +2848,31 @@ export class SpatiallyIndexedSkeletonLayer
       ),
     );
 
-    // Browse pass uses uniform-based dynamic segment color (not per-vertex attribute),
-    // so segmentColorAttributeIndex is intentionally undefined here.
     this.browsePassLayerView = {
       vertexAttributes: this.source.vertexAttributes,
-      segmentColorAttributeIndex: undefined,
       gl: this.gl,
       fallbackShaderParameters: this.fallbackShaderParameters,
       displayState: this.displayState,
       skeletonShaderParameters: this.browsePassSkeletonShaderParameters,
     };
-    const nodeIdIndex = this.vertexAttributes.findIndex(
-      (x) => x.name === nodeIdAttribute.name,
-    );
-    this.nodeIdAttributeIndex = nodeIdIndex >= 0 ? nodeIdIndex : undefined;
     const requestRedraw = () => this.redrawNeeded.dispatch();
+    // Node highlights are DOM overlays, so a selected/hovered change repositions
+    // the markers without a canvas redraw.
     if (this.selectedNodeInfo?.changed) {
       this.registerDisposer(
         this.selectedNodeInfo.changed.add(() => {
+          // Recompute the marker's contrast color for the new node.
           invalidateNodeOutlineColors();
-          requestRedraw();
+          this.highlightMarkersChanged.dispatch();
+        }),
+      );
+    }
+    if (this.suppressSelectedNodeHighlight?.changed) {
+      this.registerDisposer(
+        // The selected-node ring is a DOM overlay, so toggling suppression must
+        // refresh the markers (not just request a canvas redraw).
+        this.suppressSelectedNodeHighlight.changed.add(() => {
+          this.highlightMarkersChanged.dispatch();
         }),
       );
     }
@@ -2592,14 +2880,18 @@ export class SpatiallyIndexedSkeletonLayer
       this.registerDisposer(
         this.hoveredNodeInfo.changed.add(() => {
           invalidateNodeOutlineColors();
-          requestRedraw();
+          this.highlightMarkersChanged.dispatch();
         }),
       );
     }
     const pendingNodePositionVersion = options.pendingNodePositionVersion;
     if (pendingNodePositionVersion?.changed) {
       this.registerDisposer(
-        pendingNodePositionVersion.changed.add(requestRedraw),
+        pendingNodePositionVersion.changed.add(() => {
+          // A node's position moved: redraw geometry and reposition markers.
+          requestRedraw();
+          this.highlightMarkersChanged.dispatch();
+        }),
       );
     }
     const inspectionState = this.inspectionState;
@@ -2608,9 +2900,37 @@ export class SpatiallyIndexedSkeletonLayer
         inspectionState.nodeDataVersion.changed.add(() => {
           invalidateNodeOutlineColors();
           this.redrawNeeded.dispatch();
+          // A highlighted node's cached position may now be available.
+          this.highlightMarkersChanged.dispatch();
         }),
       );
     }
+    // A marker is emitted only when its node's skeleton would be drawn (see
+    // computeHighlightMarkers), so its visibility depends on the object alphas
+    // and the visible-segment set. Refresh the overlay when any of those change.
+    const refreshHighlightVisibility = () => {
+      this.highlightMarkersChanged.dispatch();
+    };
+    this.registerDisposer(
+      this.displayState.objectAlpha.changed.add(refreshHighlightVisibility),
+    );
+    this.registerDisposer(
+      this.displayState.hiddenObjectAlpha.changed.add(
+        refreshHighlightVisibility,
+      ),
+    );
+    const segmentationGroupState =
+      this.displayState.segmentationGroupState.value;
+    onVisibleSegmentsStateChanged(
+      this,
+      segmentationGroupState,
+      refreshHighlightVisibility,
+    );
+    onTemporaryVisibleSegmentsStateChanged(
+      this,
+      segmentationGroupState,
+      refreshHighlightVisibility,
+    );
     // Create backend for perspective view chunk management
     const sharedObject = this.registerDisposer(
       new ChunkRenderLayerFrontend(this.layerChunkProgressInfo),
@@ -2633,6 +2953,18 @@ export class SpatiallyIndexedSkeletonLayer
       ),
     );
 
+    const hiddenSkeletonsVisibleWatchable = this.registerDisposer(
+      SharedWatchableValue.makeFromExisting(
+        rpc,
+        this.registerDisposer(
+          makeCachedDerivedWatchableValue(
+            (alpha) => alpha > 0,
+            [this.displayState.hiddenObjectAlpha],
+          ),
+        ),
+      ),
+    );
+
     sharedObject.initializeCounterpart(rpc, {
       chunkManager: chunkManager.rpcId,
       localPosition: this.registerDisposer(
@@ -2640,6 +2972,7 @@ export class SpatiallyIndexedSkeletonLayer
       ).rpcId,
       skeletonSpacingTarget: skeletonSpacingTargetWatchable.rpcId,
       skeletonSpacingTarget2d: skeletonSpacingTarget2dWatchable.rpcId,
+      hiddenSkeletonsVisible: hiddenSkeletonsVisibleWatchable.rpcId,
     });
     this.backend = sharedObject;
     this.gpuBrowseExcludedSegmentsHashTable = this.registerDisposer(
@@ -2673,6 +3006,95 @@ export class SpatiallyIndexedSkeletonLayer
     };
   }
 
+  /**
+   * Builds highlight markers for the selected/hovered nodes.  `diameter` and
+   * `borderWidth` are the node's on-screen ring size (device px) for the calling
+   * view, so the marker matches the node's size — the old in-shader outline sat
+   * just outside the node with the same thickness.  Positions are resolved from
+   * the stored info (model space) or the node cache, then transformed to global
+   * space; entries whose position is unavailable are omitted.
+   */
+  computeHighlightMarkers(
+    diameter: number,
+    borderWidth: number,
+  ): HighlightMarker[] {
+    const { resolveGlobalPosition } = this;
+    if (resolveGlobalPosition === undefined) return [];
+    // Refresh the per-node contrast colors (selected uses the muted palette,
+    // hovered uses its saturated segment color) so markers match the previous
+    // in-shader outline colors.
+    this.updateNodeOutlineColorPair();
+    // Mirror the shader's per-segment visibility so a ring is never drawn over a
+    // skeleton that isn't rendered: a segment draws at `objectAlpha` when it is
+    // visible/selected and at `hiddenObjectAlpha` otherwise.
+    const visibleSegments = getVisibleSegments(
+      this.displayState.segmentationGroupState.value,
+    );
+    const objectAlpha = this.displayState.objectAlpha.value;
+    const hiddenObjectAlpha = this.displayState.hiddenObjectAlpha.value;
+    const markers: HighlightMarker[] = [];
+    const add = (
+      info: SelectedSkeletonNodeInfo | undefined,
+      kind: HighlightMarker["kind"],
+      color: vec3,
+    ) => {
+      const nodeId = info?.nodeId;
+      if (nodeId === undefined) return;
+      const segmentId = info?.segmentId;
+      if (segmentId !== undefined) {
+        const effectiveAlpha = visibleSegments.has(BigInt(segmentId))
+          ? objectAlpha
+          : hiddenObjectAlpha;
+        if (effectiveAlpha <= 0) return;
+      } else if (objectAlpha <= 0 && hiddenObjectAlpha <= 0) {
+        // Unknown segment: fall back to the whole-layer invisibility test.
+        return;
+      }
+      // Prefer the live cached position (which applies any pending move) so the
+      // marker stays in sync when the node moves; fall back to the position
+      // captured at selection time if the node isn't currently cached.
+      const modelPosition =
+        this.getCachedNodeSnapshot(nodeId)?.position ?? info?.position;
+      if (modelPosition === undefined) return;
+      const global = resolveGlobalPosition(modelPosition);
+      if (global === undefined) return;
+      // Halo contrasts with the ring color: white around a dark ring, black
+      // around a light one (WCAG black/white crossover luminance ~0.179).
+      const outlineColor =
+        getRelativeLuminance(color) < 0.179
+          ? "rgba(255, 255, 255, 0.85)"
+          : "rgba(0, 0, 0, 0.75)";
+      markers.push({
+        position: global,
+        kind,
+        color: vec3ToCssColor(color),
+        outlineColor,
+        diameter,
+        borderWidth,
+      });
+    };
+    const selectedNodeId = this.suppressSelectedNodeHighlight?.value
+      ? undefined
+      : this.selectedNodeInfo?.value?.nodeId;
+    const hoveredNodeId = this.hoveredNodeInfo?.value?.nodeId;
+    // When the same node is both selected and hovered, show only the hovered
+    // marker (as the old shader did — hovered won over selected), avoiding an
+    // overlapping ring.
+    if (selectedNodeId !== undefined && selectedNodeId !== hoveredNodeId) {
+      add(
+        this.selectedNodeInfo?.value,
+        "selected",
+        this.selectedNodeOutlineColor,
+      );
+    }
+    add(
+      this.hoveredNodeInfo?.value,
+      "hovered",
+      this.highlightedNodeOutlineColor,
+    );
+    return markers;
+  }
+
   invalidateSourceCellsForPositions(
     positions: Iterable<ArrayLike<number> | undefined>,
   ) {
@@ -2689,23 +3111,20 @@ export class SpatiallyIndexedSkeletonLayer
       const sourceId = getObjectId(chunkSource);
       if (seenSourceIds.has(sourceId)) continue;
       seenSourceIds.add(sourceId);
-      const keyPrefixes = new Set<string>();
-      const { chunkDataSize } = chunkSource.spec;
+      const chunkKeys = new Set<string>();
+      const { spec } = chunkSource;
       for (const position of positionList) {
         // Spatial skeleton node positions are already source/model coordinates;
         // render-layer transforms do not apply to CATMAID grid-cell keys.
-        const keyPrefix = getSpatialSkeletonCellKeyPrefix(
-          position,
-          chunkDataSize,
-        );
-        if (keyPrefix !== undefined) {
-          keyPrefixes.add(keyPrefix);
+        const chunkKey = getSpatialSkeletonChunkKey(spec, position);
+        if (chunkKey !== undefined) {
+          chunkKeys.add(chunkKey);
         }
       }
-      if (keyPrefixes.size === 0) {
+      if (chunkKeys.size === 0) {
         continue;
       }
-      chunkSource.invalidateCacheKeyPrefixes(keyPrefixes);
+      chunkSource.invalidateCacheKeys(chunkKeys);
       invalidated = true;
     }
     if (!invalidated) {
@@ -2815,24 +3234,94 @@ export class SpatiallyIndexedSkeletonLayer
     }
   }
 
-  getVisibleChunksInCurrentView(
+  // Walks the visible chunk set once per panel per frame: collects GPU-resident
+  // chunks into the reused `out` array (pooled to avoid per-frame allocation of a
+  // fresh array plus one object per visible chunk) and updates the resolution
+  // histogram (present/absent bars plus unselected-scale indicator bars) in the
+  // same traversal, rather than walking the chunk set a second time. Returns
+  // `out`, whose length is set to the number of collected chunks.
+  updateVisibleChunksAndHistogram(
     transformedSources: readonly TransformedSource[][],
     projectionParameters: ProjectionParameters,
     spacingTarget: number,
+    histogram: RenderScaleHistogram,
+    frameNumber: number,
+    out: VisibleChunk[],
   ): VisibleChunk[] {
-    const result: VisibleChunk[] = [];
-    this.forEachVisibleChunkSlot(
-      transformedSources,
-      projectionParameters,
-      spacingTarget,
-      (chunkKey, chunkSource, chunkLayout) => {
-        const chunk = chunkSource.chunks.get(chunkKey);
-        if (chunk?.state === ChunkState.GPU_MEMORY) {
-          result.push({ chunk, chunkLayout });
-        }
-      },
-    );
-    return result;
+    histogram.begin(frameNumber);
+    let count = 0;
+    if (transformedSources.length === 0) {
+      out.length = 0;
+      return out;
+    }
+    let seen = seenChunkKeysPerFrame.get(histogram);
+    if (seen === undefined || seen.frameNumber !== frameNumber) {
+      seen = { frameNumber, keys: new Set() };
+      seenChunkKeysPerFrame.set(histogram, seen);
+    }
+    const seenKeys = seen.keys;
+    const localPosition = this.localPosition.value;
+    for (const scales of transformedSources) {
+      forEachSpatialSkeletonSourceScale(
+        projectionParameters,
+        spacingTarget,
+        scales,
+        (tsource, _, physicalSpacing, pixelSpacing, selected) => {
+          if (selected) return;
+          const source = tsource.source as SpatiallyIndexedSkeletonSource;
+          const indicatorKey = `indicator:${getObjectId(source)}`;
+          if (seenKeys.has(indicatorKey)) return;
+          seenKeys.add(indicatorKey);
+          histogram.add(
+            physicalSpacing,
+            pixelSpacing,
+            0,
+            SPATIAL_SKELETON_RESOLUTION_INDICATOR_BAR_HEIGHT,
+            true,
+          );
+        },
+      );
+      forEachVisibleSpatialSkeletonChunk(
+        projectionParameters,
+        localPosition,
+        spacingTarget,
+        scales,
+        () => {},
+        (tsource, _, physicalSpacing, pixelSpacing) => {
+          const source = tsource.source as SpatiallyIndexedSkeletonSource;
+          const chunkKey = tsource.curPositionInChunks.join();
+          const chunk = source.chunks.get(chunkKey);
+          const isGpuResident = chunk?.state === ChunkState.GPU_MEMORY;
+          if (isGpuResident) {
+            // Collect for drawing. Pooled: reuse existing entry objects in place,
+            // growing the array only when this frame has more chunks than the last.
+            const entry = out[count];
+            if (entry === undefined) {
+              out[count] = { chunk: chunk!, chunkLayout: tsource.chunkLayout };
+            } else {
+              entry.chunk = chunk!;
+              entry.chunkLayout = tsource.chunkLayout;
+            }
+            ++count;
+          }
+          // Histogram present/absent accounting is deduplicated across panels via
+          // the per-frame seen set so a chunk visible in more than one panel is
+          // counted once; the draw list above is intentionally per-panel and not
+          // deduplicated.
+          const seenKey = `${getObjectId(source)}:${chunkKey}`;
+          if (!seenKeys.has(seenKey)) {
+            seenKeys.add(seenKey);
+            if (isGpuResident) {
+              histogram.add(physicalSpacing, pixelSpacing, 1, 0);
+            } else {
+              histogram.add(physicalSpacing, pixelSpacing, 0, 1);
+            }
+          }
+        },
+      );
+    }
+    out.length = count;
+    return out;
   }
 
   private areVisibleChunksReady(
@@ -2941,11 +3430,7 @@ export class SpatiallyIndexedSkeletonLayer
 
     edgeShader.bind();
     renderHelper.beginLayer(gl, edgeShader, renderContext, modelMatrix);
-    gl.uniform1f(edgeShader.uniform("uLineWidth"), lineWidth);
-    gl.uniform1f(
-      edgeShader.uniform("uLineEndpointClipRadius"),
-      pointDiameter / 2,
-    );
+    renderHelper.setEdgeSizeUniforms(gl, edgeShader, lineWidth, pointDiameter);
     renderHelper.setPickInstanceStride(gl, edgeShader, 0);
     setControlsInShader(
       gl,
@@ -2963,7 +3448,7 @@ export class SpatiallyIndexedSkeletonLayer
 
     nodeShader.bind();
     renderHelper.beginLayer(gl, nodeShader, renderContext, modelMatrix);
-    gl.uniform1f(nodeShader.uniform("uNodeDiameter"), pointDiameter);
+    renderHelper.setNodeSizeUniforms(gl, nodeShader, pointDiameter);
     renderHelper.setPickInstanceStride(gl, nodeShader, 0);
     setControlsInShader(
       gl,
@@ -3031,23 +3516,6 @@ export class SpatiallyIndexedSkeletonLayer
     const { gl, edgeShader, nodeShader, skeletonParams } = passState;
 
     nodeShader.bind();
-    this.updateNodeOutlineColors();
-    gl.uniform3fv(
-      nodeShader.uniform("uSelectedNodeOutlineColor"),
-      this.selectedNodeOutlineColor,
-    );
-    gl.uniform1i(
-      nodeShader.uniform("uSelectedNodeId"),
-      this.selectedNodeInfo?.value?.nodeId ?? -1,
-    );
-    gl.uniform3fv(
-      nodeShader.uniform("uHighlightedNodeOutlineColor"),
-      this.highlightedNodeOutlineColor,
-    );
-    gl.uniform1i(
-      nodeShader.uniform("uHighlightedNodeId"),
-      this.hoveredNodeInfo?.value?.nodeId ?? -1,
-    );
 
     const chunkOrigin = vec3.create();
     const chunkBound = vec3.create();
@@ -3146,6 +3614,49 @@ export class SpatiallyIndexedSkeletonLayer
     );
   }
 
+  // Sets the shader position override to the one node currently being dragged
+  // (if any) that belongs to `overlayChunk`. Reads the live pending state each
+  // draw; leaves the override disabled (as beginLayer set it) when no dragged
+  // node maps into this chunk.
+  private applyOverlayNodePositionOverride(
+    gl: GL,
+    renderHelper: RenderHelper,
+    edgeShader: ShaderProgram,
+    nodeShader: ShaderProgram,
+    overlayChunk: SkeletonOverlayChunk,
+  ) {
+    const getPendingNodeIds = this.getPendingNodeIds;
+    const getPendingNodePosition = this.getPendingNodePositionOverride;
+    if (
+      getPendingNodeIds === undefined ||
+      getPendingNodePosition === undefined
+    ) {
+      return;
+    }
+    for (const nodeId of getPendingNodeIds()) {
+      const vertexIndex = overlayChunk.nodeIndex.get(nodeId);
+      if (vertexIndex === undefined) continue;
+      const position = getPendingNodePosition(nodeId);
+      if (position === undefined) continue;
+      edgeShader.bind();
+      renderHelper.setNodePositionOverride(
+        gl,
+        edgeShader,
+        vertexIndex,
+        position,
+      );
+      nodeShader.bind();
+      renderHelper.setNodePositionOverride(
+        gl,
+        nodeShader,
+        vertexIndex,
+        position,
+      );
+      // Exactly one node is dragged at a time.
+      return;
+    }
+  }
+
   private drawInspectionOverlayPass(
     renderContext: SliceViewPanelRenderContext | PerspectiveViewRenderContext,
     layer: RenderLayer,
@@ -3167,23 +3678,6 @@ export class SpatiallyIndexedSkeletonLayer
     const { gl, edgeShader, nodeShader, skeletonParams } = passState;
 
     nodeShader.bind();
-    this.updateNodeOutlineColors();
-    gl.uniform3fv(
-      nodeShader.uniform("uSelectedNodeOutlineColor"),
-      this.selectedNodeOutlineColor,
-    );
-    gl.uniform1i(
-      nodeShader.uniform("uSelectedNodeId"),
-      this.selectedNodeInfo?.value?.nodeId ?? -1,
-    );
-    gl.uniform3fv(
-      nodeShader.uniform("uHighlightedNodeOutlineColor"),
-      this.highlightedNodeOutlineColor,
-    );
-    gl.uniform1i(
-      nodeShader.uniform("uHighlightedNodeId"),
-      this.hoveredNodeInfo?.value?.nodeId ?? -1,
-    );
 
     if (renderContext.emitPickID) {
       const edgePickId =
@@ -3233,6 +3727,18 @@ export class SpatiallyIndexedSkeletonLayer
         nodePickId === 0 ? 0 : 1,
       );
     }
+
+    // Live node drag: override just the moving vertex's position via a uniform,
+    // instead of re-uploading the position texture. `beginSkeletonRenderPass`
+    // left the override disabled (-1); set it here for the one dragged node that
+    // belongs to this overlay chunk. Exactly one node moves at a time.
+    this.applyOverlayNodePositionOverride(
+      gl,
+      renderHelper,
+      edgeShader,
+      nodeShader,
+      overlayChunk,
+    );
 
     renderHelper.drawSkeletons(
       gl,
@@ -3450,11 +3956,17 @@ function attachSpatiallyIndexedSkeletonLayer(
   );
 }
 
-export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveViewRenderLayer {
+export class PerspectiveViewSpatiallyIndexedSkeletonLayer
+  extends PerspectiveViewRenderLayer
+  implements PanelOverlaySource
+{
   private renderHelper: RenderHelper;
   private browseRenderHelper: RenderHelper;
   private renderOptions: ViewSpecificSkeletonRenderingOptions;
   transformedSources: TransformedSource[][] = [];
+  // Reused across frames to avoid allocating a fresh array plus one object per
+  // visible chunk on every draw. Consumed synchronously within draw().
+  private readonly visibleChunksScratch: VisibleChunk[] = [];
   backend: ChunkRenderLayerFrontend;
 
   constructor(public base: SpatiallyIndexedSkeletonLayer) {
@@ -3482,6 +3994,23 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
     );
     const histogram3d = base.displayState.spatialSkeletonSpacingHistogram3d;
     this.registerDisposer(histogram3d.visibility.add(this.visibility));
+  }
+
+  readonly overlayPriority = 0;
+  get overlayUpdateNeeded() {
+    return this.base.highlightMarkersChanged;
+  }
+  updatePanelOverlays(ctx: PanelOverlayContext) {
+    const { renderOptions } = this;
+    const ring = getSkeletonNodeHighlightRing(
+      renderOptions.mode.value,
+      renderOptions.lineWidth.value,
+      /*targetIsSliceView=*/ false,
+    );
+    updateSkeletonHighlightOverlay(
+      this.base.computeHighlightMarkers(ring.diameter, ring.borderWidth),
+      ctx,
+    );
   }
 
   attach(
@@ -3541,21 +4070,16 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
     }
     const { displayState } = this.base;
     const spacingTarget = displayState.spatialSkeletonSpacingTarget3d.value;
-    const visibleChunks = this.base.getVisibleChunksInCurrentView(
-      this.transformedSources,
-      renderContext.projectionParameters,
-      spacingTarget,
-    );
     const histogram = displayState.spatialSkeletonSpacingHistogram3d;
     const frameNumber =
       this.base.chunkManager.chunkQueueManager.frameNumberCounter.frameNumber;
-    updateSpatialSkeletonSpacingHistogram(
-      histogram,
-      frameNumber,
+    const visibleChunks = this.base.updateVisibleChunksAndHistogram(
       this.transformedSources,
       renderContext.projectionParameters,
-      this.base.localPosition.value,
       spacingTarget,
+      histogram,
+      frameNumber,
+      this.visibleChunksScratch,
     );
     const modelMatrix = update3dRenderLayerAttachment(
       displayState.transform.value,
@@ -3625,11 +4149,17 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
   }
 }
 
-export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelRenderLayer {
+export class SliceViewPanelSpatiallyIndexedSkeletonLayer
+  extends SliceViewPanelRenderLayer
+  implements PanelOverlaySource
+{
   private renderHelper: RenderHelper;
   private browseRenderHelper: RenderHelper;
   private renderOptions: ViewSpecificSkeletonRenderingOptions;
   transformedSources: TransformedSource[][] = [];
+  // Reused across frames to avoid allocating a fresh array plus one object per
+  // visible chunk on every draw. Consumed synchronously within draw().
+  private readonly visibleChunksScratch: VisibleChunk[] = [];
   backend: ChunkRenderLayerFrontend;
   constructor(public base: SpatiallyIndexedSkeletonLayer) {
     super();
@@ -3660,6 +4190,23 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
 
   get gl() {
     return this.base.gl;
+  }
+
+  readonly overlayPriority = 0;
+  get overlayUpdateNeeded() {
+    return this.base.highlightMarkersChanged;
+  }
+  updatePanelOverlays(ctx: PanelOverlayContext) {
+    const { renderOptions } = this;
+    const ring = getSkeletonNodeHighlightRing(
+      renderOptions.mode.value,
+      renderOptions.lineWidth.value,
+      /*targetIsSliceView=*/ true,
+    );
+    updateSkeletonHighlightOverlay(
+      this.base.computeHighlightMarkers(ring.diameter, ring.borderWidth),
+      ctx,
+    );
   }
 
   getValueAt(_position: Float32Array) {
@@ -3703,21 +4250,16 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelR
   ) {
     const { displayState } = this.base;
     const spacingTarget = displayState.spatialSkeletonSpacingTarget2d.value;
-    const visibleChunks = this.base.getVisibleChunksInCurrentView(
-      this.transformedSources,
-      renderContext.sliceView.projectionParameters.value,
-      spacingTarget,
-    );
     const histogram = displayState.spatialSkeletonSpacingHistogram2d;
     const frameNumber =
       this.base.chunkManager.chunkQueueManager.frameNumberCounter.frameNumber;
-    updateSpatialSkeletonSpacingHistogram(
-      histogram,
-      frameNumber,
+    const visibleChunks = this.base.updateVisibleChunksAndHistogram(
       this.transformedSources,
       renderContext.sliceView.projectionParameters.value,
-      this.base.localPosition.value,
       spacingTarget,
+      histogram,
+      frameNumber,
+      this.visibleChunksScratch,
     );
     const modelMatrix = update3dRenderLayerAttachment(
       displayState.transform.value,

@@ -18,8 +18,8 @@ import {
   SKELETON_ADD_NODE,
   SKELETON_CLEAR_SELECTION,
   SKELETON_CYCLE_BRANCHES,
-  SKELETON_DELETE_NODE,
   SKELETON_ENTER_CREATE,
+  SKELETON_ENTER_DELETE_MODE,
   SKELETON_ENTER_MERGE_MODE,
   SKELETON_ENTER_SPLIT_MODE,
   SKELETON_GO_BRANCH_END,
@@ -31,6 +31,7 @@ import {
   SKELETON_PIN_NODE,
   SKELETON_REDO,
   SKELETON_REROOT,
+  SKELETON_TOGGLE_HIDDEN,
   SKELETON_TOGGLE_TRUE_END,
   SKELETON_UNDO,
 } from "#src/skeleton/actions.js";
@@ -64,6 +65,7 @@ export function getDefaultGlobalBindings() {
 
     map.set("keyn", "add-layer");
     map.set("keyh", "help");
+    map.set("keyg", SKELETON_TOGGLE_HIDDEN);
 
     map.set("space", "toggle-layout");
     map.set("shift+space", "toggle-layout-alternative");
@@ -246,17 +248,20 @@ export function getDefaultSkeletonEditToolBindings() {
     defaultSkeletonEditToolBindings = EventActionMap.fromObject({
       "at:mousedown1": "rotate-via-mouse-drag",
       "at:control+mousedown1": "translate-via-mouse-drag",
+      // Trackpad-friendly aliases for the middle-mouse scheme above: on
+      // perspective panels these dispatch here; on slice panels they're
+      // intercepted directly in the capture-phase listener in
+      // skeleton_edit_tools.ts before they can bubble to this map (mirrors
+      // how mousedown1 is handled for slice panels).
+      "at:control+mousedown0": "rotate-via-mouse-drag",
+      "at:control+shift+mousedown0": "translate-via-mouse-drag",
       "at:shift+mousedown0": SKELETON_ADD_NODE,
       "at:keym": SKELETON_ENTER_MERGE_MODE,
       "at:keys": SKELETON_ENTER_SPLIT_MODE,
       "at:keyn": SKELETON_ENTER_CREATE,
+      "at:keyd": SKELETON_ENTER_DELETE_MODE,
       "at:control+mousedown2": {
         action: SKELETON_PIN_NODE,
-        stopPropagation: true,
-        preventDefault: true,
-      },
-      "at:control+alt+mousedown2": {
-        action: SKELETON_DELETE_NODE,
         stopPropagation: true,
         preventDefault: true,
       },

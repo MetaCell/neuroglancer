@@ -111,15 +111,31 @@ enum TransparentRenderingState {
   MAX_PROJECTION = 2,
 }
 
-export const glsl_perspectivePanelEmit = `
+// Fragment depth used by `emit` for the Z buffer / OIT weight.  Defaults to a
+// sentinel (< 0) meaning "use gl_FragCoord.z".  Raycast render layers (which
+// draw an analytic surface on a flat quad and write gl_FragDepth themselves)
+// set `emitDepthOverride` to the true surface depth so the Z texture and OIT
+// weight are consistent with the written gl_FragDepth rather than the flat quad
+// depth.
+export const glsl_perspectivePanelEmitDepth = `
+highp float emitDepthOverride = -1.0;
+highp float getEmitDepth() {
+  return emitDepthOverride < 0.0 ? gl_FragCoord.z : emitDepthOverride;
+}
+`;
+
+export const glsl_perspectivePanelEmit = [
+  glsl_perspectivePanelEmitDepth,
+  `
 void emit(vec4 color, highp uint pickId) {
   out_color = color;
-  float zValue = 1.0 - gl_FragCoord.z;
+  float zValue = 1.0 - getEmitDepth();
   out_z = vec4(zValue, zValue, zValue, 1.0);
   float pickIdFloat = float(pickId);
   out_pickId = vec4(pickIdFloat, pickIdFloat, pickIdFloat, 1.0);
 }
-`;
+`,
+];
 
 /**
  * http://jcgt.org/published/0002/02/09/paper.pdf
@@ -137,13 +153,14 @@ float computeOITWeight(float alpha, float depth) {
 // Can use emitAccumAndRevealage() to emit a pre-weighted OIT result.
 export const glsl_perspectivePanelEmitOIT = [
   glsl_computeOITWeight,
+  glsl_perspectivePanelEmitDepth,
   `
 void emitAccumAndRevealage(vec4 accum, float revealage, highp uint pickId) {
   v4f_fragData0 = vec4(accum.rgb, revealage);
   v4f_fragData1 = vec4(accum.a, 0.0, 0.0, 0.0);
 }
 void emit(vec4 color, highp uint pickId) {
-  float weight = computeOITWeight(color.a, gl_FragCoord.z);
+  float weight = computeOITWeight(color.a, getEmitDepth());
   vec4 accum = color * weight;
   emitAccumAndRevealage(accum, color.a, pickId);
 }
@@ -182,6 +199,11 @@ void emit(vec4 color, float depth, float intensity, highp uint pickId) {
 const tempVec3 = vec3.create();
 const tempVec4 = vec4.create();
 const tempMat4 = mat4.create();
+
+// Clamp range for the depth-based picking-indicator scale (relative to the base
+// diameter at the focal plane).  Keeps the ring from becoming extreme.
+const PICKING_INDICATOR_MIN_DEPTH_SCALE = 0.6;
+const PICKING_INDICATOR_MAX_DEPTH_SCALE = 1.7;
 
 // Copy the OIT values to the main color buffer
 function defineTransparencyCopyShader(builder: ShaderBuilder) {
@@ -1504,6 +1526,65 @@ export class PerspectivePanel extends RenderedDataPanel {
       computeAxisLineMatrix(projectionParameters, axisLength),
       /*blend=*/ false,
     );
+  }
+
+  readonly overlayPanelTypes = ["perspective"];
+
+  protected projectGlobalPosition(position: Float32Array) {
+    const {
+      viewProjectionMat,
+      logicalWidth,
+      logicalHeight,
+      displayDimensionRenderInfo: { displayDimensionIndices },
+    } = this.projectionParameters.value;
+    // `position` is in global voxel space; extract display-space components.
+    const px =
+      displayDimensionIndices[0] >= 0
+        ? position[displayDimensionIndices[0]]
+        : 0;
+    const py =
+      displayDimensionIndices[1] >= 0
+        ? position[displayDimensionIndices[1]]
+        : 0;
+    const pz =
+      displayDimensionIndices[2] >= 0
+        ? position[displayDimensionIndices[2]]
+        : 0;
+    const displayPos = tempVec3;
+    displayPos[0] = px;
+    displayPos[1] = py;
+    displayPos[2] = pz;
+    vec3.transformMat4(displayPos, displayPos, viewProjectionMat);
+    if (displayPos[2] < -1 || displayPos[2] > 1) return undefined;
+
+    // Scale the indicator with depth to convey 3D position: the clip-space w is
+    // proportional to view-space depth for a perspective projection, so the
+    // ratio of the navigation center's w to the picked point's w is 1 at the
+    // focal plane, >1 nearer (larger ring), <1 farther (smaller ring).  In
+    // orthographic mode m[3]=m[7]=m[11]=0, so both w values equal m[15] and the
+    // scale is 1 (constant size), needing no special-casing.
+    const m = viewProjectionMat;
+    const clipW = (x: number, y: number, z: number) =>
+      m[3] * x + m[7] * y + m[11] * z + m[15];
+    const pickedW = clipW(px, py, pz);
+    const center = this.navigationState.position.value;
+    const centerW = clipW(
+      displayDimensionIndices[0] >= 0 ? center[displayDimensionIndices[0]] : 0,
+      displayDimensionIndices[1] >= 0 ? center[displayDimensionIndices[1]] : 0,
+      displayDimensionIndices[2] >= 0 ? center[displayDimensionIndices[2]] : 0,
+    );
+    let scale = 1;
+    if (pickedW > 1e-6 && centerW > 1e-6) {
+      scale = Math.min(
+        PICKING_INDICATOR_MAX_DEPTH_SCALE,
+        Math.max(PICKING_INDICATOR_MIN_DEPTH_SCALE, centerW / pickedW),
+      );
+    }
+    return {
+      x: (displayPos[0] * 0.5 + 0.5) * logicalWidth,
+      y: (1 - (displayPos[1] * 0.5 + 0.5)) * logicalHeight,
+      scale,
+    };
   }
 
   zoomByMouse(factor: number) {

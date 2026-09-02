@@ -18,6 +18,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { makeCatmaidNodeSourceState } from "#src/datasource/catmaid/api.js";
 import { CatmaidSpatialSkeletonEditCommands } from "#src/datasource/catmaid/spatial_skeleton_commands.js";
+import {
+  SKELETON_ADD_NODE,
+  SKELETON_CLEAR_SELECTION,
+  SKELETON_ENTER_MERGE_MODE,
+  SKELETON_ENTER_SPLIT_MODE,
+} from "#src/skeleton/actions.js";
 import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
 import { SpatialSkeletonCommandHistory } from "#src/skeleton/command_history.js";
 import {
@@ -154,6 +160,7 @@ function suppressStatusMessages() {
 function makeChangedSignal() {
   return {
     add: vi.fn((_listener: () => void) => () => {}),
+    dispatch: vi.fn(),
   };
 }
 
@@ -536,6 +543,10 @@ describe("spatial_skeleton_edit_tool", () => {
       expect.objectContaining({
         node: expect.objectContaining({ nodeId: 5 }),
       }),
+      {
+        nocheck: undefined,
+        signal: undefined,
+      },
     );
     expect(upsertCachedNode).toHaveBeenCalledWith(
       {
@@ -626,7 +637,10 @@ describe("spatial_skeleton_edit_tool", () => {
       positionInModelSpace: position,
     });
 
-    expect(addNode).toHaveBeenCalledWith(13, 4, 5, 6, undefined, undefined);
+    expect(addNode).toHaveBeenCalledWith(13, 4, 5, 6, undefined, undefined, {
+      nocheck: undefined,
+      signal: undefined,
+    });
     expect(upsertCachedNode).toHaveBeenCalledWith(
       {
         nodeId: 29,
@@ -716,6 +730,7 @@ describe("spatial_skeleton_edit_tool", () => {
       directionAdjusted: true,
     });
     const invalidateCachedSegments = vi.fn();
+    const refreshCachedSegments = vi.fn(async () => true);
     const getFullSegmentNodes = vi.fn(async () => []);
     const selectSegment = vi.fn();
     const selectSpatialSkeletonNode = vi.fn();
@@ -760,6 +775,9 @@ describe("spatial_skeleton_edit_tool", () => {
         }),
         getFullSegmentNodes,
         invalidateCachedSegments,
+        // Post-merge topology refresh re-fetches the surviving segments in place rather than
+        // dropping them from the cache; a truthy result means the cache changed.
+        refreshCachedSegments,
       },
       getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
       selectSegment,
@@ -793,8 +811,14 @@ describe("spatial_skeleton_edit_tool", () => {
         ]),
       }),
     );
-    expect(invalidateCachedSegments).toHaveBeenCalledWith([17, 11]);
-    expect(getFullSegmentNodes).toHaveBeenCalledTimes(2);
+    // The surviving and absorbed segments are re-fetched in place rather than dropped, so renderers
+    // never observe a cache with them missing.
+    expect(refreshCachedSegments).toHaveBeenCalledWith(
+      skeletonLayer,
+      [17, 11],
+      { notify: false },
+    );
+    expect(invalidateCachedSegments).not.toHaveBeenCalled();
     expect(selectSegment).toHaveBeenCalledWith(17n, false);
     expect(selectSpatialSkeletonNode).toHaveBeenCalledWith(101, true, {
       segmentId: 17,
@@ -821,7 +845,7 @@ describe("spatial_skeleton_edit_tool", () => {
     let clearSelectionHandler: ((event: any) => void) | undefined;
     const activation = {
       bindAction: vi.fn((action: string, handler: (event: any) => void) => {
-        if (action === "skeleton-clear-node-selection") {
+        if (action === SKELETON_CLEAR_SELECTION) {
           clearSelectionHandler = handler;
         }
       }),
@@ -865,7 +889,7 @@ describe("spatial_skeleton_edit_tool", () => {
     expect(unpin).not.toHaveBeenCalled();
   });
 
-  it("enters merge mode without claiming the hovered node as the anchor", () => {
+  it("enters merge mode without selecting a node or setting an anchor", () => {
     suppressStatusMessages();
     const hoveredNode = {
       nodeId: 101,
@@ -901,6 +925,10 @@ describe("spatial_skeleton_edit_tool", () => {
       },
       updateUnconditionally: vi.fn(() => true),
       active: true,
+      // Mirrors MouseSelectionState: the edit tool suppresses the picking indicator while a node is
+      // being dragged, and dispatches `changed` when it toggles.
+      pickingIndicatorSuppressed: false,
+      changed: makeChangedSignal(),
     };
     const layer = {
       displayState: {
@@ -912,6 +940,7 @@ describe("spatial_skeleton_edit_tool", () => {
       spatialSkeletonEditMode: makeModeWatchable(),
       spatialSkeletonMergeMode: makeModeWatchable(),
       spatialSkeletonSplitMode: makeModeWatchable(),
+      spatialSkeletonSuppressSelectedNodeHighlight: makeModeWatchable(),
       selectedSpatialSkeletonNodeInfo: {
         value: undefined,
         changed: makeChangedSignal(),
@@ -947,18 +976,22 @@ describe("spatial_skeleton_edit_tool", () => {
     try {
       SpatialSkeletonEditTool.prototype.activate.call(tool, activation as any);
 
-      // Pressing "m" enters merge mode. A subsequent click selects the anchor.
-      actions.get("skeleton-enter-merge-mode")?.({});
+      // Fire the merge action (simulates pressing "m" while hovering node 101).
+      actions.get(SKELETON_ENTER_MERGE_MODE)?.({});
 
+      expect(layer.spatialSkeletonMergeMode.value).toBe(true);
+      // Entering merge preserves the existing selection and only hides its highlight; the anchor is
+      // set solely by the first in-mode pick, so hovering a node while pressing "m" must not select
+      // it or anchor to it.
       expect(selectSpatialSkeletonNode).not.toHaveBeenCalled();
       expect(setSpatialSkeletonMergeAnchor).not.toHaveBeenCalled();
-      expect(layer.spatialSkeletonMergeMode.value).toBe(true);
+      expect(mergeAnchorNodeId.value).toBeUndefined();
     } finally {
       dispose();
     }
   });
 
-  it("enters split mode without splitting the hovered node immediately", () => {
+  it("arms split mode without splitting when the split action fires", () => {
     suppressStatusMessages();
     const hoveredNode = {
       nodeId: 77,
@@ -987,6 +1020,10 @@ describe("spatial_skeleton_edit_tool", () => {
       },
       updateUnconditionally: vi.fn(() => true),
       active: true,
+      // Mirrors MouseSelectionState: the edit tool suppresses the picking indicator while a node is
+      // being dragged, and dispatches `changed` when it toggles.
+      pickingIndicatorSuppressed: false,
+      changed: makeChangedSignal(),
     };
     const selectSegment = vi.fn();
     const selectSpatialSkeletonNode = vi.fn();
@@ -1000,6 +1037,7 @@ describe("spatial_skeleton_edit_tool", () => {
       spatialSkeletonEditMode: makeModeWatchable(),
       spatialSkeletonMergeMode: makeModeWatchable(),
       spatialSkeletonSplitMode: makeModeWatchable(),
+      spatialSkeletonSuppressSelectedNodeHighlight: makeModeWatchable(),
       selectedSpatialSkeletonNodeInfo: {
         value: undefined,
         changed: makeChangedSignal(),
@@ -1032,10 +1070,16 @@ describe("spatial_skeleton_edit_tool", () => {
     try {
       SpatialSkeletonEditTool.prototype.activate.call(tool, activation as any);
 
-      // Pressing "s" enters split mode. A subsequent click chooses the node.
-      actions.get("skeleton-enter-split-mode")?.({});
+      // Fire the split action (simulates pressing "s" while hovering node 77).
+      actions.get(SKELETON_ENTER_SPLIT_MODE)?.({});
 
       expect(layer.spatialSkeletonSplitMode.value).toBe(true);
+      // The selected-node highlight stays hidden until the user clicks the node to split.
+      expect(layer.spatialSkeletonSuppressSelectedNodeHighlight.value).toBe(
+        true,
+      );
+      // Pressing "s" only arms split mode: the split itself runs on the in-mode pick, so nothing is
+      // selected and no command is created yet.
       expect(selectSegment).not.toHaveBeenCalled();
       expect(selectSpatialSkeletonNode).not.toHaveBeenCalled();
       expect(splitSkeletonsCommand.createCommand).not.toHaveBeenCalled();
@@ -1369,6 +1413,8 @@ describe("spatial_skeleton_edit_tool", () => {
       updateUnconditionally: vi.fn(() => true),
       active: true,
       unsnappedPosition: new Float32Array([1, 2, 3]),
+      pickingIndicatorSuppressed: false,
+      changed: makeChangedSignal(),
     };
     const layer = {
       displayState: {
@@ -1380,6 +1426,7 @@ describe("spatial_skeleton_edit_tool", () => {
       spatialSkeletonEditMode: makeModeWatchable(),
       spatialSkeletonMergeMode: makeModeWatchable(),
       spatialSkeletonSplitMode: makeModeWatchable(),
+      spatialSkeletonSuppressSelectedNodeHighlight: makeModeWatchable(),
       selectedSpatialSkeletonNodeInfo: {
         value: undefined, // No node selected.
         changed: makeChangedSignal(),
@@ -1412,7 +1459,7 @@ describe("spatial_skeleton_edit_tool", () => {
     try {
       SpatialSkeletonEditTool.prototype.activate.call(tool, activation as any);
 
-      actions.get("skeleton-add-node")?.({
+      actions.get(SKELETON_ADD_NODE)?.({
         stopPropagation: vi.fn(),
         detail: { preventDefault: vi.fn() },
       });
