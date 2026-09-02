@@ -1125,13 +1125,6 @@ export class SegmentationUserLayer extends Base {
     super(managedLayer);
     this.codeVisible.changed.add(this.specificationChanged.dispatch);
     this.registerDisposer(
-      this.spatialSkeletonState.nodeDataVersion.changed.add(() => {
-        for (const dataSourceState of this.getSkeletonDataSourceStates()) {
-          dataSourceState.findPathState.invalidateResult();
-        }
-      }),
-    );
-    this.registerDisposer(
       this.dataSourcesChanged.add(() => {
         this.reconcileSpatialSkeletonFindPathStates();
       }),
@@ -1782,6 +1775,9 @@ export class SegmentationUserLayer extends Base {
   markSpatialSkeletonNodeDataChanged(options?: {
     invalidateFullSkeletonCache?: boolean;
   }) {
+    for (const dataSourceState of this.getSkeletonDataSourceStates()) {
+      dataSourceState.findPathState.invalidateResult();
+    }
     this.spatialSkeletonState.markNodeDataChanged(options);
   }
 

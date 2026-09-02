@@ -912,7 +912,7 @@ describe("layer/segmentation spatial skeleton find-path state", () => {
     );
   });
 
-  it("invalidates results in every loaded datasource after a topology version", () => {
+  function makeLayerWithLoadedFindPathResults() {
     const layer = makeSegmentationUserLayerForFindPathTests();
     const first = new SkeletonDataSourceState({
       findPath: serializedFindPathState,
@@ -936,9 +936,27 @@ describe("layer/segmentation spatial skeleton find-path state", () => {
       });
     }
 
+    return { layer, states: [first, second] };
+  }
+
+  it("preserves restored results after a cache-only node-data notification", () => {
+    const { layer, states } = makeLayerWithLoadedFindPathResults();
+
     layer.spatialSkeletonNodeDataVersion.value++;
 
-    for (const state of [first, second]) {
+    for (const state of states) {
+      expect(state.findPathState.toJSON()).toEqual(serializedFindPathState);
+    }
+  });
+
+  it("invalidates results in every loaded datasource after a skeleton data change", () => {
+    const { layer, states } = makeLayerWithLoadedFindPathResults();
+
+    layer.markSpatialSkeletonNodeDataChanged({
+      invalidateFullSkeletonCache: false,
+    });
+
+    for (const state of states) {
       expect(state.findPathState.result).toBeUndefined();
       expect(state.findPathState.source?.nodeId).toBe(1n);
       expect(state.findPathState.target?.nodeId).toBe(3n);
