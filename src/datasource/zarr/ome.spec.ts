@@ -834,6 +834,64 @@ describe("OME-Zarr 0.6 sequence transformation validation", () => {
       /transform 0 has output "intermediate" but transform 1 has input "wrong_system"/,
     );
   });
+
+  it("should use path as first transform input to determine start of sequence chaining", () => {
+    const attrs = {
+      ome: {
+        version: "0.6",
+        type: "sequence",
+        multiscales: [
+          {
+            name: "multiscales",
+            coordinateSystems: [
+              {
+                name: "physical",
+                axes: [
+                  { name: "y", type: "space", unit: "micrometer" },
+                  { name: "x", type: "space", unit: "micrometer" },
+                ],
+              },
+              {
+                name: "scaled",
+                axes: [
+                  { name: "y", type: "space", unit: "micrometer" },
+                  { name: "x", type: "space", unit: "micrometer" },
+                ],
+              },
+            ],
+            datasets: [
+              {
+                path: "s0",
+                coordinateTransformations: [
+                  {
+                    type: "sequence",
+                    input: { path: "s0" },
+                    output: { name: "physical" },
+                    transformations: [
+                      {
+                        type: "scale",
+                        scale: [2, 2],
+                        input: { path: "s0" },
+                        output: { name: "scaled" },
+                      },
+                      {
+                        type: "translation",
+                        translation: [10, 20],
+                        input: { name: "scaled" },
+                        output: { name: "physical" },
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const metadata = parseOmeMetadata("test://", attrs, 3);
+    expect(metadata).not.toBeUndefined();
+  });
 });
 
 describe("OME-Zarr version-gated transform behavior (issue #905)", () => {

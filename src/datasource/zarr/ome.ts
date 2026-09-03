@@ -473,11 +473,11 @@ function validateCoordinateTransformations(
           if (
             i === 0 &&
             innerInput !== undefined &&
-            innerInput.name !== expectedInput
+            innerInput.path !== expectedInput
           ) {
             throw new Error(
               `Invalid sequence transformation for dataset at path "${path}": ` +
-                `first inner transform has input "${innerInput.name}" but expected "${expectedInput}"`,
+                `first inner transform has input "${innerInput.path}" but expected "${expectedInput}"`,
             );
           }
 
