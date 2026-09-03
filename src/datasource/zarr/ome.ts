@@ -633,7 +633,7 @@ function parseOmeMultiscale(
       }
       coordinateSpace = coordinateSystems[0];
     } else {
-      // We apply all the transforms from multiscales.coordinateTransfroms
+      // We apply all the transforms from multiscales.coordinateTransforms
       // in order, so we need to choose the last transform's output
       // name as the coordinate system to use unless there are no
       // further transforms - then we use intrinsic coordinate space
