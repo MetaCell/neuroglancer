@@ -253,7 +253,7 @@ describe("SpatialSkeletonFindPathAnnotationController", () => {
     secondState.dispose();
   });
 
-  it("preserves annotation IDs when endpoint state changes", () => {
+  it("replaces an endpoint annotation when its state changes", () => {
     const state = new SkeletonFindPathState();
     setResolvedPath(state);
     const { controller } = makeFixture(state);
@@ -270,7 +270,12 @@ describe("SpatialSkeletonFindPathAnnotationController", () => {
         annotation.description ===
         SPATIAL_SKELETON_FIND_PATH_SOURCE_DESCRIPTION,
     );
-    expect(sourceAfter?.id).toBe(sourceBefore?.id);
+    expect(sourceAfter?.id).not.toBe(sourceBefore?.id);
+    expect(sourceAfter?.type).toBe(AnnotationType.POINT);
+    if (sourceAfter?.type !== AnnotationType.POINT) {
+      throw new Error("Expected the replacement source point annotation.");
+    }
+    expect(Array.from(sourceAfter.point)).toEqual([11, 12, 13]);
     expect(state.target?.nodeId).toBe(3n);
 
     controller.dispose();
@@ -321,110 +326,6 @@ describe("SpatialSkeletonFindPathAnnotationController", () => {
     expect(state.result).toBeUndefined();
     expect(Array.from(controller.annotationSource)).toHaveLength(2);
 
-    controller.dispose();
-    state.dispose();
-  });
-
-  it("restores externally edited endpoint annotations from canonical state", () => {
-    const state = new SkeletonFindPathState();
-    setResolvedPath(state);
-    const { controller } = makeFixture(state);
-    const persistedState = state.toJSON();
-
-    const sourceAnnotation = Array.from(controller.annotationSource).find(
-      (annotation) =>
-        annotation.description ===
-        SPATIAL_SKELETON_FIND_PATH_SOURCE_DESCRIPTION,
-    )!;
-    expect(sourceAnnotation.type).toBe(AnnotationType.POINT);
-    if (sourceAnnotation.type !== AnnotationType.POINT) {
-      throw new Error("Expected a source point annotation.");
-    }
-    const sourceReference = controller.annotationSource.getReference(
-      sourceAnnotation.id,
-    );
-    const updateCountBefore = controller.annotationSource.childUpdated.count;
-
-    controller.annotationSource.update(sourceReference, {
-      ...sourceAnnotation,
-      description: "user-edited source",
-      point: new Float32Array([90, 91, 92]),
-      properties: [17],
-      relatedSegments: [BigUint64Array.of(999n)],
-    });
-
-    const restored = sourceReference.value;
-    expect(restored?.type).toBe(AnnotationType.POINT);
-    if (restored?.type !== AnnotationType.POINT) {
-      throw new Error("Expected the restored source point annotation.");
-    }
-    expect(restored.description).toBe(
-      SPATIAL_SKELETON_FIND_PATH_SOURCE_DESCRIPTION,
-    );
-    expect(Array.from(restored.point)).toEqual([1, 2, 3]);
-    expect(restored.properties).toEqual([]);
-    expect(restored.relatedSegments?.map((value) => Array.from(value))).toEqual(
-      [[100n]],
-    );
-    expect(controller.annotationSource.childUpdated.count).toBe(
-      updateCountBefore + 2,
-    );
-    expect(state.toJSON()).toEqual(persistedState);
-
-    sourceReference.dispose();
-    controller.dispose();
-    state.dispose();
-  });
-
-  it("restores externally edited route geometry from canonical state", () => {
-    const state = new SkeletonFindPathState();
-    setResolvedPath(state);
-    const { controller } = makeFixture(state);
-
-    const resultAnnotation = Array.from(controller.annotationSource).find(
-      (annotation) =>
-        annotation.description ===
-        SPATIAL_SKELETON_FIND_PATH_RESULT_DESCRIPTION,
-    )!;
-    expect(resultAnnotation.type).toBe(AnnotationType.POLYLINE);
-    if (resultAnnotation.type !== AnnotationType.POLYLINE) {
-      throw new Error("Expected a result polyline annotation.");
-    }
-    const resultReference = controller.annotationSource.getReference(
-      resultAnnotation.id,
-    );
-    const updateCountBefore = controller.annotationSource.childUpdated.count;
-
-    controller.annotationSource.update(resultReference, {
-      ...resultAnnotation,
-      description: "user-edited route",
-      points: [new Float32Array([30, 31, 32]), new Float32Array([40, 41, 42])],
-      properties: [23],
-      relatedSegments: [BigUint64Array.of(999n)],
-    });
-
-    const restored = resultReference.value;
-    expect(restored?.type).toBe(AnnotationType.POLYLINE);
-    if (restored?.type !== AnnotationType.POLYLINE) {
-      throw new Error("Expected the restored result polyline annotation.");
-    }
-    expect(restored.description).toBe(
-      SPATIAL_SKELETON_FIND_PATH_RESULT_DESCRIPTION,
-    );
-    expect(restored.points.map((point) => Array.from(point))).toEqual([
-      [1, 2, 3],
-      [2, 3, 4],
-      [3, 4, 5],
-    ]);
-    expect(restored.properties).toEqual([]);
-    expect(restored.relatedSegments?.map((value) => Array.from(value))).toEqual(
-      [[100n]],
-    );
-    expect(controller.annotationSource.childUpdated.count).toBe(
-      updateCountBefore + 2,
-    );
-
-    resultReference.dispose();
     controller.dispose();
     state.dispose();
   });

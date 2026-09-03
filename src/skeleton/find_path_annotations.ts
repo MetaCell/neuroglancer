@@ -19,7 +19,6 @@ import {
   AnnotationLayerState,
 } from "#src/annotation/annotation_layer_state.js";
 import {
-  type Annotation,
   type AnnotationReference,
   AnnotationType,
   LocalAnnotationSource,
@@ -61,45 +60,23 @@ export interface SpatialSkeletonFindPathAnnotationControllerOptions {
   state: SkeletonFindPathState;
 }
 
-type AnnotationKind = "source" | "target" | "result";
-
-function positionsEqual(a: Float32Array, b: Float32Array) {
-  return a.length === b.length && a.every((value, index) => value === b[index]);
-}
-
-function relatedSegmentsFor(segmentId: bigint) {
-  return [BigUint64Array.of(segmentId)];
-}
-
-function hasRelatedSegment(
-  relatedSegments: BigUint64Array[] | undefined,
-  segmentId: bigint,
-) {
-  return (
-    relatedSegments?.length === 1 &&
-    relatedSegments[0].length === 1 &&
-    relatedSegments[0][0] === segmentId
-  );
+interface RenderedEndpoint {
+  endpoint: SkeletonFindPathEndpoint;
+  annotationReference: AnnotationReference;
 }
 
 /**
- * Owns the local, derived annotations used to display spatial-skeleton
- * find-path state for one loaded subsource.
- *
- * The find-path state belongs to the skeleton state and is serializable.
- * Annotation references and generated annotation IDs are deliberately kept
- * only on this controller.
+ * Projects persisted spatial-skeleton Find Path state into local annotations
+ * for one loaded subsource. Annotation references remain runtime-only.
  */
 export class SpatialSkeletonFindPathAnnotationController extends RefCounted {
   readonly annotationSource: LocalAnnotationSource;
   readonly annotationState: AnnotationLayerState;
 
-  private sourceReference: AnnotationReference | undefined;
-  private targetReference: AnnotationReference | undefined;
+  private renderedSource: RenderedEndpoint | undefined;
+  private renderedTarget: RenderedEndpoint | undefined;
   private resultReference: AnnotationReference | undefined;
-  private readonly programmaticDeletionIds = new Set<string>();
-  private readonly programmaticUpdateIds = new Set<string>();
-  private disposing = false;
+  private synchronizing = false;
 
   constructor(
     private readonly options: SpatialSkeletonFindPathAnnotationControllerOptions,
@@ -133,11 +110,8 @@ export class SpatialSkeletonFindPathAnnotationController extends RefCounted {
       subsubsourceId: SPATIAL_SKELETON_FIND_PATH_SUBSOURCE_ID,
       role: RenderLayerRole.ANNOTATION,
     });
-    // AnnotationLayerState does not otherwise own its independent display
-    // state. Tie their lifetimes together so render layers cannot outlive it.
     annotationState.registerDisposer(displayState);
     this.annotationState = this.registerDisposer(annotationState);
-
     layer.addAnnotationLayerState(annotationState, loadedSubsource);
 
     this.registerDisposer(
@@ -145,226 +119,115 @@ export class SpatialSkeletonFindPathAnnotationController extends RefCounted {
         this.handleAnnotationDeleted(annotationId);
       }),
     );
-    this.registerDisposer(
-      annotationSource.childUpdated.add((annotation) => {
-        this.handleAnnotationUpdated(annotation);
-      }),
-    );
     this.registerDisposer(state.changed.add(() => this.synchronize()));
     this.synchronize();
   }
 
-  private getReference(kind: AnnotationKind) {
-    switch (kind) {
-      case "source":
-        return this.sourceReference;
-      case "target":
-        return this.targetReference;
-      case "result":
-        return this.resultReference;
-    }
-  }
-
-  private setReference(
-    kind: AnnotationKind,
-    reference: AnnotationReference | undefined,
-  ) {
-    switch (kind) {
-      case "source":
-        this.sourceReference = reference;
-        break;
-      case "target":
-        this.targetReference = reference;
-        break;
-      case "result":
-        this.resultReference = reference;
-        break;
-    }
-  }
-
-  private removeAnnotation(kind: AnnotationKind) {
-    const reference = this.getReference(kind);
-    if (reference === undefined) return;
-    this.programmaticDeletionIds.add(reference.id);
-    try {
-      this.annotationSource.delete(reference);
-    } finally {
-      this.programmaticDeletionIds.delete(reference.id);
-    }
-    this.setReference(kind, undefined);
+  private deleteAnnotation(reference: AnnotationReference) {
+    this.annotationSource.delete(reference);
     reference.dispose();
-  }
-
-  private handleAnnotationDeleted(annotationId: string) {
-    if (this.disposing || this.programmaticDeletionIds.has(annotationId)) {
-      return;
-    }
-
-    let kind: AnnotationKind | undefined;
-    for (const candidate of ["source", "target", "result"] as const) {
-      if (this.getReference(candidate)?.id === annotationId) {
-        kind = candidate;
-        break;
-      }
-    }
-    if (kind === undefined) return;
-
-    const reference = this.getReference(kind)!;
-    this.setReference(kind, undefined);
-    reference.dispose();
-
-    const { state } = this.options;
-    switch (kind) {
-      case "source":
-        state.setSource(undefined);
-        break;
-      case "target":
-        state.setTarget(undefined);
-        break;
-      case "result":
-        state.invalidateResult();
-        break;
-    }
-  }
-
-  private handleAnnotationUpdated(annotation: Annotation) {
-    if (
-      this.disposing ||
-      this.programmaticUpdateIds.has(annotation.id) ||
-      !(["source", "target", "result"] as const).some(
-        (kind) => this.getReference(kind)?.id === annotation.id,
-      )
-    ) {
-      return;
-    }
-
-    // These annotations are projections of the persisted find-path state,
-    // rather than another editable copy of it.  Annotation editing tools may
-    // still update this local source directly, so immediately restore the
-    // canonical value.  synchronizeAnnotationUpdate suppresses the resulting
-    // childUpdated notification to avoid a feedback loop.
-    this.synchronize();
-  }
-
-  private synchronizeAnnotationUpdate(
-    reference: AnnotationReference,
-    annotation: Annotation,
-  ) {
-    this.programmaticUpdateIds.add(reference.id);
-    try {
-      this.annotationSource.update(reference, annotation);
-    } finally {
-      this.programmaticUpdateIds.delete(reference.id);
-    }
   }
 
   private synchronizeEndpoint(
-    kind: "source" | "target",
+    rendered: RenderedEndpoint | undefined,
     endpoint: SkeletonFindPathEndpoint | undefined,
     description: string,
-  ) {
-    if (endpoint === undefined) {
-      this.removeAnnotation(kind);
-      return;
+  ): RenderedEndpoint | undefined {
+    if (rendered?.endpoint === endpoint) return rendered;
+    if (rendered !== undefined) {
+      this.deleteAnnotation(rendered.annotationReference);
     }
-
-    let reference = this.getReference(kind);
-    const current = reference?.value;
-    if (
-      current?.type === AnnotationType.POINT &&
-      current.description === description &&
-      current.properties.length === 0 &&
-      positionsEqual(current.point, endpoint.position) &&
-      hasRelatedSegment(current.relatedSegments, endpoint.segmentId)
-    ) {
-      return;
-    }
+    if (endpoint === undefined) return undefined;
 
     const annotation: Point = {
-      id: reference?.id ?? "",
+      id: "",
+      point: endpoint.position,
       type: AnnotationType.POINT,
-      point: new Float32Array(endpoint.position),
       properties: [],
-      relatedSegments: relatedSegmentsFor(endpoint.segmentId),
+      relatedSegments: [BigUint64Array.of(endpoint.segmentId)],
       description,
     };
-    if (reference === undefined) {
-      reference = this.annotationSource.add(annotation);
-      this.setReference(kind, reference);
-    } else {
-      this.synchronizeAnnotationUpdate(reference, annotation);
-    }
+    return {
+      endpoint,
+      annotationReference: this.annotationSource.add(annotation),
+    };
   }
 
   private synchronizeResult(
     result: readonly SkeletonFindPathResultNode[] | undefined,
     segmentId: bigint | undefined,
   ) {
-    // A polyline needs at least one edge, and an associated segment is needed
-    // for the layer relationship filter.
-    if (result === undefined || result.length < 2 || segmentId === undefined) {
-      this.removeAnnotation("result");
-      return;
+    if (this.resultReference !== undefined) {
+      this.deleteAnnotation(this.resultReference);
+      this.resultReference = undefined;
     }
-
-    let reference = this.resultReference;
-    const current = reference?.value;
-    if (
-      current?.type === AnnotationType.POLYLINE &&
-      current.description === SPATIAL_SKELETON_FIND_PATH_RESULT_DESCRIPTION &&
-      current.properties.length === 0 &&
-      current.points.length === result.length &&
-      current.points.every((point, index) =>
-        positionsEqual(point, result[index].position),
-      ) &&
-      hasRelatedSegment(current.relatedSegments, segmentId)
-    ) {
+    if (result === undefined || result.length < 2 || segmentId === undefined) {
       return;
     }
 
     const annotation: PolyLine = {
-      id: reference?.id ?? "",
+      id: "",
       type: AnnotationType.POLYLINE,
-      points: result.map((node) => new Float32Array(node.position)),
+      points: result.map((node) => node.position),
       properties: [],
-      relatedSegments: relatedSegmentsFor(segmentId),
+      relatedSegments: [BigUint64Array.of(segmentId)],
       description: SPATIAL_SKELETON_FIND_PATH_RESULT_DESCRIPTION,
     };
-    if (reference === undefined) {
-      reference = this.annotationSource.add(annotation);
-      this.resultReference = reference;
-    } else {
-      this.synchronizeAnnotationUpdate(reference, annotation);
-    }
+    this.resultReference = this.annotationSource.add(annotation);
   }
 
   private synchronize() {
-    if (this.disposing) return;
+    if (this.synchronizing) return;
+    this.synchronizing = true;
+    try {
+      const { source, target, result } = this.options.state;
+      this.renderedSource = this.synchronizeEndpoint(
+        this.renderedSource,
+        source,
+        SPATIAL_SKELETON_FIND_PATH_SOURCE_DESCRIPTION,
+      );
+      this.renderedTarget = this.synchronizeEndpoint(
+        this.renderedTarget,
+        target,
+        SPATIAL_SKELETON_FIND_PATH_TARGET_DESCRIPTION,
+      );
+      this.synchronizeResult(result, source?.segmentId ?? target?.segmentId);
+    } finally {
+      this.synchronizing = false;
+    }
+  }
+
+  private handleAnnotationDeleted(annotationId: string) {
+    if (this.synchronizing) return;
+
     const { state } = this.options;
-    const { source, target } = state;
-    this.synchronizeEndpoint(
-      "source",
-      source,
-      SPATIAL_SKELETON_FIND_PATH_SOURCE_DESCRIPTION,
-    );
-    this.synchronizeEndpoint(
-      "target",
-      target,
-      SPATIAL_SKELETON_FIND_PATH_TARGET_DESCRIPTION,
-    );
-    this.synchronizeResult(
-      state.result,
-      source?.segmentId ?? target?.segmentId,
-    );
+    if (this.renderedSource?.annotationReference.id === annotationId) {
+      this.renderedSource.annotationReference.dispose();
+      this.renderedSource = undefined;
+      state.setSource(undefined);
+      return;
+    }
+    if (this.renderedTarget?.annotationReference.id === annotationId) {
+      this.renderedTarget.annotationReference.dispose();
+      this.renderedTarget = undefined;
+      state.setTarget(undefined);
+      return;
+    }
+    if (this.resultReference?.id === annotationId) {
+      this.resultReference.dispose();
+      this.resultReference = undefined;
+      state.invalidateResult();
+    }
   }
 
   disposed() {
-    this.disposing = true;
-    for (const kind of ["source", "target", "result"] as const) {
-      const reference = this.getReference(kind);
-      this.setReference(kind, undefined);
-      reference?.dispose();
-    }
+    this.synchronizing = true;
+    this.renderedSource?.annotationReference.dispose();
+    this.renderedTarget?.annotationReference.dispose();
+    this.resultReference?.dispose();
+    this.renderedSource = undefined;
+    this.renderedTarget = undefined;
+    this.resultReference = undefined;
     super.disposed();
   }
 }
