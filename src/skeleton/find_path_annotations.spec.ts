@@ -63,8 +63,7 @@ function endpoint(
 
 function setResolvedPath(state: SkeletonFindPathState) {
   state.setEndpoints(endpoint(1), endpoint(3));
-  const generation = state.beginRequest();
-  state.completeRequest(generation, [
+  state.setResult([
     { nodeId: 1n, position: new Float32Array([1, 2, 3]) },
     { nodeId: 2n, position: new Float32Array([2, 3, 4]) },
     { nodeId: 3n, position: new Float32Array([3, 4, 5]) },
@@ -303,8 +302,7 @@ describe("SpatialSkeletonFindPathAnnotationController", () => {
     ).toEqual([SPATIAL_SKELETON_FIND_PATH_TARGET_DESCRIPTION]);
 
     state.setSource(endpoint(1));
-    const generation = state.beginRequest();
-    state.completeRequest(generation, [
+    state.setResult([
       { nodeId: 1n, position: new Float32Array([1, 2, 3]) },
       { nodeId: 3n, position: new Float32Array([3, 4, 5]) },
     ]);
@@ -431,16 +429,14 @@ describe("SpatialSkeletonFindPathAnnotationController", () => {
     state.dispose();
   });
 
-  it("invalidates pending work on disposal without clearing persisted state", () => {
+  it("does not clear persisted state on disposal", () => {
     const state = new SkeletonFindPathState();
-    state.setEndpoints(endpoint(1), endpoint(3));
-    state.beginRequest();
+    setResolvedPath(state);
     const persistedState = state.toJSON();
     const { controller } = makeFixture(state);
 
     controller.dispose();
 
-    expect(state.requestPending).toBe(false);
     expect(state.toJSON()).toEqual(persistedState);
     state.dispose();
   });

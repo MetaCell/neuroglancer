@@ -360,10 +360,6 @@ export class SpatialSkeletonFindPathAnnotationController extends RefCounted {
 
   disposed() {
     this.disposing = true;
-    const { state } = this.options;
-    if (state.wasDisposed !== true) {
-      state.invalidatePendingRequest();
-    }
     for (const kind of ["source", "target", "result"] as const) {
       const reference = this.getReference(kind);
       this.setReference(kind, undefined);

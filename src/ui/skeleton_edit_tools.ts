@@ -1920,7 +1920,6 @@ export class SpatialSkeletonFindPathTool extends SpatialSkeletonToolBase {
       }
 
       statusOverride = undefined;
-      const requestGeneration = state.beginRequest();
       try {
         const graph =
           buildSpatiallyIndexedSkeletonNavigationGraph(cachedSegmentNodes);
@@ -1940,17 +1939,14 @@ export class SpatialSkeletonFindPathTool extends SpatialSkeletonToolBase {
             `No route exists between nodes ${source.nodeId} and ${target.nodeId}.`,
           );
         }
-        const completed = state.completeRequest(
-          requestGeneration,
+        state.setResult(
           path.map(({ nodeId, position }) => ({
             nodeId: BigInt(nodeId),
             position: new Float32Array(position),
           })),
         );
-        if (!completed) return;
         StatusMessage.showTemporaryMessage("Path found!", 5000);
       } catch (error) {
-        if (!state.failRequest(requestGeneration)) return;
         const detail = error instanceof Error ? error.message : String(error);
         statusOverride = `Failed to find path: ${detail}`;
         updateStatus();
@@ -2044,8 +2040,6 @@ export class SpatialSkeletonFindPathTool extends SpatialSkeletonToolBase {
       } else if (state === undefined) {
         statusElement.textContent =
           "No spatial skeleton datasource supports Find Path.";
-      } else if (state.requestPending) {
-        statusElement.textContent = "Finding path...";
       } else if (state.result !== undefined) {
         statusElement.textContent = `Path found (${state.result.length} nodes).`;
       } else if (state.source === undefined) {
@@ -2062,13 +2056,10 @@ export class SpatialSkeletonFindPathTool extends SpatialSkeletonToolBase {
     if (state !== undefined) {
       activation.registerDisposer(
         state.changed.add(() => {
-          if (!state.requestPending) {
-            statusOverride = undefined;
-          }
+          statusOverride = undefined;
           updateStatus();
         }),
       );
-      activation.registerDisposer(() => state.invalidatePendingRequest());
     }
     this.registerAutoCancelOnDisabled(
       activation,

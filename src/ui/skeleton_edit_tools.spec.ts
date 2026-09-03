@@ -1217,7 +1217,6 @@ describe("spatial_skeleton_edit_tool", () => {
           makeFindPathActionEvent(),
         );
 
-        expect(harness.state.requestPending).toBe(false);
         expect(StatusMessage.showTemporaryMessage).toHaveBeenCalledWith(
           expected,
         );
@@ -1241,7 +1240,6 @@ describe("spatial_skeleton_edit_tool", () => {
       );
 
       expect(harness.getFullSegmentNodes).not.toHaveBeenCalled();
-      expect(harness.state.requestPending).toBe(false);
       expect(harness.state.result).toBeUndefined();
       expect(StatusMessage.showTemporaryMessage).toHaveBeenCalledWith(
         "Skeleton 11 is visible, but its full node data is not available in the client yet. Wait for it to finish loading and submit again.",
@@ -1304,7 +1302,6 @@ describe("spatial_skeleton_edit_tool", () => {
         makeFindPathActionEvent(),
       );
       expect(harness.state.result).toBeDefined();
-      expect(harness.state.requestPending).toBe(false);
 
       const clearButton = Array.from(
         document.querySelectorAll<HTMLElement>('[title="Clear Find Path"]'),
@@ -1315,7 +1312,6 @@ describe("spatial_skeleton_edit_tool", () => {
       expect(harness.state.source).toBeUndefined();
       expect(harness.state.target).toBeUndefined();
       expect(harness.state.result).toBeUndefined();
-      expect(harness.state.requestPending).toBe(false);
       expect(harness.getFullSegmentNodes).not.toHaveBeenCalled();
     } finally {
       harness.dispose();
