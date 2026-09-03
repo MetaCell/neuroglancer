@@ -21,9 +21,11 @@ import type {
   CommandEntry,
   CommandGroup,
 } from "#src/ui/command_catalog.js";
+import { rankedMatches } from "#src/util/ranked_matches.js";
 import type { Viewer } from "#src/viewer.js";
 
 const COMMAND_INPUT_PLACEHOLDER = "Type to find a command...";
+const OPEN_COMMAND_PALETTE_ACTION = "open-command-palette";
 
 type PaletteRow =
   | { readonly kind: "command"; readonly entry: CommandEntry }
@@ -200,9 +202,17 @@ export class CommandPalette extends Overlay {
     return rowElement;
   }
 
+  private computeDisplayRows(): readonly PaletteRow[] {
+    return this.computeCatalogRows().filter(
+      (row) =>
+        row.kind !== "command" ||
+        row.entry.command.id !== OPEN_COMMAND_PALETTE_ACTION,
+    );
+  }
+
   // Inside a group, or while searching, the view is a flat list of matching
   // commands. Otherwise, entries sharing a group collapse into one header row.
-  private computeDisplayRows(): readonly PaletteRow[] {
+  private computeCatalogRows(): readonly PaletteRow[] {
     const searchValue = this.searchInput.value;
     if (this.currentGroup !== undefined) {
       return this.catalog
@@ -210,9 +220,14 @@ export class CommandPalette extends Overlay {
         .map((entry) => ({ kind: "command", entry }) as const);
     }
     if (searchValue !== "") {
-      return this.catalog
-        .filter(searchValue)
-        .map((entry) => ({ kind: "command", entry }) as const);
+      return [
+        ...rankedMatches(this.catalog.groups, "label", searchValue).map(
+          (group) => ({ kind: "group-header", group }) as const,
+        ),
+        ...this.catalog
+          .filter(searchValue)
+          .map((entry) => ({ kind: "command", entry }) as const),
+      ];
     }
     const rows: PaletteRow[] = [];
     const seenGroups = new Set<string>();
@@ -336,5 +351,5 @@ export function bindCommandPalette(viewer: Viewer): void {
         : viewer.element;
     openPalette = new CommandPalette(viewer.commandCatalog, dispatchTarget);
   };
-  viewer.bindAction("open-command-palette", openCommandPalette);
+  viewer.bindAction(OPEN_COMMAND_PALETTE_ACTION, openCommandPalette);
 }

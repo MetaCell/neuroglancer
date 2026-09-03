@@ -135,6 +135,11 @@ const STATIC_COMMANDS: readonly BuiltinCommand[] = [
     label: "Show Help",
     description: "Open the keyboard and mouse bindings help panel.",
   },
+  {
+    id: "open-command-palette",
+    label: "Open Command Palette",
+    description: "Open the searchable list of commands.",
+  },
   // Navigation.
   {
     id: "snap",
