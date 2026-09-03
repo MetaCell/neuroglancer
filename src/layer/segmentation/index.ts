@@ -1744,91 +1744,40 @@ export class SegmentationUserLayer extends Base {
           this.displayState.segmentationGroupState.value,
         );
       } else if (mesh !== undefined) {
-        loadedSubsource.activate(
-          () => {
-            const displayState = {
-              ...this.displayState,
-              transform: loadedSubsource.getRenderLayerTransform(),
-              localPosition: this.localPosition,
-            };
-            if (mesh instanceof MeshSource) {
-              loadedSubsource.addRenderLayer(
-                new MeshLayer(this.manager.chunkManager, mesh, displayState),
-              );
-            } else if (mesh instanceof MultiscaleMeshSource) {
-              loadedSubsource.addRenderLayer(
-                new MultiscaleMeshLayer(
-                  this.manager.chunkManager,
-                  mesh,
-                  displayState,
-                ),
-              );
-            } else if (
-              mesh instanceof MultiscaleSpatiallyIndexedSkeletonSource
-            ) {
-              const perspectiveSources = mesh.getPerspectiveSources();
-              const slicePanelSources = mesh.getSliceViewPanelSources();
-              const sharedSpatialSkeletonSources =
-                perspectiveSources.length > 0
-                  ? perspectiveSources
-                  : slicePanelSources;
-              if (sharedSpatialSkeletonSources.length > 0) {
-                // Share one mutable skeleton base across 2D/3D projections so
-                // local edit state stays consistent across panels.
-                const base = new SpatiallyIndexedSkeletonLayer(
-                  this.manager.chunkManager,
-                  sharedSpatialSkeletonSources,
-                  displayState,
-                  {
-                    sources2d: slicePanelSources,
-                    selectedNodeInfo: this.selectedSpatialSkeletonNodeInfo,
-                    suppressSelectedNodeHighlight:
-                      this.spatialSkeletonState.suppressSelectedNodeHighlight,
-                    hoveredNodeInfo: this.hoveredSpatialSkeletonNodeInfo,
-                    pendingNodePositionVersion:
-                      this.spatialSkeletonState.pendingNodePositionVersion,
-                    getPendingNodePosition: (nodeId) =>
-                      this.spatialSkeletonState.getPendingNodePosition(nodeId),
-                    getPendingNodeIds: () =>
-                      this.spatialSkeletonState.getPendingNodeIds(),
-                    getCachedNode: (nodeId) =>
-                      this.spatialSkeletonState.getCachedNode(nodeId),
-                    resolveGlobalPosition: (modelPosition) =>
-                      this.getGlobalSelectionPositionFromModelPosition(
-                        modelPosition,
-                      ),
-                    inspectionState: this.spatialSkeletonState,
-                  },
-                );
-                if (loadedSubsource === findPathSubsource) {
-                  this.registerSpatialSkeletonFindPathContext(
-                    base,
-                    loadedSubsource,
-                  );
-                }
-                if (perspectiveSources.length > 0) {
-                  loadedSubsource.addRenderLayer(
-                    new PerspectiveViewSpatiallyIndexedSkeletonLayer(
-                      base.addRef(),
-                    ),
-                  );
-                }
-                if (slicePanelSources.length > 0) {
-                  loadedSubsource.addRenderLayer(
-                    new SliceViewPanelSpatiallyIndexedSkeletonLayer(
-                      /* transfer ownership */ base,
-                    ),
-                  );
-                } else {
-                  base.dispose();
-                }
-              }
-            } else if (mesh instanceof SpatiallyIndexedSkeletonSource) {
-              const base = new SpatiallyIndexedSkeletonLayer(
+        const activateMeshSubsource = () => {
+          const displayState = {
+            ...this.displayState,
+            transform: loadedSubsource.getRenderLayerTransform(),
+            localPosition: this.localPosition,
+          };
+          if (mesh instanceof MeshSource) {
+            loadedSubsource.addRenderLayer(
+              new MeshLayer(this.manager.chunkManager, mesh, displayState),
+            );
+          } else if (mesh instanceof MultiscaleMeshSource) {
+            loadedSubsource.addRenderLayer(
+              new MultiscaleMeshLayer(
                 this.manager.chunkManager,
                 mesh,
                 displayState,
+              ),
+            );
+          } else if (mesh instanceof MultiscaleSpatiallyIndexedSkeletonSource) {
+            const perspectiveSources = mesh.getPerspectiveSources();
+            const slicePanelSources = mesh.getSliceViewPanelSources();
+            const sharedSpatialSkeletonSources =
+              perspectiveSources.length > 0
+                ? perspectiveSources
+                : slicePanelSources;
+            if (sharedSpatialSkeletonSources.length > 0) {
+              // Share one mutable skeleton base across 2D/3D projections so
+              // local edit state stays consistent across panels.
+              const base = new SpatiallyIndexedSkeletonLayer(
+                this.manager.chunkManager,
+                sharedSpatialSkeletonSources,
+                displayState,
                 {
+                  sources2d: slicePanelSources,
                   selectedNodeInfo: this.selectedSpatialSkeletonNodeInfo,
                   suppressSelectedNodeHighlight:
                     this.spatialSkeletonState.suppressSelectedNodeHighlight,
@@ -1854,28 +1803,78 @@ export class SegmentationUserLayer extends Base {
                   loadedSubsource,
                 );
               }
-              loadedSubsource.addRenderLayer(
-                new PerspectiveViewSpatiallyIndexedSkeletonLayer(base.addRef()),
-              );
-              loadedSubsource.addRenderLayer(
-                new SliceViewPanelSpatiallyIndexedSkeletonLayer(
-                  /* transfer ownership */ base,
-                ),
-              );
-            } else {
-              const base = new SkeletonLayer(
-                this.manager.chunkManager,
-                mesh,
-                displayState,
-              );
-              loadedSubsource.addRenderLayer(
-                new PerspectiveViewSkeletonLayer(base.addRef()),
-              );
-              loadedSubsource.addRenderLayer(
-                new SliceViewPanelSkeletonLayer(/* transfer ownership */ base),
+              if (perspectiveSources.length > 0) {
+                loadedSubsource.addRenderLayer(
+                  new PerspectiveViewSpatiallyIndexedSkeletonLayer(
+                    base.addRef(),
+                  ),
+                );
+              }
+              if (slicePanelSources.length > 0) {
+                loadedSubsource.addRenderLayer(
+                  new SliceViewPanelSpatiallyIndexedSkeletonLayer(
+                    /* transfer ownership */ base,
+                  ),
+                );
+              } else {
+                base.dispose();
+              }
+            }
+          } else if (mesh instanceof SpatiallyIndexedSkeletonSource) {
+            const base = new SpatiallyIndexedSkeletonLayer(
+              this.manager.chunkManager,
+              mesh,
+              displayState,
+              {
+                selectedNodeInfo: this.selectedSpatialSkeletonNodeInfo,
+                suppressSelectedNodeHighlight:
+                  this.spatialSkeletonState.suppressSelectedNodeHighlight,
+                hoveredNodeInfo: this.hoveredSpatialSkeletonNodeInfo,
+                pendingNodePositionVersion:
+                  this.spatialSkeletonState.pendingNodePositionVersion,
+                getPendingNodePosition: (nodeId) =>
+                  this.spatialSkeletonState.getPendingNodePosition(nodeId),
+                getPendingNodeIds: () =>
+                  this.spatialSkeletonState.getPendingNodeIds(),
+                getCachedNode: (nodeId) =>
+                  this.spatialSkeletonState.getCachedNode(nodeId),
+                resolveGlobalPosition: (modelPosition) =>
+                  this.getGlobalSelectionPositionFromModelPosition(
+                    modelPosition,
+                  ),
+                inspectionState: this.spatialSkeletonState,
+              },
+            );
+            if (loadedSubsource === findPathSubsource) {
+              this.registerSpatialSkeletonFindPathContext(
+                base,
+                loadedSubsource,
               );
             }
-          },
+            loadedSubsource.addRenderLayer(
+              new PerspectiveViewSpatiallyIndexedSkeletonLayer(base.addRef()),
+            );
+            loadedSubsource.addRenderLayer(
+              new SliceViewPanelSpatiallyIndexedSkeletonLayer(
+                /* transfer ownership */ base,
+              ),
+            );
+          } else {
+            const base = new SkeletonLayer(
+              this.manager.chunkManager,
+              mesh,
+              displayState,
+            );
+            loadedSubsource.addRenderLayer(
+              new PerspectiveViewSkeletonLayer(base.addRef()),
+            );
+            loadedSubsource.addRenderLayer(
+              new SliceViewPanelSkeletonLayer(/* transfer ownership */ base),
+            );
+          }
+        };
+        loadedSubsource.activate(
+          activateMeshSubsource,
           this.displayState.segmentationGroupState.value,
           loadedSubsource === findPathSubsource,
         );
