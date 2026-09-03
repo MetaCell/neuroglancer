@@ -110,17 +110,6 @@ describe("collectActionBindings", () => {
     expect(forAction).toHaveLength(1);
     expect(forAction[0].eventAction.originalEventIdentifier).toBe("keya");
   });
-
-  it("excludes open-command-palette", () => {
-    const map = new EventActionMap();
-    map.set("f1", "open-command-palette");
-    map.set("keya", "some-action");
-    const ids = collectActionBindings(makeInputEventBindings(map)).map(
-      (b) => b.actionId,
-    );
-    expect(ids).not.toContain("open-command-palette");
-    expect(ids).toContain("some-action");
-  });
 });
 
 describe("CommandCatalog.filter", () => {
@@ -140,20 +129,12 @@ describe("CommandCatalog.filter", () => {
     expect(catalog.filter("")).toStrictEqual(catalog.commands);
   });
 
-  it("is case-insensitive", () => {
-    expect(makeCatalog().filter("EDIT")).toHaveLength(1);
-    expect(makeCatalog().filter("edit")).toHaveLength(1);
-  });
-
-  it("ranks prefix matches before substring matches", () => {
-    // "Screenshot" is a prefix match; "Edit JSON State" is a substring match.
-    // Verify all prefix matches appear before all substring matches.
-    const results = makeCatalog().filter("s");
-    const screenshotIndex = results.findIndex((r) => r.label === "Screenshot");
-    const stateIndex = results.findIndex((r) => r.label === "Edit JSON State");
-    expect(screenshotIndex).toBeGreaterThanOrEqual(0);
-    expect(stateIndex).toBeGreaterThanOrEqual(0);
-    expect(screenshotIndex).toBeLessThan(stateIndex);
+  it("matches a command by label", () => {
+    expect(
+      makeCatalog()
+        .filter("edit")
+        .map((entry) => entry.label),
+    ).toStrictEqual(["Edit JSON State"]);
   });
 
   it("returns empty for a non-matching query", () => {

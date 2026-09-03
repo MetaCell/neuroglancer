@@ -39,6 +39,7 @@ import type {
   NormalizedEventIdentifier,
 } from "#src/util/event_action_map.js";
 import { friendlyEventIdentifier } from "#src/util/event_action_map.js";
+import { rankedMatches } from "#src/util/ranked_matches.js";
 import { Signal } from "#src/util/signal.js";
 import type { InputEventBindings } from "#src/viewer.js";
 
@@ -210,7 +211,6 @@ export function collectActionBindings(
   ) => {
     for (const [normalizedId, eventAction] of bindings) {
       if (!isKeyboardEvent(normalizedId)) continue;
-      if (eventAction.action === "open-command-palette") continue;
       if (!seenBindings.has(eventAction.action)) {
         seenBindings.set(eventAction.action, eventAction);
       }
@@ -229,6 +229,7 @@ export function collectActionBindings(
 
 export class CommandCatalog extends RefCounted {
   commands: readonly CommandEntry[] = [];
+  groups: readonly CommandGroup[] = [];
   readonly changed = new Signal();
   private readonly debouncedRebuild: DebouncedFunction;
 
@@ -439,45 +440,29 @@ export class CommandCatalog extends RefCounted {
       }
     }
 
+    const groups: CommandGroup[] = [];
+    for (const { group } of commands) {
+      if (group !== undefined && !groups.includes(group)) groups.push(group);
+    }
+
     this.commands = commands;
+    this.groups = groups;
     this.changed.dispatch();
   }
 
-  // Restricting to `groupLabel` scopes the search to a single group's entries
-  // filtering with no args can be used to exclude disabled commands
+  // Without a `groupLabel`, grouped entries are omitted, since their group
+  // stands in for them as a single row.
   filter(
     searchString: string = "",
     groupLabel?: string,
-    ignoreGroupsForGlobalSearch: boolean = true,
-    excludeDisabled: boolean = true,
   ): readonly CommandEntry[] {
-    let pool = this.commands;
-    if (groupLabel !== undefined) {
-      pool = pool.filter(
-        (entry) =>
-          entry.group?.label === groupLabel &&
-          (!excludeDisabled || entry.command.enabled),
-      );
-    } else if (ignoreGroupsForGlobalSearch) {
-      pool = pool.filter(
-        (entry) =>
-          entry.group === undefined &&
-          (!excludeDisabled || entry.command.enabled),
-      );
-    }
-
-    if (searchString === "") return pool;
-
-    const query = searchString.toLowerCase();
-    const prefixMatches: CommandEntry[] = [];
-    const substringMatches: CommandEntry[] = [];
-
-    for (const command of pool) {
-      const label = command.label.toLowerCase();
-      if (label.startsWith(query)) prefixMatches.push(command);
-      else if (label.includes(query)) substringMatches.push(command);
-    }
-
-    return [...prefixMatches, ...substringMatches];
+    const pool = this.commands.filter(
+      (entry) =>
+        entry.command.enabled &&
+        (groupLabel === undefined
+          ? entry.group === undefined
+          : entry.group?.label === groupLabel),
+    );
+    return rankedMatches(pool, "label", searchString);
   }
 }
