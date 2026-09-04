@@ -126,7 +126,7 @@ function makeFixture(state: SkeletonFindPathState) {
 }
 
 describe("SpatialSkeletonFindPathAnnotationController", () => {
-  it("adds an independent enlarged white annotation layer for the loaded subsource", () => {
+  it("adds an independent non-pickable white overlay for the loaded subsource", () => {
     const state = new SkeletonFindPathState();
     const fixture = makeFixture(state);
     const { controller } = fixture;
@@ -144,14 +144,11 @@ describe("SpatialSkeletonFindPathAnnotationController", () => {
     expect(
       Array.from(controller.annotationState.displayState.color.value),
     ).toEqual([1, 1, 1]);
-    expect(controller.annotationState.displayState.shader.value).toContain(
-      "setLineWidth(6.0)",
+    expect(controller.annotationState.displayState.disablePicking.value).toBe(
+      true,
     );
-    expect(controller.annotationState.displayState.shader.value).toContain(
-      "setPointMarkerSize(15.0)",
-    );
-    expect(controller.annotationState.displayState.shader.value).toContain(
-      "setPointMarkerBorderWidth(3.0)",
+    expect(controller.annotationState.displayState.disableDepthTest.value).toBe(
+      true,
     );
     const relationship =
       controller.annotationState.displayState.relationshipStates.get(

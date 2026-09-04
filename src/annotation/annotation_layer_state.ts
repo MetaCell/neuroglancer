@@ -160,6 +160,9 @@ export class AnnotationDisplayState extends RefCounted {
   );
   ignoreNullSegmentFilter = new TrackableBoolean(true);
   disablePicking = new WatchableValue(false);
+  // Runtime-only rendering option for overlays that must remain visible even
+  // when their geometry lies inside an opaque surface.
+  disableDepthTest = new WatchableValue(false);
   displayUnfiltered = makeCachedLazyDerivedWatchableValue(
     (map, ignoreNullSegmentFilter) => {
       for (const state of map.values()) {

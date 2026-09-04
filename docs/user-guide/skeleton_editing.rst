@@ -198,14 +198,18 @@ removed or the tool is cleared. The endpoint rows show each node's derived
 topology type and coordinates; hover a row to see its node ID.
 
 The route is computed automatically after the target is selected and displayed
-as a thick white annotation polyline. **Find Path** uses complete skeleton data
-already cached in the client and does not initiate a download. A cached skeleton
-can be used even if it is no longer visible. If the skeleton is not cached, make
-it visible and wait for the normal visibility pipeline to load it; the route is
+as a white annotation polyline. **Find Path** uses complete skeleton data already
+cached in the client and does not initiate a download. A cached skeleton can be
+used even if it is no longer visible. If the skeleton is not cached, make it
+visible and wait for the normal visibility pipeline to load it; the route is
 computed automatically when loading completes. Click **Clear** to remove the
 endpoints and route. Deleting the route annotation has the same effect as
 **Clear**. If a generic skeleton contains cycles, **Find Path** selects a
 deterministic route with the fewest edges.
+
+In the 3-D view, the route is rendered as a non-pickable overlay without depth
+occlusion so that the skeleton surface cannot hide it. It may therefore remain
+visible where other geometry passes in front of it.
 
 While Find Path is active, use the middle mouse button to navigate. Control plus
 left mouse provides the same trackpad-friendly navigation alternative as the

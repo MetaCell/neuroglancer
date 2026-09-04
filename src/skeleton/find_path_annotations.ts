@@ -44,16 +44,6 @@ export const SPATIAL_SKELETON_FIND_PATH_SOURCE_DESCRIPTION = "find path source";
 export const SPATIAL_SKELETON_FIND_PATH_TARGET_DESCRIPTION = "find path target";
 export const SPATIAL_SKELETON_FIND_PATH_RESULT_DESCRIPTION = "find path result";
 
-const SPATIAL_SKELETON_FIND_PATH_SHADER = `
-void main() {
-  setColor(defaultColor());
-  setLineWidth(6.0);
-  setPointMarkerSize(15.0);
-  setPointMarkerBorderWidth(3.0);
-  setPointMarkerBorderColor(vec4(0.0, 0.0, 0.0, 1.0));
-}
-`;
-
 export interface SpatialSkeletonFindPathAnnotationControllerOptions {
   layer: SegmentationUserLayer;
   loadedSubsource: LoadedDataSubsource;
@@ -93,7 +83,12 @@ export class SpatialSkeletonFindPathAnnotationController extends RefCounted {
 
     const displayState = new AnnotationDisplayState();
     displayState.color.value.set([1, 1, 1]);
-    displayState.shader.value = SPATIAL_SKELETON_FIND_PATH_SHADER;
+    // Skeleton tubes write their front-surface depth, while these co-located
+    // annotations follow the centerline behind that surface. Render Find Path
+    // as a non-pickable overlay so it stays visible without moving the exact
+    // route geometry or intercepting the node picks used by the tool.
+    displayState.disablePicking.value = true;
+    displayState.disableDepthTest.value = true;
     displayState.relationshipStates.set(ASSOCIATED_SEGMENTS_RELATIONSHIP, {
       segmentationState: new WatchableValue(layer.displayState),
       showMatches: new TrackableBoolean(false),
