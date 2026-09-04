@@ -1084,7 +1084,7 @@ describe("OME-Zarr version-gated transform behavior (see also issue #905)", () =
             },
             {
               path: "1",
-              coordinateTransformations: [{ type: "scale", scale: [2, 2, 1]}],
+              coordinateTransformations: [{ type: "scale", scale: [2, 2, 1] }],
             },
           ],
         },
@@ -1102,7 +1102,8 @@ describe("OME-Zarr version-gated transform behavior (see also issue #905)", () =
 
     // Both transformations should reach the per-scale transform.
     // At each level apply the voxel offset and remove the base scale
-    { // scale 0
+    {
+      // scale 0
       const t = metadata!.multiscale.scales[0].transform;
       expect(t[0]).toBeCloseTo(1);
       expect(t[5]).toBeCloseTo(1);
@@ -1112,14 +1113,15 @@ describe("OME-Zarr version-gated transform behavior (see also issue #905)", () =
       expect(t[14]).toBeCloseTo(-0.5 + 300 / 4);
     }
 
-    { // scale 1
+    {
+      // scale 1
       const t = metadata!.multiscale.scales[1].transform;
       expect(t[0]).toBeCloseTo(2);
       expect(t[5]).toBeCloseTo(2);
       expect(t[10]).toBeCloseTo(1);
-      expect(t[12]).toBeCloseTo((-0.5 * 2) + 100 / 4);
-      expect(t[13]).toBeCloseTo((-0.5 * 2) + 200 / 4);
-      expect(t[14]).toBeCloseTo((-0.5 * 1) + 300 / 4);
+      expect(t[12]).toBeCloseTo(-0.5 * 2 + 100 / 4);
+      expect(t[13]).toBeCloseTo(-0.5 * 2 + 200 / 4);
+      expect(t[14]).toBeCloseTo(-0.5 * 1 + 300 / 4);
     }
   });
 
