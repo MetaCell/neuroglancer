@@ -549,6 +549,48 @@ function parseMultiscaleOutput(obj: unknown) {
   return parseOmeInputOutput(transformationInputs[0]);
 }
 
+// Find each coordinate transform with an input of the intrinsic system
+// as those are the only ones which could be applied directly
+function findTransformationsWithIntrinsicInput(
+  transformations: unknown,
+  intrinsicCoordinateSystemName: string,
+): { transformation: unknown; outputCoordinateSystemName: string }[] {
+  if (transformations === undefined) return [];
+  const parsed = parseArray(transformations, (transformation) => {
+    verifyObject(transformation);
+    return {
+      transformation,
+      input: verifyOptionalObjectProperty(
+        transformation,
+        "input",
+        parseOmeInputOutput,
+      ),
+      output: verifyOptionalObjectProperty(
+        transformation,
+        "output",
+        parseOmeInputOutput,
+      ),
+    };
+  });
+  const transforms = [];
+  for (const { transformation, input, output } of parsed) {
+    if (input?.name !== intrinsicCoordinateSystemName) continue;
+    if (output?.name === undefined) continue;
+    // Avoid finding child labels groups
+    if (
+      output.path !== undefined &&
+      output.path.includes("labels") &&
+      output.path !== output.name
+    )
+      continue;
+    transforms.push({
+      transformation,
+      outputCoordinateSystemName: output.name,
+    });
+  }
+  return transforms;
+}
+
 function parseMultiscaleScale(
   rank: number,
   url: string,
@@ -590,16 +632,22 @@ function parseOmeMultiscale(
   let coordinateSpace: CoordinateSpace;
   let intrinsicCoordinateSystemName: string | undefined;
 
-  const coordinateSystemsRaw = verifyOptionalObjectProperty(
+  const coordinateSystemsJson = verifyOptionalObjectProperty(
     multiscale,
     "coordinateSystems",
     (x) => x,
   );
+  const coordinateTransformsJson = verifyOptionalObjectProperty(
+    multiscale,
+    "coordinateTransformations",
+    (x) => x,
+  );
+  let coordinateTransformsToApply: unknown = coordinateTransformsJson;
 
   if (
-    coordinateSystemsRaw !== undefined &&
-    Array.isArray(coordinateSystemsRaw) &&
-    coordinateSystemsRaw.length > 0
+    coordinateSystemsJson !== undefined &&
+    Array.isArray(coordinateSystemsJson) &&
+    coordinateSystemsJson.length > 0
   ) {
     // 0.6+ - Directly from the OME-Zarr spec:
     // "In terms of metadata, the coordinate system referred to as the “intrinsic” coordinate system in this document, is the coordinate system that is referenced by all multiscale coordinate transformations under datasets as their output."
@@ -616,66 +664,53 @@ function parseOmeMultiscale(
         `All output names of multiscale.datasets must be the same, candidate name from first scale is ${intrinsicCoordinateSystemName}, but found ${outputNames[mismatch].name} at scale ${mismatch}`,
       );
     }
+    if (intrinsicCoordinateSystemName === undefined) {
+      throw new Error(`There must be an intrinsic coordinateSystem`);
+    }
 
     const coordinateSystems = parseArray(
-      coordinateSystemsRaw,
+      coordinateSystemsJson,
       parseOmeCoordinateSystem,
     );
 
-    // If there is only one coordinate space then we just use that one
-    // but otherwise we need to find the correct one to use
-    if (coordinateSystems.length === 1) {
-      const coordinateSpaceName = coordinateSystemsRaw[0].name;
-      if (coordinateSpaceName !== intrinsicCoordinateSystemName) {
-        throw new Error(
-          `With only one coordinate space it must be the intrinsic space. Expected to find a coordinate space with name ${intrinsicCoordinateSystemName} but found ${coordinateSpaceName}`,
-        );
-      }
-      coordinateSpace = coordinateSystems[0];
-    } else {
-      // We apply all the transforms from multiscales.coordinateTransforms
-      // in order, so we need to choose the last transform's output
-      // name as the coordinate system to use unless there are no
-      // further transforms - then we use intrinsic coordinate space
-      let nameToMatch = intrinsicCoordinateSystemName;
-      const transformOutputNames = verifyOptionalObjectProperty(
-        multiscale,
-        "coordinateTransformations",
-        (obj) => parseArray(obj, (x) => parseOmeInputOutput(x.output)),
+    const applicableCoordinateTransforms =
+      findTransformationsWithIntrinsicInput(
+        coordinateTransformsJson,
+        intrinsicCoordinateSystemName,
       );
-      if (transformOutputNames !== undefined) {
-        const targetName = transformOutputNames.at(-1)?.name;
-        if (targetName !== undefined) {
-          nameToMatch = targetName;
-        }
-      }
-      if (nameToMatch === undefined) {
-        throw new Error(
-          "With more than one coordinate space, an intrinsic coordinate space must be defined in multiscales.datasets or an output space in multiscales.coordinateTransformations",
-        );
-      }
+    // As we have no coordinate space selector, we just apply
+    // the first found applicable transform
+    coordinateTransformsToApply =
+      applicableCoordinateTransforms.length === 0
+        ? undefined
+        : [applicableCoordinateTransforms[0].transformation];
 
-      const coordinateSpaceMatch = coordinateSystemsRaw.findIndex(
-        (x) => x.name === nameToMatch,
+    // The image ends in the space that the applied transformation outputs to, or in the
+    // intrinsic space when no transformation applies.
+    const nameToMatch =
+      applicableCoordinateTransforms[0]?.outputCoordinateSystemName ??
+      intrinsicCoordinateSystemName;
+
+    const coordinateSpaceMatch = coordinateSystemsJson.findIndex(
+      (x) => x.name === nameToMatch,
+    );
+    if (coordinateSpaceMatch === -1) {
+      const reason =
+        nameToMatch === intrinsicCoordinateSystemName ? "intrinsic" : "output";
+      throw new Error(
+        `Could not find any coordinate system for the ${reason} system ${nameToMatch}`,
       );
-      if (coordinateSpaceMatch === -1) {
-        throw new Error(
-          `Could not find any coordinate space matching the name ${nameToMatch}`,
-        );
-      }
-      coordinateSpace = coordinateSystems[coordinateSpaceMatch];
     }
+    coordinateSpace = coordinateSystems[coordinateSpaceMatch];
   } else {
     // OME-ZARR 0.4/0.5: Use axes directly
     coordinateSpace = verifyObjectProperty(multiscale, "axes", parseOmeAxes);
   }
 
   const rank = coordinateSpace.rank;
-  const transform = verifyOptionalObjectProperty(
-    multiscale,
-    "coordinateTransformations",
-    (x) => parseOmeCoordinateTransforms(rank, x),
-    matrix.createIdentity(Float64Array, rank + 1),
+  const transform = parseOmeCoordinateTransforms(
+    rank,
+    coordinateTransformsToApply,
   );
   const scales = verifyObjectProperty(multiscale, "datasets", (obj) =>
     parseArray(obj, (x) => {

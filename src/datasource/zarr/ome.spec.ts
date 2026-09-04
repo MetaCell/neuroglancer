@@ -328,7 +328,7 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
     );
   });
 
-  it("should verify names against the intrinsic system while choosing multiscales.coordinateTransforms ending space as the coordinateSpace to use", () => {
+  it("should use the coordinate system output by the first transformation whose input is the intrinsic system", () => {
     const attrs = {
       ome: {
         version: "0.6",
@@ -337,16 +337,12 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
             name: "multiscales",
             coordinateSystems: [
               {
-                name: "first_system",
-                axes: [{ type: "space", name: "x", unit: "micrometer" }],
+                name: "physical",
+                axes: [{ type: "space", name: "y", unit: "micrometer" }],
               },
               {
                 name: "target_system",
                 axes: [{ type: "space", name: "z", unit: "millimeter" }],
-              },
-              {
-                name: "physical",
-                axes: [{ type: "space", name: "y", unit: "millimeter" }],
               },
               {
                 name: "last_system",
@@ -356,18 +352,23 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
             coordinateTransformations: [
               {
                 type: "identity",
-                input: { path: "physical" },
-                output: { name: "first_system" },
+                input: { name: "last_system" },
+                output: { name: "physical" },
               },
               {
                 type: "identity",
-                input: { path: "first_system" },
-                output: { name: "last_system" },
+                input: { name: "target_system" },
+                output: { name: "physical" },
               },
               {
                 type: "identity",
-                input: { path: "last_system" },
+                input: { name: "physical" },
                 output: { name: "target_system" },
+              },
+              {
+                type: "identity",
+                input: { name: "physical" },
+                output: { name: "last_system" },
               },
             ],
             datasets: [
@@ -400,7 +401,125 @@ describe("OME-Zarr 0.6 coordinate transformations", () => {
     const metadata = parseOmeMetadata("test://", attrs, 3);
     const space = metadata!.multiscale.coordinateSpace;
     expect(space.names).toStrictEqual(["z"]);
-    expect(space.units).toStrictEqual(["m"]);
+    expect(space.scales[0]).toBeCloseTo(1e-3);
+  });
+
+  it("should ignore a transformation whose output is the intrinsic system", () => {
+    const attrs = {
+      ome: {
+        version: "0.6",
+        multiscales: [
+          {
+            coordinateSystems: [
+              {
+                name: "physical",
+                axes: [
+                  { name: "y", type: "space", unit: "micrometer" },
+                  { name: "x", type: "space", unit: "micrometer" },
+                ],
+              },
+              {
+                name: "world",
+                axes: [
+                  { name: "y", type: "space", unit: "micrometer" },
+                  { name: "x", type: "space", unit: "micrometer" },
+                ],
+              },
+            ],
+            datasets: [
+              {
+                path: "s0",
+                coordinateTransformations: [
+                  {
+                    type: "identity",
+                    input: { path: "s0" },
+                    output: { name: "physical" },
+                  },
+                ],
+              },
+            ],
+            coordinateTransformations: [
+              {
+                type: "translation",
+                input: { name: "world" },
+                output: { name: "physical" },
+                translation: [10, 20],
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+    const metadata = parseOmeMetadata("test://", attrs, 3);
+    // s0 already outputs to physical, so the world to physical translation does not apply.
+    expect(metadata!.multiscale.coordinateSpace.names).toStrictEqual([
+      "y",
+      "x",
+    ]);
+    expect(metadata!.multiscale.baseInfo.baseTransform).toStrictEqual(
+      createIdentity(Float64Array, 3),
+    );
+  });
+
+  it("should skip a transformation into the intrinsic system and use a later one", () => {
+    const attrs = {
+      ome: {
+        version: "0.6",
+        multiscales: [
+          {
+            name: "multiscales",
+            coordinateSystems: [
+              {
+                name: "physical",
+                axes: [{ type: "space", name: "y", unit: "micrometer" }],
+              },
+              {
+                name: "world",
+                axes: [{ type: "space", name: "y", unit: "micrometer" }],
+              },
+              {
+                name: "target_system",
+                axes: [{ type: "space", name: "z", unit: "millimeter" }],
+              },
+            ],
+            coordinateTransformations: [
+              {
+                type: "translation",
+                translation: [10],
+                input: { name: "world" },
+                output: { name: "physical" },
+              },
+              {
+                type: "identity",
+                input: { name: "physical" },
+                output: { name: "target_system" },
+              },
+            ],
+            datasets: [
+              {
+                path: "array",
+                coordinateTransformations: [
+                  {
+                    type: "identity",
+                    input: { path: "array" },
+                    output: { name: "physical" },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+    const metadata = parseOmeMetadata("test://", attrs, 3);
+    const space = metadata!.multiscale.coordinateSpace;
+    expect(space.names).toStrictEqual(["z"]);
+    expect(space.scales[0]).toBeCloseTo(1e-3);
+    expect(metadata!.multiscale.baseInfo.baseTransform).toStrictEqual(
+      createIdentity(Float64Array, 2),
+    );
   });
 
   it("should throw an error for non-supported transformation types", () => {
@@ -658,7 +777,7 @@ describe("OME-Zarr 0.6 sequence transformation validation", () => {
     };
 
     expect(() => parseOmeMetadata("test://", attrs, 3)).toThrow(
-      /with name wrong_system but found physical/,
+      /coordinate system for the intrinsic system wrong_system/,
     );
   });
 
@@ -894,8 +1013,8 @@ describe("OME-Zarr 0.6 sequence transformation validation", () => {
   });
 });
 
-describe("OME-Zarr version-gated transform behavior (issue #905)", () => {
-  it("should produce identity baseTransform for v0.4 with scale+translation", () => {
+describe("OME-Zarr version-gated transform behavior (see also issue #905)", () => {
+  it("should produce identity baseTransform for < 0.6 with scale+translation", () => {
     // v0.4 uses the old behavior: identity base transform, translations baked into per-scale transforms
     const attrs = {
       multiscales: [
@@ -942,11 +1061,73 @@ describe("OME-Zarr version-gated transform behavior (issue #905)", () => {
     expect(t[14]).toBeCloseTo((300 - 1) / 2);
   });
 
-  it("should handle v0.4 with multiple scales correctly", () => {
+  it("should combine every multiscale transformation for <0.6", () => {
+    // Before 0.6 there are no coordinate systems, so the multiscale-level
+    // transformations still compose into one transform.
     const attrs = {
       multiscales: [
         {
-          version: "0.4",
+          version: "0.5",
+          axes: [
+            { type: "space", name: "z", unit: "micrometer" },
+            { type: "space", name: "y", unit: "micrometer" },
+            { type: "space", name: "x", unit: "micrometer" },
+          ],
+          coordinateTransformations: [
+            { type: "scale", scale: [4, 4, 4] },
+            { type: "translation", translation: [100, 200, 300] },
+          ],
+          datasets: [
+            {
+              path: "0",
+              coordinateTransformations: [{ type: "identity" }],
+            },
+            {
+              path: "1",
+              coordinateTransformations: [{ type: "scale", scale: [2, 2, 1]}],
+            },
+          ],
+        },
+      ],
+    };
+    const metadata = parseOmeMetadata("test://", attrs, 3);
+
+    expect(metadata!.multiscale.baseInfo.baseTransform).toStrictEqual(
+      createIdentity(Float64Array, 4),
+    );
+    const baseScales = metadata!.multiscale.baseInfo.baseScales;
+    expect(baseScales[0]).toBeCloseTo(4);
+    expect(baseScales[1]).toBeCloseTo(4);
+    expect(baseScales[2]).toBeCloseTo(4);
+
+    // Both transformations should reach the per-scale transform.
+    // At each level apply the voxel offset and remove the base scale
+    { // scale 0
+      const t = metadata!.multiscale.scales[0].transform;
+      expect(t[0]).toBeCloseTo(1);
+      expect(t[5]).toBeCloseTo(1);
+      expect(t[10]).toBeCloseTo(1);
+      expect(t[12]).toBeCloseTo(-0.5 + 100 / 4);
+      expect(t[13]).toBeCloseTo(-0.5 + 200 / 4);
+      expect(t[14]).toBeCloseTo(-0.5 + 300 / 4);
+    }
+
+    { // scale 1
+      const t = metadata!.multiscale.scales[1].transform;
+      expect(t[0]).toBeCloseTo(2);
+      expect(t[5]).toBeCloseTo(2);
+      expect(t[10]).toBeCloseTo(1);
+      expect(t[12]).toBeCloseTo((-0.5 * 2) + 100 / 4);
+      expect(t[13]).toBeCloseTo((-0.5 * 2) + 200 / 4);
+      expect(t[14]).toBeCloseTo((-0.5 * 1) + 300 / 4);
+    }
+  });
+
+  it("should combine base and per scale scale and translation for <0.6", () => {
+    const attrs = {
+      multiscales: [
+        {
+          version: "0.5",
           axes: [
             { type: "space", name: "y", unit: "micrometer" },
             { type: "space", name: "x", unit: "micrometer" },
@@ -977,7 +1158,7 @@ describe("OME-Zarr version-gated transform behavior (issue #905)", () => {
         },
       ],
     };
-    const metadata = parseOmeMetadata("test://", attrs, 2);
+    const metadata = parseOmeMetadata("test://", attrs, 3);
     expect(metadata).not.toBeUndefined();
 
     // baseTransform should be identity for v0.4
@@ -1124,7 +1305,7 @@ describe("OME-Zarr version-gated transform behavior (issue #905)", () => {
     expect(t2[7]).toBeCloseTo(999.5);
   });
 
-  it("should produce identity baseTransform for v0.5-dev", () => {
+  it("should not surface baseTransform for <0.6", () => {
     const attrs = {
       multiscales: [
         {
