@@ -116,6 +116,7 @@
 
 .neuroglancer-skeleton-filter-row .neuroglancer-tool-button {
   margin-left: auto;
+  white-space: nowrap;
 }
 
 .neuroglancer-skeleton-navigation-bar {

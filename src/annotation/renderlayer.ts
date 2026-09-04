@@ -349,6 +349,9 @@ export class AnnotationLayer extends RefCounted {
       displayState.shaderControls.changed.add(this.redrawNeeded.dispatch),
     );
     this.registerDisposer(
+      displayState.disableDepthTest.changed.add(this.redrawNeeded.dispatch),
+    );
+    this.registerDisposer(
       this.hoverState.changed.add(this.redrawNeeded.dispatch),
     );
     this.registerDisposer(

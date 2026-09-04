@@ -175,6 +175,10 @@ To make structural edits to nodes, you must bind at least some of the editing
 tools available in the skeleton tab. The available tools are **Edit**, **Merge**,
 and **Split**.
 
+The skeleton tab also provides a **Find Path** inspection tool for spatially
+indexed skeletons. Unlike the editing tools, **Find Path** is available for
+read-only sources.
+
 To bind a tool, click on it in the UI and hold down a key. To activate the tool,
 press :kbd:`Shift` + the bound key. For example, if you bind :kbd:`E` to the Edit
 tool, pressing :kbd:`Shift+E` activates it.
@@ -182,6 +186,38 @@ tool, pressing :kbd:`Shift+E` activates it.
 An important concept throughout editing is the *selected node*. The selected node
 is highlighted with a border in the viewer, highlighted in the skeleton tab table,
 and its details are shown in the selection details panel.
+
+Find Path Tool
+~~~~~~~~~~~~~~
+
+Click **Find Path** in the skeleton tab, then left-click the source node followed
+by the target node. You may also hold :kbd:`Shift` while selecting. Both
+endpoints must be distinct, exact nodes in the same skeleton segment; points on
+edges are not accepted. A third selection is ignored until an endpoint is
+removed or the tool is cleared. The endpoint rows show each node's derived
+topology type and coordinates; hover a row to see its node ID.
+
+The route is computed automatically after the target is selected and displayed
+as a white annotation polyline. **Find Path** uses complete skeleton data already
+cached in the client and does not initiate a download. A cached skeleton can be
+used even if it is no longer visible. If the skeleton is not cached, make it
+visible and wait for the normal visibility pipeline to load it; the route is
+computed automatically when loading completes. Click **Clear** to remove the
+endpoints and route. Deleting the route annotation has the same effect as
+**Clear**. If a generic skeleton contains cycles, **Find Path** selects a
+deterministic route with the fewest edges.
+
+In the 3-D view, the route is rendered as a non-pickable overlay without depth
+occlusion so that the skeleton surface cannot hide it. It may therefore remain
+visible where other geometry passes in front of it.
+
+While Find Path is active, use the middle mouse button to navigate. Control plus
+left mouse provides the same trackpad-friendly navigation alternative as the
+Edit tool.
+
+The spatial skeleton tool supports one active spatial skeleton datasource per
+segmentation layer. Switching Find Path to another datasource while the layer
+is loaded is not supported. Find Path state is saved with its datasource.
 
 Edit Tool
 ~~~~~~~~~

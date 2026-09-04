@@ -86,7 +86,10 @@ import {
   getDefaultSkeletonListBindings,
   getDefaultSkeletonTabBindings,
 } from "#src/ui/default_input_event_bindings.js";
-import { SPATIAL_SKELETON_EDIT_MODE_TOOL_ID } from "#src/ui/skeleton_edit_tools.js";
+import {
+  SPATIAL_SKELETON_EDIT_MODE_TOOL_ID,
+  SPATIAL_SKELETON_FIND_PATH_TOOL_ID,
+} from "#src/ui/skeleton_edit_tools.js";
 import {
   buildSpatialSkeletonSegmentRenderState,
   type SpatialSkeletonSegmentRenderRow,
@@ -327,6 +330,13 @@ export class SpatialSkeletonEditTab extends Tab {
         toolJson: SPATIAL_SKELETON_EDIT_MODE_TOOL_ID,
         label: "Edit",
         title: "Toggle skeleton edit mode",
+      }),
+    );
+    nodeFilterTypeRow.appendChild(
+      makeToolButton(this, layer.toolBinder, {
+        toolJson: SPATIAL_SKELETON_FIND_PATH_TOOL_ID,
+        label: "Find Path",
+        title: "Highlight the route between two skeleton nodes",
       }),
     );
     nodesSection.appendChild(filterInput);
