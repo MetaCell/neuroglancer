@@ -215,11 +215,9 @@ While Find Path is active, use the middle mouse button to navigate. Control plus
 left mouse provides the same trackpad-friendly navigation alternative as the
 Edit tool.
 
-The spatial skeleton tool supports one owning
-datasource per segmentation layer. If multiple spatial skeleton datasources are
-enabled, the first one in datasource order owns Find Path; skeletons from the
-other sources may still be visible, but cannot be selected by this tool. Find
-Path state is saved with the owning datasource.
+The spatial skeleton tool supports one active spatial skeleton datasource per
+segmentation layer. Switching Find Path to another datasource while the layer
+is loaded is not supported. Find Path state is saved with its datasource.
 
 Edit Tool
 ~~~~~~~~~

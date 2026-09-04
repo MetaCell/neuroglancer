@@ -781,18 +781,14 @@ describe("layer/segmentation spatial skeleton find-path state", () => {
     return { layer, context };
   }
 
-  it("selects the first compatible spatial datasource in subsource order", () => {
+  it("selects a compatible spatial skeleton subsource", () => {
     const spatialMesh = Object.create(SpatiallyIndexedSkeletonSource.prototype);
     const makeLoadedSubsource = (state: unknown, mesh: unknown) => ({
       subsourceEntry: { subsource: { mesh } },
       loadedDataSource: { dataSource: { state } },
     });
     const unsupported = makeLoadedSubsource(undefined, spatialMesh);
-    const first = makeLoadedSubsource(
-      new SkeletonDataSourceState(),
-      spatialMesh,
-    );
-    const second = makeLoadedSubsource(
+    const compatible = makeLoadedSubsource(
       new SkeletonDataSourceState(),
       spatialMesh,
     );
@@ -804,8 +800,7 @@ describe("layer/segmentation spatial skeleton find-path state", () => {
     const select = (values: unknown[]) =>
       (layer as any).getSpatialSkeletonFindPathSubsource(values);
 
-    expect(select([unsupported, first, second])).toBe(first);
-    expect(select([unsupported, second])).toBe(second);
+    expect(select([unsupported, compatible])).toBe(compatible);
     expect(select([regularSkeleton])).toBeUndefined();
   });
 

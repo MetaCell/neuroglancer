@@ -1876,7 +1876,6 @@ export class SegmentationUserLayer extends Base {
         loadedSubsource.activate(
           activateMeshSubsource,
           this.displayState.segmentationGroupState.value,
-          loadedSubsource === findPathSubsource,
         );
       } else if (segmentPropertyMap !== undefined) {
         if (!isGroupRoot) {
