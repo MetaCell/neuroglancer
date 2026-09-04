@@ -22,6 +22,7 @@ import {
   SKELETON_ENTER_DELETE_MODE,
   SKELETON_ENTER_MERGE_MODE,
   SKELETON_ENTER_SPLIT_MODE,
+  SKELETON_FIND_PATH_SELECT_ENDPOINT,
   SKELETON_GO_BRANCH_END,
   SKELETON_GO_BRANCH_START,
   SKELETON_GO_CHILD,
@@ -243,31 +244,52 @@ export function getDefaultSkeletonListBindings() {
 }
 
 let defaultSkeletonEditToolBindings: EventActionMap | undefined;
-export function getDefaultSkeletonEditToolBindings() {
-  if (defaultSkeletonEditToolBindings === undefined) {
-    defaultSkeletonEditToolBindings = EventActionMap.fromObject({
+let defaultSkeletonToolNavigationBindings: EventActionMap | undefined;
+
+export function getDefaultSkeletonToolNavigationBindings() {
+  if (defaultSkeletonToolNavigationBindings === undefined) {
+    defaultSkeletonToolNavigationBindings = EventActionMap.fromObject({
       "at:mousedown1": "rotate-via-mouse-drag",
       "at:control+mousedown1": "translate-via-mouse-drag",
-      // Trackpad-friendly aliases for the middle-mouse scheme above: on
-      // perspective panels these dispatch here; on slice panels they're
-      // intercepted directly in the capture-phase listener in
-      // skeleton_edit_tools.ts before they can bubble to this map (mirrors
-      // how mousedown1 is handled for slice panels).
       "at:control+mousedown0": "rotate-via-mouse-drag",
       "at:control+shift+mousedown0": "translate-via-mouse-drag",
-      "at:shift+mousedown0": SKELETON_ADD_NODE,
-      "at:keym": SKELETON_ENTER_MERGE_MODE,
-      "at:keys": SKELETON_ENTER_SPLIT_MODE,
-      "at:keyn": SKELETON_ENTER_CREATE,
-      "at:keyd": SKELETON_ENTER_DELETE_MODE,
-      "at:control+mousedown2": {
-        action: SKELETON_PIN_NODE,
-        stopPropagation: true,
-        preventDefault: true,
-      },
     });
   }
+  return defaultSkeletonToolNavigationBindings;
+}
+
+export function getDefaultSkeletonEditToolBindings() {
+  if (defaultSkeletonEditToolBindings === undefined) {
+    defaultSkeletonEditToolBindings = EventActionMap.fromObject(
+      {
+        "at:shift+mousedown0": SKELETON_ADD_NODE,
+        "at:keym": SKELETON_ENTER_MERGE_MODE,
+        "at:keys": SKELETON_ENTER_SPLIT_MODE,
+        "at:keyn": SKELETON_ENTER_CREATE,
+        "at:keyd": SKELETON_ENTER_DELETE_MODE,
+        "at:control+mousedown2": {
+          action: SKELETON_PIN_NODE,
+          stopPropagation: true,
+          preventDefault: true,
+        },
+      },
+      { parents: [[getDefaultSkeletonToolNavigationBindings(), 0]] },
+    );
+  }
   return defaultSkeletonEditToolBindings;
+}
+
+let defaultSkeletonFindPathToolBindings: EventActionMap | undefined;
+export function getDefaultSkeletonFindPathToolBindings() {
+  if (defaultSkeletonFindPathToolBindings === undefined) {
+    defaultSkeletonFindPathToolBindings = EventActionMap.fromObject(
+      {
+        "at:shift?+mousedown0": SKELETON_FIND_PATH_SELECT_ENDPOINT,
+      },
+      { parents: [[getDefaultSkeletonToolNavigationBindings(), 0]] },
+    );
+  }
+  return defaultSkeletonFindPathToolBindings;
 }
 
 let defaultSkeletonEditAuxBindings: EventActionMap | undefined;

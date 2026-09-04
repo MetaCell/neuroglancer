@@ -258,8 +258,9 @@ export class SkeletonDataSourceState extends RefCounted implements Trackable {
     this.findPathState.reset();
   }
 
-  toJSON(): SkeletonDataSourceStateJson {
-    return { findPath: this.findPathState.toJSON() };
+  toJSON(): SkeletonDataSourceStateJson | undefined {
+    const findPath = this.findPathState.toJSON();
+    return findPath === undefined ? undefined : { findPath };
   }
 
   restoreState(value: unknown) {

@@ -190,20 +190,26 @@ and its details are shown in the selection details panel.
 Find Path Tool
 ~~~~~~~~~~~~~~
 
-Click **Find Path** in the skeleton tab, then hold :kbd:`Control` and left-click
-the source node followed by the target node. You may also hold :kbd:`Shift` while
-selecting. The skeleton must already be visible, and both endpoints must be
-distinct, exact nodes in the same skeleton segment; points on edges are not
-accepted. A third selection is ignored until an endpoint is removed or the
-tool is cleared.
+Click **Find Path** in the skeleton tab, then left-click the source node followed
+by the target node. You may also hold :kbd:`Shift` while selecting. Both
+endpoints must be distinct, exact nodes in the same skeleton segment; points on
+edges are not accepted. A third selection is ignored until an endpoint is
+removed or the tool is cleared. The endpoint rows show each node's derived
+topology type and coordinates; hover a row to see its node ID.
 
-Making a skeleton visible loads its complete node data through the normal
-visibility pipeline. Click **Submit** or press :kbd:`Enter` to use the nodes
-already cached in the client and highlight the route as a white annotation
-polyline. **Find Path** does not initiate a download; if the visible skeleton is
-still loading, wait and submit again. Click **Clear** to remove the endpoints and
-route. If a generic skeleton contains cycles, **Find Path** selects a
+The route is computed automatically after the target is selected and displayed
+as a thick white annotation polyline. **Find Path** uses complete skeleton data
+already cached in the client and does not initiate a download. A cached skeleton
+can be used even if it is no longer visible. If the skeleton is not cached, make
+it visible and wait for the normal visibility pipeline to load it; the route is
+computed automatically when loading completes. Click **Clear** to remove the
+endpoints and route. Deleting the route annotation has the same effect as
+**Clear**. If a generic skeleton contains cycles, **Find Path** selects a
 deterministic route with the fewest edges.
+
+While Find Path is active, use the middle mouse button to navigate. Control plus
+left mouse provides the same trackpad-friendly navigation alternative as the
+Edit tool.
 
 The spatial skeleton tool supports one owning
 datasource per segmentation layer. If multiple spatial skeleton datasources are

@@ -47,9 +47,9 @@ export const SPATIAL_SKELETON_FIND_PATH_RESULT_DESCRIPTION = "find path result";
 const SPATIAL_SKELETON_FIND_PATH_SHADER = `
 void main() {
   setColor(defaultColor());
-  setLineWidth(3.0);
-  setPointMarkerSize(9.0);
-  setPointMarkerBorderWidth(2.0);
+  setLineWidth(6.0);
+  setPointMarkerSize(15.0);
+  setPointMarkerBorderWidth(3.0);
   setPointMarkerBorderColor(vec4(0.0, 0.0, 0.0, 1.0));
 }
 `;
@@ -216,7 +216,7 @@ export class SpatialSkeletonFindPathAnnotationController extends RefCounted {
     if (this.resultReference?.id === annotationId) {
       this.resultReference.dispose();
       this.resultReference = undefined;
-      state.invalidateResult();
+      state.clear();
     }
   }
 

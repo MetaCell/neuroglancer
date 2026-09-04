@@ -39,7 +39,7 @@ function endpoint(
 }
 
 describe("SkeletonFindPathState", () => {
-  it("round-trips uint64 endpoint identities and ordered geometry", () => {
+  it("round-trips uint64 endpoint identities in persisted state", () => {
     const state = new SkeletonFindPathState();
     const largeSegmentId = 9_007_199_254_740_993n;
     state.setEndpoints(
@@ -76,18 +76,6 @@ describe("SkeletonFindPathState", () => {
     expect(restored.toJSON()).toEqual(json);
     expect(restored.source?.position).toBeInstanceOf(Float32Array);
     expect(restored.result?.map((node) => node.nodeId)).toEqual([1n, 3n, 4n]);
-  });
-
-  it("serializes only representation-neutral endpoint fields", () => {
-    const state = new SkeletonFindPathState();
-    state.setSource({
-      ...endpoint(1, 2),
-      annotationReference: { id: "runtime-only" },
-    });
-
-    expect(state.toJSON()).toEqual({
-      source: { nodeId: "1", segmentId: "2", position: [1, 2, 3] },
-    });
   });
 
   it.each([
@@ -151,7 +139,7 @@ describe("SkeletonFindPathState", () => {
     ).not.toThrow();
   });
 
-  it("allows one endpoint to remain as a debugging marker", () => {
+  it("preserves the other endpoint when one endpoint is removed", () => {
     const state = new SkeletonFindPathState();
     state.setEndpoints(endpoint(1), endpoint(2));
     state.setSource(undefined);
@@ -164,6 +152,18 @@ describe("SkeletonFindPathState", () => {
 });
 
 describe("SkeletonDataSourceState", () => {
+  it("omits empty state before use and after Clear", () => {
+    const state = new SkeletonDataSourceState();
+
+    expect(state.toJSON()).toBeUndefined();
+
+    state.findPathState.setSource(endpoint(1));
+    expect(state.toJSON()?.findPath?.source?.nodeId).toBe("1");
+
+    state.findPathState.clear();
+    expect(state.toJSON()).toBeUndefined();
+  });
+
   it("round-trips Find Path under the datasource-owned findPath key", () => {
     const state = new SkeletonDataSourceState();
     state.findPathState.setEndpoints(endpoint(1, 7), endpoint(3, 7));

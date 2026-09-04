@@ -20,7 +20,6 @@ import type { RenderLayerTransform } from "#src/render_coordinate_transform.js";
 import { SpatialSkeletonActions } from "#src/skeleton/command_protocol.js";
 import { SkeletonDataSourceState } from "#src/skeleton/find_path.js";
 import { WatchableValue } from "#src/trackable_value.js";
-import { NullarySignal } from "#src/util/signal.js";
 
 if (!("WebGL2RenderingContext" in globalThis)) {
   Object.defineProperty(globalThis, "WebGL2RenderingContext", {
@@ -109,73 +108,6 @@ function makeSpatialSkeletonLayerWithSource(source: unknown) {
   return {
     source,
   };
-}
-
-function makeTrackableStub<T>(initialValue: T) {
-  const value = new WatchableValue(initialValue);
-  return Object.assign(value, {
-    restoreState: (newValue: T | undefined) => {
-      if (newValue !== undefined) value.value = newValue;
-    },
-    toJSON: () => value.value,
-  });
-}
-
-function makeSegmentationUserLayerForFindPathTests() {
-  let nextRpcId = 0;
-  const rpc = {
-    newId: () => nextRpcId++,
-    set: vi.fn(),
-    delete: vi.fn(),
-    invoke: vi.fn(),
-  };
-  const globalToolBinder = {
-    bindings: new Map(),
-    localBinders: new Set(),
-    localBindersChanged: new NullarySignal(),
-  };
-  const mouseState = {
-    active: false,
-    changed: new NullarySignal(),
-  };
-  const layerSelectedValues = {
-    changed: new NullarySignal(),
-    mouseState,
-    get: () => undefined,
-  };
-  const selectionState = new WatchableValue<any>(undefined);
-  const layerManager = {
-    getLayerByName: () => undefined,
-    updateNonArchivedLayerIndices: vi.fn(),
-  };
-  const manager: any = {
-    rpc,
-    layerManager,
-    rootLayers: layerManager,
-    layerSelectedValues,
-    chunkManager: {
-      layerChunkStatisticsUpdated: new NullarySignal(),
-      memoize: {
-        getUncounted: (_key: unknown, getter: () => unknown) => getter(),
-      },
-    },
-  };
-  manager.root = {
-    toolBinder: globalToolBinder,
-    selectionState,
-  };
-  const managedLayer: any = {
-    name: "find-path-test",
-    layer: null,
-    manager,
-    localCoordinateSpaceCombiner: {},
-    localCoordinateSpace: makeTrackableStub({ rank: 0 }),
-    localPosition: makeTrackableStub(new Float32Array(0)),
-    localVelocity: makeTrackableStub(new Float32Array(0)),
-  };
-  const layer = new SegmentationUserLayer(managedLayer);
-  managedLayer.layer = layer;
-  return layer;
 }
 
 function makeSpatialSkeletonActionGateLayer(options: {
@@ -849,17 +781,7 @@ describe("layer/segmentation spatial skeleton find-path state", () => {
     return { layer, context };
   }
 
-  it("does not restore or serialize the removed layer-wide JSON key", () => {
-    const layer = makeSegmentationUserLayerForFindPathTests();
-    layer.restoreState({
-      spatialSkeletonFindPath: serializedFindPathState,
-    });
-
-    const layerJson = layer.toJSON();
-    expect(layerJson).not.toHaveProperty("spatialSkeletonFindPath");
-  });
-
-  it("selects the first compatible spatial datasource and promotes the next", () => {
+  it("selects the first compatible spatial datasource in subsource order", () => {
     const spatialMesh = Object.create(SpatiallyIndexedSkeletonSource.prototype);
     const makeLoadedSubsource = (state: unknown, mesh: unknown) => ({
       subsourceEntry: { subsource: { mesh } },

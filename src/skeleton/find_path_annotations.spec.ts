@@ -126,7 +126,7 @@ function makeFixture(state: SkeletonFindPathState) {
 }
 
 describe("SpatialSkeletonFindPathAnnotationController", () => {
-  it("adds an independent white annotation layer for the loaded subsource", () => {
+  it("adds an independent enlarged white annotation layer for the loaded subsource", () => {
     const state = new SkeletonFindPathState();
     const fixture = makeFixture(state);
     const { controller } = fixture;
@@ -145,13 +145,13 @@ describe("SpatialSkeletonFindPathAnnotationController", () => {
       Array.from(controller.annotationState.displayState.color.value),
     ).toEqual([1, 1, 1]);
     expect(controller.annotationState.displayState.shader.value).toContain(
-      "setLineWidth(3.0)",
+      "setLineWidth(6.0)",
     );
     expect(controller.annotationState.displayState.shader.value).toContain(
-      "setPointMarkerSize(9.0)",
+      "setPointMarkerSize(15.0)",
     );
     expect(controller.annotationState.displayState.shader.value).toContain(
-      "setPointMarkerBorderWidth(2.0)",
+      "setPointMarkerBorderWidth(3.0)",
     );
     const relationship =
       controller.annotationState.displayState.relationshipStates.get(
@@ -321,10 +321,10 @@ describe("SpatialSkeletonFindPathAnnotationController", () => {
     );
     controller.annotationSource.delete(resultReference);
     resultReference.dispose();
-    expect(state.source?.nodeId).toBe(1n);
-    expect(state.target?.nodeId).toBe(3n);
+    expect(state.source).toBeUndefined();
+    expect(state.target).toBeUndefined();
     expect(state.result).toBeUndefined();
-    expect(Array.from(controller.annotationSource)).toHaveLength(2);
+    expect(Array.from(controller.annotationSource)).toHaveLength(0);
 
     controller.dispose();
     state.dispose();
