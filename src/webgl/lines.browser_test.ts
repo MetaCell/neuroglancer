@@ -25,12 +25,10 @@ import { ShaderBuilder } from "#src/webgl/shader.js";
 import { webglTest } from "#src/webgl/testing.js";
 import { defineVertexId, VertexIdHelper } from "#src/webgl/vertex_id.js";
 
-// A 64 pixel square viewport. Endpoints are given in clip space, so a test can put
-// one outside the depth range without setting up a projection.
 const VIEWPORT = 64;
 
-// Clip space x, y, z, w. A point is inside the depth range when the magnitude of z
-// is at most w, so a w of 1 puts the range at -1 to 1.
+// Clip space x, y, z, w, so a test can place an endpoint outside the depth range
+// without a projection. Inside means the magnitude of z is at most w.
 type ClipPoint = readonly [number, number, number, number];
 
 interface LineSpec {
@@ -100,8 +98,8 @@ function isCovered(pixels: Uint8Array, x: number, y: number): boolean {
 describe("line endpoint clipping", () => {
   it("removes a disc at each endpoint, so a node drawn there has room", () => {
     webglTest((gl) => {
-      // Horizontal across the middle, from NDC x of -0.5 to 0.5. Endpoint A lands
-      // a quarter across the viewport, at pixel 16.
+      // Endpoint A lands a quarter across
+      // (-0.5 on NDC range -1 to 1), so at pixel 16
       const spec = {
         endpointA: [-0.5, 0, 0, 1],
         endpointB: [0.5, 0, 0, 1],
@@ -119,16 +117,8 @@ describe("line endpoint clipping", () => {
 
   it("clips at an endpoint inside the depth range but not at one outside it", () => {
     webglTest((gl) => {
-      // Endpoint A has z of -1.5, so it is outside the range and the GPU clips away
-      // the node quad there. Its disc must not apply. A sits at pixel 24 and the
-      // depth range trims the drawn line to start at pixel 32, so a 10 pixel radius
-      // would otherwise reach past pixel 33.
-      //
-      // Endpoint B has z of 0.5, is inside the range, and keeps its disc. It sits
-      // at pixel 56, which is the drawn end, so the disc clears pixel 55.
-      //
-      // Measuring either disc from the clipped end rather than the endpoint as
-      // given puts A's disc at pixel 32, which also takes pixel 33.
+      // A is at pixel 24 with the line trimmed to start at 32, so a 10 pixel
+      // radius would reach 33. B is at pixel 56, the drawn end, so its disc takes 55.
       const spec = {
         endpointA: [-0.25, 0, -1.5, 1],
         endpointB: [0.75, 0, 0.5, 1],

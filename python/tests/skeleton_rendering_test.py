@@ -34,6 +34,21 @@ void main () {
 }
 """
 
+DEFAULT_SHADER = """
+void main () {
+  emitDefault();
+}
+"""
+
+# getLineAlpha belongs to the edge program alone, so the node program cannot
+# compile this.
+EDGE_ONLY_SHADER = """
+#uicontrol vec3 color color(default="white")
+void main () {
+  emitRGB(color * getLineAlpha());
+}
+"""
+
 
 class SinglePointSkeletonSource(neuroglancer.skeleton.SkeletonSource):
     def __init__(self):
@@ -61,7 +76,17 @@ def screenshot_pixels(webdriver, size):
     return webdriver.viewer.screenshot(size=[size, size]).screenshot.image_pixels
 
 
-def render_skeleton(webdriver, source, *, layout, line_width, size, mode=None):
+def render_skeleton(
+    webdriver,
+    source,
+    *,
+    layout,
+    line_width,
+    size,
+    mode=None,
+    shader=USER_SHADER,
+    object_alpha=None,
+):
     """Draws one red skeleton on black and returns the screenshot pixels."""
     with webdriver.viewer.txn() as s:
         s.dimensions = dimensions
@@ -78,6 +103,11 @@ def render_skeleton(webdriver, source, *, layout, line_width, size, mode=None):
             name="a",
             layer=neuroglancer.SegmentationLayer(source=source, segments=[1]),
         )
+        # Red either way: a user shader reads the control, the default shader reads
+        # the segment colour.
+        s.layers[0].segment_default_color = "#f00"
+        if object_alpha is not None:
+            s.layers[0].object_alpha = object_alpha
         rendering = s.layers[0].skeleton_rendering
         rendering.line_width2d = line_width
         rendering.line_width3d = line_width
@@ -86,9 +116,17 @@ def render_skeleton(webdriver, source, *, layout, line_width, size, mode=None):
                 rendering.mode3d = mode
             else:
                 rendering.mode2d = mode
-        rendering.shader = USER_SHADER
+        rendering.shader = shader
         rendering.shader_controls["color"] = "#f00"
     return screenshot_pixels(webdriver, size)
+
+
+def drawn_pixel_count(image):
+    return int((image[..., 0] != 0).sum())
+
+
+def brightest_red(image):
+    return int(image[..., 0].max())
 
 
 def assert_solid_color(image, color):
@@ -224,3 +262,52 @@ def test_skeleton_render_mode(webdriver):
             f"{plain_count} for {layout}/{plain}. Enlarging the nodes should cover "
             "strictly more"
         )
+
+
+# A half opaque line measured 128.
+MIN_BRIGHTNESS_FOR_A_HALF_OPAQUE_LINE = 122
+
+
+def test_cylinder_default_shader_object_alpha(webdriver):
+    # The line is the reference because its emitDefault does not premultiply twice.
+    # A tube overlaps itself at a joint, so it can only read above the line.
+    def brightest(mode):
+        return brightest_red(
+            render_skeleton(
+                webdriver,
+                TwoNodeSkeletonSource(),
+                layout="3d",
+                line_width=10,
+                size=100,
+                mode=mode,
+                shader=DEFAULT_SHADER,
+                object_alpha=0.5,
+            )
+        )
+
+    line = brightest("lines")
+    tube = brightest("cylinders")
+    assert line > MIN_BRIGHTNESS_FOR_A_HALF_OPAQUE_LINE, (
+        f"the half opaque line reached only {line}, too dark to compare against"
+    )
+    assert tube >= line, (
+        f"the half opaque tube reached {tube} against {line} for a line of the same "
+        f"colour and opacity. About {line // 2} means the object alpha was likely applied "
+        "twice"
+    )
+
+
+def test_edge_only_user_shader_still_draws_edges(webdriver):
+    # The node program's fallback is that same source, so it ends up with no shader.
+    image = render_skeleton(
+        webdriver,
+        TwoNodeSkeletonSource(),
+        layout="xy",
+        line_width=10,
+        size=100,
+        shader=EDGE_ONLY_SHADER,
+    )
+    assert drawn_pixel_count(image) > 200, (
+        f"drew {drawn_pixel_count(image)} pixels, so a node shader that failed to "
+        "compile meant the edge pass never happened"
+    )

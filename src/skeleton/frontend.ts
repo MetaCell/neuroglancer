@@ -119,6 +119,22 @@ const DEFAULT_FRAGMENT_MAIN = `void main() {
 }
 `;
 
+// The colour of a raycast primitive, shared by the cone and the sphere.
+// emitRGBA takes a colour from the user's shader, so it premultiplies by alpha.
+// `emitDefault` reads `uColor`, which instead arrives premultiplied by alpha.
+// raycastLightingFactor is to apply spotlight lighting and ambient lighting
+// in a Lambertian shading model
+const glsl_raycastSkeletonEmit = `
+void emitRGBA(vec4 color) {
+  emit(vec4(color.rgb * raycastLightingFactor * color.a, color.a),
+       raycastSurfaceDepth, uPickID);
+}
+void emitDefault() {
+  emit(vec4(uColor.rgb * raycastLightingFactor, uColor.a),
+       raycastSurfaceDepth, uPickID);
+}
+`;
+
 export enum SkeletonRenderMode3d {
   LINES = 0,
   LINES_AND_POINTS = 1,
@@ -195,6 +211,7 @@ class RenderHelper extends RefCounted {
   defineCommonShader(builder: ShaderBuilder) {
     defineVertexId(builder);
     builder.require(projectionMatrixShaderModule);
+    // Already premultiplied by the object alpha, by getObjectColor.
     builder.addUniform("highp vec4", "uColor");
     builder.addUniform("highp uint", "uPickID");
     this.defineAttributeAccess(builder);
@@ -289,15 +306,7 @@ emitRaycastCone(canonicalVertexA, canonicalVertexB, edgeRadii.x, edgeRadii.y,
                     getRaycastRadiusForPixels(canonicalVertexA, uNodeClipPixelRadius),
                     getRaycastRadiusForPixels(canonicalVertexB, uNodeClipPixelRadius));
 `;
-      builder.addFragmentCode(`
-void emitRGB(vec3 color) {
-  emit(vec4(color * raycastLightingFactor * uColor.a, uColor.a),
-       raycastSurfaceDepth, uPickID);
-}
-void emitDefault() {
-  emitRGB(uColor.rgb);
-}
-`);
+      builder.addFragmentCode(glsl_raycastSkeletonEmit);
     } else {
       defineLineShader(builder, { endpointClipping: true });
       builder.addUniform("highp float", "uLineWidth");
@@ -307,14 +316,22 @@ highp uint lineEndpointIndex = getLineEndpointIndex();
 highp uint vertexIndex = aVertexIndex.x * (1u - lineEndpointIndex) + aVertexIndex.y * lineEndpointIndex;
 `;
       builder.addFragmentCode(`
-void emitRGB(vec3 color) {
-  emit(vec4(color * uColor.a, uColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()}), uPickID);
+void emitRGBA(vec4 color) {
+  emit(vec4(color.rgb * color.a, color.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()}), uPickID);
 }
 void emitDefault() {
   emit(vec4(uColor.rgb, uColor.a * getLineAlpha() * ${this.getCrossSectionFadeFactor()}), uPickID);
 }
 `);
     }
+    // TODO unlike nodes, emitRGB is modulated by the layer alpha
+    // and alike with nodes the code is included here to be consistent
+    // across cylinders and lines either way
+    builder.addFragmentCode(`
+void emitRGB(vec3 color) {
+  emitRGBA(vec4(color, uColor.a));
+}
+`);
     this.finalizeShaderBuilder(
       builder,
       shaderBuilderState,
@@ -345,12 +362,7 @@ emitRaycastSphere(
     canonicalPosition,
     getRaycastRadiusForPixels(canonicalPosition, uNodePixelRadius));
 `;
-      builder.addFragmentCode(`
-void emitRGBA(vec4 color) {
-  emit(vec4(color.rgb * raycastLightingFactor * color.a, color.a),
-       raycastSurfaceDepth, uPickID);
-}
-`);
+      builder.addFragmentCode(glsl_raycastSkeletonEmit);
     } else {
       defineCircleShader(builder, /*crossSectionFade=*/ this.targetIsSliceView);
       builder.addUniform("highp float", "uNodeDiameter");
@@ -360,14 +372,17 @@ void emitRGBA(vec4 color) {
   vec4 borderColor = color;
   emit(getCircleColor(color, borderColor), uPickID);
 }
+void emitDefault() {
+  emitRGBA(uColor);
+}
 `);
     }
+    // TODO unsure if nodes are intentionally not modulated
+    // by the layer alpha, but either way, this
+    // code is here to be consistent across points and balls
     builder.addFragmentCode(`
 void emitRGB(vec3 color) {
   emitRGBA(vec4(color, 1.0));
-}
-void emitDefault() {
-  emitRGBA(uColor);
 }
 `);
     this.finalizeShaderBuilder(
@@ -672,10 +687,11 @@ void emitDefault() {
     }
   }
 
-  endLayer(gl: GL, ...shaders: ShaderProgram[]) {
+  endLayer(gl: GL, ...shaders: (ShaderProgram | null)[]) {
     const { vertexAttributes } = this;
     const numAttributes = vertexAttributes.length;
     for (const shader of shaders) {
+      if (shader === null) continue;
       for (let i = 0; i < numAttributes; ++i) {
         const textureUnit =
           shader.textureUnit(vertexAttributeSamplerSymbols[i]) +
@@ -872,54 +888,55 @@ export class SkeletonLayer extends RefCounted {
       edgeShaderResult;
     const { shader: nodeShader, parameters: nodeShaderParameters } =
       nodeShaderResult;
-    if (edgeShader === null || nodeShader === null) {
-      // Shader error, skip drawing.
-      return;
-    }
+    if (edgeShader === null && nodeShader === null) return;
 
     const { shaderControlState } = this.displayState.skeletonRenderingOptions;
     const { projectionParameters } = renderContext;
 
     this.collectVisibleSkeletons(layer, renderContext);
 
-    edgeShader.bind();
-    renderHelper.beginLayer(gl, edgeShader, renderContext, modelMatrix);
-    setControlsInShader(
-      gl,
-      edgeShader,
-      shaderControlState,
-      edgeShaderParameters.parseResult,
-    );
-    renderHelper.setEdgeSizeUniforms(
-      gl,
-      edgeShader,
-      projectionParameters,
-      lineWidth,
-      nodeDiameter,
-    );
-    renderHelper.beginEdges(edgeShader);
-    this.drawPass(renderContext, renderHelper, edgeShader, (skeleton) =>
-      renderHelper.drawEdges(gl, edgeShader, skeleton),
-    );
-    renderHelper.endEdges();
+    if (edgeShader !== null) {
+      edgeShader.bind();
+      renderHelper.beginLayer(gl, edgeShader, renderContext, modelMatrix);
+      setControlsInShader(
+        gl,
+        edgeShader,
+        shaderControlState,
+        edgeShaderParameters.parseResult,
+      );
+      renderHelper.setEdgeSizeUniforms(
+        gl,
+        edgeShader,
+        projectionParameters,
+        lineWidth,
+        nodeDiameter,
+      );
+      renderHelper.beginEdges(edgeShader);
+      this.drawPass(renderContext, renderHelper, edgeShader, (skeleton) =>
+        renderHelper.drawEdges(gl, edgeShader, skeleton),
+      );
+      renderHelper.endEdges();
+    }
 
-    nodeShader.bind();
-    renderHelper.beginLayer(gl, nodeShader, renderContext, modelMatrix);
-    renderHelper.setNodeSizeUniforms(
-      gl,
-      nodeShader,
-      projectionParameters,
-      nodeDiameter,
-    );
-    setControlsInShader(
-      gl,
-      nodeShader,
-      shaderControlState,
-      nodeShaderParameters.parseResult,
-    );
-    this.drawPass(renderContext, renderHelper, nodeShader, (skeleton) =>
-      renderHelper.drawNodes(gl, nodeShader, skeleton),
-    );
+    if (nodeShader !== null) {
+      nodeShader.bind();
+      renderHelper.beginLayer(gl, nodeShader, renderContext, modelMatrix);
+      renderHelper.setNodeSizeUniforms(
+        gl,
+        nodeShader,
+        projectionParameters,
+        nodeDiameter,
+      );
+      setControlsInShader(
+        gl,
+        nodeShader,
+        shaderControlState,
+        nodeShaderParameters.parseResult,
+      );
+      this.drawPass(renderContext, renderHelper, nodeShader, (skeleton) =>
+        renderHelper.drawNodes(gl, nodeShader, skeleton),
+      );
+    }
 
     renderHelper.endLayer(gl, edgeShader, nodeShader);
   }
