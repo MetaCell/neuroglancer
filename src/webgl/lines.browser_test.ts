@@ -29,6 +29,8 @@ import { defineVertexId, VertexIdHelper } from "#src/webgl/vertex_id.js";
 // one outside the depth range without setting up a projection.
 const VIEWPORT = 64;
 
+// Clip space x, y, z, w. A point is inside the depth range when the magnitude of z
+// is at most w, so a w of 1 puts the range at -1 to 1.
 type ClipPoint = readonly [number, number, number, number];
 
 interface LineSpec {
@@ -115,21 +117,30 @@ describe("line endpoint clipping", () => {
     });
   });
 
-  it("measures the disc from the endpoints as given, not the clipped ends", () => {
+  it("clips at an endpoint inside the depth range but not at one outside it", () => {
     webglTest((gl) => {
-      // z runs -3 to 3, so only the middle third survives the depth range. Both
-      // given endpoints end up over one clip radius clear of what is drawn, so the
-      // discs must remove nothing.
+      // Endpoint A has z of -1.5, so it is outside the range and the GPU clips away
+      // the node quad there. Its disc must not apply. A sits at pixel 24 and the
+      // depth range trims the drawn line to start at pixel 32, so a 10 pixel radius
+      // would otherwise reach past pixel 33.
+      //
+      // Endpoint B has z of 0.5, is inside the range, and keeps its disc. It sits
+      // at pixel 56, which is the drawn end, so the disc clears pixel 55.
+      //
+      // Measuring either disc from the clipped end rather than the endpoint as
+      // given puts A's disc at pixel 32, which also takes pixel 33.
       const spec = {
-        endpointA: [-1, 0, -3, 1],
-        endpointB: [1, 0, 3, 1],
+        endpointA: [-0.25, 0, -1.5, 1],
+        endpointB: [0.75, 0, 0.5, 1],
         widthInPixels: 6,
       } as const;
       const unclipped = drawLine(gl, { ...spec, clipRadiusInPixels: 0 });
       const clipped = drawLine(gl, { ...spec, clipRadiusInPixels: 10 });
 
-      expect(coveredCount(unclipped)).toBeGreaterThan(0);
-      expect(coveredCount(clipped)).toBe(coveredCount(unclipped));
+      expect(isCovered(unclipped, 33, VIEWPORT / 2)).toBe(true);
+      expect(isCovered(clipped, 33, VIEWPORT / 2)).toBe(true);
+      expect(isCovered(unclipped, 55, VIEWPORT / 2)).toBe(true);
+      expect(isCovered(clipped, 55, VIEWPORT / 2)).toBe(false);
     });
   });
 

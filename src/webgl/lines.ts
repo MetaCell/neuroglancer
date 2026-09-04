@@ -76,8 +76,9 @@ export function defineLineShader(
 ${
   endpointClipping
     ? `highp vec2 lineClipToWindow(vec4 clip) {
-  // Far off screen for a point at or behind the eye, which has no clip disc.
-  if (!(clip.w > 0.0)) return vec2(-1e6);
+  // Far off screen unless the endpoint is inside the depth range. A node is drawn
+  // there only if it is, and the disc exists to leave room for one.
+  if (!(clip.w > 0.0 && clip.z >= -clip.w && clip.z <= clip.w)) return vec2(-1e6);
   return (clip.xy / clip.w * 0.5 + 0.5) / uLineParams.xy;
 }`
     : ""
