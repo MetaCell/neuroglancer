@@ -125,6 +125,12 @@
     crosshair;
 }
 
+.neuroglancer-rendered-data-panel[data-skeleton-edit-mode="insert"] {
+  cursor:
+    url("./images/insert_node_cursor.svg") 20 20,
+    crosshair;
+}
+
 .neuroglancer-rendered-data-panel[data-skeleton-edit-mode="split"] {
   cursor:
     url("./images/split_cursor.svg") 20 20,

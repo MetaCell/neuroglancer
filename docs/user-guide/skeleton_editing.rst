@@ -2,7 +2,8 @@ Skeleton Editing
 ================
 
 Neuroglancer supports interactive editing of skeleton annotations, including
-adding, moving, and deleting nodes, as well as merging and splitting skeletons.
+adding, inserting, moving, and deleting nodes, as well as merging and splitting
+skeletons.
 
 .. _skeleton-editing-sources:
 
@@ -171,13 +172,10 @@ Once a node is selected, you can:
 Editing Tools
 -------------
 
-To make structural edits to nodes, you must bind at least some of the editing
-tools available in the skeleton tab. The available tools are **Edit**, **Merge**,
-and **Split**.
-
-The skeleton tab also provides a **Find Path** inspection tool for spatially
-indexed skeletons. Unlike the editing tools, **Find Path** is available for
-read-only sources.
+Structural edits are made with the **Edit** tool in the skeleton tab. The
+skeleton tab also provides a **Find Path** inspection tool for spatially indexed
+skeletons. Unlike the Edit tool, **Find Path** is available for read-only
+sources.
 
 To bind a tool, click on it in the UI and hold down a key. To activate the tool,
 press :kbd:`Shift` + the bound key. For example, if you bind :kbd:`E` to the Edit
@@ -218,15 +216,34 @@ is loaded is not supported. Find Path state is saved with its datasource.
 Edit Tool
 ~~~~~~~~~
 
-With the Edit tool active:
+While the Edit tool is active, a plain left click never rotates or pans the
+view. Navigate with the middle mouse button, or hold :kbd:`Control` (:kbd:`Cmd`
+on macOS) with the left mouse button as a trackpad-friendly alternative. The
+status bar lists the actions available in the current state.
 
-- **Move a node** — select the node, then hold :kbd:`Alt` and left-click and drag
-  it to the new location. This does not use picking to snap to nearby objects.
-- **Add a child node** — select an existing node, then :kbd:`Control`-click where
-  you want to place the new node. The new node is added as a child of the selected
-  node.
-- **Start a new skeleton** — :kbd:`Control`-click with no node selected to add a
-  root node with no parent.
+- **Select a node** — left-click it.
+- **Move a node** — left-click a node and drag it to the new location. This does
+  not use picking to snap to nearby objects.
+- **Add a child node** — select an existing node, then :kbd:`Shift`-click where
+  you want to place the new node. The new node is added as a child of the
+  selected node. A node marked as a true end cannot be given a child until the
+  true end mark is cleared.
+- **Show a skeleton** — double-click a node of a non-visible skeleton to make the
+  skeleton visible.
+- **Pin a node selection** — :kbd:`Control` + right-click a node.
+
+The remaining edits are momentary modes. Hold the mode key, click in the viewer,
+and release the key to return to normal editing. While a mode key is held the
+cursor changes and the status bar describes what the next click does. A mode
+stays active for as long as the key is held, so several edits of the same kind
+can be made in one hold.
+
+- **New skeleton** — hold :kbd:`N` and click in empty space to add a root node
+  with no parent. One skeleton is created per key hold.
+- **Delete a node** — hold :kbd:`D` and click the node to delete.
+- **Merge skeletons** — hold :kbd:`M`; see :ref:`skeleton-editing-merge`.
+- **Insert a node** — hold :kbd:`I`; see :ref:`skeleton-editing-insert`.
+- **Split a skeleton** — hold :kbd:`S`; see :ref:`skeleton-editing-split`.
 
 For CATMAID sources, adding child nodes is optimistic by default: the node is
 previewed locally before CATMAID confirms it. If CATMAID rejects the request,
@@ -238,17 +255,39 @@ state and waits for server confirmation. The **Skeleton** tab shows a compact
 optimistic edit queue debug panel while optimistic mode is enabled or queued
 actions are present.
 
-Merge Tool
-~~~~~~~~~~
+.. _skeleton-editing-merge:
 
-With the Merge tool active, select the "from" node first and then the "to" node. You must merge from a visible skeleton, but the "to" node may belong to a non-visible skeleton.
+Merging Skeletons
+~~~~~~~~~~~~~~~~~
+
+Hold :kbd:`M` and click the "from" node first, then the "to" node. You must
+merge from a visible skeleton, but the "to" node may belong to a non-visible
+skeleton. Clicking a second node on the same skeleton as the "from" node moves
+the "from" node there instead of merging.
 The surviving skeleton ID will be the ID of the skeleton containing the "from"
 node. The only exception to this is if the CATMAID skeleton has annotations, and one of the skeletons is annotated as ``stable`` -- in this case, the surviving skeleton ID is from the one that was annotated as ``stable``. It is not currently possible to set these annotations within neuroglancer.
 
-Split Tool
-~~~~~~~~~~
+.. _skeleton-editing-insert:
 
-With the Split tool active, select the node at which to split. The selected node
+Inserting a Node
+~~~~~~~~~~~~~~~~
+
+Hold :kbd:`I` and click two directly connected nodes: one must be the parent of
+the other. The order of the two clicks does not matter. A new node is inserted
+at the midpoint of the edge between them; it becomes a child of the parent node
+and the new parent of the child node.
+
+Because a node can have only one parent, two nodes that are not directly
+connected are rejected and nothing is changed. The first node you clicked stays
+selected so you can pick one of its neighbours instead. Both nodes must belong
+to a visible skeleton.
+
+.. _skeleton-editing-split:
+
+Splitting a Skeleton
+~~~~~~~~~~~~~~~~~~~~
+
+Hold :kbd:`S` and click the node at which to split. The selected node
 is included in the newly created skeleton, not the surviving original skeleton.
 The edge between the selected node and its parent is deleted, and the selected
 node becomes the root of the new skeleton. A split always produces exactly two
