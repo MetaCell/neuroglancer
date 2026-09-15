@@ -1287,21 +1287,29 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
       );
       return;
     }
-    const pickedNodeId = this.getPickedSpatialSkeletonNode()?.nodeId;
-    const pickedNode =
-      pickedNodeId === undefined
-        ? undefined
-        : skeletonLayer.getNode(pickedNodeId);
-    if (pickedNode === undefined) {
+    const nodeHit = this.getPickedSpatialSkeletonNode();
+    if (nodeHit === undefined) {
       StatusMessage.showTemporaryMessage(
         "Click a skeleton node to insert between.",
       );
       return;
     }
-    if (!this.isSpatialSkeletonSegmentVisible(pickedNode.segmentId)) {
+    // Nodes of non-visible skeletons are only known from the pick buffer, so
+    // check visibility before requiring the fully loaded node.
+    if (
+      nodeHit.segmentId !== undefined &&
+      !this.isSpatialSkeletonSegmentVisible(nodeHit.segmentId)
+    ) {
       StatusMessage.showTemporaryMessage(
-        `Nodes selected for an insert operation must be from a visible skeleton. Make skeleton ${pickedNode.segmentId} visible in the Seg tab or by double-clicking it in the viewer.`,
+        `Nodes selected for an insert operation must be from a visible skeleton. Make skeleton ${nodeHit.segmentId} visible in the Seg tab or by double-clicking it in the viewer.`,
         3000,
+      );
+      return;
+    }
+    const pickedNode = skeletonLayer.getNode(nodeHit.nodeId);
+    if (pickedNode === undefined) {
+      StatusMessage.showTemporaryMessage(
+        `Node ${nodeHit.nodeId} is not available in the skeleton cache.`,
       );
       return;
     }

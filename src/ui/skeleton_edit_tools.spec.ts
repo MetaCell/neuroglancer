@@ -1218,6 +1218,34 @@ describe("spatial_skeleton_edit_tool", () => {
     },
   );
 
+  it("rejects a pick on a non-visible skeleton before resolving the node", async () => {
+    const hiddenNode: SpatiallyIndexedSkeletonNode = {
+      nodeId: 9,
+      segmentId: 12,
+      position: new Float32Array([1, 1, 1]),
+    };
+    // Only skeleton 11 is visible and fully loaded; the hidden node is known
+    // solely from the pick buffer.
+    const harness = makeInsertToolHarness([]);
+    const showTemporaryMessage = vi.spyOn(
+      StatusMessage,
+      "showTemporaryMessage",
+    );
+    try {
+      harness.actions.get(SKELETON_ENTER_INSERT_MODE)?.({});
+      await harness.pickNode(hiddenNode);
+
+      expect(showTemporaryMessage).toHaveBeenCalledWith(
+        expect.stringContaining("Make skeleton 12 visible"),
+        3000,
+      );
+      expect(harness.tool.insertFirstNode).toBeUndefined();
+      expect(harness.selectSpatialSkeletonNode).not.toHaveBeenCalled();
+    } finally {
+      harness.dispose();
+    }
+  });
+
   it("rejects insertion between nodes that are not directly connected and keeps the first pick", async () => {
     const rootNode: SpatiallyIndexedSkeletonNode = {
       nodeId: 1,
