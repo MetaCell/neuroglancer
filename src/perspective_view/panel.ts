@@ -19,10 +19,13 @@ import "#src/perspective_view/panel.css";
 
 import type { PerspectiveViewAnnotationLayer } from "#src/annotation/renderlayer.js";
 import { AxesLineHelper, computeAxisLineMatrix } from "#src/axes_lines.js";
+import type { CoordinateSpace } from "#src/coordinate_transform.js";
+import { coordinateSpacesEqual } from "#src/coordinate_transform.js";
 import type { DisplayContext } from "#src/display_context.js";
 import { applyRenderViewportToProjectionMatrix } from "#src/display_context.js";
 import type { VisibleRenderLayerTracker } from "#src/layer/index.js";
 import { makeRenderedPanelVisibleLayerTracker } from "#src/layer/index.js";
+import type { ProjectedPosition } from "#src/panel_overlay.js";
 import { PERSPECTIVE_VIEW_RPC_ID } from "#src/perspective_view/base.js";
 import type {
   PerspectiveViewReadyRenderContext,
@@ -1502,6 +1505,55 @@ export class PerspectivePanel extends RenderedDataPanel {
       computeAxisLineMatrix(projectionParameters, axisLength),
       /*blend=*/ false,
     );
+  }
+
+  projectPosition(
+    position: Float32Array,
+    coordinateSpace: CoordinateSpace,
+  ): ProjectedPosition | undefined {
+    if (
+      !coordinateSpacesEqual(
+        coordinateSpace,
+        this.navigationState.coordinateSpace.value,
+      )
+    ) {
+      return undefined;
+    }
+    const {
+      viewProjectionMat,
+      logicalWidth,
+      logicalHeight,
+      displayDimensionRenderInfo: { displayDimensionIndices },
+    } = this.projectionParameters.value;
+    const clip = tempVec4;
+    for (let i = 0; i < 3; ++i) {
+      const index = displayDimensionIndices[i];
+      clip[i] = index >= 0 ? position[index] : 0;
+    }
+    clip[3] = 1;
+    vec4.transformMat4(clip, clip, viewProjectionMat);
+    const w = clip[3];
+    if (w <= 0) return undefined;
+    const ndcZ = clip[2] / w;
+    if (ndcZ < -1 || ndcZ > 1) return undefined;
+    const x = (clip[0] / w) * 0.5 + 0.5;
+    const y = 1 - ((clip[1] / w) * 0.5 + 0.5);
+
+    // Clip-space w is proportional to view depth under perspective projection,
+    // so centerW / w is 1 at the focal plane, larger for nearer points and
+    // smaller for farther ones.  Under orthographic projection both equal m[15].
+    const m = viewProjectionMat;
+    const center = this.navigationState.position.value;
+    let centerW = m[15];
+    for (let i = 0; i < 3; ++i) {
+      const index = displayDimensionIndices[i];
+      if (index >= 0) centerW += m[3 + 4 * i] * center[index];
+    }
+    return {
+      x: x * logicalWidth,
+      y: y * logicalHeight,
+      scale: centerW > 0 ? centerW / w : 1,
+    };
   }
 
   zoomByMouse(factor: number) {

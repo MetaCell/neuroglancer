@@ -19,10 +19,16 @@ import "#src/noselect.css";
 
 import type { Annotation } from "#src/annotation/index.js";
 import { getAnnotationTypeRenderHandler } from "#src/annotation/type_handler.js";
+import type { CoordinateSpace } from "#src/coordinate_transform.js";
 import type { DisplayContext } from "#src/display_context.js";
 import { RenderedPanel } from "#src/display_context.js";
 import type { NavigationState } from "#src/navigation_state.js";
 import { PickIDManager } from "#src/object_picking.js";
+import type {
+  PanelOverlayHost,
+  ProjectedPosition,
+} from "#src/panel_overlay.js";
+import { PanelOverlayManager } from "#src/panel_overlay.js";
 import {
   displayToLayerCoordinates,
   layerToDisplayCoordinates,
@@ -81,7 +87,10 @@ export class PickRequest {
 
 const pickRequestInterval = 30;
 
-export abstract class RenderedDataPanel extends RenderedPanel {
+export abstract class RenderedDataPanel
+  extends RenderedPanel
+  implements PanelOverlayHost
+{
   /**
    * Current mouse position within the viewport, or -1 if the mouse is not in the viewport.
    */
@@ -326,8 +335,10 @@ export abstract class RenderedDataPanel extends RenderedPanel {
     newPickingData.pickIDs.clear();
     if (!this.drawWithPicking(newPickingData)) {
       newPickingData.frameNumber = -1;
+      this.overlays.clear();
       return;
     }
+    this.overlays.update();
     // For the new frame, allow new pick requests regardless of interval since last request.
     this.nextPickRequestTime = 0;
     if (this.mouseX >= 0) {
@@ -336,6 +347,19 @@ export abstract class RenderedDataPanel extends RenderedPanel {
   }
 
   abstract drawWithPicking(pickingData: FramePickingData): boolean;
+
+  abstract projectPosition(
+    position: Float32Array,
+    coordinateSpace: CoordinateSpace,
+  ): ProjectedPosition | undefined;
+
+  private readonly overlays = this.registerDisposer(
+    new PanelOverlayManager(this, this.context),
+  );
+
+  override updateOverlays() {
+    this.overlays.update();
+  }
 
   private nextPickRequestTime = 0;
   private pendingPickRequestTimerId = -1;
@@ -455,6 +479,13 @@ export abstract class RenderedDataPanel extends RenderedPanel {
       this.onTouchstart.bind(this),
     );
     this.registerEventListener(element, "mouseleave", () => this.onMouseout());
+    // Removing an element that covers the panel (e.g. the command palette)
+    // dispatches `mouseenter` without `mousemove`; re-pick from its position.
+    this.registerEventListener(
+      element,
+      "mouseenter",
+      this.onMousemove.bind(this),
+    );
     this.registerEventListener(
       element,
       "mouseover",

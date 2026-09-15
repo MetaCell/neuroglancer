@@ -17,6 +17,7 @@
 import { debounce } from "lodash-es";
 
 import type { FrameNumberCounter } from "#src/chunk_manager/frontend.js";
+import type { PanelOverlaySource } from "#src/panel_overlay.js";
 import { TrackableValue } from "#src/trackable_value.js";
 import { animationFrameDebounce } from "#src/util/animation_frame_debounce.js";
 import type { Borrowed } from "#src/util/disposable.js";
@@ -301,6 +302,8 @@ export abstract class RenderedPanel extends RefCounted {
   }
 
   abstract draw(): void;
+
+  updateOverlays(): void {}
 
   disposed() {
     this.context.unmonitorPanel(this.element, this.monitorState);
@@ -640,6 +643,43 @@ export class DisplayContext extends RefCounted implements FrameNumberCounter {
     animationFrameDebounce(() => this.draw()),
   );
 
+  readonly panelOverlays = new Set<PanelOverlaySource>();
+  readonly panelOverlaysChanged = new NullarySignal();
+
+  registerPanelOverlay(source: PanelOverlaySource): () => void {
+    this.panelOverlays.add(source);
+    this.panelOverlaysChanged.dispatch();
+    return () => {
+      if (this.panelOverlays.delete(source)) {
+        this.panelOverlaysChanged.dispatch();
+      }
+    };
+  }
+
+  readonly scheduleOverlayUpdate = this.registerCancellable(
+    animationFrameDebounce(() => this.updateOverlays()),
+  );
+
+  private updateOverlays() {
+    this.ensureBoundsUpdated();
+    this.forEachDrawablePanel((panel) => panel.updateOverlays());
+  }
+
+  private forEachDrawablePanel(callback: (panel: RenderedPanel) => void) {
+    const { orderedPanels, panels } = this;
+    if (orderedPanels.length !== panels.size) {
+      orderedPanels.push(...panels);
+      orderedPanels.sort((a, b) => a.drawOrder - b.drawOrder);
+    }
+    for (const panel of orderedPanels) {
+      panel.ensureBoundsUpdated();
+      if (!panel.shouldDraw) continue;
+      const { renderViewport } = panel;
+      if (renderViewport.width === 0 || renderViewport.height === 0) continue;
+      callback(panel);
+    }
+  }
+
   ensureBoundsUpdated() {
     const { resizeGeneration } = this;
     if (this.boundsGeneration === resizeGeneration) return;
@@ -662,18 +702,7 @@ export class DisplayContext extends RefCounted implements FrameNumberCounter {
     this.ensureBoundsUpdated();
     this.gl.clearColor(0.0, 0.0, 0.0, 0.0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    const { orderedPanels, panels } = this;
-    if (orderedPanels.length !== panels.size) {
-      orderedPanels.push(...panels);
-      orderedPanels.sort((a, b) => a.drawOrder - b.drawOrder);
-    }
-    for (const panel of orderedPanels) {
-      panel.ensureBoundsUpdated();
-      if (!panel.shouldDraw) continue;
-      const { renderViewport } = panel;
-      if (renderViewport.width === 0 || renderViewport.height === 0) continue;
-      panel.draw();
-    }
+    this.forEachDrawablePanel((panel) => panel.draw());
 
     // Ensure the alpha buffer is set to 1.
     gl.disable(gl.SCISSOR_TEST);
@@ -684,6 +713,8 @@ export class DisplayContext extends RefCounted implements FrameNumberCounter {
     this.updateFinished.dispatch();
     this.framerateMonitor.endLastTimeQuery(gl, ext);
     this.framerateMonitor.grabAnyFinishedQueryResults(gl);
+    // Panels updated their overlays during draw().
+    this.scheduleOverlayUpdate.cancel();
   }
 
   getDepthArray(): Float32Array<ArrayBuffer> {

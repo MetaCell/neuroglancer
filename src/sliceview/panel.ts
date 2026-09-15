@@ -15,10 +15,13 @@
  */
 
 import { AxesLineHelper, computeAxisLineMatrix } from "#src/axes_lines.js";
+import type { CoordinateSpace } from "#src/coordinate_transform.js";
+import { coordinateSpacesEqual } from "#src/coordinate_transform.js";
 import type { DisplayContext } from "#src/display_context.js";
 import type { VisibleRenderLayerTracker } from "#src/layer/index.js";
 import { makeRenderedPanelVisibleLayerTracker } from "#src/layer/index.js";
 import { PickIDManager } from "#src/object_picking.js";
+import type { ProjectedPosition } from "#src/panel_overlay.js";
 import type {
   FramePickingData,
   RenderedDataViewerState,
@@ -530,6 +533,47 @@ export class SliceViewPanel extends RenderedDataPanel {
       return;
     }
     setStateFromRelative(pickRadius, pickRadius, 0);
+  }
+
+  projectPosition(
+    position: Float32Array,
+    coordinateSpace: CoordinateSpace,
+  ): ProjectedPosition | undefined {
+    if (
+      !coordinateSpacesEqual(
+        coordinateSpace,
+        this.navigationState.coordinateSpace.value,
+      )
+    ) {
+      return undefined;
+    }
+    const {
+      viewProjectionMat,
+      logicalWidth,
+      logicalHeight,
+      displayDimensionRenderInfo: { displayDimensionIndices },
+    } = this.sliceView.projectionParameters.value;
+    const displayPos = tempVec3;
+    displayPos[0] =
+      displayDimensionIndices[0] >= 0
+        ? position[displayDimensionIndices[0]]
+        : 0;
+    displayPos[1] =
+      displayDimensionIndices[1] >= 0
+        ? position[displayDimensionIndices[1]]
+        : 0;
+    displayPos[2] =
+      displayDimensionIndices[2] >= 0
+        ? position[displayDimensionIndices[2]]
+        : 0;
+    vec3.transformMat4(displayPos, displayPos, viewProjectionMat);
+    const ndcZ = displayPos[2];
+    if (ndcZ < -1 || ndcZ > 1) return undefined;
+    return {
+      x: (displayPos[0] * 0.5 + 0.5) * logicalWidth,
+      y: (1 - (displayPos[1] * 0.5 + 0.5)) * logicalHeight,
+      opacity: 1 - Math.abs(ndcZ),
+    };
   }
 
   /**
