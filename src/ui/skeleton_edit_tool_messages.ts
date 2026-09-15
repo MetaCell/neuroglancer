@@ -24,8 +24,10 @@ import {
   DELETE_CLICK_ACTION,
   EXIT_CREATE_ACTION,
   EXIT_DELETE_ACTION,
+  EXIT_INSERT_ACTION,
   EXIT_MERGE_ACTION,
   EXIT_SPLIT_ACTION,
+  INSERT_ACTION,
   MERGE_ACTION,
   MOVE_ACTION,
   NEW_SKELETON_ACTION,
@@ -138,6 +140,7 @@ export function getSpatialSkeletonDefaultStatusText(
           SELECT_ACTION,
           MOVE_ACTION,
           MERGE_ACTION,
+          INSERT_ACTION,
           SPLIT_ACTION,
           NEW_SKELETON_ACTION,
           DELETE_ACTION,
@@ -152,6 +155,7 @@ export function getSpatialSkeletonDefaultStatusText(
           MOVE_ACTION,
           ADD_NODE_ACTION,
           MERGE_ACTION,
+          INSERT_ACTION,
           SPLIT_ACTION,
           NEW_SKELETON_ACTION,
           DELETE_ACTION,
@@ -164,6 +168,7 @@ export function getSpatialSkeletonDefaultStatusText(
         actions: [
           SHOW_SKELETON_ACTION,
           MERGE_ACTION,
+          INSERT_ACTION,
           SPLIT_ACTION,
           NEW_SKELETON_ACTION,
           DELETE_ACTION,
@@ -225,6 +230,28 @@ export function getSpatialSkeletonMergeStatusText(
 export function getSpatialSkeletonMergingStatusText(): SpatialSkeletonToolStatusText {
   return {
     status: "Merge · merging nodes…",
+    actions: [SPATIAL_SKELETON_ROTATE_PAN_ACTION],
+  };
+}
+
+export type SpatialSkeletonInsertState = "no-first-node" | "first-node-picked";
+
+export function getSpatialSkeletonInsertStatusText(
+  state: SpatialSkeletonInsertState,
+  canExitWithKey: boolean,
+): SpatialSkeletonToolStatusText {
+  return {
+    status:
+      state === "no-first-node"
+        ? "Insert · click the first node"
+        : "Insert · click the parent or a child of the first node",
+    actions: withExitHint(SELECT_ACTION, canExitWithKey, EXIT_INSERT_ACTION),
+  };
+}
+
+export function getSpatialSkeletonInsertingStatusText(): SpatialSkeletonToolStatusText {
+  return {
+    status: "Insert · inserting node…",
     actions: [SPATIAL_SKELETON_ROTATE_PAN_ACTION],
   };
 }

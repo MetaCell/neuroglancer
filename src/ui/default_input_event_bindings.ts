@@ -20,6 +20,7 @@ import {
   SKELETON_CYCLE_BRANCHES,
   SKELETON_ENTER_CREATE,
   SKELETON_ENTER_DELETE_MODE,
+  SKELETON_ENTER_INSERT_MODE,
   SKELETON_ENTER_MERGE_MODE,
   SKELETON_ENTER_SPLIT_MODE,
   SKELETON_FIND_PATH_SELECT_ENDPOINT,
@@ -265,6 +266,7 @@ export function getDefaultSkeletonEditToolBindings() {
         "at:shift+mousedown0": SKELETON_ADD_NODE,
         "at:keym": SKELETON_ENTER_MERGE_MODE,
         "at:keys": SKELETON_ENTER_SPLIT_MODE,
+        "at:keyi": SKELETON_ENTER_INSERT_MODE,
         "at:keyn": SKELETON_ENTER_CREATE,
         "at:keyd": SKELETON_ENTER_DELETE_MODE,
         "at:control+mousedown2": {
