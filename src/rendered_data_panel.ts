@@ -19,14 +19,14 @@ import "#src/noselect.css";
 
 import type { Annotation } from "#src/annotation/index.js";
 import { getAnnotationTypeRenderHandler } from "#src/annotation/type_handler.js";
-import type { CoordinateSpace } from "#src/coordinate_transform.js";
+import { coordinateSpacesEqual } from "#src/coordinate_transform.js";
 import type { DisplayContext } from "#src/display_context.js";
 import { RenderedPanel } from "#src/display_context.js";
 import type { NavigationState } from "#src/navigation_state.js";
 import { PickIDManager } from "#src/object_picking.js";
 import type {
-  PanelOverlayHost,
   ProjectedPosition,
+  ProjectOverlayPosition,
 } from "#src/panel_overlay.js";
 import { PanelOverlayManager } from "#src/panel_overlay.js";
 import {
@@ -87,10 +87,7 @@ export class PickRequest {
 
 const pickRequestInterval = 30;
 
-export abstract class RenderedDataPanel
-  extends RenderedPanel
-  implements PanelOverlayHost
-{
+export abstract class RenderedDataPanel extends RenderedPanel {
   /**
    * Current mouse position within the viewport, or -1 if the mouse is not in the viewport.
    */
@@ -338,7 +335,7 @@ export abstract class RenderedDataPanel
       this.overlays.clear();
       return;
     }
-    this.overlays.update();
+    this.updateOverlays();
     // For the new frame, allow new pick requests regardless of interval since last request.
     this.nextPickRequestTime = 0;
     if (this.mouseX >= 0) {
@@ -348,17 +345,27 @@ export abstract class RenderedDataPanel
 
   abstract drawWithPicking(pickingData: FramePickingData): boolean;
 
-  abstract projectPosition(
+  protected abstract projectPosition(
     position: Float32Array,
-    coordinateSpace: CoordinateSpace,
   ): ProjectedPosition | undefined;
 
   private readonly overlays = this.registerDisposer(
-    new PanelOverlayManager(this, this.context),
+    new PanelOverlayManager(this.element, this.context),
   );
 
+  private readonly projectOverlayPosition: ProjectOverlayPosition = (
+    position,
+    coordinateSpace,
+  ) =>
+    coordinateSpacesEqual(
+      coordinateSpace,
+      this.navigationState.coordinateSpace.value,
+    )
+      ? this.projectPosition(position)
+      : undefined;
+
   override updateOverlays() {
-    this.overlays.update();
+    this.overlays.update(this.projectOverlayPosition);
   }
 
   private nextPickRequestTime = 0;

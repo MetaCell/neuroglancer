@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2024 Google Inc.
+ * Copyright 2026 Google Inc.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -34,11 +34,13 @@ export interface ProjectedPosition {
   readonly opacity?: number;
 }
 
+export type ProjectOverlayPosition = (
+  position: Float32Array,
+  coordinateSpace: CoordinateSpace,
+) => ProjectedPosition | undefined;
+
 export interface PanelOverlayContext {
-  project(
-    position: Float32Array,
-    coordinateSpace: CoordinateSpace,
-  ): ProjectedPosition | undefined;
+  readonly project: ProjectOverlayPosition;
   readonly container: HTMLElement;
 }
 
@@ -48,14 +50,6 @@ export interface PanelOverlaySource {
   readonly overlayUpdateNeeded: NullarySignal;
   readonly overlayVisible?: WatchableValueInterface<boolean>;
   updatePanelOverlays(context: PanelOverlayContext): void;
-}
-
-export interface PanelOverlayHost {
-  readonly element: HTMLElement;
-  projectPosition(
-    position: Float32Array,
-    coordinateSpace: CoordinateSpace,
-  ): ProjectedPosition | undefined;
 }
 
 interface Binding {
@@ -69,12 +63,12 @@ export class PanelOverlayManager extends RefCounted {
   private readonly requestUpdate = () => this.context.scheduleOverlayUpdate();
 
   constructor(
-    private readonly host: PanelOverlayHost,
+    panelElement: HTMLElement,
     private readonly context: DisplayContext,
   ) {
     super();
     this.container.className = "neuroglancer-panel-overlay-container";
-    host.element.appendChild(this.container);
+    panelElement.appendChild(this.container);
     this.registerDisposer(() => this.container.remove());
     this.registerDisposer(
       context.panelOverlaysChanged.add(() => this.syncSources()),
@@ -117,12 +111,7 @@ export class PanelOverlayManager extends RefCounted {
     return { element, owner };
   }
 
-  update() {
-    const { host } = this;
-    const project = (
-      position: Float32Array,
-      coordinateSpace: CoordinateSpace,
-    ) => host.projectPosition(position, coordinateSpace);
+  update(project: ProjectOverlayPosition) {
     for (const [source, { element }] of this.bindings) {
       element.hidden = source.overlayVisible?.value === false;
       if (element.hidden) continue;
