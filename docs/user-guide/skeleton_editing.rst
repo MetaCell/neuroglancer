@@ -207,10 +207,6 @@ endpoints and route. Deleting the route annotation has the same effect as
 **Clear**. If a generic skeleton contains cycles, **Find Path** selects a
 deterministic route with the fewest edges.
 
-In the 3-D view, the route is rendered as a non-pickable overlay without depth
-occlusion so that the skeleton surface cannot hide it. It may therefore remain
-visible where other geometry passes in front of it.
-
 While Find Path is active, use the middle mouse button to navigate. Control plus
 left mouse provides the same trackpad-friendly navigation alternative as the
 Edit tool.

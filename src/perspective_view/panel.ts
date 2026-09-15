@@ -1080,23 +1080,14 @@ export class PerspectivePanel extends RenderedDataPanel {
         if (renderLayer.isAnnotation) {
           const annotationRenderLayer =
             renderLayer as PerspectiveViewAnnotationLayer;
-          const { displayState } = annotationRenderLayer.base.state;
-          const disableDepthTest = displayState.disableDepthTest.value;
-          if (disableDepthTest) {
-            gl.disable(WebGL2RenderingContext.DEPTH_TEST);
-          }
-          try {
-            if (displayState.disablePicking.value) {
-              disablePicking();
-              annotationRenderLayer.draw(renderContext, attachment);
-              renderContext.bindFramebuffer();
-            } else {
-              annotationRenderLayer.draw(renderContext, attachment);
-            }
-          } finally {
-            if (disableDepthTest) {
-              gl.enable(WebGL2RenderingContext.DEPTH_TEST);
-            }
+          if (
+            annotationRenderLayer.base.state.displayState.disablePicking.value
+          ) {
+            disablePicking();
+            annotationRenderLayer.draw(renderContext, attachment);
+            renderContext.bindFramebuffer();
+          } else {
+            annotationRenderLayer.draw(renderContext, attachment);
           }
         }
       }

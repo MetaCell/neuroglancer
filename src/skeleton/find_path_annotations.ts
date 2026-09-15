@@ -83,12 +83,6 @@ export class SpatialSkeletonFindPathAnnotationController extends RefCounted {
 
     const displayState = new AnnotationDisplayState();
     displayState.color.value.set([1, 1, 1]);
-    // Skeleton tubes write their front-surface depth, while these co-located
-    // annotations follow the centerline behind that surface. Render Find Path
-    // as a non-pickable overlay so it stays visible without moving the exact
-    // route geometry or intercepting the node picks used by the tool.
-    displayState.disablePicking.value = true;
-    displayState.disableDepthTest.value = true;
     displayState.relationshipStates.set(ASSOCIATED_SEGMENTS_RELATIONSHIP, {
       segmentationState: new WatchableValue(layer.displayState),
       showMatches: new TrackableBoolean(false),
