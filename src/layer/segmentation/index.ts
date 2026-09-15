@@ -133,6 +133,11 @@ import {
   undoSpatialSkeletonCommand,
 } from "#src/skeleton/commands.js";
 import {
+  SkeletonDataSourceState,
+  type SkeletonFindPathState,
+} from "#src/skeleton/find_path.js";
+import { SpatialSkeletonFindPathAnnotationController } from "#src/skeleton/find_path_annotations.js";
+import {
   PerspectiveViewSkeletonLayer,
   SkeletonLayer,
   SkeletonRenderingOptions,
@@ -801,6 +806,12 @@ interface SelectedSpatialSkeletonNodeInfo {
   sourceState?: SpatialSkeletonSourceState;
 }
 
+export interface SpatialSkeletonFindPathContext {
+  readonly skeletonLayer: SpatiallyIndexedSkeletonLayer;
+  readonly state: SkeletonFindPathState;
+  readonly annotationController: SpatialSkeletonFindPathAnnotationController;
+}
+
 function normalizeOptionalPositiveSafeInteger(value: unknown) {
   if (value === undefined) return undefined;
   const normalized = Math.round(Number(value));
@@ -828,6 +839,9 @@ export class SegmentationUserLayer extends Base {
   readonly spatialSkeletonState = this.registerDisposer(
     new SpatialSkeletonState(),
   );
+  private spatialSkeletonFindPathContext:
+    | SpatialSkeletonFindPathContext
+    | undefined;
   readonly selectedSpatialSkeletonNodeInfo = new WatchableValue<
     SelectedSpatialSkeletonNodeInfo | undefined
   >(undefined);
@@ -1360,6 +1374,54 @@ export class SegmentationUserLayer extends Base {
     return undefined;
   };
 
+  getSpatialSkeletonFindPathContext(
+    skeletonLayer?: SpatiallyIndexedSkeletonLayer,
+  ) {
+    const context = this.spatialSkeletonFindPathContext;
+    if (
+      skeletonLayer !== undefined &&
+      context?.skeletonLayer !== skeletonLayer
+    ) {
+      return undefined;
+    }
+    return context;
+  }
+
+  private registerSpatialSkeletonFindPathContext(
+    skeletonLayer: SpatiallyIndexedSkeletonLayer,
+    loadedSubsource: LoadedDataSubsource,
+  ) {
+    const activated = loadedSubsource.activated;
+    if (activated === undefined) {
+      throw new Error(
+        "Cannot register find-path annotations for an inactive spatial skeleton source.",
+      );
+    }
+    const dataSourceState = loadedSubsource.loadedDataSource.dataSource.state;
+    if (!(dataSourceState instanceof SkeletonDataSourceState)) {
+      return undefined;
+    }
+    const annotationController = activated.registerDisposer(
+      new SpatialSkeletonFindPathAnnotationController({
+        layer: this,
+        loadedSubsource,
+        state: dataSourceState.findPathState,
+      }),
+    );
+    const context: SpatialSkeletonFindPathContext = {
+      skeletonLayer,
+      state: dataSourceState.findPathState,
+      annotationController,
+    };
+    this.spatialSkeletonFindPathContext = context;
+    activated.registerDisposer(() => {
+      if (this.spatialSkeletonFindPathContext === context) {
+        this.spatialSkeletonFindPathContext = undefined;
+      }
+    });
+    return context;
+  }
+
   getSpatialSkeletonChunkStats(kind: "2d" | "3d") {
     // 2D chunks are now handled by the same backend as 3D, so only report
     // under "3d" to avoid double-counting in updateSpatialSkeletonChunkLoadState.
@@ -1603,6 +1665,7 @@ export class SegmentationUserLayer extends Base {
   markSpatialSkeletonNodeDataChanged(options?: {
     invalidateFullSkeletonCache?: boolean;
   }) {
+    this.spatialSkeletonFindPathContext?.state.invalidateResult();
     this.spatialSkeletonState.markNodeDataChanged(options);
   }
 
@@ -1631,13 +1694,30 @@ export class SegmentationUserLayer extends Base {
     return changed;
   }
 
+  private getSpatialSkeletonFindPathSubsource(
+    loadedSubsources: readonly LoadedDataSubsource[],
+  ) {
+    return loadedSubsources.find((loadedSubsource) => {
+      const { mesh } = loadedSubsource.subsourceEntry.subsource;
+      return (
+        (mesh instanceof MultiscaleSpatiallyIndexedSkeletonSource ||
+          mesh instanceof SpatiallyIndexedSkeletonSource) &&
+        loadedSubsource.loadedDataSource.dataSource.state instanceof
+          SkeletonDataSourceState
+      );
+    });
+  }
+
   activateDataSubsources(subsources: Iterable<LoadedDataSubsource>) {
+    const loadedSubsources = [...subsources];
+    const findPathSubsource =
+      this.getSpatialSkeletonFindPathSubsource(loadedSubsources);
     const updatedSegmentPropertyMaps: SegmentPropertyMap[] = [];
     const isGroupRoot =
       this.displayState.linkedSegmentationGroup.root.value === this;
     let updatedGraph: SegmentationGraphSource | undefined;
     let hasVolume = false;
-    for (const loadedSubsource of subsources) {
+    for (const loadedSubsource of loadedSubsources) {
       if (this.addStaticAnnotations(loadedSubsource)) continue;
       const { volume, mesh, segmentPropertyMap, segmentationGraph, local } =
         loadedSubsource.subsourceEntry.subsource;
@@ -1664,7 +1744,7 @@ export class SegmentationUserLayer extends Base {
           this.displayState.segmentationGroupState.value,
         );
       } else if (mesh !== undefined) {
-        loadedSubsource.activate(() => {
+        const activateMeshSubsource = () => {
           const displayState = {
             ...this.displayState,
             transform: loadedSubsource.getRenderLayerTransform(),
@@ -1717,6 +1797,12 @@ export class SegmentationUserLayer extends Base {
                   inspectionState: this.spatialSkeletonState,
                 },
               );
+              if (loadedSubsource === findPathSubsource) {
+                this.registerSpatialSkeletonFindPathContext(
+                  base,
+                  loadedSubsource,
+                );
+              }
               if (perspectiveSources.length > 0) {
                 loadedSubsource.addRenderLayer(
                   new PerspectiveViewSpatiallyIndexedSkeletonLayer(
@@ -1759,6 +1845,12 @@ export class SegmentationUserLayer extends Base {
                 inspectionState: this.spatialSkeletonState,
               },
             );
+            if (loadedSubsource === findPathSubsource) {
+              this.registerSpatialSkeletonFindPathContext(
+                base,
+                loadedSubsource,
+              );
+            }
             loadedSubsource.addRenderLayer(
               new PerspectiveViewSpatiallyIndexedSkeletonLayer(base.addRef()),
             );
@@ -1780,7 +1872,11 @@ export class SegmentationUserLayer extends Base {
               new SliceViewPanelSkeletonLayer(/* transfer ownership */ base),
             );
           }
-        }, this.displayState.segmentationGroupState.value);
+        };
+        loadedSubsource.activate(
+          activateMeshSubsource,
+          this.displayState.segmentationGroupState.value,
+        );
       } else if (segmentPropertyMap !== undefined) {
         if (!isGroupRoot) {
           loadedSubsource.deactivate(

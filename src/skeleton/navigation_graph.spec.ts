@@ -26,6 +26,7 @@ import {
   getNextCollapsedLevelNode,
   getOpenLeaves,
   getParentNode,
+  getPathBetweenNodes,
   getSkeletonRootNode,
 } from "#src/skeleton/navigation_graph.js";
 
@@ -187,6 +188,76 @@ describe("skeleton/navigation", () => {
     expect(getParentNode(graph, 1)).toBeUndefined();
     expect(getChildNode(graph, 3)?.nodeId).toBe(7);
     expect(getChildNode(graph, 11)).toBeUndefined();
+  });
+
+  describe("getPathBetweenNodes", () => {
+    const getNodeIds = (path: ReturnType<typeof getPathBetweenNodes>) =>
+      path?.map(({ nodeId }) => nodeId);
+
+    it("returns endpoint-inclusive paths across direct edges and branches", () => {
+      expect(getNodeIds(getPathBetweenNodes(graph, 5, 6))).toEqual([5, 6]);
+      expect(getNodeIds(getPathBetweenNodes(graph, 6, 7))).toEqual([
+        6, 5, 4, 3, 7,
+      ]);
+    });
+
+    it("finds the same route in reverse order", () => {
+      expect(getNodeIds(getPathBetweenNodes(graph, 7, 6))).toEqual([
+        7, 3, 4, 5, 6,
+      ]);
+    });
+
+    it("returns a singleton path only for an existing node", () => {
+      const path = getPathBetweenNodes(graph, 3, 3);
+      expect(getNodeIds(path)).toEqual([3]);
+      expect(path?.[0].position).toBe(graph.nodeById.get(3)?.position);
+      expect(getPathBetweenNodes(graph, 99, 99)).toBeUndefined();
+    });
+
+    it("returns undefined for missing or disconnected nodes", () => {
+      const disconnectedGraph = buildSpatiallyIndexedSkeletonNavigationGraph([
+        makeNode(1, undefined),
+        makeNode(2, 1),
+        makeNode(3, undefined),
+        makeNode(4, 3),
+      ]);
+
+      expect(getPathBetweenNodes(disconnectedGraph, 1, 99)).toBeUndefined();
+      expect(getPathBetweenNodes(disconnectedGraph, 99, 1)).toBeUndefined();
+      expect(getPathBetweenNodes(disconnectedGraph, 1, 4)).toBeUndefined();
+    });
+
+    it("is cycle-safe and chooses deterministic shortest paths", () => {
+      const cycleGraph = buildSpatiallyIndexedSkeletonNavigationGraph([
+        makeNode(1, 4),
+        makeNode(2, 1),
+        makeNode(3, 2),
+        makeNode(4, 3),
+      ]);
+
+      // Both 1-2-3 and 1-4-3 are shortest paths. Node 2 is visited first.
+      expect(getNodeIds(getPathBetweenNodes(cycleGraph, 1, 3))).toEqual([
+        1, 2, 3,
+      ]);
+      // The ascending-neighbor tie break applies independently in reverse.
+      expect(getNodeIds(getPathBetweenNodes(cycleGraph, 3, 1))).toEqual([
+        3, 2, 1,
+      ]);
+    });
+
+    it("handles long chains iteratively", () => {
+      const nodeCount = 10_000;
+      const chainGraph = buildSpatiallyIndexedSkeletonNavigationGraph(
+        Array.from({ length: nodeCount }, (_, index) =>
+          makeNode(index + 1, index === 0 ? undefined : index),
+        ),
+      );
+
+      const path = getPathBetweenNodes(chainGraph, 1, nodeCount);
+      expect(path).toHaveLength(nodeCount);
+      expect(path?.[0].nodeId).toBe(1);
+      expect(path?.[nodeCount - 1].nodeId).toBe(nodeCount);
+    });
   });
 
   it("cycles through collapsed-level nodes and skips regular nodes", () => {

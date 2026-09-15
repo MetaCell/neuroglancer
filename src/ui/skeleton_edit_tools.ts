@@ -16,6 +16,7 @@
 
 import "#src/ui/skeleton_edit_tools.css";
 
+import type { Annotation } from "#src/annotation/index.js";
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import {
   getSegmentIdFromLayerSelectionValue,
@@ -32,6 +33,7 @@ import {
   SKELETON_ENTER_DELETE_MODE,
   SKELETON_ENTER_MERGE_MODE,
   SKELETON_ENTER_SPLIT_MODE,
+  SKELETON_FIND_PATH_SELECT_ENDPOINT,
   SKELETON_PIN_NODE,
   SKELETON_REROOT,
   SKELETON_TOGGLE_TRUE_END,
@@ -50,19 +52,34 @@ import {
   executeSpatialSkeletonSplit,
   showSpatialSkeletonActionError,
 } from "#src/skeleton/commands.js";
+import type { SkeletonFindPathEndpoint } from "#src/skeleton/find_path.js";
 import {
-  type SpatiallyIndexedSkeletonLayer,
-  setSpatialSkeletonModesToLinesAndPoints,
-} from "#src/skeleton/frontend.js";
+  SPATIAL_SKELETON_FIND_PATH_SOURCE_DESCRIPTION,
+  SPATIAL_SKELETON_FIND_PATH_TARGET_DESCRIPTION,
+} from "#src/skeleton/find_path_annotations.js";
 import {
   PerspectiveViewSpatiallyIndexedSkeletonLayer,
+  type SpatiallyIndexedSkeletonLayer,
+  setSpatialSkeletonModesToLinesAndPoints,
   SliceViewPanelSpatiallyIndexedSkeletonLayer,
 } from "#src/skeleton/frontend.js";
-import { StatusMessage } from "#src/status.js";
 import {
+  buildSpatiallyIndexedSkeletonNavigationGraph,
+  getPathBetweenNodes,
+  type SpatiallyIndexedSkeletonNavigationGraph,
+} from "#src/skeleton/navigation_graph.js";
+import {
+  classifySpatialSkeletonDisplayNodeType,
+  SpatialSkeletonDisplayNodeType,
+} from "#src/skeleton/node_types.js";
+import { StatusMessage } from "#src/status.js";
+import { makeAnnotationListElement } from "#src/ui/annotations.js";
+import {
+  getDefaultAnnotationListBindings,
   getDefaultSkeletonEditAuxBindings,
   getDefaultSkeletonEditNodeBindings,
   getDefaultSkeletonEditToolBindings,
+  getDefaultSkeletonFindPathToolBindings,
 } from "#src/ui/default_input_event_bindings.js";
 import {
   getSpatialSkeletonCreateIdleStatusText,
@@ -88,9 +105,12 @@ import {
 import { removeChildren } from "#src/util/dom.js";
 import type { ActionEvent } from "#src/util/event_action_map.js";
 import { vec3 } from "#src/util/geom.js";
+import { MouseEventBinder } from "#src/util/mouse_bindings.js";
 import { startRelativeMouseDrag } from "#src/util/mouse_drag.js";
+import { makeIcon } from "#src/widget/icon.js";
 
 export const SPATIAL_SKELETON_EDIT_MODE_TOOL_ID = "spatialSkeletonEditMode";
+export const SPATIAL_SKELETON_FIND_PATH_TOOL_ID = "spatialSkeletonFindPath";
 
 // Internal mode enum for sustained editing states.
 // Move and Select are both handled in Default.
@@ -136,6 +156,66 @@ const DELETE_EXIT_KEY_CODE = "KeyD";
 function hasNavigationModifier(event: { ctrlKey: boolean; metaKey: boolean }) {
   // TODO replace by mac check
   return event.metaKey || event.ctrlKey;
+}
+
+/**
+ * Preserves the skeleton tools' middle-mouse and navigation-modifier controls
+ * when a tool claims regular left click as its primary interaction.
+ */
+function bindSpatialSkeletonToolMouseControls<
+  T extends LayerTool<SegmentationUserLayer>,
+>(
+  activation: ToolActivation<T>,
+  layer: SegmentationUserLayer,
+  onPrimaryMousedown?: (event: MouseEvent, panel: RenderedDataPanel) => void,
+) {
+  for (const panel of layer.manager.root.display.panels) {
+    if (!(panel instanceof RenderedDataPanel)) continue;
+    const captureMousedown = (event: MouseEvent) => {
+      // Perspective navigation is dispatched through the active tool's input
+      // map. Slice navigation is performed directly here.
+      const isNavigationGesture =
+        event.button === 1 ||
+        (event.button === 0 && hasNavigationModifier(event));
+      if (isNavigationGesture) {
+        if (panel instanceof PerspectivePanel) {
+          panel.element.dataset.skeletonPressMode = "rotate";
+          const onMouseUp = () => {
+            delete panel.element.dataset.skeletonPressMode;
+            window.removeEventListener("mouseup", onMouseUp);
+          };
+          window.addEventListener("mouseup", onMouseUp);
+        } else {
+          event.stopPropagation();
+          event.preventDefault();
+          panel.element.dataset.skeletonPressMode = "pan";
+          startRelativeMouseDrag(
+            event,
+            (_dragEvent, deltaX, deltaY) => {
+              panel.context.flagContinuousCameraMotion();
+              panel.translateByViewportPixels(deltaX, deltaY);
+            },
+            () => {
+              delete panel.element.dataset.skeletonPressMode;
+            },
+          );
+        }
+        return;
+      }
+
+      if (event.button === 0) {
+        onPrimaryMousedown?.(event, panel);
+      }
+    };
+    panel.element.addEventListener("mousedown", captureMousedown, {
+      capture: true,
+    });
+    activation.registerDisposer(() => {
+      panel.element.removeEventListener("mousedown", captureMousedown, {
+        capture: true,
+      });
+    });
+  }
 }
 
 function waitForNextAnimationFrame() {
@@ -247,10 +327,12 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
     this.layer.selectSegment(BigInt(Math.round(value)), true);
   }
 
-  protected isSpatialSkeletonSegmentVisible(segmentId: number) {
+  protected isSpatialSkeletonSegmentVisible(segmentId: number | bigint) {
     return getVisibleSegments(
       this.layer.displayState.segmentationGroupState.value,
-    ).has(BigInt(Math.round(segmentId)));
+    ).has(
+      typeof segmentId === "bigint" ? segmentId : BigInt(Math.round(segmentId)),
+    );
   }
 
   protected resolvePickedNodeSelection(
@@ -394,6 +476,53 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
     activation.registerDisposer(() => {
       modeWatchable.value = false;
     });
+  }
+
+  protected registerAutoCancelOnDisabled(
+    activation: ToolActivation<this>,
+    requiredActions: Parameters<
+      SegmentationUserLayer["getSpatialSkeletonActionsDisabledReason"]
+    >[0],
+    onReady?: () => void,
+  ) {
+    const handleStateChanged = () => {
+      const disabledReason = this.layer.getSpatialSkeletonActionsDisabledReason(
+        requiredActions,
+        { ignoreCommandBusy: true },
+      );
+      if (disabledReason === undefined) {
+        onReady?.();
+        return;
+      }
+      StatusMessage.showTemporaryMessage(disabledReason);
+      activation.cancel();
+    };
+    activation.registerDisposer(
+      this.layer.layersChanged.add(handleStateChanged),
+    );
+  }
+
+  protected cancelActivationIfPreconditionsFail(
+    activation: ToolActivation<this>,
+    requiredAction: Parameters<
+      SegmentationUserLayer["getSpatialSkeletonActionsDisabledReason"]
+    >[0],
+  ): boolean {
+    const reason =
+      this.layer.getSpatialSkeletonActionsDisabledReason(requiredAction);
+    if (reason !== undefined) {
+      StatusMessage.showTemporaryMessage(reason);
+      queueMicrotask(() => activation.cancel());
+      return false;
+    }
+    if (this.getActiveSpatiallyIndexedSkeletonLayer() === undefined) {
+      StatusMessage.showTemporaryMessage(
+        "No spatially indexed skeleton source is currently loaded.",
+      );
+      queueMicrotask(() => activation.cancel());
+      return false;
+    }
+    return true;
   }
 }
 
@@ -1533,122 +1662,38 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
       window.removeEventListener("blur", onBlur);
     });
 
-    // 10. Per-panel capture listeners — closures per panel; body delegates to class methods.
-    // Left click (mousedown0) is handled here rather than in the EventActionMap so that
-    // we can consume off-node clicks without accidentally shadowing EventActionMap actions
-    // at lower priority.  All plain/shift left clicks are owned by the edit tool — they
-    // either select a node, add a node, or do nothing.  Navigation (rotate/pan) belongs to
-    // middle mouse and to the navigation-modifier + left-click aliases below (for trackpad
-    // users without a reliable middle-click), handled via the EventActionMap + the
-    // slice-panel path below.
-    for (const panel of layer.manager.root.display.panels) {
-      if (!(panel instanceof RenderedDataPanel)) continue;
-      const captureMousedown = (event: MouseEvent) => {
-        // Middle mouse (plain): rotate in 3D (EventActionMap mousedown1 → rotate-via-mouse-drag),
-        // translate in 2D (intercepted here via startRelativeMouseDrag).
-        // Ctrl+middle: translate in 3D (EventActionMap control+mousedown1 → translate-via-mouse-drag),
-        // translate in 2D (intercepted here, same as plain middle).
-        if (event.button === 1) {
-          if (panel instanceof PerspectivePanel) {
-            panel.element.dataset.skeletonPressMode = "rotate";
-            const onMouseUp = () => {
-              delete panel.element.dataset.skeletonPressMode;
-              window.removeEventListener("mouseup", onMouseUp);
-            };
-            window.addEventListener("mouseup", onMouseUp);
-          } else {
-            event.stopPropagation();
-            event.preventDefault();
-            panel.element.dataset.skeletonPressMode = "pan";
-            startRelativeMouseDrag(
-              event,
-              (_dragEvent, deltaX, deltaY) => {
-                panel.context.flagContinuousCameraMotion();
-                panel.translateByViewportPixels(deltaX, deltaY);
-              },
-              () => {
-                delete panel.element.dataset.skeletonPressMode;
-              },
-            );
-          }
-          return;
-        }
-
-        // Trackpad-friendly aliases for the middle-mouse scheme above.
-        // Navigation modifier + left (plain): rotate in 3D (EventActionMap
-        // control+mousedown0 → rotate-via-mouse-drag), pan in 2D
-        // (intercepted here) — mirrors plain middle mouse.
-        // Navigation modifier + shift + left: translate in 3D
-        // (EventActionMap control+shift+mousedown0 → translate-via-mouse-drag),
-        // pan in 2D (intercepted here, same as above) — mirrors ctrl+middle
-        // mouse. Checked before the shift guard below so it takes priority
-        // over the shift+mousedown0 add-node chord; hasNavigationModifier is
-        // the discriminator (add-node never has the modifier held).
-        if (event.button === 0 && hasNavigationModifier(event)) {
-          if (panel instanceof PerspectivePanel) {
-            panel.element.dataset.skeletonPressMode = "rotate";
-            const onMouseUp = () => {
-              delete panel.element.dataset.skeletonPressMode;
-              window.removeEventListener("mouseup", onMouseUp);
-            };
-            window.addEventListener("mouseup", onMouseUp);
-          } else {
-            event.stopPropagation();
-            event.preventDefault();
-            panel.element.dataset.skeletonPressMode = "pan";
-            startRelativeMouseDrag(
-              event,
-              (_dragEvent, deltaX, deltaY) => {
-                panel.context.flagContinuousCameraMotion();
-                panel.translateByViewportPixels(deltaX, deltaY);
-              },
-              () => {
-                delete panel.element.dataset.skeletonPressMode;
-              },
-            );
-          }
-          return;
-        }
-
-        // shift+mousedown0 → EventActionMap (add-node); other buttons → normal dispatch.
-        // Both must pass through the capture listener unmodified.
-        if (event.button !== 0 || event.shiftKey) return;
-        if (this.currentMode === SkeletonEditMode.Merge) {
-          event.stopPropagation();
-          event.preventDefault();
-          this.handleMergeSecondPick();
-          return;
-        }
-        if (this.currentMode === SkeletonEditMode.Split) {
-          event.stopPropagation();
-          event.preventDefault();
-          this.handleSplitPick();
-          return;
-        }
-        if (this.currentMode === SkeletonEditMode.Create) {
-          event.stopPropagation();
-          event.preventDefault();
-          this.handleCreatePlace();
-          return;
-        }
-        if (this.currentMode === SkeletonEditMode.Delete) {
-          event.stopPropagation();
-          event.preventDefault();
-          this.handleDeletePick();
-          return;
-        }
-        // Default mode: only consume if hovering a node.
-        this.handleDefaultMousedown(event, panel);
-      };
-      panel.element.addEventListener("mousedown", captureMousedown, {
-        capture: true,
-      });
-      activation.registerDisposer(() => {
-        panel.element.removeEventListener("mousedown", captureMousedown, {
-          capture: true,
-        });
-      });
-    }
+    // 10. Share the navigation controls used by skeleton tools, while keeping
+    // the Edit tool's existing primary-click mode handling local.
+    bindSpatialSkeletonToolMouseControls(activation, layer, (event, panel) => {
+      // shift+mousedown0 is dispatched as the add-node action.
+      if (event.shiftKey) return;
+      if (this.currentMode === SkeletonEditMode.Merge) {
+        event.stopPropagation();
+        event.preventDefault();
+        this.handleMergeSecondPick();
+        return;
+      }
+      if (this.currentMode === SkeletonEditMode.Split) {
+        event.stopPropagation();
+        event.preventDefault();
+        this.handleSplitPick();
+        return;
+      }
+      if (this.currentMode === SkeletonEditMode.Create) {
+        event.stopPropagation();
+        event.preventDefault();
+        this.handleCreatePlace();
+        return;
+      }
+      if (this.currentMode === SkeletonEditMode.Delete) {
+        event.stopPropagation();
+        event.preventDefault();
+        this.handleDeletePick();
+        return;
+      }
+      // Default mode: only consume if hovering a node.
+      this.handleDefaultMousedown(event, panel);
+    });
 
     // 11. Bind actions — thin one-liners delegating to class methods.
     activation.bindAction(SKELETON_ENTER_MERGE_MODE, () =>
@@ -1740,12 +1785,444 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
 // Backward-compat alias — external code referencing SpatialSkeletonEditModeTool still works.
 export { SpatialSkeletonEditTool as SpatialSkeletonEditModeTool };
 
+function getSpatialSkeletonFindPathNodeTypeLabel(
+  graph: SpatiallyIndexedSkeletonNavigationGraph,
+  nodeId: number,
+) {
+  const node = graph.nodeById.get(nodeId);
+  if (node === undefined) return undefined;
+  if (node.isTrueEnd ?? false) return "True end";
+  const parentInTree =
+    node.parentNodeId !== undefined && graph.nodeById.has(node.parentNodeId);
+  const type = classifySpatialSkeletonDisplayNodeType(
+    node,
+    graph.childrenByParent.get(nodeId)?.length ?? 0,
+    parentInTree,
+  );
+  switch (type) {
+    case SpatialSkeletonDisplayNodeType.ROOT:
+      return "Root";
+    case SpatialSkeletonDisplayNodeType.BRANCH_START:
+      return "Branch point";
+    case SpatialSkeletonDisplayNodeType.VIRTUAL_END:
+      return "Leaf";
+    default:
+      return "Node";
+  }
+}
+
+export function getSpatialSkeletonFindPathEndpointDescription(
+  endpointName: "Source" | "Target",
+  endpoint: SkeletonFindPathEndpoint,
+  graph: SpatiallyIndexedSkeletonNavigationGraph | undefined,
+) {
+  const nodeId = Number(endpoint.nodeId);
+  const nodeType = Number.isSafeInteger(nodeId)
+    ? graph === undefined
+      ? undefined
+      : getSpatialSkeletonFindPathNodeTypeLabel(graph, nodeId)
+    : undefined;
+  return nodeType === undefined
+    ? endpointName
+    : `${endpointName} · ${nodeType}`;
+}
+
+export class SpatialSkeletonFindPathTool extends SpatialSkeletonToolBase {
+  toJSON() {
+    return SPATIAL_SKELETON_FIND_PATH_TOOL_ID;
+  }
+
+  get description() {
+    return "Find path";
+  }
+
+  activate(activation: ToolActivation<this>) {
+    if (
+      !this.cancelActivationIfPreconditionsFail(
+        activation,
+        SpatialSkeletonActions.inspect,
+      )
+    ) {
+      return;
+    }
+
+    const { layer } = this;
+    const activeContext = layer.getSpatialSkeletonFindPathContext();
+    setSpatialSkeletonModesToLinesAndPoints(layer);
+
+    const { body, header } =
+      makeToolActivationStatusMessageWithHeader(activation);
+    header.textContent = "Find Path";
+    body.classList.add("neuroglancer-skeleton-find-path-status");
+
+    const statusElement = document.createElement("span");
+    statusElement.className = "neuroglancer-skeleton-find-path-message";
+    let statusOverride: string | undefined;
+
+    const getStateContext = () => {
+      if (activeContext === undefined) return undefined;
+      return layer.getSpatialSkeletonFindPathContext() === activeContext
+        ? activeContext
+        : undefined;
+    };
+
+    const getState = () => getStateContext()?.state;
+    body.appendChild(
+      makeIcon({
+        text: "Clear",
+        title: "Clear Find Path",
+        onClick: () => {
+          statusOverride = undefined;
+          getState()?.clear();
+        },
+      }),
+    );
+    body.appendChild(statusElement);
+
+    const annotationElements = document.createElement("div");
+    annotationElements.className =
+      "neuroglancer-skeleton-find-path-annotations";
+    body.appendChild(annotationElements);
+    annotationElements.addEventListener("mouseleave", () => {
+      layer.annotationDisplayState.hoverState.value = undefined;
+    });
+    activation.registerDisposer(
+      new MouseEventBinder(
+        annotationElements,
+        getDefaultAnnotationListBindings(),
+      ),
+    );
+
+    const updateAnnotationElements = () => {
+      removeChildren(annotationElements);
+      const state = getState();
+      const annotationState =
+        getStateContext()?.annotationController.annotationState;
+      if (state === undefined || annotationState === undefined) return;
+      const annotationsByDescription = new Map<string, Annotation>();
+      for (const annotation of annotationState.source) {
+        if (
+          annotation.description ===
+            SPATIAL_SKELETON_FIND_PATH_SOURCE_DESCRIPTION ||
+          annotation.description ===
+            SPATIAL_SKELETON_FIND_PATH_TARGET_DESCRIPTION
+        ) {
+          annotationsByDescription.set(annotation.description, annotation);
+        }
+      }
+      const maxColumnWidths = [0, 0, 0];
+      const template =
+        "[symbol] 2ch [dim] var(--neuroglancer-column-0-width) [dim] var(--neuroglancer-column-1-width) [dim] var(--neuroglancer-column-2-width) [delete] min-content";
+      for (const description of [
+        SPATIAL_SKELETON_FIND_PATH_SOURCE_DESCRIPTION,
+        SPATIAL_SKELETON_FIND_PATH_TARGET_DESCRIPTION,
+      ]) {
+        const annotation = annotationsByDescription.get(description);
+        if (annotation === undefined) continue;
+        const sourceEndpoint =
+          description === SPATIAL_SKELETON_FIND_PATH_SOURCE_DESCRIPTION;
+        const endpoint = sourceEndpoint ? state.source : state.target;
+        const [element, elementColumnWidths] = makeAnnotationListElement(
+          layer,
+          annotation,
+          annotationState,
+          template,
+          [0, 1, 2],
+          [],
+        );
+        if (endpoint !== undefined) {
+          const segmentId = Number(endpoint.segmentId);
+          const cachedSegmentNodes = Number.isSafeInteger(segmentId)
+            ? layer.spatialSkeletonState.getCachedSegmentNodes(segmentId)
+            : undefined;
+          const graph =
+            cachedSegmentNodes === undefined
+              ? undefined
+              : buildSpatiallyIndexedSkeletonNavigationGraph(
+                  cachedSegmentNodes,
+                );
+          const endpointDescription =
+            getSpatialSkeletonFindPathEndpointDescription(
+              sourceEndpoint ? "Source" : "Target",
+              endpoint,
+              graph,
+            );
+          const descriptionElement = element.querySelector(
+            ".neuroglancer-annotation-description",
+          );
+          if (descriptionElement !== null) {
+            descriptionElement.textContent = endpointDescription;
+          }
+          element.title = `${endpointDescription} · node ${endpoint.nodeId}`;
+        }
+        for (const [column, width] of elementColumnWidths.entries()) {
+          maxColumnWidths[column] = Math.max(maxColumnWidths[column], width);
+        }
+        annotationElements.appendChild(element);
+      }
+      for (const [column, width] of maxColumnWidths.entries()) {
+        annotationElements.style.setProperty(
+          `--neuroglancer-column-${column}-width`,
+          `${width + 2}ch`,
+        );
+      }
+    };
+
+    function updateStatus() {
+      const state = getState();
+      if (statusOverride !== undefined) {
+        statusElement.textContent = statusOverride;
+      } else if (state === undefined) {
+        statusElement.textContent =
+          "No spatial skeleton datasource supports Find Path.";
+      } else if (state.result !== undefined) {
+        statusElement.textContent = `Path found (${state.result.length} nodes).`;
+      } else if (state.source === undefined) {
+        statusElement.textContent = "Left-click the source node.";
+      } else if (state.target === undefined) {
+        statusElement.textContent = "Left-click the target node.";
+      } else {
+        statusElement.textContent = "Finding path…";
+      }
+      updateAnnotationElements();
+    }
+
+    const showPathStatus = (message: string, announce: boolean) => {
+      statusOverride = message;
+      updateStatus();
+      if (announce) {
+        StatusMessage.showTemporaryMessage(message);
+      }
+    };
+
+    const computePath = (announce: boolean) => {
+      const context = getStateContext();
+      const state = context?.state;
+      if (context === undefined || state === undefined) {
+        showPathStatus(
+          "The spatial skeleton source selected for Find Path is no longer loaded.",
+          announce,
+        );
+        return false;
+      }
+      const { source, target } = state;
+      if (source === undefined || target === undefined) {
+        updateStatus();
+        return false;
+      }
+      if (state.result !== undefined) {
+        updateStatus();
+        return true;
+      }
+      if (source.segmentId !== target.segmentId) {
+        showPathStatus(
+          "Find Path endpoints must belong to the same skeleton segment.",
+          announce,
+        );
+        return false;
+      }
+      if (source.nodeId === target.nodeId) {
+        showPathStatus(
+          "Find Path endpoints must be distinct skeleton nodes.",
+          announce,
+        );
+        return false;
+      }
+
+      const segmentId = Number(source.segmentId);
+      const sourceNodeId = Number(source.nodeId);
+      const targetNodeId = Number(target.nodeId);
+      if (
+        !Number.isSafeInteger(segmentId) ||
+        !Number.isSafeInteger(sourceNodeId) ||
+        !Number.isSafeInteger(targetNodeId)
+      ) {
+        showPathStatus(
+          "The selected endpoint IDs are not supported by this spatial skeleton source.",
+          announce,
+        );
+        return false;
+      }
+      const cachedSegmentNodes =
+        layer.spatialSkeletonState.getCachedSegmentNodes(segmentId);
+      if (cachedSegmentNodes === undefined) {
+        showPathStatus(
+          `Full data for skeleton ${source.segmentId} is not cached. Make it visible and wait for loading.`,
+          announce,
+        );
+        return false;
+      }
+
+      statusOverride = undefined;
+      try {
+        const graph =
+          buildSpatiallyIndexedSkeletonNavigationGraph(cachedSegmentNodes);
+        if (!graph.nodeById.has(sourceNodeId)) {
+          throw new Error(
+            `Source node ${source.nodeId} is missing from the loaded skeleton.`,
+          );
+        }
+        if (!graph.nodeById.has(targetNodeId)) {
+          throw new Error(
+            `Target node ${target.nodeId} is missing from the loaded skeleton.`,
+          );
+        }
+        const path = getPathBetweenNodes(graph, sourceNodeId, targetNodeId);
+        if (path === undefined) {
+          throw new Error(
+            `No route exists between nodes ${source.nodeId} and ${target.nodeId}.`,
+          );
+        }
+        state.setResult(
+          path.map(({ nodeId, position }) => ({
+            nodeId: BigInt(nodeId),
+            position: new Float32Array(position),
+          })),
+        );
+        if (announce) {
+          StatusMessage.showTemporaryMessage("Path found!", 5000);
+        }
+        return true;
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        showPathStatus(`Failed to find path: ${detail}`, announce);
+        return false;
+      }
+    };
+
+    const state = getState();
+    if (state !== undefined) {
+      activation.registerDisposer(
+        state.changed.add(() => {
+          statusOverride = undefined;
+          updateStatus();
+        }),
+      );
+    }
+    activation.registerDisposer(
+      layer.spatialSkeletonState.nodeDataVersion.changed.add(() => {
+        statusOverride = undefined;
+        const state = getState();
+        if (
+          state?.source !== undefined &&
+          state.target !== undefined &&
+          state.result === undefined
+        ) {
+          computePath(false);
+        } else {
+          updateStatus();
+        }
+      }),
+    );
+    this.registerAutoCancelOnDisabled(
+      activation,
+      SpatialSkeletonActions.inspect,
+      updateStatus,
+    );
+
+    bindSpatialSkeletonToolMouseControls(activation, layer);
+    activation.bindInputEventMap(getDefaultSkeletonFindPathToolBindings());
+    activation.bindAction(
+      SKELETON_FIND_PATH_SELECT_ENDPOINT,
+      (event: ActionEvent<MouseEvent>) => {
+        event.stopPropagation();
+        event.detail.preventDefault();
+        const currentState = getState();
+        if (
+          currentState?.source !== undefined &&
+          currentState.target !== undefined
+        ) {
+          StatusMessage.showTemporaryMessage(
+            "Clear Find Path or delete an endpoint before selecting another node.",
+          );
+          return;
+        }
+        const skeletonLayer = this.getActiveSpatiallyIndexedSkeletonLayer();
+        const context = getStateContext();
+        if (skeletonLayer === undefined) {
+          StatusMessage.showTemporaryMessage(
+            "No spatially indexed skeleton source is currently loaded.",
+          );
+          return;
+        }
+        if (context === undefined) {
+          StatusMessage.showTemporaryMessage(
+            "The spatial skeleton source selected for Find Path is no longer loaded.",
+          );
+          return;
+        }
+        if (context.skeletonLayer !== skeletonLayer) {
+          StatusMessage.showTemporaryMessage(
+            "Find Path is only available for the first active spatial skeleton datasource in this layer.",
+          );
+          return;
+        }
+        const pickedNode = this.resolvePickedNodeSelection(skeletonLayer);
+        if (
+          pickedNode?.segmentId === undefined ||
+          pickedNode.position === undefined
+        ) {
+          StatusMessage.showTemporaryMessage(
+            "Find Path endpoints must be exact skeleton nodes, not edges.",
+          );
+          return;
+        }
+        const endpoint: SkeletonFindPathEndpoint = {
+          nodeId: BigInt(pickedNode.nodeId),
+          segmentId: BigInt(pickedNode.segmentId),
+          position: new Float32Array(pickedNode.position),
+        };
+        const state = context.state;
+        const otherEndpoint =
+          state.source === undefined ? state.target : state.source;
+        if (otherEndpoint !== undefined) {
+          if (otherEndpoint.segmentId !== endpoint.segmentId) {
+            StatusMessage.showTemporaryMessage(
+              "Find Path endpoints must belong to the same skeleton segment.",
+            );
+            return;
+          }
+          if (otherEndpoint.nodeId === endpoint.nodeId) {
+            StatusMessage.showTemporaryMessage(
+              "Find Path endpoints must be distinct skeleton nodes.",
+            );
+            return;
+          }
+        }
+        statusOverride = undefined;
+        if (state.source === undefined) {
+          state.setSource(endpoint);
+        } else {
+          state.setTarget(endpoint);
+        }
+        if (state.source !== undefined && state.target !== undefined) {
+          computePath(true);
+        }
+      },
+    );
+
+    if (
+      state?.source !== undefined &&
+      state.target !== undefined &&
+      state.result === undefined
+    ) {
+      computePath(false);
+    } else {
+      updateStatus();
+    }
+  }
+}
+
 function makeSpatialSkeletonToolLister(toolId: string) {
   return (layer: SegmentationUserLayer, onChange?: () => void) => {
     if (onChange !== undefined) {
       layer.layersChanged.addOnce(onChange);
     }
-    if (layer.getSpatiallyIndexedSkeletonLayer() === undefined) {
+    if (
+      layer.getSpatiallyIndexedSkeletonLayer() === undefined ||
+      (toolId === SPATIAL_SKELETON_FIND_PATH_TOOL_ID &&
+        layer.getSpatialSkeletonFindPathContext() === undefined)
+    ) {
       return [];
     }
     return [{ type: toolId }];
@@ -1760,5 +2237,11 @@ export function registerSpatialSkeletonEditModeTool(
     SPATIAL_SKELETON_EDIT_MODE_TOOL_ID,
     (layer) => new SpatialSkeletonEditTool(layer),
     makeSpatialSkeletonToolLister(SPATIAL_SKELETON_EDIT_MODE_TOOL_ID),
+  );
+  registerTool(
+    contextType,
+    SPATIAL_SKELETON_FIND_PATH_TOOL_ID,
+    (layer) => new SpatialSkeletonFindPathTool(layer),
+    makeSpatialSkeletonToolLister(SPATIAL_SKELETON_FIND_PATH_TOOL_ID),
   );
 }

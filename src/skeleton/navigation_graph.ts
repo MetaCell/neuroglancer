@@ -562,6 +562,65 @@ export function getChildNode(
     : getNodeTarget(graph, childNodeId);
 }
 
+/**
+ * Finds a shortest path between two nodes, treating parent/child links as
+ * undirected edges.
+ *
+ * Neighbors are visited in ascending node ID order so that the result is
+ * deterministic when multiple shortest paths exist.
+ */
+export function getPathBetweenNodes(
+  graph: SpatiallyIndexedSkeletonNavigationGraph,
+  sourceNodeId: number,
+  targetNodeId: number,
+): SpatiallyIndexedSkeletonNavigationTarget[] | undefined {
+  if (!graph.nodeById.has(sourceNodeId) || !graph.nodeById.has(targetNodeId)) {
+    return undefined;
+  }
+  if (sourceNodeId === targetNodeId) {
+    return [getNodeTarget(graph, sourceNodeId)];
+  }
+
+  const predecessorByNodeId = new Map<number, number | undefined>([
+    [sourceNodeId, undefined],
+  ]);
+  const queue = [sourceNodeId];
+  for (let queueIndex = 0; queueIndex < queue.length; ++queueIndex) {
+    const currentNodeId = queue[queueIndex];
+    const neighborNodeIds = new Set<number>(
+      getChildNodeIds(graph, currentNodeId),
+    );
+    const parentNodeId = getParentNodeId(graph, currentNodeId);
+    if (parentNodeId !== undefined) {
+      neighborNodeIds.add(parentNodeId);
+    }
+
+    for (const neighborNodeId of [...neighborNodeIds].sort((a, b) => a - b)) {
+      if (
+        !graph.nodeById.has(neighborNodeId) ||
+        predecessorByNodeId.has(neighborNodeId)
+      ) {
+        continue;
+      }
+      predecessorByNodeId.set(neighborNodeId, currentNodeId);
+      if (neighborNodeId === targetNodeId) {
+        const pathNodeIds = [targetNodeId];
+        let pathNodeId = currentNodeId;
+        while (pathNodeId !== sourceNodeId) {
+          pathNodeIds.push(pathNodeId);
+          pathNodeId = predecessorByNodeId.get(pathNodeId)!;
+        }
+        pathNodeIds.push(sourceNodeId);
+        pathNodeIds.reverse();
+        return pathNodeIds.map((nodeId) => getNodeTarget(graph, nodeId));
+      }
+      queue.push(neighborNodeId);
+    }
+  }
+
+  return undefined;
+}
+
 export function getRandomChildNode(
   graph: SpatiallyIndexedSkeletonNavigationGraph,
   nodeId: number,

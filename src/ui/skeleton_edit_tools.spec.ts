@@ -23,6 +23,7 @@ import {
   SKELETON_CLEAR_SELECTION,
   SKELETON_ENTER_MERGE_MODE,
   SKELETON_ENTER_SPLIT_MODE,
+  SKELETON_FIND_PATH_SELECT_ENDPOINT,
 } from "#src/skeleton/actions.js";
 import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
 import { SpatialSkeletonCommandHistory } from "#src/skeleton/command_history.js";
@@ -34,7 +35,11 @@ import {
   executeSpatialSkeletonAddNode,
   executeSpatialSkeletonMerge,
 } from "#src/skeleton/commands.js";
+import { SkeletonFindPathState } from "#src/skeleton/find_path.js";
+import { buildSpatiallyIndexedSkeletonNavigationGraph } from "#src/skeleton/navigation_graph.js";
 import { StatusMessage } from "#src/status.js";
+import { WatchableValue } from "#src/trackable_value.js";
+import { getDefaultSkeletonFindPathToolBindings } from "#src/ui/default_input_event_bindings.js";
 
 if (!("WebGL2RenderingContext" in globalThis)) {
   Object.defineProperty(globalThis, "WebGL2RenderingContext", {
@@ -55,6 +60,10 @@ const { setSpatialSkeletonModesToLinesAndPoints, SkeletonRenderMode } =
 const { SpatialSkeletonEditTool } = await import(
   "#src/ui/skeleton_edit_tools.js"
 );
+const {
+  getSpatialSkeletonFindPathEndpointDescription,
+  SpatialSkeletonFindPathTool,
+} = await import("#src/ui/skeleton_edit_tools.js");
 
 function makeVisibleSegmentsState(initialVisibleSegments: bigint[] = []) {
   return {
@@ -200,6 +209,159 @@ function makeToolActivation() {
     }
   };
   return { activation, actions, dispose };
+}
+
+function makeFindPathActionEvent() {
+  return {
+    stopPropagation: vi.fn(),
+    detail: {
+      preventDefault: vi.fn(),
+    },
+  };
+}
+
+function makeFindPathNode(
+  nodeId: number,
+  segmentId = 11,
+  parentNodeId?: number,
+): SpatiallyIndexedSkeletonNode {
+  return {
+    nodeId,
+    segmentId,
+    parentNodeId,
+    position: new Float32Array([nodeId, nodeId + 1, nodeId + 2]),
+    isTrueEnd: false,
+  };
+}
+
+function makeFindPathToolHarness(
+  options: {
+    cachedSegmentNodes?: readonly SpatiallyIndexedSkeletonNode[];
+    disabledReason?: string;
+    hasSource?: boolean;
+    hasSecondSource?: boolean;
+    readonly?: boolean;
+    state?: SkeletonFindPathState;
+    visibleSegmentIds?: bigint[];
+  } = {},
+) {
+  const state = options.state ?? new SkeletonFindPathState();
+  const mouseState: any = {
+    pickedRenderLayer: undefined,
+    pickedSpatialSkeleton: undefined,
+    updateUnconditionally: vi.fn(() => true),
+    active: true,
+  };
+  const cachedSegmentNodes = new Map<
+    number,
+    readonly SpatiallyIndexedSkeletonNode[]
+  >();
+  if (options.cachedSegmentNodes !== undefined) {
+    cachedSegmentNodes.set(11, options.cachedSegmentNodes);
+  }
+  const getFullSegmentNodes = vi.fn();
+  const nodeDataVersion = new WatchableValue(0);
+  const visibleSegmentsState = makeVisibleSegmentsState(
+    options.visibleSegmentIds ?? [11n, 12n],
+  );
+  const skeletonLayer =
+    options.hasSource === false
+      ? undefined
+      : {
+          source: { readonly: options.readonly ?? true },
+          getNode: vi.fn(),
+        };
+  const secondSkeletonLayer =
+    options.hasSecondSource === true
+      ? {
+          source: { readonly: options.readonly ?? true },
+          getNode: vi.fn(),
+        }
+      : undefined;
+  const context =
+    skeletonLayer === undefined
+      ? undefined
+      : {
+          skeletonLayer,
+          state,
+          annotationController: {
+            annotationState: {
+              source: [],
+            },
+          },
+        };
+  let activeSkeletonLayer = skeletonLayer;
+  const getSpatialSkeletonActionsDisabledReason = vi.fn(
+    () => options.disabledReason,
+  );
+  const layer = {
+    displayState: {
+      ...makeSkeletonRenderingOptions(),
+      segmentationGroupState: { value: visibleSegmentsState },
+    },
+    annotationDisplayState: {
+      hoverState: { value: undefined },
+    },
+    spatialSkeletonState: {
+      getFullSegmentNodes,
+      getCachedSegmentNodes: vi.fn((segmentId: number) =>
+        cachedSegmentNodes.get(segmentId),
+      ),
+      nodeDataVersion,
+    },
+    manager: {
+      root: {
+        layerSelectedValues: { mouseState },
+        display: { panels: [] },
+      },
+    },
+    getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
+    getSpatialSkeletonFindPathContext: (candidate?: unknown) =>
+      candidate === undefined || context?.skeletonLayer === candidate
+        ? context
+        : undefined,
+    getSpatialSkeletonActionsDisabledReason,
+    layersChanged: makeChangedSignal(),
+  };
+  const { activation, actions, dispose } = makeToolActivation();
+  const tool = Object.assign(
+    Object.create(SpatialSkeletonFindPathTool.prototype),
+    {
+      layer,
+      getActiveSpatiallyIndexedSkeletonLayer: () => activeSkeletonLayer,
+    },
+  );
+
+  SpatialSkeletonFindPathTool.prototype.activate.call(tool, activation as any);
+
+  const pickNode = (
+    node: SpatiallyIndexedSkeletonNode,
+    candidateSkeletonLayer = skeletonLayer,
+  ) => {
+    activeSkeletonLayer = candidateSkeletonLayer;
+    mouseState.pickedSpatialSkeleton = node;
+    actions.get(SKELETON_FIND_PATH_SELECT_ENDPOINT)?.(
+      makeFindPathActionEvent(),
+    );
+  };
+
+  return {
+    actions,
+    activation,
+    cachedSegmentNodes,
+    context,
+    dispose,
+    getFullSegmentNodes,
+    getSpatialSkeletonActionsDisabledReason,
+    layer,
+    mouseState,
+    nodeDataVersion,
+    pickNode,
+    skeletonLayer,
+    secondSkeletonLayer,
+    state,
+    visibleSegmentsState,
+  };
 }
 
 function makeCommandFactory(
@@ -899,6 +1061,424 @@ describe("spatial_skeleton_edit_tool", () => {
       expect(splitExecute).not.toHaveBeenCalled();
     } finally {
       dispose();
+    }
+  });
+
+  it("uses regular clicks for Find Path and preserves skeleton navigation chords", () => {
+    const bindings = getDefaultSkeletonFindPathToolBindings();
+
+    expect(bindings.get("at:mousedown0")?.action).toBe(
+      SKELETON_FIND_PATH_SELECT_ENDPOINT,
+    );
+    expect(bindings.get("at:shift+mousedown0")?.action).toBe(
+      SKELETON_FIND_PATH_SELECT_ENDPOINT,
+    );
+    expect(bindings.get("at:control+mousedown0")?.action).toBe(
+      "rotate-via-mouse-drag",
+    );
+    expect(bindings.get("at:control+shift+mousedown0")?.action).toBe(
+      "translate-via-mouse-drag",
+    );
+    expect(bindings.get("at:mousedown1")?.action).toBe("rotate-via-mouse-drag");
+  });
+
+  it("describes Find Path endpoints using their derived topology type", () => {
+    const nodes = [
+      makeFindPathNode(1),
+      makeFindPathNode(2, 11, 1),
+      makeFindPathNode(3, 11, 1),
+      makeFindPathNode(4, 11, 2),
+      makeFindPathNode(5, 11, 2),
+    ];
+    nodes[3].isTrueEnd = true;
+    const graph = buildSpatiallyIndexedSkeletonNavigationGraph(nodes);
+
+    expect(
+      getSpatialSkeletonFindPathEndpointDescription(
+        "Source",
+        {
+          nodeId: 1n,
+          segmentId: 11n,
+          position: new Float32Array(3),
+        },
+        graph,
+      ),
+    ).toBe("Source · Root");
+    expect(
+      getSpatialSkeletonFindPathEndpointDescription(
+        "Target",
+        {
+          nodeId: 2n,
+          segmentId: 11n,
+          position: new Float32Array(3),
+        },
+        graph,
+      ),
+    ).toBe("Target · Branch point");
+    expect(
+      getSpatialSkeletonFindPathEndpointDescription(
+        "Target",
+        {
+          nodeId: 3n,
+          segmentId: 11n,
+          position: new Float32Array(3),
+        },
+        graph,
+      ),
+    ).toBe("Target · Leaf");
+    expect(
+      getSpatialSkeletonFindPathEndpointDescription(
+        "Target",
+        {
+          nodeId: 4n,
+          segmentId: 11n,
+          position: new Float32Array(3),
+        },
+        graph,
+      ),
+    ).toBe("Target · True end");
+  });
+
+  it("collects two exact Find Path nodes and rejects invalid or extra picks", () => {
+    suppressStatusMessages();
+    const harness = makeFindPathToolHarness();
+    const source = makeFindPathNode(1);
+    const target = makeFindPathNode(2);
+
+    try {
+      harness.pickNode(source);
+      expect(harness.state.source).toEqual({
+        nodeId: 1n,
+        segmentId: 11n,
+        position: source.position,
+      });
+      expect(harness.state.target).toBeUndefined();
+
+      harness.pickNode(makeFindPathNode(1));
+      expect(harness.state.target).toBeUndefined();
+      expect(StatusMessage.showTemporaryMessage).toHaveBeenLastCalledWith(
+        "Find Path endpoints must be distinct skeleton nodes.",
+      );
+
+      harness.pickNode(makeFindPathNode(2, 12));
+      expect(harness.state.target).toBeUndefined();
+      expect(StatusMessage.showTemporaryMessage).toHaveBeenLastCalledWith(
+        "Find Path endpoints must belong to the same skeleton segment.",
+      );
+
+      harness.pickNode(target);
+      expect(harness.state.target).toEqual({
+        nodeId: 2n,
+        segmentId: 11n,
+        position: target.position,
+      });
+
+      harness.pickNode(makeFindPathNode(3));
+      expect(harness.state.source?.nodeId).toBe(1n);
+      expect(harness.state.target?.nodeId).toBe(2n);
+      expect(StatusMessage.showTemporaryMessage).toHaveBeenLastCalledWith(
+        "Clear Find Path or delete an endpoint before selecting another node.",
+      );
+    } finally {
+      harness.dispose();
+    }
+  });
+
+  it("rejects edge-only picks and permits a new endpoint after Clear", () => {
+    suppressStatusMessages();
+    const harness = makeFindPathToolHarness();
+
+    try {
+      harness.mouseState.pickedSpatialSkeleton = { segmentId: 11 };
+      harness.actions.get(SKELETON_FIND_PATH_SELECT_ENDPOINT)?.(
+        makeFindPathActionEvent(),
+      );
+      expect(harness.state.source).toBeUndefined();
+      expect(StatusMessage.showTemporaryMessage).toHaveBeenLastCalledWith(
+        "Find Path endpoints must be exact skeleton nodes, not edges.",
+      );
+
+      harness.pickNode(makeFindPathNode(1));
+      harness.state.clear();
+      harness.pickNode(makeFindPathNode(2));
+      expect(harness.state.source?.nodeId).toBe(2n);
+    } finally {
+      harness.dispose();
+    }
+  });
+
+  it("rejects picks from a non-owning spatial skeleton source", () => {
+    suppressStatusMessages();
+    const harness = makeFindPathToolHarness({ hasSecondSource: true });
+
+    try {
+      harness.pickNode(makeFindPathNode(1));
+      harness.pickNode(makeFindPathNode(2), harness.secondSkeletonLayer);
+
+      expect(harness.state.source?.nodeId).toBe(1n);
+      expect(harness.state.target).toBeUndefined();
+      expect(StatusMessage.showTemporaryMessage).toHaveBeenLastCalledWith(
+        "Find Path is only available for the first active spatial skeleton datasource in this layer.",
+      );
+
+      harness.state.clear();
+      harness.pickNode(makeFindPathNode(2), harness.secondSkeletonLayer);
+      expect(harness.state.toJSON()).toBeUndefined();
+      expect(StatusMessage.showTemporaryMessage).toHaveBeenLastCalledWith(
+        "Find Path is only available for the first active spatial skeleton datasource in this layer.",
+      );
+    } finally {
+      harness.dispose();
+    }
+  });
+
+  it("automatically uses the cached skeleton and stores an endpoint-inclusive path", () => {
+    suppressStatusMessages();
+    const nodes = [
+      makeFindPathNode(1),
+      makeFindPathNode(2, 11, 1),
+      makeFindPathNode(3, 11, 2),
+    ];
+    const harness = makeFindPathToolHarness({ cachedSegmentNodes: nodes });
+    try {
+      harness.pickNode(nodes[2]);
+      harness.pickNode(nodes[0]);
+
+      expect(harness.state.result?.map(({ nodeId }) => nodeId)).toEqual([
+        3n,
+        2n,
+        1n,
+      ]);
+      expect(harness.getFullSegmentNodes).not.toHaveBeenCalled();
+      expect(
+        harness.layer.spatialSkeletonState.getCachedSegmentNodes,
+      ).toHaveBeenCalledWith(11);
+      expect(harness.state.result?.map(({ position }) => position)).toEqual([
+        nodes[2].position,
+        nodes[1].position,
+        nodes[0].position,
+      ]);
+      expect(StatusMessage.showTemporaryMessage).toHaveBeenCalledWith(
+        "Path found!",
+        5000,
+      );
+    } finally {
+      harness.dispose();
+    }
+  });
+
+  it("reports missing endpoints and disconnected cached skeletons distinctly", () => {
+    suppressStatusMessages();
+    const cases = [
+      {
+        nodes: [makeFindPathNode(3)],
+        expected:
+          "Failed to find path: Source node 1 is missing from the loaded skeleton.",
+      },
+      {
+        nodes: [makeFindPathNode(1)],
+        expected:
+          "Failed to find path: Target node 3 is missing from the loaded skeleton.",
+      },
+      {
+        nodes: [makeFindPathNode(1), makeFindPathNode(3)],
+        expected: "Failed to find path: No route exists between nodes 1 and 3.",
+      },
+    ] as const;
+
+    for (const { nodes, expected } of cases) {
+      const harness = makeFindPathToolHarness({ cachedSegmentNodes: nodes });
+      try {
+        harness.pickNode(makeFindPathNode(1));
+        harness.pickNode(makeFindPathNode(3));
+
+        expect(StatusMessage.showTemporaryMessage).toHaveBeenCalledWith(
+          expected,
+        );
+        expect(harness.getFullSegmentNodes).not.toHaveBeenCalled();
+        expect(harness.state.result).toBeUndefined();
+      } finally {
+        harness.dispose();
+      }
+    }
+  });
+
+  it("waits for cached node data without requesting it", () => {
+    suppressStatusMessages();
+    const harness = makeFindPathToolHarness();
+
+    try {
+      harness.pickNode(makeFindPathNode(1));
+      harness.pickNode(makeFindPathNode(3));
+
+      expect(harness.getFullSegmentNodes).not.toHaveBeenCalled();
+      expect(harness.state.result).toBeUndefined();
+      expect(StatusMessage.showTemporaryMessage).toHaveBeenCalledWith(
+        "Full data for skeleton 11 is not cached. Make it visible and wait for loading.",
+      );
+    } finally {
+      harness.dispose();
+    }
+  });
+
+  it("rejects persisted endpoint IDs outside the spatial number boundary", () => {
+    suppressStatusMessages();
+    const state = new SkeletonFindPathState();
+    const unsafeNodeId = BigInt(Number.MAX_SAFE_INTEGER) + 1n;
+    state.setEndpoints(
+      {
+        nodeId: unsafeNodeId,
+        segmentId: 11n,
+        position: new Float32Array([1, 2, 3]),
+      },
+      {
+        nodeId: unsafeNodeId + 1n,
+        segmentId: 11n,
+        position: new Float32Array([4, 5, 6]),
+      },
+    );
+    const harness = makeFindPathToolHarness({ state });
+
+    try {
+      const status = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          ".neuroglancer-skeleton-find-path-message",
+        ),
+      ).at(-1);
+      expect(status?.textContent).toBe(
+        "The selected endpoint IDs are not supported by this spatial skeleton source.",
+      );
+      expect(harness.state.result).toBeUndefined();
+      expect(harness.getFullSegmentNodes).not.toHaveBeenCalled();
+    } finally {
+      harness.dispose();
+    }
+  });
+
+  it("uses a cached skeleton even when it is not visible", () => {
+    suppressStatusMessages();
+    const nodes = [
+      makeFindPathNode(1),
+      makeFindPathNode(2, 11, 1),
+      makeFindPathNode(3, 11, 2),
+    ];
+    const harness = makeFindPathToolHarness({
+      cachedSegmentNodes: nodes,
+      visibleSegmentIds: [],
+    });
+
+    try {
+      harness.pickNode(nodes[0]);
+      harness.pickNode(nodes[2]);
+
+      expect(harness.state.result?.map(({ nodeId }) => nodeId)).toEqual([
+        1n,
+        2n,
+        3n,
+      ]);
+      expect(harness.getFullSegmentNodes).not.toHaveBeenCalled();
+    } finally {
+      harness.dispose();
+    }
+  });
+
+  it("automatically retries when the full skeleton enters the cache", () => {
+    suppressStatusMessages();
+    const nodes = [
+      makeFindPathNode(1),
+      makeFindPathNode(2, 11, 1),
+      makeFindPathNode(3, 11, 2),
+    ];
+    const harness = makeFindPathToolHarness();
+
+    try {
+      harness.pickNode(nodes[0]);
+      harness.pickNode(nodes[2]);
+      expect(harness.state.result).toBeUndefined();
+
+      harness.cachedSegmentNodes.set(11, nodes);
+      harness.nodeDataVersion.value++;
+
+      expect(harness.state.result?.map(({ nodeId }) => nodeId)).toEqual([
+        1n,
+        2n,
+        3n,
+      ]);
+      expect(harness.getFullSegmentNodes).not.toHaveBeenCalled();
+    } finally {
+      harness.dispose();
+    }
+  });
+
+  it("Clear resets a result computed from cached nodes", () => {
+    suppressStatusMessages();
+    const nodes = [
+      makeFindPathNode(1),
+      makeFindPathNode(2, 11, 1),
+      makeFindPathNode(3, 11, 2),
+    ];
+    const harness = makeFindPathToolHarness({ cachedSegmentNodes: nodes });
+
+    try {
+      harness.pickNode(nodes[0]);
+      harness.pickNode(nodes[2]);
+      expect(harness.state.result).toBeDefined();
+
+      const clearButton = Array.from(
+        document.querySelectorAll<HTMLElement>('[title="Clear Find Path"]'),
+      ).at(-1);
+      expect(clearButton).toBeDefined();
+      clearButton?.click();
+
+      expect(harness.state.source).toBeUndefined();
+      expect(harness.state.target).toBeUndefined();
+      expect(harness.state.result).toBeUndefined();
+      expect(harness.getFullSegmentNodes).not.toHaveBeenCalled();
+    } finally {
+      harness.dispose();
+    }
+  });
+
+  it("allows Find Path for a read-only source using inspect permission", () => {
+    suppressStatusMessages();
+    const harness = makeFindPathToolHarness({ readonly: true });
+
+    try {
+      expect(
+        harness.getSpatialSkeletonActionsDisabledReason,
+      ).toHaveBeenCalledWith(SpatialSkeletonActions.inspect);
+      expect(harness.actions.has(SKELETON_FIND_PATH_SELECT_ENDPOINT)).toBe(
+        true,
+      );
+      expect(harness.activation.cancel).not.toHaveBeenCalled();
+    } finally {
+      harness.dispose();
+    }
+  });
+
+  it("cancels Find Path when inspect is disabled or no source is loaded", async () => {
+    suppressStatusMessages();
+    const disabledHarness = makeFindPathToolHarness({
+      disabledReason: "Skeleton inspection is unavailable.",
+    });
+    const noSourceHarness = makeFindPathToolHarness({ hasSource: false });
+
+    try {
+      await Promise.resolve();
+
+      expect(disabledHarness.activation.cancel).toHaveBeenCalledTimes(1);
+      expect(disabledHarness.actions.size).toBe(0);
+      expect(noSourceHarness.activation.cancel).toHaveBeenCalledTimes(1);
+      expect(noSourceHarness.actions.size).toBe(0);
+      expect(StatusMessage.showTemporaryMessage).toHaveBeenCalledWith(
+        "Skeleton inspection is unavailable.",
+      );
+      expect(StatusMessage.showTemporaryMessage).toHaveBeenCalledWith(
+        "No spatially indexed skeleton source is currently loaded.",
+      );
+    } finally {
+      disabledHarness.dispose();
+      noSourceHarness.dispose();
     }
   });
 
