@@ -81,14 +81,17 @@ bool coneEndClipped(highp float axialDist, highp float radiusAtHit) {
 // Across the axis the cone is a circle whose radius grows along the axis, so the
 // in-plane test is a quadratic rather than a fixed-radius circle.
 //
-// quadraticA is zero for a ray along the axis, which never meets the surface, and
-// negative for a ray inside the taper angle, where the near root lies past the
-// apex. Above zero it also puts perpSpeedSq there, which guards the divides after
-// it.
+// quadraticA is negative for a ray inside the taper angle and zero on its
+// asymptote. Both can still meet a finite cone, particularly when it widens away
+// from a camera looking through an open end.
 //
 // The quadratic is measured from the ray's closest approach to the axis, so that
-// its constant term is a difference of two small numbers. The near root is the one
-// taken. The far one would fill the view from inside.
+// its constant term is a difference of two small numbers. The far root is needed
+// when looking through an open end: the near hit on the infinite cone can be past
+// that end while the far hit lies on the finite surface. A near hit behind the ray
+// origin is rejected only when the origin is within the cone's axial interval;
+// there the camera is inside the finite cone and using the far root would fill the
+// view from inside.
 //
 // The interval test also holds the radius between the two end radii, so a surface
 // past a cone apex never draws. The normal is the gradient of the surface equation,
@@ -110,27 +113,61 @@ RaycastHit intersectRaycastPrimitive() {
   highp float radiusRate = taperRate * dirSplit.parallelDist;
 
   highp float quadraticA = perpSpeedSq - radiusRate * radiusRate;
-  if (!(quadraticA > 0.0)) return raycastMiss();
+  highp float nearHitDist;
+  highp float farHitDist;
+  if (quadraticA > 0.0) {
+    highp float closestDist =
+        -dot(originSplit.perp, dirSplit.perp) / perpSpeedSq;
+    highp vec3 perpAtClosest =
+        originSplit.perp + closestDist * dirSplit.perp;
+    highp float radiusAtClosest = radiusA + taperRate *
+        (originSplit.parallelDist + closestDist * dirSplit.parallelDist);
+    QuadraticRoots roots = solveQuadratic(
+        quadraticA,
+        -radiusAtClosest * radiusRate,
+        dot(perpAtClosest, perpAtClosest) -
+            radiusAtClosest * radiusAtClosest);
+    if (!roots.exist) return raycastMiss();
+    nearHitDist = closestDist + roots.nearRoot;
+    farHitDist = closestDist + roots.farRoot;
+  } else {
+    highp float radiusAtOrigin =
+        radiusA + taperRate * originSplit.parallelDist;
+    highp float quadraticB =
+        dot(originSplit.perp, dirSplit.perp) - radiusAtOrigin * radiusRate;
+    highp float quadraticC =
+        dot(originSplit.perp, originSplit.perp) -
+        radiusAtOrigin * radiusAtOrigin;
+    if (quadraticA < 0.0) {
+      QuadraticRoots roots =
+          solveQuadratic(-quadraticA, -quadraticB, -quadraticC);
+      if (!roots.exist) return raycastMiss();
+      nearHitDist = roots.nearRoot;
+      farHitDist = roots.farRoot;
+    } else {
+      highp float linearCoefficient = 2.0 * quadraticB;
+      if (linearCoefficient == 0.0) return raycastMiss();
+      nearHitDist = farHitDist = -quadraticC / linearCoefficient;
+    }
+  }
 
-  highp float closestDist = -dot(originSplit.perp, dirSplit.perp) / perpSpeedSq;
-  highp vec3 perpAtClosest = originSplit.perp + closestDist * dirSplit.perp;
-  highp float radiusAtClosest = radiusA + taperRate *
-      (originSplit.parallelDist + closestDist * dirSplit.parallelDist);
-
-  QuadraticRoots roots = solveQuadratic(
-      quadraticA,
-      -radiusAtClosest * radiusRate,
-      dot(perpAtClosest, perpAtClosest) - radiusAtClosest * radiusAtClosest);
-  if (!roots.exist) return raycastMiss();
-
-  highp float hitDist = closestDist + roots.nearRoot;
-  if (!(hitDist >= 0.0)) return raycastMiss();
+  highp float hitDist = nearHitDist;
+  bool rayOriginWithinConeAxis =
+      originSplit.parallelDist >= 0.0 &&
+      originSplit.parallelDist <= axisLength;
+  if (!(hitDist >= 0.0) && rayOriginWithinConeAxis) return raycastMiss();
 
   highp float axialDist =
       originSplit.parallelDist + hitDist * dirSplit.parallelDist;
-  if (!(axialDist >= 0.0 && axialDist <= axisLength)) return raycastMiss();
   highp float radiusAtHit = radiusA + taperRate * axialDist;
-  if (coneEndClipped(axialDist, radiusAtHit)) return raycastMiss();
+  if (!(hitDist >= 0.0 && axialDist >= 0.0 && axialDist <= axisLength) ||
+      coneEndClipped(axialDist, radiusAtHit)) {
+    hitDist = farHitDist;
+    axialDist = originSplit.parallelDist + hitDist * dirSplit.parallelDist;
+    radiusAtHit = radiusA + taperRate * axialDist;
+    if (!(hitDist >= 0.0 && axialDist >= 0.0 && axialDist <= axisLength) ||
+        coneEndClipped(axialDist, radiusAtHit)) return raycastMiss();
+  }
   raycastConeAxialFraction = axialDist * inverseAxisLength;
 
   highp vec3 perpAtHit = originSplit.perp + hitDist * dirSplit.perp;

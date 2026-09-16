@@ -379,6 +379,44 @@ describe("raycast cone", () => {
     });
   });
 
+  it("draws the far side through an open end when facing the camera", () => {
+    webglTest((gl) => {
+      const shaded = coveredFraction(
+        drawCone(
+          gl,
+          {
+            endpointA: [-0.05, 0, -0.6],
+            endpointB: [0.15, 0, -1.6],
+            radiusA: 0.2,
+            radiusB: 0.2,
+          },
+          SHADE_SURFACE,
+        ),
+      );
+      expect(shaded).toBeGreaterThan(0.01);
+    });
+  });
+
+  it("draws a tapered cone facing the camera", () => {
+    webglTest((gl) => {
+      const shaded = coveredFraction(
+        drawCone(
+          gl,
+          {
+            endpointA: [0, 0, -0.4],
+            endpointB: [0, 0, -1.3],
+            radiusA: 0.06,
+            radiusB: 0.28,
+            clipRadiusA: 0.06,
+            clipRadiusB: 0.28,
+          },
+          SHADE_SURFACE,
+        ),
+      );
+      expect(shaded).toBeGreaterThan(0.01);
+    });
+  });
+
   it("tapers the width between two different end radii", () => {
     webglTest((gl) => {
       // Endpoint A is the lower end, so the width grows from bottom to top. These
