@@ -16,120 +16,106 @@
 
 import { describe, expect, it } from "vitest";
 import { emptyInvalidCoordinateSpace } from "#src/coordinate_transform.js";
-import type { DisplayContext } from "#src/display_context.js";
 import type { MouseSelectionState } from "#src/layer/index.js";
-import type {
-  PanelOverlayContext,
-  PanelOverlaySource,
+import {
+  PickingIndicatorOverlay,
+  projectToViewport,
 } from "#src/panel_overlay.js";
-import { PanelOverlayManager } from "#src/panel_overlay.js";
-import { PickingIndicatorOverlay } from "#src/picking_indicator_overlay.js";
+import type { ProjectionParameters } from "#src/projection_parameters.js";
 import { WatchableValue } from "#src/trackable_value.js";
+import { mat4 } from "#src/util/geom.js";
 import { NullarySignal } from "#src/util/signal.js";
 
-class RecordingSource implements PanelOverlaySource {
-  readonly overlayUpdateNeeded = new NullarySignal();
-  readonly overlayVisible = new WatchableValue(true);
-  updateCount = 0;
-  updatePanelOverlays(_context: PanelOverlayContext) {
-    ++this.updateCount;
-  }
-}
-
-function makeFixture() {
-  const panelOverlays = new Set<PanelOverlaySource>();
-  const panelOverlaysChanged = new NullarySignal();
-  let updateRequests = 0;
-  const context = {
-    panelOverlays,
-    panelOverlaysChanged,
-    scheduleOverlayUpdate: () => {
-      ++updateRequests;
-    },
-  } as unknown as DisplayContext;
-  const panelElement = document.createElement("div");
-  const manager = new PanelOverlayManager(panelElement, context);
-  const setRegistered = (source: PanelOverlaySource, registered: boolean) => {
-    if (registered) panelOverlays.add(source);
-    else panelOverlays.delete(source);
-    panelOverlaysChanged.dispatch();
-  };
-  const sourceElements = () =>
-    Array.from(panelElement.firstElementChild!.children) as HTMLElement[];
+function makeParameters(projectionMat: mat4): ProjectionParameters {
+  const viewMatrix = mat4.fromTranslation(mat4.create(), [0, 0, -1]);
   return {
-    manager,
-    setRegistered,
-    sourceElements,
-    get updateRequests() {
-      return updateRequests;
+    projectionMat,
+    viewProjectionMat: mat4.multiply(mat4.create(), projectionMat, viewMatrix),
+    logicalWidth: 200,
+    logicalHeight: 100,
+    displayDimensionRenderInfo: {
+      displayDimensionIndices: Int32Array.of(0, 1, 2),
     },
-  };
+  } as unknown as ProjectionParameters;
 }
 
-describe("PanelOverlayManager", () => {
-  it("binds registered sources and requests updates when they signal", () => {
-    const fixture = makeFixture();
-    const source = new RecordingSource();
-    fixture.setRegistered(source, true);
-    expect(fixture.sourceElements()).toHaveLength(1);
-    fixture.manager.update(() => undefined);
-    expect(source.updateCount).toBe(1);
+const perspective = makeParameters(
+  mat4.perspective(mat4.create(), Math.PI / 2, 2, 0.5, 1.5),
+);
+const orthographic = makeParameters(
+  mat4.ortho(mat4.create(), -2, 2, -1, 1, 0.5, 1.5),
+);
 
-    const before = fixture.updateRequests;
-    source.overlayUpdateNeeded.dispatch();
-    expect(fixture.updateRequests).toBe(before + 1);
-
-    fixture.setRegistered(source, false);
-    expect(fixture.sourceElements()).toHaveLength(0);
-    fixture.manager.update(() => undefined);
-    expect(source.updateCount).toBe(1);
-    fixture.manager.dispose();
+describe("projectToViewport", () => {
+  it("puts the focal point at the panel center, on the focal plane", () => {
+    for (const parameters of [perspective, orthographic]) {
+      const point = projectToViewport(parameters, [0, 0, 0])!;
+      expect(point.viewportLeft).toBeCloseTo(100);
+      expect(point.viewportTop).toBeCloseTo(50);
+      expect(point.perspectiveDivideFactor).toBeCloseTo(1);
+      expect(point.focalPlaneDepthFraction).toBeCloseTo(0);
+    }
   });
 
-  it("hides a source whose overlayVisible is false without updating it", () => {
-    const fixture = makeFixture();
-    const source = new RecordingSource();
-    fixture.setRegistered(source, true);
-    const [sourceElement] = fixture.sourceElements();
-    source.overlayVisible.value = false;
-    fixture.manager.update(() => undefined);
-    expect(source.updateCount).toBe(0);
-    expect(sourceElement.hidden).toBe(true);
-    source.overlayVisible.value = true;
-    fixture.manager.update(() => undefined);
-    expect(source.updateCount).toBe(1);
-    expect(sourceElement.hidden).toBe(false);
-    fixture.manager.dispose();
+  it("magnifies a nearer point only under perspective projection", () => {
+    const nearer = [0, 0, 0.5];
+    expect(
+      projectToViewport(perspective, nearer)!.perspectiveDivideFactor,
+    ).toBeCloseTo(2);
+    expect(
+      projectToViewport(orthographic, nearer)!.perspectiveDivideFactor,
+    ).toBeCloseTo(1);
+  });
+
+  it("reports the depth fraction linearly under both projections", () => {
+    const halfWayToFar = [0, 0, -0.25];
+    expect(
+      projectToViewport(perspective, halfWayToFar)!.focalPlaneDepthFraction,
+    ).toBeCloseTo(0.5);
+    expect(
+      projectToViewport(orthographic, halfWayToFar)!.focalPlaneDepthFraction,
+    ).toBeCloseTo(0.5);
   });
 });
 
 describe("PickingIndicatorOverlay", () => {
-  it("draws one ring per panel at the projected mouse position", () => {
-    const mouseState = {
-      active: true,
-      position: new Float32Array([10, 20, 30]),
-      coordinateSpace: emptyInvalidCoordinateSpace,
-      changed: new NullarySignal(),
-    } as unknown as MouseSelectionState;
+  const mouseState = {
+    active: true,
+    position: new Float32Array([0, 0, 0]),
+    coordinateSpace: emptyInvalidCoordinateSpace,
+    changed: new NullarySignal(),
+  } as unknown as MouseSelectionState;
+
+  it("sizes, fades and places one ring from the projected point", () => {
+    const container = document.createElement("div");
     const overlay = new PickingIndicatorOverlay(
       mouseState,
       new WatchableValue(true),
-    );
-    const container = document.createElement("div");
-    const context: PanelOverlayContext = {
-      project: () => ({ x: 100, y: 50, scale: 1.5 }),
-      container,
-    };
-    overlay.updatePanelOverlays(context);
-    overlay.updatePanelOverlays(context);
-    expect(container.childElementCount).toBe(1);
+    ).createPanelOverlay(container, () => ({
+      viewportLeft: 100,
+      viewportTop: 50,
+      perspectiveDivideFactor: 1.5,
+      focalPlaneDepthFraction: -0.25,
+    }));
+    overlay.update();
     const ring = container.firstElementChild as HTMLElement;
+    expect(container.childElementCount).toBe(1);
     expect(ring.hidden).toBe(false);
     expect(ring.style.width).toBe("21px");
+    expect(ring.style.opacity).toBe("0.75");
     expect(ring.style.transform).toBe("translate(89.5px, 39.5px)");
 
-    mouseState.active = false;
-    overlay.updatePanelOverlays(context);
-    expect(ring.hidden).toBe(true);
+    overlay.dispose();
+    expect(container.childElementCount).toBe(0);
+  });
+
+  it("hides the ring when nothing is picked", () => {
+    const container = document.createElement("div");
+    const overlay = new PickingIndicatorOverlay(
+      mouseState,
+      new WatchableValue(true),
+    ).createPanelOverlay(container, () => undefined);
+    overlay.update();
+    expect((container.firstElementChild as HTMLElement).hidden).toBe(true);
   });
 });

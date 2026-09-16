@@ -70,7 +70,7 @@ import {
   WatchableDisplayDimensionRenderInfo,
 } from "#src/navigation_state.js";
 import { overlaysOpen } from "#src/overlay.js";
-import { PickingIndicatorOverlay } from "#src/picking_indicator_overlay.js";
+import { PickingIndicatorOverlay } from "#src/panel_overlay.js";
 import { ScreenshotHandler } from "#src/python_integration/screenshots.js";
 import { allRenderLayerRoles, RenderLayerRole } from "#src/renderlayer.js";
 import { StatusMessage } from "#src/status.js";

@@ -19,6 +19,7 @@ import type { DisplayContext } from "#src/display_context.js";
 import type { VisibleRenderLayerTracker } from "#src/layer/index.js";
 import { makeRenderedPanelVisibleLayerTracker } from "#src/layer/index.js";
 import { PickIDManager } from "#src/object_picking.js";
+import { projectToViewport } from "#src/panel_overlay.js";
 import type {
   FramePickingData,
   RenderedDataViewerState,
@@ -51,7 +52,6 @@ import {
 } from "#src/util/geom.js";
 import { startRelativeMouseDrag } from "#src/util/mouse_drag.js";
 import type { TouchRotateInfo } from "#src/util/touch_bindings.js";
-import { projectToViewport } from "#src/util/viewport_projection.js";
 import {
   FramebufferConfiguration,
   OffscreenCopyHelper,
@@ -534,12 +534,10 @@ export class SliceViewPanel extends RenderedDataPanel {
   }
 
   protected projectPosition(position: Float32Array) {
-    const point = projectToViewport(
+    return projectToViewport(
       this.sliceView.projectionParameters.value,
       position,
     );
-    if (point === undefined) return undefined;
-    return { x: point.x, y: point.y, opacity: 1 - Math.abs(point.ndcZ) };
   }
 
   /**

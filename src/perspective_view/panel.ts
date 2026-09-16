@@ -23,6 +23,7 @@ import type { DisplayContext } from "#src/display_context.js";
 import { applyRenderViewportToProjectionMatrix } from "#src/display_context.js";
 import type { VisibleRenderLayerTracker } from "#src/layer/index.js";
 import { makeRenderedPanelVisibleLayerTracker } from "#src/layer/index.js";
+import { projectToViewport } from "#src/panel_overlay.js";
 import { PERSPECTIVE_VIEW_RPC_ID } from "#src/perspective_view/base.js";
 import type {
   PerspectiveViewReadyRenderContext,
@@ -67,7 +68,6 @@ import type {
   TouchRotateInfo,
   TouchTranslateInfo,
 } from "#src/util/touch_bindings.js";
-import { projectToViewport } from "#src/util/viewport_projection.js";
 import { WatchableMap } from "#src/util/watchable_map.js";
 import { withSharedVisibility } from "#src/visibility_priority/frontend.js";
 import { isProjectionLayer } from "#src/volume_rendering/trackable_volume_rendering_mode.js";
@@ -1506,9 +1506,7 @@ export class PerspectivePanel extends RenderedDataPanel {
   }
 
   protected projectPosition(position: Float32Array) {
-    const point = projectToViewport(this.projectionParameters.value, position);
-    if (point === undefined) return undefined;
-    return { x: point.x, y: point.y, scale: point.depthScale };
+    return projectToViewport(this.projectionParameters.value, position);
   }
 
   zoomByMouse(factor: number) {

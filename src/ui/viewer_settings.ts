@@ -35,6 +35,38 @@ import { ColorWidget } from "#src/widget/color.js";
 import { NumberInputWidget } from "#src/widget/number_input_widget.js";
 import { TextInputWidget } from "#src/widget/text_input.js";
 
+const SETTING_DESCRIPTIONS = {
+  title: "A name for this view. It becomes the browser tab title.",
+  gpuMemoryLimit:
+    "Max GPU memory to spend on loaded chunks, in bytes, e.g. 1000000000 for 1GB.",
+  systemMemoryLimit:
+    "Max system (CPU) memory to spend on loaded chunks, in bytes, e.g. 2000000000 for 2GB.",
+  concurrentChunkRequests:
+    "How many chunk downloads can be in flight at once. Higher can be faster but can cause chunks to appear in a less prioritised order.",
+  showAxisLines:
+    "Draws the red, green and blue lines marking the x, y and z axes through the current position.",
+  showScaleBar:
+    "Shows a scale bar in the corner of each 2D panel, and 3D panels that use an ortographic projection",
+  showPickingIndicator:
+    "Shows a white ring where the cursor is picking, and at that same point in the other panels. In 3D perspective projection the ring is depth modulated: larger for closer points, smaller for further ones.",
+  showPerspectiveSliceViews:
+    "Draws the 2D cross sections as planes inside the 3D view, in layouts that have both 2D and 3D panels.",
+  hideCrossSectionBackground3D:
+    "Leaves the cross-section planes in the 3D view transparent where there is no data, instead of filling them with the cross-section background color.",
+  showDefaultAnnotations: "Shows the bounding box of each layer's data source.",
+  showChunkStatistics:
+    "Opens a panel with live download and memory statistics for each layer's chunks.",
+  wireFrame:
+    "Draws chunk outlines instead of the data. Mostly useful for debugging what is loaded and at which resolution.",
+  enablePrefetch:
+    "Loads chunks just outside the current view before you get to them, so panning and scrolling through slices feel smoother at the cost of some extra bandwidth.",
+  enableAdaptiveDownsampling:
+    "Renders volume rendering at a lower resolution while the 3D camera is moving, then renders at full resolution once it stops.",
+  crossSectionBackgroundColor:
+    "Background color behind the 2D cross sections, wherever there is no data.",
+  perspectiveViewBackgroundColor: "Background color of the 3D view.",
+} as const;
+
 const DEFAULT_SETTINGS_PANEL_LOCATION: SidePanelLocation = {
   ...DEFAULT_SIDE_PANEL_LOCATION,
   side: "left",
@@ -79,8 +111,7 @@ export class ViewerSettingsPanel extends SidePanel {
         new TextInputWidget(viewer.title),
       );
       titleWidget.element.placeholder = "Title";
-      titleWidget.element.title =
-        "A name for this view. It becomes the browser tab title.";
+      titleWidget.element.title = SETTING_DESCRIPTIONS.title;
       titleWidget.element.classList.add("neuroglancer-settings-title");
       scroll.appendChild(titleWidget.element);
     }
@@ -100,17 +131,17 @@ export class ViewerSettingsPanel extends SidePanel {
     addLimitWidget(
       "GPU memory limit",
       viewer.chunkQueueManager.capacities.gpuMemory.sizeLimit,
-      "Max GPU memory to spend on loaded chunks, in bytes, e.g. 1000000000 for 1GB.",
+      SETTING_DESCRIPTIONS.gpuMemoryLimit,
     );
     addLimitWidget(
       "System memory limit",
       viewer.chunkQueueManager.capacities.systemMemory.sizeLimit,
-      "Max system (CPU) memory to spend on loaded chunks, in bytes, e.g. 2000000000 for 2GB.",
+      SETTING_DESCRIPTIONS.systemMemoryLimit,
     );
     addLimitWidget(
       "Concurrent chunk requests",
       viewer.chunkQueueManager.capacities.download.itemLimit,
-      "How many chunk downloads can be in flight at once. Higher can be faster but can cause chunks to appear in a less prioritised order.",
+      SETTING_DESCRIPTIONS.concurrentChunkRequests,
     );
 
     const addCheckbox = (
@@ -130,52 +161,52 @@ export class ViewerSettingsPanel extends SidePanel {
     addCheckbox(
       "Show axis lines",
       viewer.showAxisLines,
-      "Draws the red, green and blue lines marking the x, y and z axes through the current position.",
+      SETTING_DESCRIPTIONS.showAxisLines,
     );
     addCheckbox(
       "Show scale bar",
       viewer.showScaleBar,
-      "Shows a scale bar in the corner of each 2D panel, and 3D panels that use an ortographic projection",
+      SETTING_DESCRIPTIONS.showScaleBar,
     );
     addCheckbox(
       "Show picking indicator",
       viewer.showPickingIndicator,
-      "Shows a white ring where the cursor is picking, and at that same point in the other panels. In 3D perspective projection the ring is depth modulated: larger for closer points, smaller for further ones.",
+      SETTING_DESCRIPTIONS.showPickingIndicator,
     );
     addCheckbox(
       "Show cross sections in 3-d",
       viewer.showPerspectiveSliceViews,
-      "Draws the 2D cross sections as planes inside the 3D view, in layouts that have both 2D and 3D panels.",
+      SETTING_DESCRIPTIONS.showPerspectiveSliceViews,
     );
     addCheckbox(
       "Hide sections background 3-d",
       viewer.hideCrossSectionBackground3D,
-      "Leaves the cross-section planes in the 3D view transparent where there is no data, instead of filling them with the cross-section background color.",
+      SETTING_DESCRIPTIONS.hideCrossSectionBackground3D,
     );
     addCheckbox(
       "Show default annotations",
       viewer.showDefaultAnnotations,
-      "Shows the bounding box of each layer's data source.",
+      SETTING_DESCRIPTIONS.showDefaultAnnotations,
     );
     addCheckbox(
       "Show chunk statistics",
       viewer.statisticsDisplayState.location.watchableVisible,
-      "Opens a panel with live download and memory statistics for each layer's chunks.",
+      SETTING_DESCRIPTIONS.showChunkStatistics,
     );
     addCheckbox(
       "Wire frame rendering",
       viewer.wireFrame,
-      "Draws chunk outlines instead of the data. Mostly useful for debugging what is loaded and at which resolution.",
+      SETTING_DESCRIPTIONS.wireFrame,
     );
     addCheckbox(
       "Enable prefetching",
       viewer.chunkQueueManager.enablePrefetch,
-      "Loads chunks just outside the current view before you get to them, so panning and scrolling through slices feel smoother at the cost of some extra bandwidth.",
+      SETTING_DESCRIPTIONS.enablePrefetch,
     );
     addCheckbox(
       "Enable adaptive downsampling",
       viewer.enableAdaptiveDownsampling,
-      "Renders volume rendering at a lower resolution while the 3D camera is moving, then renders at full resolution once it stops.",
+      SETTING_DESCRIPTIONS.enableAdaptiveDownsampling,
     );
 
     const addColor = (
@@ -194,12 +225,12 @@ export class ViewerSettingsPanel extends SidePanel {
     addColor(
       "Cross-section background",
       viewer.crossSectionBackgroundColor,
-      "Background color behind the 2D cross sections, wherever there is no data.",
+      SETTING_DESCRIPTIONS.crossSectionBackgroundColor,
     );
     addColor(
       "Projection background",
       viewer.perspectiveViewBackgroundColor,
-      "Background color of the 3D view.",
+      SETTING_DESCRIPTIONS.perspectiveViewBackgroundColor,
     );
   }
 }

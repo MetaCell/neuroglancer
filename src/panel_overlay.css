@@ -27,3 +27,18 @@
   inset: 0;
   pointer-events: none;
 }
+
+/* Black on both sides of the white ring keeps it visible on any background. */
+.neuroglancer-picking-indicator {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.92),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.92);
+  pointer-events: none;
+  will-change: transform;
+}
