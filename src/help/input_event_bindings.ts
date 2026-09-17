@@ -17,6 +17,7 @@
 import "#src/help/input_event_bindings.css";
 import type { LayerManager } from "#src/layer/index.js";
 import { UserLayer } from "#src/layer/index.js";
+import { formatKeyStroke } from "#src/ui/command.js";
 import type { SidePanelManager } from "#src/ui/side_panel.js";
 import { SidePanel } from "#src/ui/side_panel.js";
 import type { SidePanelLocation } from "#src/ui/side_panel_location.js";
@@ -32,37 +33,10 @@ import {
   type EventActionMap,
 } from "#src/util/event_action_map.js";
 import { emptyToUndefined } from "#src/util/json.js";
-import { isMacPlatform } from "#src/util/platform.js";
 
 declare let NEUROGLANCER_BUILD_INFO:
   | { tag: string; url?: string; timestamp?: string }
   | undefined;
-
-export function formatKeyName(name: string) {
-  if (name.startsWith("key")) {
-    return name.substring(3);
-  }
-  if (name.startsWith("digit")) {
-    return name.substring(5);
-  }
-  if (name.startsWith("arrow")) {
-    return name.substring(5);
-  }
-  return name;
-}
-
-export function formatKeyStroke(stroke: string) {
-  const mac = isMacPlatform();
-  return stroke
-    .split("+")
-    .map((part) => {
-      if (mac && part === "control") return "⌘";
-      if (mac && part === "alt") return "⌥";
-      if (mac && part === "shift") return "⇧";
-      return formatKeyName(part);
-    })
-    .join("+");
-}
 
 const DEFAULT_HELP_PANEL_LOCATION: SidePanelLocation = {
   ...DEFAULT_SIDE_PANEL_LOCATION,
