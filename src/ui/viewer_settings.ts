@@ -38,28 +38,28 @@ import { TextInputWidget } from "#src/widget/text_input.js";
 const SETTING_DESCRIPTIONS = {
   title: "A name for this view. It becomes the browser tab title.",
   gpuMemoryLimit:
-    "Max GPU memory to spend on loaded chunks, in bytes, e.g. 1000000000 for 1GB.",
+    "Max GPU memory to spend on visible loaded chunks, in bytes, e.g. 1000000000 for 1GB. Usually set at or lower than system memory and affects how much data you can see at once.",
   systemMemoryLimit:
-    "Max system (CPU) memory to spend on loaded chunks, in bytes, e.g. 2000000000 for 2GB.",
+    "Max system memory to spend on loaded chunks, in bytes, e.g. 2000000000 for 2GB. Usually higher than GPU memory to allow for caching and prefetching chunks.",
   concurrentChunkRequests:
     "How many chunk downloads can be in flight at once. Higher can be faster but can cause chunks to appear in a less prioritised order.",
   showAxisLines:
-    "Draws the red, green and blue lines marking the x, y and z axes through the current position.",
+    "Draws the red, green and blue lines marking the x, y and z display axes through the current position.",
   showScaleBar:
     "Shows a scale bar in the corner of each 2D panel, and 3D panels that use an ortographic projection",
   showPickingIndicator:
-    "Shows a white ring where the cursor is picking, and at that same point in the other panels. In 3D perspective projection the ring is depth modulated: larger for closer points, smaller for further ones.",
+    "Shows a white ring where the cursor is picking, and at that same point in the other panels. In 3D perspective projection the ring is depth modulated: larger for closer points, smaller for further ones. In 2D panels the opacity of the ring is modulated by how close the picking position is to being on the currently shown slice.",
   showPerspectiveSliceViews:
     "Draws the 2D cross sections as planes inside the 3D view, in layouts that have both 2D and 3D panels.",
   hideCrossSectionBackground3D:
     "Leaves the cross-section planes in the 3D view transparent where there is no data, instead of filling them with the cross-section background color.",
-  showDefaultAnnotations: "Shows the bounding box of each layer's data source.",
+  showDefaultAnnotations: "Primarily shows the bounding box of each layer's data source.",
   showChunkStatistics:
     "Opens a panel with live download and memory statistics for each layer's chunks.",
   wireFrame:
     "Draws chunk outlines instead of the data. Mostly useful for debugging what is loaded and at which resolution.",
   enablePrefetch:
-    "Loads chunks just outside the current view before you get to them, so panning and scrolling through slices feel smoother at the cost of some extra bandwidth.",
+    "Loads chunks just outside the current view before you get to them, so panning and scrolling through slices feel smoother at the cost of some extra chunk downloads.",
   enableAdaptiveDownsampling:
     "Renders volume rendering at a lower resolution while the 3D camera is moving, then renders at full resolution once it stops.",
   crossSectionBackgroundColor:
