@@ -276,8 +276,7 @@ export class CommandCatalog extends RefCounted {
       );
     }
 
-    // The per-layer actions are bound to a digit each, so a group header states
-    // the whole range rather than repeating every binding.
+    // A group header states the whole digit range rather than one binding.
     const layerRangeShortcut = (actionPrefix: string) => {
       const shortcut = shortcutByAction.get(`${actionPrefix}-1`);
       return shortcut === undefined ? "" : `${shortcut}–9`;

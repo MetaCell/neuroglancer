@@ -227,8 +227,6 @@ export function getDropEffectFromModifiers<DropEffect extends string>(
   moveAllowed: boolean,
 ): { dropEffect: DropEffect | "move" | "copy"; dropEffectMessage: string } {
   const modifiers = savedModifiers ?? event;
-  // Control+drag is unavailable on Mac, where Control+click is the system
-  // secondary-click gesture; Command is the conventional modifier there.
   const moveModifierActive = hasControlEquivalentModifier(modifiers);
   const moveModifierLabel = controlEquivalentModifierLabel().toUpperCase();
   let dropEffect: DropEffect | "move" | "copy";

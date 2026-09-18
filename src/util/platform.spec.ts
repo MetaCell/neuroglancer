@@ -51,29 +51,22 @@ describe("hasControlEquivalentModifier", () => {
     vi.unstubAllGlobals();
   });
 
-  const modifiers = {
+  const none = {
     ctrlKey: false,
     altKey: false,
     metaKey: false,
     shiftKey: false,
   };
 
-  it("tests the Command key on Mac", () => {
+  it("tests Command on Mac and Control elsewhere", () => {
     vi.stubGlobal("navigator", { platform: "MacIntel" });
-    expect(hasControlEquivalentModifier({ ...modifiers, metaKey: true })).toBe(
-      true,
-    );
-    expect(hasControlEquivalentModifier({ ...modifiers, ctrlKey: true })).toBe(
+    expect(hasControlEquivalentModifier({ ...none, metaKey: true })).toBe(true);
+    expect(hasControlEquivalentModifier({ ...none, ctrlKey: true })).toBe(
       false,
     );
-  });
-
-  it("tests the Control key off Mac", () => {
     vi.stubGlobal("navigator", { platform: "Win32" });
-    expect(hasControlEquivalentModifier({ ...modifiers, ctrlKey: true })).toBe(
-      true,
-    );
-    expect(hasControlEquivalentModifier({ ...modifiers, metaKey: true })).toBe(
+    expect(hasControlEquivalentModifier({ ...none, ctrlKey: true })).toBe(true);
+    expect(hasControlEquivalentModifier({ ...none, metaKey: true })).toBe(
       false,
     );
   });

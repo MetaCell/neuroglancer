@@ -28,8 +28,8 @@ export function isMacPlatform(): boolean {
 
 /**
  * Whether the event carries the modifier that stands in for Control on this
- * platform: Command on Mac, Control elsewhere. Mac reserves Control+click for
- * the system secondary click, so a Control-only test is unreachable there.
+ * platform. Mac reserves Control+click for the system secondary click, so a
+ * Control-only test is unreachable there.
  */
 export function hasControlEquivalentModifier(
   event: EventModifierKeyState,
@@ -37,16 +37,12 @@ export function hasControlEquivalentModifier(
   return isMacPlatform() ? event.metaKey : event.ctrlKey;
 }
 
-/**
- * Display name of the modifier tested by {@link hasControlEquivalentModifier}.
- */
+/** Display name of the modifier tested by {@link hasControlEquivalentModifier}. */
 export function controlEquivalentModifierLabel(): string {
   return isMacPlatform() ? "command" : "control";
 }
 
-/**
- * Display name of the Alt modifier, which Mac keyboards label Option.
- */
+/** Display name of the Alt modifier, which Mac keyboards label Option. */
 export function altModifierLabel(): string {
   return isMacPlatform() ? "option" : "alt";
 }

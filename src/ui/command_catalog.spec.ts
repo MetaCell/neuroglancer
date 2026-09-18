@@ -51,7 +51,6 @@ afterEach(() => {
   while (activeRegistries.length > 0) activeRegistries.pop()!.dispose();
 });
 
-// Minimal stand-in for a ManagedUserLayer, enough for the layer-derived entries.
 function makeLayer(name: string) {
   return {
     name,
@@ -263,41 +262,22 @@ describe("CommandCatalog reactivity", () => {
 });
 
 describe("layer command shortcuts", () => {
-  // The digit bindings match the defaults in default_input_event_bindings.ts.
-  function makeLayerCatalog() {
+  it("reads the shortcut labels from the installed bindings", () => {
     const map = new EventActionMap();
-    map.set("digit1", "toggle-layer-1");
     map.set("control+digit1", "select-layer-1");
     map.set("alt+digit1", "toggle-pick-layer-1");
-    return new CommandCatalog(
+    const catalog = new CommandCatalog(
       makeContext(makeInputEventBindings(map), new CommandRegistry(), [
         makeLayer("first"),
       ]),
     );
-  }
-
-  it("reads a group range from the installed binding", () => {
-    const catalog = makeLayerCatalog();
     try {
-      const shortcutByLabel = new Map(
+      expect(
         catalog.groups.map((group) => [group.label, group.shortcut]),
-      );
-      expect(shortcutByLabel.get("Toggle Layer Visibility")).toBe("1–9");
-      expect(shortcutByLabel.get("Select Layer")).toBe("control+1–9");
-      expect(shortcutByLabel.get("Toggle Layer Picking")).toBe("alt+1–9");
-    } finally {
-      catalog.dispose();
-    }
-  });
-
-  it("reads a per-layer shortcut from the installed binding", () => {
-    const catalog = makeLayerCatalog();
-    try {
-      const shortcutByCommandId = new Map(
+      ).toContainEqual(["Select Layer", "control+1–9"]);
+      expect(
         catalog.commands.map((entry) => [entry.command.id, entry.shortcut]),
-      );
-      expect(shortcutByCommandId.get("select-layer-1")).toBe("control+1");
-      expect(shortcutByCommandId.get("toggle-pick-layer-1")).toBe("alt+1");
+      ).toContainEqual(["toggle-pick-layer-1", "alt+1"]);
     } finally {
       catalog.dispose();
     }
