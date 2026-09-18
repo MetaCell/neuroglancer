@@ -59,7 +59,7 @@ import { measureElementClone } from "#src/util/dom.js";
 import type { vec3 } from "#src/util/geom.js";
 import { kOneVec, vec4 } from "#src/util/geom.js";
 import { parseUint64 } from "#src/util/json.js";
-import { isMacPlatform } from "#src/util/platform.js";
+import { altModifierLabel } from "#src/util/platform.js";
 import { NullarySignal } from "#src/util/signal.js";
 import { withSharedVisibility } from "#src/visibility_priority/frontend.js";
 import { makeCopyButton } from "#src/widget/copy_button.js";
@@ -304,7 +304,7 @@ export function bindSegmentListWidth(
 const segmentWidgetTemplate = (() => {
   const template = document.createElement("div");
   template.classList.add("neuroglancer-segment-list-entry");
-  const colorModifierLabel = isMacPlatform() ? "option" : "alt";
+  const colorModifierLabel = altModifierLabel();
   template.title =
     `Right click to move to segment, ${colorModifierLabel}+click to set color, ` +
     `${colorModifierLabel}+shift+click to unset color`;

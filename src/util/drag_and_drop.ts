@@ -30,7 +30,10 @@
 
 import { registerEventListener } from "#src/util/disposable.js";
 import { hexEncode, hexDecode } from "#src/util/hex.js";
-import { isMacPlatform } from "#src/util/platform.js";
+import {
+  controlEquivalentModifierLabel,
+  hasControlEquivalentModifier,
+} from "#src/util/platform.js";
 
 export function encodeStringAsDragType(s: string) {
   return hexEncode(new TextEncoder().encode(s));
@@ -224,13 +227,10 @@ export function getDropEffectFromModifiers<DropEffect extends string>(
   moveAllowed: boolean,
 ): { dropEffect: DropEffect | "move" | "copy"; dropEffectMessage: string } {
   const modifiers = savedModifiers ?? event;
-  // Ctrl+drag is unavailable on Mac, where Ctrl+click is the system secondary-click
-  // gesture; Cmd is the conventional modifier there.
-  const macPlatform = isMacPlatform();
-  const moveModifierActive = macPlatform
-    ? modifiers.metaKey
-    : modifiers.ctrlKey;
-  const moveModifierLabel = macPlatform ? "COMMAND" : "CONTROL";
+  // Control+drag is unavailable on Mac, where Control+click is the system
+  // secondary-click gesture; Command is the conventional modifier there.
+  const moveModifierActive = hasControlEquivalentModifier(modifiers);
+  const moveModifierLabel = controlEquivalentModifierLabel().toUpperCase();
   let dropEffect: DropEffect | "move" | "copy";
   if (modifiers.shiftKey) {
     dropEffect = "copy";

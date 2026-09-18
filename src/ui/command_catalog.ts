@@ -265,17 +265,35 @@ export class CommandCatalog extends RefCounted {
 
     const layers = layerManager?.managedLayers ?? [];
 
+    const bindings = collectActionBindings(inputEventBindings);
+    const shortcutByAction = new Map<ActionIdentifier, string>();
+    for (const { actionId, eventAction } of bindings) {
+      shortcutByAction.set(
+        actionId,
+        formatKeyStroke(
+          friendlyEventIdentifier(eventAction.originalEventIdentifier ?? ""),
+        ),
+      );
+    }
+
+    // The per-layer actions are bound to a digit each, so a group header states
+    // the whole range rather than repeating every binding.
+    const layerRangeShortcut = (actionPrefix: string) => {
+      const shortcut = shortcutByAction.get(`${actionPrefix}-1`);
+      return shortcut === undefined ? "" : `${shortcut}–9`;
+    };
+
     const toggleLayerGroup: CommandGroup = {
       label: "Toggle Layer Visibility",
-      shortcut: "1–9",
+      shortcut: layerRangeShortcut("toggle-layer"),
     };
     const selectLayerGroup: CommandGroup = {
       label: "Select Layer",
-      shortcut: "Ctrl+1–9",
+      shortcut: layerRangeShortcut("select-layer"),
     };
     const togglePickLayerGroup: CommandGroup = {
       label: "Toggle Layer Picking",
-      shortcut: "Alt+1–9",
+      shortcut: layerRangeShortcut("toggle-pick-layer"),
     };
 
     let nonArchivedIndex = -1;
@@ -297,7 +315,7 @@ export class CommandCatalog extends RefCounted {
         command.enabled = enabled;
         commands.push({
           ...commonObject,
-          shortcut: nonArchivedIndex < 9 ? String(nonArchivedIndex + 1) : "",
+          shortcut: shortcutByAction.get(command.id) ?? "",
           group: toggleLayerGroup,
           command,
         });
@@ -316,7 +334,7 @@ export class CommandCatalog extends RefCounted {
         command.enabled = enabled;
         commands.push({
           ...commonObject,
-          shortcut: nonArchivedIndex < 9 ? `Ctrl+${nonArchivedIndex + 1}` : "",
+          shortcut: shortcutByAction.get(command.id) ?? "",
           group: selectLayerGroup,
           command,
         });
@@ -334,23 +352,12 @@ export class CommandCatalog extends RefCounted {
         command.enabled = enabled;
         commands.push({
           label: layer.name,
-          shortcut: nonArchivedIndex < 9 ? `Alt+${nonArchivedIndex + 1}` : "",
+          shortcut: shortcutByAction.get(command.id) ?? "",
           source: "derived",
           group: togglePickLayerGroup,
           command,
         });
       }
-    }
-
-    const bindings = collectActionBindings(inputEventBindings);
-    const shortcutByAction = new Map<ActionIdentifier, string>();
-    for (const { actionId, eventAction } of bindings) {
-      shortcutByAction.set(
-        actionId,
-        formatKeyStroke(
-          friendlyEventIdentifier(eventAction.originalEventIdentifier ?? ""),
-        ),
-      );
     }
 
     // Registered commands come first. A command's shortcut is whatever binding

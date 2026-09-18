@@ -138,15 +138,41 @@ export function formatKeyName(name: string) {
   return name;
 }
 
-export function formatKeyStroke(stroke: string) {
-  const mac = isMacPlatform();
-  return stroke
-    .split("+")
-    .map((part) => {
-      if (mac && part === "control") return "⌘";
-      if (mac && part === "alt") return "⌥";
-      if (mac && part === "shift") return "⇧";
-      return formatKeyName(part);
-    })
+// Mac modifier symbols, in the order the platform writes them. A `control+`
+// binding is reachable with Command on Mac, so both names map to ⌘.
+const MAC_MODIFIER_SYMBOLS: readonly (readonly [string, string])[] = [
+  ["alt", "⌥"],
+  ["shift", "⇧"],
+  ["control", "⌘"],
+  ["meta", "⌘"],
+];
+
+const MAC_MODIFIER_NAMES = new Set(MAC_MODIFIER_SYMBOLS.map(([name]) => name));
+
+function formatMacKeyStroke(parts: readonly string[]) {
+  const partSet = new Set(parts);
+  let symbols = "";
+  for (const [name, symbol] of MAC_MODIFIER_SYMBOLS) {
+    if (partSet.has(name) && !symbols.includes(symbol)) symbols += symbol;
+  }
+  let keyNames = parts
+    .filter((part) => !MAC_MODIFIER_NAMES.has(part))
+    .map(formatKeyName)
     .join("+");
+  // A single-character key is written uppercase and run together with the
+  // symbols, as the platform does. A longer name such as "mousedown0" keeps a
+  // separator so that it remains readable.
+  if (keyNames.length === 1) {
+    keyNames = keyNames.toUpperCase();
+    return symbols + keyNames;
+  }
+  return symbols === "" ? keyNames : `${symbols}+${keyNames}`;
+}
+
+export function formatKeyStroke(stroke: string) {
+  const parts = stroke.split("+");
+  if (isMacPlatform()) {
+    return formatMacKeyStroke(parts);
+  }
+  return parts.map(formatKeyName).join("+");
 }

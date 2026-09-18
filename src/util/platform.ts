@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+import type { EventModifierKeyState } from "#src/util/event_action_map.js";
+
 export function isMacPlatform(): boolean {
   if (typeof navigator === "undefined") return false;
   // `userAgentData` (Client Hints) is preferred where available; `navigator.platform` is
@@ -22,4 +24,29 @@ export function isMacPlatform(): boolean {
   return /mac/i.test(
     (navigator as any).userAgentData?.platform ?? navigator.platform ?? "",
   );
+}
+
+/**
+ * Whether the event carries the modifier that stands in for Control on this
+ * platform: Command on Mac, Control elsewhere. Mac reserves Control+click for
+ * the system secondary click, so a Control-only test is unreachable there.
+ */
+export function hasControlEquivalentModifier(
+  event: EventModifierKeyState,
+): boolean {
+  return isMacPlatform() ? event.metaKey : event.ctrlKey;
+}
+
+/**
+ * Display name of the modifier tested by {@link hasControlEquivalentModifier}.
+ */
+export function controlEquivalentModifierLabel(): string {
+  return isMacPlatform() ? "command" : "control";
+}
+
+/**
+ * Display name of the Alt modifier, which Mac keyboards label Option.
+ */
+export function altModifierLabel(): string {
+  return isMacPlatform() ? "option" : "alt";
 }

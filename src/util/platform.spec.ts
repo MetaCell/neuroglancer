@@ -15,7 +15,10 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isMacPlatform } from "#src/util/platform.js";
+import {
+  hasControlEquivalentModifier,
+  isMacPlatform,
+} from "#src/util/platform.js";
 
 describe("isMacPlatform", () => {
   afterEach(() => {
@@ -40,5 +43,38 @@ describe("isMacPlatform", () => {
   it("returns false for userAgentData.platform 'Linux'", () => {
     vi.stubGlobal("navigator", { userAgentData: { platform: "Linux" } });
     expect(isMacPlatform()).toBe(false);
+  });
+});
+
+describe("hasControlEquivalentModifier", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const modifiers = {
+    ctrlKey: false,
+    altKey: false,
+    metaKey: false,
+    shiftKey: false,
+  };
+
+  it("tests the Command key on Mac", () => {
+    vi.stubGlobal("navigator", { platform: "MacIntel" });
+    expect(hasControlEquivalentModifier({ ...modifiers, metaKey: true })).toBe(
+      true,
+    );
+    expect(hasControlEquivalentModifier({ ...modifiers, ctrlKey: true })).toBe(
+      false,
+    );
+  });
+
+  it("tests the Control key off Mac", () => {
+    vi.stubGlobal("navigator", { platform: "Win32" });
+    expect(hasControlEquivalentModifier({ ...modifiers, ctrlKey: true })).toBe(
+      true,
+    );
+    expect(hasControlEquivalentModifier({ ...modifiers, metaKey: true })).toBe(
+      false,
+    );
   });
 });

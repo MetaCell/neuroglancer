@@ -312,7 +312,7 @@ export function normalizeEventAction(
 // Strips the phase and optional modifiers.
 export function friendlyEventIdentifier(identifier: string): string {
   identifier = identifier.replace(
-    /^(?:at|bubble|capture)|(?:(?:shift|control|alt|meta)\?\+)/g,
+    /^(?:at|bubble|capture):|(?:(?:shift|control|alt|meta)\?\+)/g,
     "",
   );
   return identifier;
@@ -464,23 +464,26 @@ export function dispatchEventWithModifiers(
   detail: any,
   eventMap: EventActionMapInterface,
 ) {
-  let modifiers = getEventModifierMask(originalEvent);
-  // On Mac, treat Cmd (meta) as Ctrl for shortcut matching so that
-  // "control+key" bindings fire when the user presses Cmd+key.
-  if (
-    isMacPlatform() &&
-    modifiers & Modifiers.META &&
-    !(modifiers & Modifiers.CONTROL)
-  ) {
-    modifiers = (modifiers & ~Modifiers.META) | Modifiers.CONTROL;
-  }
-  dispatchEvent(
-    getStrokeIdentifier(baseIdentifier, modifiers),
-    originalEvent,
-    originalEvent.eventPhase,
-    detail,
-    eventMap,
+  const phase = eventPhaseNames[originalEvent.eventPhase];
+  const modifiers = getEventModifierMask(originalEvent);
+  let eventAction = eventMap.get(
+    `${phase}:${getStrokeIdentifier(baseIdentifier, modifiers)}`,
   );
+  if (
+    eventAction === undefined &&
+    modifiers & Modifiers.META &&
+    !(modifiers & Modifiers.CONTROL) &&
+    isMacPlatform()
+  ) {
+    // Mac reserves Control+click for the system secondary click, so a Control
+    // chord is not usable there. Fall back to the Control binding when Command
+    // is held. An explicit `meta+` binding is matched above and wins.
+    const controlModifiers = (modifiers & ~Modifiers.META) | Modifiers.CONTROL;
+    eventAction = eventMap.get(
+      `${phase}:${getStrokeIdentifier(baseIdentifier, controlModifiers)}`,
+    );
+  }
+  dispatchEventAction(originalEvent, detail, eventAction);
 }
 
 /**
