@@ -35,44 +35,57 @@ describe("mac control bindings", () => {
     vi.unstubAllGlobals();
   });
 
-  function pressKey(platform: string, init: KeyboardEventInit): string[] {
+  function pressKey(
+    platform: string,
+    bindings: Record<string, string>,
+    init: KeyboardEventInit,
+  ): string[] {
     vi.stubGlobal("navigator", { platform });
     const element = document.createElement("div");
     document.body.appendChild(element);
     const binder = new KeyboardEventBinder(
       element,
-      EventActionMap.fromObject({ "control+keya": "do-thing" }),
+      EventActionMap.fromObject(bindings),
     );
     const dispatched: string[] = [];
-    const listener = registerActionListener(element, "do-thing", () => {
-      dispatched.push("do-thing");
-    });
+    const listeners = Object.values(bindings).map((action) =>
+      registerActionListener(element, action, () => dispatched.push(action)),
+    );
     try {
       element.dispatchEvent(
         new KeyboardEvent("keydown", { bubbles: true, ...init }),
       );
     } finally {
-      listener();
+      for (const listener of listeners) listener();
       binder.dispose();
       element.remove();
     }
     return dispatched;
   }
 
-  it("binds a control stroke to Command on Mac", () => {
-    expect(pressKey("MacIntel", { code: "KeyA", metaKey: true })).toEqual([
+  const controlBinding = { "control+keya": "do-thing" };
+
+  it("reaches a control binding with Command on Mac only", () => {
+    const withCommand = { code: "KeyA", metaKey: true };
+    expect(pressKey("MacIntel", controlBinding, withCommand)).toEqual([
       "do-thing",
     ]);
+    expect(pressKey("Win32", controlBinding, withCommand)).toEqual([]);
   });
 
-  it("leaves Control free for the system secondary click on Mac", () => {
-    expect(pressKey("MacIntel", { code: "KeyA", ctrlKey: true })).toEqual([]);
+  it("still reaches a control binding with Control on Mac", () => {
+    expect(
+      pressKey("MacIntel", controlBinding, { code: "KeyA", ctrlKey: true }),
+    ).toEqual(["do-thing"]);
   });
 
-  it("binds a control stroke to Control off Mac", () => {
-    expect(pressKey("Win32", { code: "KeyA", ctrlKey: true })).toEqual([
-      "do-thing",
-    ]);
-    expect(pressKey("Win32", { code: "KeyA", metaKey: true })).toEqual([]);
+  it("prefers an explicit meta binding on Mac", () => {
+    expect(
+      pressKey(
+        "MacIntel",
+        { ...controlBinding, "meta+keya": "meta-thing" },
+        { code: "KeyA", metaKey: true },
+      ),
+    ).toEqual(["meta-thing"]);
   });
 });

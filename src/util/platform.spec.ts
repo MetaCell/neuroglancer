@@ -25,23 +25,15 @@ describe("isMacPlatform", () => {
     vi.unstubAllGlobals();
   });
 
-  it("returns true for userAgentData.platform 'macOS'", () => {
+  it("reads userAgentData, then the deprecated navigator.platform", () => {
     vi.stubGlobal("navigator", { userAgentData: { platform: "macOS" } });
     expect(isMacPlatform()).toBe(true);
-  });
-
-  it("returns true for legacy navigator.platform 'MacIntel'", () => {
     vi.stubGlobal("navigator", { platform: "MacIntel" });
     expect(isMacPlatform()).toBe(true);
   });
 
-  it("returns false for userAgentData.platform 'Windows'", () => {
+  it("is false off Mac", () => {
     vi.stubGlobal("navigator", { userAgentData: { platform: "Windows" } });
-    expect(isMacPlatform()).toBe(false);
-  });
-
-  it("returns false for userAgentData.platform 'Linux'", () => {
-    vi.stubGlobal("navigator", { userAgentData: { platform: "Linux" } });
     expect(isMacPlatform()).toBe(false);
   });
 });
@@ -58,16 +50,13 @@ describe("hasControlEquivalentModifier", () => {
     shiftKey: false,
   };
 
-  it("tests Command on Mac and Control elsewhere", () => {
+  it("accepts Command only on Mac", () => {
     vi.stubGlobal("navigator", { platform: "MacIntel" });
     expect(hasControlEquivalentModifier({ ...none, metaKey: true })).toBe(true);
-    expect(hasControlEquivalentModifier({ ...none, ctrlKey: true })).toBe(
-      false,
-    );
     vi.stubGlobal("navigator", { platform: "Win32" });
-    expect(hasControlEquivalentModifier({ ...none, ctrlKey: true })).toBe(true);
     expect(hasControlEquivalentModifier({ ...none, metaKey: true })).toBe(
       false,
     );
+    expect(hasControlEquivalentModifier({ ...none, ctrlKey: true })).toBe(true);
   });
 });

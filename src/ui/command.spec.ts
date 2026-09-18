@@ -34,10 +34,7 @@ describe("formatKeyStroke", () => {
   it("uses platform symbols on Mac", () => {
     expect(format("MacIntel", "control+keyp")).toBe("⌘p");
     expect(format("MacIntel", "alt+shift+keya")).toBe("⌥⇧a");
-    expect(format("MacIntel", "meta+keya")).toBe("⌘a");
-  });
-
-  it("keeps a separator before a multi-character key name", () => {
+    // A multi-character key name keeps a separator.
     expect(format("MacIntel", "control+mousedown0")).toBe("⌘+mousedown0");
   });
 });

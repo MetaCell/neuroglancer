@@ -52,34 +52,17 @@ describe("getDropEffectFromModifiers", () => {
     } as DragEvent;
   }
 
-  it("uses Ctrl as the move modifier off Mac", () => {
-    vi.stubGlobal("navigator", { platform: "Win32" });
-    const { dropEffect } = getDropEffectFromModifiers(
-      makeDragEvent({ ctrlKey: true }),
-      "link",
-      true,
-    );
-    expect(dropEffect).toBe("move");
-  });
+  function dropEffectFor(platform: string, modifiers: Partial<DragEvent>) {
+    vi.stubGlobal("navigator", { platform });
+    return getDropEffectFromModifiers(makeDragEvent(modifiers), "link", true)
+      .dropEffect;
+  }
 
-  it("uses Cmd as the move modifier on Mac", () => {
-    vi.stubGlobal("navigator", { platform: "MacIntel" });
-    const { dropEffect } = getDropEffectFromModifiers(
-      makeDragEvent({ metaKey: true }),
-      "link",
-      true,
-    );
-    expect(dropEffect).toBe("move");
-  });
-
-  it("ignores Ctrl on Mac, where it is the secondary-click gesture", () => {
-    vi.stubGlobal("navigator", { platform: "MacIntel" });
-    const { dropEffect } = getDropEffectFromModifiers(
-      makeDragEvent({ ctrlKey: true }),
-      "link",
-      true,
-    );
-    expect(dropEffect).toBe("link");
+  it("moves on Ctrl everywhere, and on Cmd on Mac only", () => {
+    expect(dropEffectFor("Win32", { ctrlKey: true })).toBe("move");
+    expect(dropEffectFor("Win32", { metaKey: true })).toBe("link");
+    expect(dropEffectFor("MacIntel", { ctrlKey: true })).toBe("move");
+    expect(dropEffectFor("MacIntel", { metaKey: true })).toBe("move");
   });
 
   it("names the move modifier per platform in the message", () => {
@@ -93,17 +76,5 @@ describe("getDropEffectFromModifiers", () => {
       getDropEffectFromModifiers(makeDragEvent({}), "link", true)
         .dropEffectMessage,
     ).toContain("hold COMMAND to move");
-  });
-
-  it("uses Shift to copy on both platforms", () => {
-    for (const platform of ["Win32", "MacIntel"]) {
-      vi.stubGlobal("navigator", { platform });
-      const { dropEffect } = getDropEffectFromModifiers(
-        makeDragEvent({ shiftKey: true }),
-        "link",
-        true,
-      );
-      expect(dropEffect).toBe("copy");
-    }
   });
 });

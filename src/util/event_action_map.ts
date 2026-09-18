@@ -246,20 +246,11 @@ function parseEventIdentifier(identifier: string): ParsedEventIdentifier {
   };
 }
 
-// Mac has no usable Control chord: Control+click is the system secondary click.
-// A `control+` binding is therefore installed under Command instead.
-function toPlatformModifiers(modifiers: ModifierMask): ModifierMask {
-  if (!(modifiers & Modifiers.CONTROL) || !isMacPlatform()) return modifiers;
-  return (modifiers & ~Modifiers.CONTROL) | Modifiers.META;
-}
-
 function* getNormalizedStrokeIdentifiers(
   keyName: string,
   modifiers: ModifierMask,
   optionalModifiers: ModifierMask,
 ): Iterable<string> {
-  modifiers = toPlatformModifiers(modifiers);
-  optionalModifiers = toPlatformModifiers(optionalModifiers);
   if (optionalModifiers === 0) {
     yield getStrokeIdentifier(keyName, modifiers);
   }
@@ -473,13 +464,27 @@ export function dispatchEventWithModifiers(
   detail: any,
   eventMap: EventActionMapInterface,
 ) {
-  dispatchEvent(
-    getStrokeIdentifier(baseIdentifier, getEventModifierMask(originalEvent)),
-    originalEvent,
-    originalEvent.eventPhase,
-    detail,
-    eventMap,
+  const phase = eventPhaseNames[originalEvent.eventPhase];
+  const modifiers = getEventModifierMask(originalEvent);
+  let eventAction = eventMap.get(
+    `${phase}:${getStrokeIdentifier(baseIdentifier, modifiers)}`,
   );
+  if (
+    eventAction === undefined &&
+    modifiers & Modifiers.META &&
+    !(modifiers & Modifiers.CONTROL) &&
+    isMacPlatform()
+  ) {
+    // Mac users expect Command for a shortcut, so it also reaches a `control+`
+    // binding. An explicit `meta+` binding matches above and so takes priority.
+    eventAction = eventMap.get(
+      `${phase}:${getStrokeIdentifier(
+        baseIdentifier,
+        (modifiers & ~Modifiers.META) | Modifiers.CONTROL,
+      )}`,
+    );
+  }
+  dispatchEventAction(originalEvent, detail, eventAction);
 }
 
 /**

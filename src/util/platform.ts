@@ -26,18 +26,14 @@ export function isMacPlatform(): boolean {
   );
 }
 
-/**
- * Whether the event carries the modifier that stands in for Control on this
- * platform. Mac reserves Control+click for the system secondary click, so a
- * Control-only test is unreachable there.
- */
+/** Whether the event carries Control, or Command on Mac. */
 export function hasControlEquivalentModifier(
   event: EventModifierKeyState,
 ): boolean {
-  return isMacPlatform() ? event.metaKey : event.ctrlKey;
+  return event.ctrlKey || (isMacPlatform() && event.metaKey);
 }
 
-/** Display name of the modifier tested by {@link hasControlEquivalentModifier}. */
+/** Preferred display name of the modifier tested by {@link hasControlEquivalentModifier}. */
 export function controlEquivalentModifierLabel(): string {
   return isMacPlatform() ? "command" : "control";
 }
