@@ -109,6 +109,20 @@ function getAllowedDropEffect(
 }
 
 /**
+ * Declares the drop effects this drag source supports.
+ *
+ * macOS intersects this mask with the operation its own drag modifiers request,
+ * and reports "none" when the two do not overlap, which rejects the drop. A
+ * source that leaves the mask unset can therefore never be moved with Command.
+ */
+export function declareAllowedDropEffects(
+  event: DragEvent,
+  allowed: DataTransfer["effectAllowed"],
+) {
+  event.dataTransfer!.effectAllowed = allowed;
+}
+
+/**
  * On Chrome 62, the dataTransfer.dropEffect property is reset to 'none' when the 'drop' event is
  * dispatched.  As a workaround, we store it in a global variable.
  *
