@@ -740,6 +740,59 @@ describe("CatmaidClient skeleton editing methods", () => {
     expect(getFetchPath(fetchMock)).toBe("skeletons/17/root");
   });
 
+  it("maps skeleton ids to neuron names", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const fetchMock = vi.fn().mockResolvedValue({
+      "17": "neuron a",
+      "23": "neuron b",
+    });
+    (client as any).fetchProjectEndpoint = fetchMock;
+
+    await expect(client.fetchNeuronNames([17, 23, 42])).resolves.toEqual(
+      new Map([
+        [17, "neuron a"],
+        [23, "neuron b"],
+      ]),
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getFetchPath(fetchMock)).toBe("skeleton/neuronnames");
+    expect(getFetchInit(fetchMock).method).toBe("POST");
+    expect([...getFetchBody(fetchMock).entries()]).toEqual([
+      ["skids[]", "17,23,42"],
+    ]);
+  });
+
+  it("maps skeleton ids to their annotation names", async () => {
+    const client = new CatmaidClient("https://example.invalid", 1);
+    const fetchMock = vi.fn().mockResolvedValue({
+      skeletons: {
+        "17": [
+          { id: 5, uid: 1 },
+          { id: 6, uid: 1 },
+          { id: 999, uid: 1 },
+        ],
+        "23": [],
+      },
+      annotations: { "5": "zebra", "6": "apple" },
+    });
+    (client as any).fetchProjectEndpoint = fetchMock;
+
+    await expect(client.fetchSkeletonAnnotations([17, 23])).resolves.toEqual(
+      new Map([
+        [17, ["zebra", "apple"]],
+        [23, []],
+      ]),
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getFetchPath(fetchMock)).toBe("annotations/forskeletons");
+    expect(getFetchInit(fetchMock).method).toBe("POST");
+    expect([...getFetchBody(fetchMock).entries()]).toEqual([
+      ["skeleton_ids[]", "17,23"],
+    ]);
+  });
+
   it("rejects merge state when the provided node ids do not match the request", async () => {
     const client = new CatmaidClient("https://example.invalid", 1);
     const fetchMock = vi.fn();

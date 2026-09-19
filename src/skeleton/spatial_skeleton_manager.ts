@@ -18,6 +18,8 @@ import type {
   EditableSpatiallyIndexedSkeletonSource,
   SpatialSkeletonConfidenceConfiguration,
   SpatiallyIndexedSkeletonNode,
+  SpatialSkeletonSegmentChange,
+  SpatialSkeletonSegmentPropertySource,
   SpatialSkeletonSourceState,
   SpatiallyIndexedSkeletonSource,
 } from "#src/skeleton/api.js";
@@ -33,6 +35,7 @@ import type { SpatiallyIndexedSkeletonLayer } from "#src/skeleton/frontend.js";
 import { WatchableValue } from "#src/trackable_value.js";
 import { RefCounted } from "#src/util/disposable.js";
 import { PromiseConcurrencyLimiter } from "#src/util/promise_concurrency_limiter.js";
+import { Signal } from "#src/util/signal.js";
 
 interface SpatialSkeletonSourceAccess {
   source: unknown;
@@ -323,6 +326,38 @@ function cachedSegmentSnapshotsEqual(
  */
 const MAX_CONCURRENT_FULL_SEGMENT_NODE_FETCHES = 8;
 
+function getSegmentChangeSegmentIds(
+  change: SpatialSkeletonSegmentChange,
+): number[] {
+  switch (change.kind) {
+    case "merged":
+      return [change.resultSegmentId, change.deletedSegmentId];
+    case "split":
+      return [change.existingSegmentId, change.newSegmentId];
+  }
+}
+
+export function bindSegmentPropertySource(
+  state: SpatialSkeletonState,
+  segmentProperties: SpatialSkeletonSegmentPropertySource,
+  onSegmentPropertyMapChanged: () => void,
+): () => void {
+  const removeChangeListener = state.segmentsChanged.add((change) => {
+    segmentProperties
+      .refreshSegmentProperties(getSegmentChangeSegmentIds(change))
+      .catch((error) => {
+        console.warn("Failed to refresh segment properties", error);
+      });
+  });
+  const removeMapListener = segmentProperties.segmentPropertyMap.changed.add(
+    onSegmentPropertyMapChanged,
+  );
+  return () => {
+    removeChangeListener();
+    removeMapListener();
+  };
+}
+
 export class SpatialSkeletonState
   extends RefCounted
   implements SpatialSkeletonOptimisticEditState
@@ -342,6 +377,9 @@ export class SpatialSkeletonState
   // (merge) or is suppressed entirely until a click/exit (split).
   readonly suppressSelectedNodeHighlight = new WatchableValue(false);
   readonly nodeDataVersion = new WatchableValue(0);
+  readonly segmentsChanged = this.registerDisposer(
+    new Signal<(change: SpatialSkeletonSegmentChange) => void>(),
+  );
   readonly pendingNodePositionVersion = new WatchableValue(0);
   readonly optimisticEditQueueVersion = new WatchableValue(0);
 
@@ -597,6 +635,10 @@ export class SpatialSkeletonState
       this.clearFullSkeletonCache();
     }
     this.nodeDataVersion.value = this.nodeDataVersion.value + 1;
+  }
+
+  notifySegmentsChanged(change: SpatialSkeletonSegmentChange) {
+    this.segmentsChanged.dispatch(change);
   }
 
   getCachedSegmentNodes(segmentId: number) {

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import type { SegmentPropertyMap } from "#src/segmentation_display_state/property_map.js";
 import type {
   SpatialSkeletonAddNodesCommandFactory,
   SpatialSkeletonDeleteNodesCommandFactory,
@@ -27,6 +28,7 @@ import type {
   SpatialSkeletonRerootCommandFactory,
   SpatialSkeletonSplitSkeletonsCommandFactory,
 } from "#src/skeleton/command_factories.js";
+import type { WatchableValueInterface } from "#src/trackable_value.js";
 
 export type SpatialSkeletonVector = ArrayLike<number>;
 
@@ -80,6 +82,27 @@ export interface SpatialSkeletonConfidenceConfiguration {
   values: readonly number[];
 }
 
+export interface SpatialSkeletonSegmentPropertySource {
+  // A new instance after every change.
+  readonly segmentPropertyMap: WatchableValueInterface<
+    SegmentPropertyMap | undefined
+  >;
+  // Segments the source no longer has are removed.
+  refreshSegmentProperties(segmentIds: readonly number[]): Promise<void>;
+}
+
+export type SpatialSkeletonSegmentChange =
+  | {
+      readonly kind: "merged";
+      readonly resultSegmentId: number;
+      readonly deletedSegmentId: number;
+    }
+  | {
+      readonly kind: "split";
+      readonly existingSegmentId: number;
+      readonly newSegmentId: number;
+    };
+
 export interface SpatiallyIndexedSkeletonSource {
   readonly readonly: boolean;
   listSkeletons(): Promise<number[]>;
@@ -94,6 +117,7 @@ export interface SpatiallyIndexedSkeletonSource {
       signal?: AbortSignal;
     },
   ): Promise<SpatiallyIndexedSkeletonNodeBase[]>;
+  readonly segmentProperties?: SpatialSkeletonSegmentPropertySource;
 }
 
 export interface EditableSpatiallyIndexedSkeletonSource

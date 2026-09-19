@@ -84,11 +84,12 @@ import {
   SegmentSelectionState,
   Uint64MapEntry,
 } from "#src/segmentation_display_state/frontend.js";
-import type {
+import type { SegmentPropertyMap } from "#src/segmentation_display_state/property_map.js";
+import {
+  getPreprocessedSegmentPropertyMap,
+  mergeSegmentPropertyMaps,
   PreprocessedSegmentPropertyMap,
-  SegmentPropertyMap,
 } from "#src/segmentation_display_state/property_map.js";
-import { getPreprocessedSegmentPropertyMap } from "#src/segmentation_display_state/property_map.js";
 import { LocalSegmentationGraphSource } from "#src/segmentation_graph/local.js";
 import { VisibleSegmentEquivalencePolicy } from "#src/segmentation_graph/segment_id.js";
 import type {
@@ -171,6 +172,7 @@ import {
   SpatialSkeletonNodeFilterType,
 } from "#src/skeleton/node_types.js";
 import {
+  bindSegmentPropertySource,
   editableSpatiallyIndexedSkeletonSourceSupportsAction,
   getEditableSpatiallyIndexedSkeletonSource,
   getSpatiallyIndexedSkeletonSource,
@@ -208,7 +210,7 @@ import { SpatialSkeletonEditTab } from "#src/ui/skeleton_tab.js";
 import { Uint64Map } from "#src/uint64_map.js";
 import { Uint64OrderedSet } from "#src/uint64_ordered_set.js";
 import { Uint64Set } from "#src/uint64_set.js";
-import { gatherUpdate } from "#src/util/array.js";
+import { arraysEqual, gatherUpdate } from "#src/util/array.js";
 import {
   packColor,
   parseRGBColorSpecification,
@@ -831,6 +833,19 @@ const SPATIALLY_INDEXED_SKELETON_RUNTIME_DISPOSAL_KIND =
   "spatiallyIndexedSkeleton";
 
 const Base = UserLayerWithAnnotationsMixin(UserLayer);
+function getFirstSpatiallyIndexedSkeletonChunkSource(
+  mesh: unknown,
+): SpatiallyIndexedSkeletonSource | undefined {
+  if (mesh instanceof SpatiallyIndexedSkeletonSource) return mesh;
+  if (!(mesh instanceof MultiscaleSpatiallyIndexedSkeletonSource)) {
+    return undefined;
+  }
+  return (
+    mesh.getPerspectiveSources()[0]?.chunkSource ??
+    mesh.getSliceViewPanelSources()[0]?.chunkSource
+  );
+}
+
 export class SegmentationUserLayer extends Base {
   sliceViewRenderScaleHistogram = new RenderScaleHistogram();
   sliceViewRenderScaleTarget = trackableRenderScaleTarget(1);
@@ -1694,6 +1709,31 @@ export class SegmentationUserLayer extends Base {
     return changed;
   }
 
+  private preprocessedSkeletonSegmentPropertyMaps:
+    | {
+        readonly maps: readonly SegmentPropertyMap[];
+        readonly preprocessed: PreprocessedSegmentPropertyMap | undefined;
+      }
+    | undefined;
+
+  // Skeleton property maps change with every edit, and the memoized path never
+  // releases an entry.
+  private preprocessSegmentPropertyMaps(
+    maps: SegmentPropertyMap[],
+  ): PreprocessedSegmentPropertyMap | undefined {
+    const previous = this.preprocessedSkeletonSegmentPropertyMaps;
+    if (previous !== undefined && arraysEqual(previous.maps, maps)) {
+      return previous.preprocessed;
+    }
+    const merged = mergeSegmentPropertyMaps(maps);
+    const preprocessed =
+      merged === undefined
+        ? undefined
+        : new PreprocessedSegmentPropertyMap(merged);
+    this.preprocessedSkeletonSegmentPropertyMaps = { maps, preprocessed };
+    return preprocessed;
+  }
+
   private getSpatialSkeletonFindPathSubsource(
     loadedSubsources: readonly LoadedDataSubsource[],
   ) {
@@ -1713,6 +1753,7 @@ export class SegmentationUserLayer extends Base {
     const findPathSubsource =
       this.getSpatialSkeletonFindPathSubsource(loadedSubsources);
     const updatedSegmentPropertyMaps: SegmentPropertyMap[] = [];
+    const skeletonSegmentPropertyMaps: SegmentPropertyMap[] = [];
     const isGroupRoot =
       this.displayState.linkedSegmentationGroup.root.value === this;
     let updatedGraph: SegmentationGraphSource | undefined;
@@ -1744,7 +1785,21 @@ export class SegmentationUserLayer extends Base {
           this.displayState.segmentationGroupState.value,
         );
       } else if (mesh !== undefined) {
-        const activateMeshSubsource = () => {
+        const segmentProperties = isGroupRoot
+          ? getSpatiallyIndexedSkeletonSource({
+              source: getFirstSpatiallyIndexedSkeletonChunkSource(mesh),
+            })?.segmentProperties
+          : undefined;
+        const activateMeshSubsource = (refCounted: RefCounted) => {
+          if (segmentProperties !== undefined) {
+            refCounted.registerDisposer(
+              bindSegmentPropertySource(
+                this.spatialSkeletonState,
+                segmentProperties,
+                () => this.updateDataSubsourceActivations(),
+              ),
+            );
+          }
           const displayState = {
             ...this.displayState,
             transform: loadedSubsource.getRenderLayerTransform(),
@@ -1877,6 +1932,11 @@ export class SegmentationUserLayer extends Base {
           activateMeshSubsource,
           this.displayState.segmentationGroupState.value,
         );
+        const skeletonSegmentPropertyMap =
+          segmentProperties?.segmentPropertyMap.value;
+        if (skeletonSegmentPropertyMap !== undefined) {
+          skeletonSegmentPropertyMaps.push(skeletonSegmentPropertyMap);
+        }
       } else if (segmentPropertyMap !== undefined) {
         if (!isGroupRoot) {
           loadedSubsource.deactivate(
@@ -1949,10 +2009,15 @@ export class SegmentationUserLayer extends Base {
       }
     }
     this.displayState.originalSegmentationGroupState.segmentPropertyMap.value =
-      getPreprocessedSegmentPropertyMap(
-        this.manager.chunkManager,
-        updatedSegmentPropertyMaps,
-      );
+      skeletonSegmentPropertyMaps.length === 0
+        ? getPreprocessedSegmentPropertyMap(
+            this.manager.chunkManager,
+            updatedSegmentPropertyMaps,
+          )
+        : this.preprocessSegmentPropertyMaps([
+            ...updatedSegmentPropertyMaps,
+            ...skeletonSegmentPropertyMaps,
+          ]);
     this.displayState.originalSegmentationGroupState.graph.value = updatedGraph;
     this.displayState.hasVolume.value = hasVolume;
     this.updateSpatialSkeletonChunkLoadState();
