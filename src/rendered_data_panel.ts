@@ -422,6 +422,9 @@ export abstract class RenderedDataPanel extends RenderedPanel {
     }
     this.mouseX = mouseX;
     this.mouseY = mouseY;
+    this.overlays.moveCursor(
+      mouseX < 0 ? undefined : { viewportLeft: mouseX, viewportTop: mouseY },
+    );
     if (mouseX < 0) {
       // Mouse moved out of the viewport.
       this.pickRequestPending = false;

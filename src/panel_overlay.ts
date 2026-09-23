@@ -25,9 +25,12 @@ import type { Disposable } from "#src/util/disposable.js";
 import { RefCounted } from "#src/util/disposable.js";
 import { getViewFrustumDepthRange, vec4 } from "#src/util/geom.js";
 
-export interface ViewportPoint {
+export interface ViewportPosition {
   readonly viewportLeft: number;
   readonly viewportTop: number;
+}
+
+export interface ViewportPoint extends ViewportPosition {
   readonly focalPlaneDepthFraction: number;
   readonly perspectiveDivideFactor: number;
 }
@@ -85,6 +88,8 @@ export type ProjectOverlayPosition = (
 export interface PanelOverlayHost {
   readonly container: HTMLElement;
   readonly project: ProjectOverlayPosition;
+  /** Undefined while the cursor is outside the panel. */
+  readonly cursor: ViewportPosition | undefined;
   /** Updates the overlays at the next animation frame without a redraw. */
   scheduleUpdate(): void;
 }
@@ -98,6 +103,7 @@ export class PanelOverlayManager
   implements PanelOverlayHost
 {
   readonly container = document.createElement("div");
+  cursor: ViewportPosition | undefined = undefined;
   private readonly overlays: PanelOverlay[] = [];
   readonly scheduleUpdate = this.registerCancellable(
     animationFrameDebounce(() => {
@@ -120,6 +126,11 @@ export class PanelOverlayManager
   /** Overlays added later draw on top. */
   add(createOverlay: (host: PanelOverlayHost) => PanelOverlay) {
     this.overlays.push(this.registerDisposer(createOverlay(this)));
+  }
+
+  moveCursor(cursor: ViewportPosition | undefined) {
+    this.cursor = cursor;
+    this.scheduleUpdate();
   }
 
   update() {
@@ -169,10 +180,12 @@ export class PickingIndicator extends RefCounted implements PanelOverlay {
       Math.max(PICKING_INDICATOR_MIN_SCALE, point.perspectiveDivideFactor),
     );
     const size = PICKING_INDICATOR_DIAMETER * scale;
+    // The pick completes after the cursor moves, so the cursor gives the position in its own panel.
+    const { viewportLeft, viewportTop } = this.host.cursor ?? point;
     const { style } = ring;
     style.width = `${size}px`;
     style.height = `${size}px`;
     style.opacity = `${1 - Math.abs(point.focalPlaneDepthFraction)}`;
-    style.transform = `translate(${point.viewportLeft - size / 2}px, ${point.viewportTop - size / 2}px)`;
+    style.transform = `translate(${viewportLeft - size / 2}px, ${viewportTop - size / 2}px)`;
   }
 }

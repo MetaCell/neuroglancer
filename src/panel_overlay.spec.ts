@@ -327,4 +327,29 @@ describe("PickingIndicator", () => {
     )!;
     expect(getRingCentre(ring)).toEqual([20, 50]);
   });
+
+  it("keeps the ring under the cursor in its own panel before the pick completes", () => {
+    const panel = document.createElement("div");
+    const manager = new PanelOverlayManager(
+      panel,
+      () => ({
+        viewportLeft: 100,
+        viewportTop: 50,
+        perspectiveDivideFactor: 1,
+        focalPlaneDepthFraction: 0,
+      }),
+      () => true,
+    );
+    manager.add(
+      (host) =>
+        new PickingIndicator(host, makeMouseState(), new WatchableValue(true)),
+    );
+    manager.moveCursor({ viewportLeft: 30, viewportTop: 40 });
+    manager.scheduleUpdate.flush();
+
+    const ring = panel.querySelector<HTMLElement>(
+      ".neuroglancer-picking-indicator",
+    )!;
+    expect(getRingCentre(ring)).toEqual([30, 40]);
+  });
 });
