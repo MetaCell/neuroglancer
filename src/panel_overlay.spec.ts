@@ -16,16 +16,18 @@
 
 import { describe, expect, it } from "vitest";
 import { emptyInvalidCoordinateSpace } from "#src/coordinate_transform.js";
-import type { DisplayContext } from "#src/display_context.js";
+import {
+  applyRenderViewportToProjectionMatrix,
+  RenderViewport,
+} from "#src/display_context.js";
 import type { MouseSelectionState } from "#src/layer/index.js";
-import type { PanelOverlaySource } from "#src/panel_overlay.js";
 import {
   PanelOverlayManager,
-  PickingIndicatorOverlay,
+  PickingIndicator,
   projectToViewport,
 } from "#src/panel_overlay.js";
 import type { ProjectionParameters } from "#src/projection_parameters.js";
-import { WatchableSet, WatchableValue } from "#src/trackable_value.js";
+import { WatchableValue } from "#src/trackable_value.js";
 import { mat4 } from "#src/util/geom.js";
 import { NullarySignal } from "#src/util/signal.js";
 
@@ -34,18 +36,43 @@ function makeParameters(options: {
   focalDistance: number;
   logicalWidth: number;
   logicalHeight: number;
+  visibleRegion?: {
+    leftFraction: number;
+    topFraction: number;
+    widthFraction: number;
+    heightFraction: number;
+  };
 }): ProjectionParameters {
-  const { projectionMat, focalDistance, logicalWidth, logicalHeight } = options;
+  const {
+    focalDistance,
+    logicalWidth,
+    logicalHeight,
+    visibleRegion = {
+      leftFraction: 0,
+      topFraction: 0,
+      widthFraction: 1,
+      heightFraction: 1,
+    },
+  } = options;
+  const renderViewport = Object.assign(new RenderViewport(), {
+    logicalWidth,
+    logicalHeight,
+    visibleLeftFraction: visibleRegion.leftFraction,
+    visibleTopFraction: visibleRegion.topFraction,
+    visibleWidthFraction: visibleRegion.widthFraction,
+    visibleHeightFraction: visibleRegion.heightFraction,
+  });
+  const projectionMat = mat4.clone(options.projectionMat);
+  applyRenderViewportToProjectionMatrix(renderViewport, projectionMat);
   const viewMatrix = mat4.fromTranslation(mat4.create(), [
     0,
     0,
     -focalDistance,
   ]);
   return {
+    ...renderViewport,
     projectionMat,
     viewProjectionMat: mat4.multiply(mat4.create(), projectionMat, viewMatrix),
-    logicalWidth,
-    logicalHeight,
     displayDimensionRenderInfo: {
       displayDimensionIndices: Int32Array.of(0, 1, 2),
     },
@@ -61,18 +88,10 @@ function makeMouseState(): MouseSelectionState {
   } as unknown as MouseSelectionState;
 }
 
-function makeContext(): DisplayContext {
-  return {
-    panelOverlays: new WatchableSet<PanelOverlaySource>(),
-    scheduleOverlayUpdate: () => {},
-  } as unknown as DisplayContext;
-}
-
-function makeSource(): PanelOverlaySource {
-  return {
-    updateNeeded: new NullarySignal(),
-    createPanelOverlay: () => ({ update() {}, dispose() {} }),
-  };
+function getRingCentre(ring: HTMLElement): number[] {
+  const [left, top] = ring.style.transform.match(/-?[\d.]+/g)!.map(Number);
+  const radius = parseFloat(ring.style.width) / 2;
+  return [left + radius, top + radius];
 }
 
 describe("projectToViewport", () => {
@@ -117,7 +136,43 @@ describe("projectToViewport", () => {
     ).toBeCloseTo(1);
   });
 
-  it("reports the depth fraction linearly under both projections", () => {
+  it("keeps the focal point at the panel center when part of the panel is clipped", () => {
+    const parameters = makeParameters({
+      projectionMat: mat4.perspective(mat4.create(), Math.PI / 2, 2, 0.5, 1.5),
+      focalDistance: 1,
+      logicalWidth: 200,
+      logicalHeight: 100,
+      visibleRegion: {
+        leftFraction: 0.5,
+        topFraction: 0.25,
+        widthFraction: 0.5,
+        heightFraction: 0.75,
+      },
+    });
+    const point = projectToViewport(parameters, [0, 0, 0])!;
+    expect(point.viewportLeft).toBeCloseTo(100);
+    expect(point.viewportTop).toBeCloseTo(50);
+  });
+
+  it("gives no position for a point beyond the far plane", () => {
+    for (const projectionMat of [
+      mat4.perspective(mat4.create(), Math.PI / 2, 2, 0.5, 1.5),
+      mat4.ortho(mat4.create(), -2, 2, -1, 1, 0.5, 1.5),
+    ]) {
+      const parameters = makeParameters({
+        projectionMat,
+        focalDistance: 1,
+        logicalWidth: 200,
+        logicalHeight: 100,
+      });
+      const twiceTheFocalDistance = [0, 0, -1];
+      expect(projectToViewport(parameters, twiceTheFocalDistance)).toBe(
+        undefined,
+      );
+    }
+  });
+
+  it("measures depth linearly from the focal plane under both projections", () => {
     const perspective = makeParameters({
       projectionMat: mat4.perspective(mat4.create(), Math.PI / 2, 2, 0.5, 1.5),
       focalDistance: 1,
@@ -140,19 +195,23 @@ describe("projectToViewport", () => {
   });
 });
 
-describe("PickingIndicatorOverlay", () => {
-  it("centres one ring on the picked point, scaled by nearness and faded by depth", () => {
+describe("PickingIndicator", () => {
+  it("centres one ring on the picked point and fades it by depth", () => {
     const panel = document.createElement("div");
-    const context = makeContext();
-    context.panelOverlays.add(
-      new PickingIndicatorOverlay(makeMouseState(), new WatchableValue(true)),
+    const manager = new PanelOverlayManager(
+      panel,
+      () => ({
+        viewportLeft: 100,
+        viewportTop: 50,
+        perspectiveDivideFactor: 1,
+        focalPlaneDepthFraction: -0.25,
+      }),
+      () => true,
     );
-    const manager = new PanelOverlayManager(panel, context, () => ({
-      viewportLeft: 100,
-      viewportTop: 50,
-      perspectiveDivideFactor: 1.5,
-      focalPlaneDepthFraction: -0.25,
-    }));
+    manager.add(
+      (host) =>
+        new PickingIndicator(host, makeMouseState(), new WatchableValue(true)),
+    );
     manager.update();
     const rings = panel.querySelectorAll<HTMLElement>(
       ".neuroglancer-picking-indicator",
@@ -160,18 +219,50 @@ describe("PickingIndicatorOverlay", () => {
     expect(rings.length).toBe(1);
     const [ring] = rings;
     expect(ring.hidden).toBe(false);
-    expect(ring.style.width).toBe("21px");
+    expect(getRingCentre(ring)).toEqual([100, 50]);
     expect(ring.style.opacity).toBe("0.75");
-    expect(ring.style.transform).toBe("translate(89.5px, 39.5px)");
   });
 
-  it("hides the ring when the picked point is outside the panel", () => {
+  it("draws the ring larger for a nearer point", () => {
     const panel = document.createElement("div");
-    const context = makeContext();
-    context.panelOverlays.add(
-      new PickingIndicatorOverlay(makeMouseState(), new WatchableValue(true)),
+    let perspectiveDivideFactor = 1;
+    const manager = new PanelOverlayManager(
+      panel,
+      () => ({
+        viewportLeft: 100,
+        viewportTop: 50,
+        perspectiveDivideFactor,
+        focalPlaneDepthFraction: 0,
+      }),
+      () => true,
     );
-    const manager = new PanelOverlayManager(panel, context, () => undefined);
+    manager.add(
+      (host) =>
+        new PickingIndicator(host, makeMouseState(), new WatchableValue(true)),
+    );
+    const ring = panel.querySelector<HTMLElement>(
+      ".neuroglancer-picking-indicator",
+    )!;
+    manager.update();
+    const focalPlaneWidth = parseFloat(ring.style.width);
+
+    perspectiveDivideFactor = 1.5;
+    manager.update();
+    expect(parseFloat(ring.style.width)).toBeCloseTo(1.5 * focalPlaneWidth);
+    expect(getRingCentre(ring)).toEqual([100, 50]);
+  });
+
+  it("hides the ring when the picked point is outside the view's depth range", () => {
+    const panel = document.createElement("div");
+    const manager = new PanelOverlayManager(
+      panel,
+      () => undefined,
+      () => true,
+    );
+    manager.add(
+      (host) =>
+        new PickingIndicator(host, makeMouseState(), new WatchableValue(true)),
+    );
     manager.update();
     const ring = panel.querySelector<HTMLElement>(
       ".neuroglancer-picking-indicator",
@@ -179,57 +270,61 @@ describe("PickingIndicatorOverlay", () => {
     expect(ring.hidden).toBe(true);
   });
 
-  it("hides the ring while the picking indicator setting is off", () => {
+  it("shows the ring as soon as the picking indicator setting is turned on", () => {
     const panel = document.createElement("div");
-    const context = makeContext();
-    const showPickingIndicator = new WatchableValue(false);
-    context.panelOverlays.add(
-      new PickingIndicatorOverlay(makeMouseState(), showPickingIndicator),
+    const manager = new PanelOverlayManager(
+      panel,
+      () => ({
+        viewportLeft: 100,
+        viewportTop: 50,
+        perspectiveDivideFactor: 1,
+        focalPlaneDepthFraction: 0,
+      }),
+      () => true,
     );
-    const manager = new PanelOverlayManager(panel, context, () => ({
-      viewportLeft: 100,
-      viewportTop: 50,
-      perspectiveDivideFactor: 1,
-      focalPlaneDepthFraction: 0,
-    }));
+    const showPickingIndicator = new WatchableValue(false);
+    manager.add(
+      (host) =>
+        new PickingIndicator(host, makeMouseState(), showPickingIndicator),
+    );
     manager.update();
     const ring = panel.querySelector<HTMLElement>(
       ".neuroglancer-picking-indicator",
     )!;
-    expect(ring.closest("[hidden]")).not.toBe(null);
+    expect(ring.hidden).toBe(true);
 
     showPickingIndicator.value = true;
-    manager.update();
-    expect(ring.closest("[hidden]")).toBe(null);
+    manager.scheduleUpdate.flush();
+    expect(ring.hidden).toBe(false);
   });
 
-  it("draws the ring above an overlay of default priority", () => {
+  it("moves the ring when the mouse moves, without a redraw", () => {
     const panel = document.createElement("div");
-    const context = makeContext();
-    context.panelOverlays.add(
-      new PickingIndicatorOverlay(makeMouseState(), new WatchableValue(true)),
+    const mouseState = makeMouseState();
+    let pickedLeft = 100;
+    const manager = new PanelOverlayManager(
+      panel,
+      () => ({
+        viewportLeft: pickedLeft,
+        viewportTop: 50,
+        perspectiveDivideFactor: 1,
+        focalPlaneDepthFraction: 0,
+      }),
+      () => true,
     );
-    context.panelOverlays.add(makeSource());
-    new PanelOverlayManager(panel, context, () => undefined);
+    manager.add(
+      (host) =>
+        new PickingIndicator(host, mouseState, new WatchableValue(true)),
+    );
+    manager.update();
+
+    pickedLeft = 20;
+    mouseState.changed.dispatch();
+    manager.scheduleUpdate.flush();
+
     const ring = panel.querySelector<HTMLElement>(
       ".neuroglancer-picking-indicator",
     )!;
-    const [ringLayer, otherLayer] = ring.parentElement!.parentElement!
-      .children as HTMLCollectionOf<HTMLElement>;
-    expect(ringLayer.contains(ring)).toBe(true);
-    expect(Number(ringLayer.style.zIndex)).toBeGreaterThan(
-      Number(otherLayer.style.zIndex),
-    );
-  });
-
-  it("removes the ring when the panel is disposed", () => {
-    const panel = document.createElement("div");
-    const context = makeContext();
-    context.panelOverlays.add(
-      new PickingIndicatorOverlay(makeMouseState(), new WatchableValue(true)),
-    );
-    const manager = new PanelOverlayManager(panel, context, () => undefined);
-    manager.dispose();
-    expect(panel.querySelector(".neuroglancer-picking-indicator")).toBe(null);
+    expect(getRingCentre(ring)).toEqual([20, 50]);
   });
 });

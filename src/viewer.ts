@@ -70,7 +70,6 @@ import {
   WatchableDisplayDimensionRenderInfo,
 } from "#src/navigation_state.js";
 import { overlaysOpen } from "#src/overlay.js";
-import { PickingIndicatorOverlay } from "#src/panel_overlay.js";
 import { ScreenshotHandler } from "#src/python_integration/screenshots.js";
 import { allRenderLayerRoles, RenderLayerRole } from "#src/renderlayer.js";
 import { StatusMessage } from "#src/status.js";
@@ -586,11 +585,6 @@ export class Viewer extends RefCounted implements ViewerState {
     options: Partial<ViewerOptions> = {},
   ) {
     super();
-    this.registerDisposer(
-      display.registerPanelOverlay(
-        new PickingIndicatorOverlay(this.mouseState, this.showPickingIndicator),
-      ),
-    );
     this.screenshotHandler = this.registerDisposer(new ScreenshotHandler(this));
     this.screenshotManager = this.registerDisposer(new ScreenshotManager(this));
     const {
