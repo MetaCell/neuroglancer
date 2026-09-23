@@ -482,8 +482,7 @@ export abstract class RenderedDataPanel extends RenderedPanel {
       this.onTouchstart.bind(this),
     );
     this.registerEventListener(element, "mouseleave", () => this.onMouseout());
-    // Removing an element that covers the panel (e.g. the command palette)
-    // dispatches `mouseenter` without `mousemove`; re-pick from its position.
+    // Removing an element that covers the panel dispatches `mouseenter` without `mousemove`.
     this.registerEventListener(
       element,
       "mouseenter",

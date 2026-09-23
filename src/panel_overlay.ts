@@ -78,7 +78,7 @@ export interface PanelOverlay extends Disposable {
 }
 
 export interface PanelOverlaySource {
-  /** Higher draws on top of lower.  Default 0. */
+  /** Higher draws on top of lower. */
   readonly overlayPriority?: number;
   readonly updateNeeded: NullarySignal;
   readonly visible?: WatchableValueInterface<boolean>;

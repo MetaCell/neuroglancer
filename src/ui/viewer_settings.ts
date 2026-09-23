@@ -53,7 +53,8 @@ const SETTING_DESCRIPTIONS = {
     "Draws the 2D cross sections as planes inside the 3D view, in layouts that have both 2D and 3D panels.",
   hideCrossSectionBackground3D:
     "Leaves the cross-section planes in the 3D view transparent where there is no data, instead of filling them with the cross-section background color.",
-  showDefaultAnnotations: "Primarily shows the bounding box of each layer's data source.",
+  showDefaultAnnotations:
+    "Primarily shows the bounding box of each layer's data source.",
   showChunkStatistics:
     "Opens a panel with live download and memory statistics for each layer's chunks.",
   wireFrame:
