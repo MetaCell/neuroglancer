@@ -21,6 +21,8 @@
 #define NEUROGLANCER_VOXEL_MESH_GENERATOR_H_
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <unordered_map>
 #include <vector>

@@ -12,86 +12,83 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib.resources
 import os
 import posixpath
-
-static_content_filenames = set([
-    'main.bundle.js',
-    'main.css',
-    'chunk_worker.bundle.js',
-    'async_computation.bundle.js',
-    'index.html',
-    'draco.bundle.js',
-])
+import re
 
 mime_type_map = {
-    '.css': 'text/css',
-    '.js': 'application/javascript',
-    '.html': 'text/html',
-    '.map': 'application/json'
+    ".css": "text/css",
+    ".js": "application/javascript",
+    ".html": "text/html",
+    ".map": "application/json",
+    ".wasm": "application/wasm",
 }
 
 
 def guess_mime_type_from_path(path):
-    return mime_type_map.get(posixpath.splitext(path)[1], 'application/octet-stream')
+    return mime_type_map.get(posixpath.splitext(path)[1], "application/octet-stream")
 
 
-class StaticContentSource(object):
-    def get(self, name):
-        if name == '':
-            name = 'index.html'
+class StaticContentSource:
+    def get(self, name, query):
+        if name == "":
+            name = "index.html"
         return self.get_content(name), guess_mime_type_from_path(name)
 
     def get_content(self, name):
         raise NotImplementedError
 
 
-class PkgResourcesContentSource(StaticContentSource):
+class ImportlibResourcesContentSource(StaticContentSource):
     def get_content(self, name):
-        import pkg_resources
-        if name not in static_content_filenames:
-            raise ValueError('Invalid static resource name: %r' % name)
-        if pkg_resources.resource_exists(__name__, name):
-            return pkg_resources.resource_string(__name__, name)
+        if not re.match(r"^[a-z0-9][a-zA-Z0-9_\-\.]*\.(?:js|map|css|wasm|html)$", name):
+            raise ValueError("Invalid static resource name: %r" % name)
+        path = importlib.resources.files(__name__).joinpath("client", name)
+        if path.is_file():
+            return path.read_bytes()
         raise ValueError(
-            'Static resources not built.  Run: "python setup.py bundle_client" or use an alternative static content source.'
+            'Static resources not built.  Run: "npm run build-python" or use an alternative static content source.'
         )
+
+
+PkgResourcesContentSource = ImportlibResourcesContentSource
 
 
 class HttpSource(StaticContentSource):
     def __init__(self, url):
         self.url = url
 
-    def get_content(self, name):
+    def get(self, name, query):
         import requests
+
+        print("http", repr(name), repr(query))
+
         full_url = posixpath.join(self.url, name)
-        r = requests.get(full_url)
+        r = requests.get(full_url + query)
         if r.status_code >= 200 and r.status_code < 300:
-            return r.content
-        raise ValueError('Failed to retrieve %r: %s' % (full_url, r.reason))
+            return r.content, (
+                r.headers.get("content-type") or guess_mime_type_from_path(name)
+            )
+        raise ValueError(f"Failed to retrieve {full_url!r}: {r.reason}")
 
 
 class FileSource(StaticContentSource):
-    def __init__(self, path=None, file_open=None):
-        if path is None:
-            path = os.path.join(os.path.dirname(__file__), '../../../dist/dev-python')
+    def __init__(self, path, file_open=None):
         self.file_path = path
         self.file_open = file_open or open
 
     def get_content(self, name):
         full_path = os.path.join(self.file_path, name)
         try:
-            with self.file_open(full_path, 'rb') as f:
+            with self.file_open(full_path, "rb") as f:
                 return f.read()
         except Exception as e:
-            raise ValueError('Failed to read local path %r: %s' % (full_path, e))
-
-
-dist_dev_static_content_source = FileSource()
+            raise ValueError(f"Failed to read local path {full_path!r}: {e}")
 
 
 def get_default_static_content_source():
-    return PkgResourcesContentSource()
+    return ImportlibResourcesContentSource()
 
 
 def get_static_content_source(source=None, url=None, path=None, file_open=None):
