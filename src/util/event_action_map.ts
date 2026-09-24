@@ -17,6 +17,7 @@
 import { registerEventListener } from "#src/util/disposable.js";
 import type { HierarchicalMapInterface } from "#src/util/hierarchical_map.js";
 import { HierarchicalMap } from "#src/util/hierarchical_map.js";
+import { isMacPlatform } from "#src/util/platform.js";
 
 /**
  * @file Facilities for dispatching user-defined actions in response to input events.
@@ -311,7 +312,7 @@ export function normalizeEventAction(
 // Strips the phase and optional modifiers.
 export function friendlyEventIdentifier(identifier: string): string {
   identifier = identifier.replace(
-    /^(?:at|bubble|capture)|(?:(?:shift|control|alt|meta)\?\+)/g,
+    /^(?:at|bubble|capture):|(?:(?:shift|control|alt|meta)\?\+)/g,
     "",
   );
   return identifier;
@@ -463,13 +464,27 @@ export function dispatchEventWithModifiers(
   detail: any,
   eventMap: EventActionMapInterface,
 ) {
-  dispatchEvent(
-    getStrokeIdentifier(baseIdentifier, getEventModifierMask(originalEvent)),
-    originalEvent,
-    originalEvent.eventPhase,
-    detail,
-    eventMap,
+  const phase = eventPhaseNames[originalEvent.eventPhase];
+  const modifiers = getEventModifierMask(originalEvent);
+  let eventAction = eventMap.get(
+    `${phase}:${getStrokeIdentifier(baseIdentifier, modifiers)}`,
   );
+  if (
+    eventAction === undefined &&
+    modifiers & Modifiers.META &&
+    !(modifiers & Modifiers.CONTROL) &&
+    isMacPlatform()
+  ) {
+    // Mac users expect Command for a shortcut, so it also reaches a `control+`
+    // binding. An explicit `meta+` binding matches above and so takes priority.
+    eventAction = eventMap.get(
+      `${phase}:${getStrokeIdentifier(
+        baseIdentifier,
+        (modifiers & ~Modifiers.META) | Modifiers.CONTROL,
+      )}`,
+    );
+  }
+  dispatchEventAction(originalEvent, detail, eventAction);
 }
 
 /**
