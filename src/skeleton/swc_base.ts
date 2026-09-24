@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2016 Google Inc.
+ * Copyright 2026 Google Inc.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -14,9 +14,12 @@
  * limitations under the License.
  */
 
-export class SWCSourceParameters {
-  baseUrl: string;
-  nodeKey: string;
-  // dataInstanceKey: string;
-  static RPC_ID = 'swc/SkeletonSource';  
-}
+import type { VertexAttributeInfo } from "#src/skeleton/base.js";
+import { DataType } from "#src/util/data_type.js";
+
+// https://swc-specification.readthedocs.io/en/latest/swc.html
+// Type is float32 because custom type codes above 7 have no upper bound.
+export const swcVertexAttributes: Map<string, VertexAttributeInfo> = new Map([
+  ["radius", { dataType: DataType.FLOAT32, numComponents: 1 }],
+  ["type", { dataType: DataType.FLOAT32, numComponents: 1 }],
+]);

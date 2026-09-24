@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2017 Google Inc.
+ * Copyright 2026 Google Inc.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import {SWCDataSource} from 'neuroglancer/datasource/swc/frontend';
-import {registerProvider} from 'neuroglancer/datasource/default_provider';
+import { registerKvStoreBasedDataProvider } from "#src/datasource/default_provider.js";
+import { SwcDataSource } from "#src/datasource/swc/frontend.js";
 
-registerProvider('swc', () => new SWCDataSource());
+registerKvStoreBasedDataProvider(new SwcDataSource());
