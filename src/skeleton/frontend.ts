@@ -32,10 +32,7 @@ import type {
   PickState,
   VisibleLayerInfo,
 } from "#src/layer/index.js";
-import type {
-  PanelOverlayContext,
-  PanelOverlaySource,
-} from "#src/panel_overlay.js";
+import type { PanelOverlay, PanelOverlayHost } from "#src/panel_overlay.js";
 import type { PerspectivePanel } from "#src/perspective_view/panel.js";
 import type {
   PerspectiveViewReadyRenderContext,
@@ -49,6 +46,7 @@ import type {
 } from "#src/render_coordinate_transform.js";
 import { getChunkTransformParameters } from "#src/render_coordinate_transform.js";
 import type { RenderScaleHistogram } from "#src/render_scale_statistics.js";
+import type { RenderedDataPanel } from "#src/rendered_data_panel.js";
 import type {
   RenderLayer,
   ThreeDimensionalRenderLayerAttachmentState,
@@ -1283,7 +1281,7 @@ function getSkeletonNodeDiameter(
 
 // A selected/hovered node highlight to draw as a DOM ring overlay.  `diameter`
 // and `borderWidth` are in render-viewport device px (matching the node's
-// on-screen size); the panel converts them to CSS px via `cssPerDevicePixel`.
+// on-screen size); the overlay converts them to CSS px.
 interface HighlightMarker {
   position: Float32Array; // global coordinate space
   kind: "selected" | "hovered";
@@ -1293,38 +1291,67 @@ interface HighlightMarker {
   borderWidth: number;
 }
 
-// Reconciles the ring child elements of an overlay source's per-panel container
-// to `markers`, projecting each via the panel context.  Reuses/pools children.
-function updateSkeletonHighlightOverlay(
-  markers: HighlightMarker[],
-  ctx: PanelOverlayContext,
-) {
-  const { container, cssPerDevicePixel } = ctx;
-  let count = 0;
-  for (const marker of markers) {
-    const pos = ctx.project(marker.position);
-    if (pos === undefined) continue;
-    let element = container.children[count] as HTMLElement | undefined;
-    if (element === undefined) {
-      element = document.createElement("div");
-      element.className = "neuroglancer-skeleton-node-highlight";
-      container.appendChild(element);
-    }
-    ++count;
-    const size = marker.diameter * cssPerDevicePixel;
-    const { style } = element;
-    style.display = "";
-    style.width = `${size}px`;
-    style.height = `${size}px`;
-    style.borderWidth = `${Math.max(1, marker.borderWidth * cssPerDevicePixel)}px`;
-    style.borderColor = marker.color;
-    style.setProperty("--ng-node-highlight-outline", marker.outlineColor);
-    style.opacity = `${pos.opacity ?? 1}`;
-    style.transform = `translate(${pos.x - size / 2}px, ${pos.y - size / 2}px)`;
+class SkeletonNodeHighlightOverlay extends RefCounted implements PanelOverlay {
+  private readonly rings: HTMLElement[] = [];
+
+  constructor(
+    private readonly host: PanelOverlayHost,
+    private readonly panel: RenderedDataPanel,
+    private readonly layer: SpatiallyIndexedSkeletonLayer,
+    private readonly renderOptions: ViewSpecificSkeletonRenderingOptions,
+    private readonly view: "2d" | "3d",
+  ) {
+    super();
+    this.registerDisposer(
+      layer.highlightMarkersChanged.add(host.scheduleUpdate),
+    );
+    this.registerDisposer(() => {
+      for (const ring of this.rings) ring.remove();
+    });
   }
-  const { children } = container;
-  for (let i = count; i < children.length; ++i) {
-    (children[i] as HTMLElement).style.display = "none";
+
+  update() {
+    const { host, panel, renderOptions, rings } = this;
+    const targetIsSliceView = this.view === "2d";
+    const { diameter, borderWidth } = getSkeletonNodeHighlightRing(
+      renderOptions.mode.value,
+      renderOptions.lineWidth.value,
+      targetIsSliceView,
+    );
+    const { width, logicalWidth } = panel.renderViewport;
+    const cssPerDevicePixel = width > 0 ? logicalWidth / width : 1;
+    // Marker positions are in the global coordinate space.
+    const coordinateSpace = panel.navigationState.coordinateSpace.value;
+    let count = 0;
+    for (const marker of this.layer.computeHighlightMarkers(
+      diameter,
+      borderWidth,
+    )) {
+      const point = host.project(marker.position, coordinateSpace);
+      if (point === undefined) continue;
+      let ring = rings[count];
+      if (ring === undefined) {
+        ring = document.createElement("div");
+        ring.className = "neuroglancer-skeleton-node-highlight";
+        host.container.appendChild(ring);
+        rings.push(ring);
+      }
+      ++count;
+      const size = marker.diameter * cssPerDevicePixel;
+      ring.hidden = false;
+      const { style } = ring;
+      style.width = `${size}px`;
+      style.height = `${size}px`;
+      style.borderWidth = `${Math.max(1, marker.borderWidth * cssPerDevicePixel)}px`;
+      style.borderColor = marker.color;
+      style.setProperty("--ng-node-highlight-outline", marker.outlineColor);
+      // Matches the cross-section fade of the node itself.
+      style.opacity = targetIsSliceView
+        ? `${1 - Math.abs(point.focalPlaneDepthFraction)}`
+        : "1";
+      style.transform = `translate(${point.viewportLeft - size / 2}px, ${point.viewportTop - size / 2}px)`;
+    }
+    for (let i = count; i < rings.length; ++i) rings[i].hidden = true;
   }
 }
 
@@ -3942,10 +3969,7 @@ function attachSpatiallyIndexedSkeletonLayer(
   );
 }
 
-export class PerspectiveViewSpatiallyIndexedSkeletonLayer
-  extends PerspectiveViewRenderLayer
-  implements PanelOverlaySource
-{
+export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveViewRenderLayer {
   private renderHelper: RenderHelper;
   private browseRenderHelper: RenderHelper;
   private renderOptions: ViewSpecificSkeletonRenderingOptions;
@@ -3982,23 +4006,6 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer
     this.registerDisposer(histogram3d.visibility.add(this.visibility));
   }
 
-  readonly overlayPriority = 0;
-  get overlayUpdateNeeded() {
-    return this.base.highlightMarkersChanged;
-  }
-  updatePanelOverlays(ctx: PanelOverlayContext) {
-    const { renderOptions } = this;
-    const ring = getSkeletonNodeHighlightRing(
-      renderOptions.mode.value,
-      renderOptions.lineWidth.value,
-      /*targetIsSliceView=*/ false,
-    );
-    updateSkeletonHighlightOverlay(
-      this.base.computeHighlightMarkers(ring.diameter, ring.borderWidth),
-      ctx,
-    );
-  }
-
   attach(
     attachment: VisibleLayerInfo<
       PerspectivePanel,
@@ -4007,6 +4014,18 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer
   ) {
     super.attach(attachment);
     attachSpatiallyIndexedSkeletonLayer(this.base, this, attachment, "3d");
+    attachment.registerDisposer(
+      attachment.view.addOverlay(
+        (host) =>
+          new SkeletonNodeHighlightOverlay(
+            host,
+            attachment.view,
+            this.base,
+            this.renderOptions,
+            "3d",
+          ),
+      ),
+    );
   }
 
   get gl() {
@@ -4135,10 +4154,7 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer
   }
 }
 
-export class SliceViewPanelSpatiallyIndexedSkeletonLayer
-  extends SliceViewPanelRenderLayer
-  implements PanelOverlaySource
-{
+export class SliceViewPanelSpatiallyIndexedSkeletonLayer extends SliceViewPanelRenderLayer {
   private renderHelper: RenderHelper;
   private browseRenderHelper: RenderHelper;
   private renderOptions: ViewSpecificSkeletonRenderingOptions;
@@ -4178,23 +4194,6 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer
     return this.base.gl;
   }
 
-  readonly overlayPriority = 0;
-  get overlayUpdateNeeded() {
-    return this.base.highlightMarkersChanged;
-  }
-  updatePanelOverlays(ctx: PanelOverlayContext) {
-    const { renderOptions } = this;
-    const ring = getSkeletonNodeHighlightRing(
-      renderOptions.mode.value,
-      renderOptions.lineWidth.value,
-      /*targetIsSliceView=*/ true,
-    );
-    updateSkeletonHighlightOverlay(
-      this.base.computeHighlightMarkers(ring.diameter, ring.borderWidth),
-      ctx,
-    );
-  }
-
   getValueAt(_position: Float32Array) {
     return undefined;
   }
@@ -4225,6 +4224,18 @@ export class SliceViewPanelSpatiallyIndexedSkeletonLayer
   ) {
     super.attach(attachment);
     attachSpatiallyIndexedSkeletonLayer(this.base, this, attachment, "2d");
+    attachment.registerDisposer(
+      attachment.view.addOverlay(
+        (host) =>
+          new SkeletonNodeHighlightOverlay(
+            host,
+            attachment.view,
+            this.base,
+            this.renderOptions,
+            "2d",
+          ),
+      ),
+    );
   }
 
   draw(
