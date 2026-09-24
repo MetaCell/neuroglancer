@@ -124,16 +124,15 @@ const enum SkeletonEditMode {
 
 // In edit mode, plain left click is selection-only — it never rotates or
 // pans. Navigation (rotate in perspective, pan in slice) is handled by
-// middle mouse (mousedown1), plus trackpad-friendly aliases on the
-// navigation modifier + left mouse (control+mousedown0 on most platforms,
-// cmd+mousedown0 on Mac — see hasNavigationModifier below): the modifier
-// alone mirrors plain middle-click, and modifier+shift mirrors
-// control+middle-click. mousedown0 is therefore handled only via the
-// capture-phase DOM listeners in activate(); it is not in the EventActionMap.
+// middle mouse (mousedown1), plus trackpad-friendly aliases on
+// control+left mouse. Control alone mirrors plain middle-click.
+// Control+shift mirrors control+middle-click. mousedown0 is therefore
+// handled only via the capture-phase DOM listeners in activate(). It is not
+// in the EventActionMap.
 //
 // mousedown1 / control?+mousedown0 → rotate-via-mouse-drag covers perspective
 // panels via the EventActionMap. Slice panels intercept middle mouse and the
-// navigation-modifier chords in the capture listener and call
+// control chords in the capture listener and call
 // translateByViewportPixels directly, consuming the event before
 // MouseEventBinder can dispatch this action.
 //
@@ -153,13 +152,8 @@ const SPLIT_EXIT_KEY_CODE = "KeyS";
 const CREATE_EXIT_KEY_CODE = "KeyN";
 const DELETE_EXIT_KEY_CODE = "KeyD";
 
-function hasNavigationModifier(event: { ctrlKey: boolean; metaKey: boolean }) {
-  // TODO replace by mac check
-  return event.metaKey || event.ctrlKey;
-}
-
 /**
- * Preserves the skeleton tools' middle-mouse and navigation-modifier controls
+ * Preserves the skeleton tools' middle-mouse and control+left-click controls
  * when a tool claims regular left click as its primary interaction.
  */
 function bindSpatialSkeletonToolMouseControls<
@@ -175,8 +169,7 @@ function bindSpatialSkeletonToolMouseControls<
       // Perspective navigation is dispatched through the active tool's input
       // map. Slice navigation is performed directly here.
       const isNavigationGesture =
-        event.button === 1 ||
-        (event.button === 0 && hasNavigationModifier(event));
+        event.button === 1 || (event.button === 0 && event.ctrlKey);
       if (isNavigationGesture) {
         if (panel instanceof PerspectivePanel) {
           panel.element.dataset.skeletonPressMode = "rotate";
@@ -622,9 +615,8 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
   private deleteKeyHeld = false;
   // Modifier-held state drives cursor indicators and blocks node actions.
   private shiftHeld = false;
-  // Navigation modifier (ctrl, or cmd on Mac — see hasNavigationModifier).
   // While held, the shift-driven "add node" cursor/status must be
-  // suppressed, since modifier+shift now means pan, not add-node.
+  // suppressed, since control+shift means pan, not add-node.
   private ctrlHeld = false;
   // Physical key codes currently held down — used only to decide whether the
   // status actions text should show a "release <key> to exit" hint. Merge/
@@ -765,13 +757,9 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
   // that carries them. This mirrors what NG's EventActionMap does via
   // getEventModifierMask, so OS-level modifier rebindings are transparent —
   // we never inspect key codes.
-  private syncModifiers(event: {
-    shiftKey: boolean;
-    ctrlKey: boolean;
-    metaKey: boolean;
-  }) {
+  private syncModifiers(event: { shiftKey: boolean; ctrlKey: boolean }) {
     const isShift = event.shiftKey;
-    const isCtrl = hasNavigationModifier(event);
+    const isCtrl = event.ctrlKey;
     if (this.shiftHeld === isShift && this.ctrlHeld === isCtrl) return;
     this.shiftHeld = isShift;
     this.ctrlHeld = isCtrl;

@@ -82,6 +82,7 @@ import {
 } from "#src/skeleton/node_types.js";
 import { StatusMessage } from "#src/status.js";
 import { observeWatchable, registerNested } from "#src/trackable_value.js";
+import { formatKeyStroke } from "#src/ui/command.js";
 import {
   getDefaultSkeletonListBindings,
   getDefaultSkeletonTabBindings,
@@ -194,26 +195,12 @@ export class SpatialSkeletonEditTab extends Tab {
     const toolbarActions = document.createElement("div");
     toolbarActions.className = "neuroglancer-skeleton-toolbar-actions";
 
-    const formatKeyHint = (stroke: string): string => {
-      const parts = stroke.split("+").map((part) => {
-        if (part === "control") return "Ctrl";
-        if (part === "shift") return "Shift";
-        if (part === "alt") return "Alt";
-        if (part.startsWith("key")) return part.slice(3).toUpperCase();
-        if (part.startsWith("digit")) return part.slice(5);
-        if (part === "bracketleft") return "[";
-        if (part === "bracketright") return "]";
-        return part.charAt(0).toUpperCase() + part.slice(1);
-      });
-      return parts.join("+");
-    };
-
     const tabBindings = getDefaultSkeletonTabBindings();
     const keyHintFor = (action: string): string => {
       for (const [, eventAction] of tabBindings.entries()) {
         if (eventAction.action === action) {
           const key = eventAction.originalEventIdentifier;
-          if (key !== undefined) return ` (${formatKeyHint(key)})`;
+          if (key !== undefined) return ` (${formatKeyStroke(key)})`;
         }
       }
       return "";
@@ -1437,7 +1424,7 @@ export class SpatialSkeletonEditTab extends Tab {
           ) {
             return;
           }
-          if (event.ctrlKey || event.metaKey) {
+          if (event.ctrlKey) {
             selectNode(node, { moveView: false, pin: true });
             return;
           }
