@@ -57,40 +57,77 @@ export function getSwcLabel(fileName: string): string {
 }
 
 // Segment IDs are saved in viewer state, so this rule must never change.
-// Labels sort by UTF-16 code unit, not by locale.
 export function assignSegmentIds(
   fileNames: readonly string[],
   hash: (key: string) => bigint,
 ): SwcSegments {
-  const fileNameByLabel = new Map<string, string>();
-  for (const fileName of fileNames) {
-    const label = getSwcLabel(fileName);
-    const otherFileName = fileNameByLabel.get(label);
-    if (otherFileName !== undefined) {
+  const labels = fileNames.map(getSwcLabel);
+  let segmentIds = BigUint64Array.from(labels, (label) => hash(label));
+  if (hasZeroOrRepeatedId(segmentIds)) {
+    segmentIds = probeSegmentIds(fileNames, labels, hash);
+  }
+  const idOrder = getIdOrder(segmentIds);
+  return {
+    ids: BigUint64Array.from(idOrder, (index) => segmentIds[index]),
+    fileNames: Array.from(idOrder, (index) => fileNames[index]),
+  };
+}
+
+// Without a zero or repeated first hash, probing leaves every label at its first hash.
+function hasZeroOrRepeatedId(segmentIds: BigUint64Array): boolean {
+  const sortedIds = segmentIds.slice().sort();
+  if (sortedIds[0] === 0n) return true;
+  for (let index = 1; index < sortedIds.length; ++index) {
+    if (sortedIds[index] === sortedIds[index - 1]) return true;
+  }
+  return false;
+}
+
+// Labels are probed in UTF-16 code unit order, not locale order.
+function probeSegmentIds(
+  fileNames: readonly string[],
+  labels: readonly string[],
+  hash: (key: string) => bigint,
+): BigUint64Array<ArrayBuffer> {
+  const labelOrder = Array.from(labels.keys()).sort((a, b) =>
+    labels[a] < labels[b] ? -1 : labels[a] > labels[b] ? 1 : 0,
+  );
+  for (let position = 1; position < labelOrder.length; ++position) {
+    const earlier = labelOrder[position - 1];
+    const later = labelOrder[position];
+    if (labels[earlier] === labels[later]) {
       throw new Error(
-        `SWC files ${JSON.stringify(otherFileName)} and ${JSON.stringify(fileName)} have the same name`,
+        `SWC files ${JSON.stringify(fileNames[earlier])} and ${JSON.stringify(fileNames[later])} have the same name`,
       );
     }
-    fileNameByLabel.set(label, fileName);
   }
-  const fileNameBySegmentId = new Map<bigint, string>();
-  for (const label of Array.from(fileNameByLabel.keys()).sort()) {
+  const takenIds = new Set<bigint>();
+  const segmentIds = new BigUint64Array(labels.length);
+  for (const index of labelOrder) {
+    const label = labels[index];
     let segmentId = hash(label);
     for (
       let attempt = 1;
-      segmentId === 0n || fileNameBySegmentId.has(segmentId);
+      segmentId === 0n || takenIds.has(segmentId);
       ++attempt
     ) {
       segmentId = hash(`${label}\0${attempt}`);
     }
-    fileNameBySegmentId.set(segmentId, fileNameByLabel.get(label)!);
+    takenIds.add(segmentId);
+    segmentIds[index] = segmentId;
   }
-  const ids = BigUint64Array.from(fileNameBySegmentId.keys()).sort();
-  return {
-    ids,
-    fileNames: Array.from(
-      ids,
-      (segmentId) => fileNameBySegmentId.get(segmentId)!,
-    ),
-  };
+  return segmentIds;
+}
+
+// Compares 32-bit halves, because a `bigint` comparator is slow.
+function getIdOrder(segmentIds: BigUint64Array): Uint32Array {
+  const high = Uint32Array.from(segmentIds, (segmentId) =>
+    Number(segmentId >> 32n),
+  );
+  const low = Uint32Array.from(segmentIds, (segmentId) =>
+    Number(segmentId & 0xffffffffn),
+  );
+  return Uint32Array.from(segmentIds, (_, index) => index).sort(
+    (a, b) => high[a] - high[b] || low[a] - low[b],
+  );
 }

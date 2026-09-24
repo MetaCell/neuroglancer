@@ -59,7 +59,7 @@ describe("datasource/swc/segment_ids", () => {
     );
   });
 
-  it("gives colliding file names different IDs, and the name that sorts first keeps its hash", () => {
+  it("gives files whose names hash alike different IDs, and the name that sorts first keeps its hash", () => {
     const collidingHash = (key: string) =>
       key === "a" || key === "b" ? 5n : fnv1a64(key);
     expect(

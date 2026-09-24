@@ -76,7 +76,7 @@ describe("skeleton/decode_swc_skeleton", () => {
     expect(chunk.vertexPositions).toEqual(new Float32Array([150, -0.2, 3]));
     expect(chunk.vertexAttributes![0]).toEqual(new Float32Array([1]));
   });
-  it("in lenient mode, skips bad lines with one warning and draws the rest of the skeleton", () => {
+  it("in lenient mode, skips unreadable lines and dangling edges with one warning and draws the rest of the skeleton", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const chunk = new SkeletonChunk();
     decodeSwcSkeletonChunk(

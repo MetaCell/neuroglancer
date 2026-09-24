@@ -47,7 +47,7 @@ import type { Borrowed } from "#src/util/disposable.js";
 import type { ProgressOptions } from "#src/util/progress_listener.js";
 import type { RPC } from "#src/worker_rpc.js";
 
-// `segments` is sent to the worker but kept out of the chunk source key, which must stay small.
+// `segments` stays out of the chunk source key, which must stay small.
 class SwcSegmentSkeletonSource extends SkeletonSource {
   declare OPTIONS: { segments: SwcSegments };
   private readonly segments: SwcSegments;
