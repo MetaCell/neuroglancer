@@ -216,7 +216,6 @@ const DEFAULT_FRAGMENT_MAIN = `void main() {
 `;
 const SELECTED_NODE_OUTLINE_FALLBACK_COLOR = vec3.fromValues(1.0, 0.95, 0.35);
 
-// Converts a linear 0..1 RGB triple to a CSS `rgb(...)` string for DOM markers.
 function vec3ToCssColor(color: vec3): string {
   return `rgb(${Math.round(color[0] * 255)}, ${Math.round(
     color[1] * 255,
@@ -226,9 +225,7 @@ const SELECTED_NODE_OUTLINE_MIN_WIDTH_2D = "3.5";
 const SELECTED_NODE_OUTLINE_MAX_WIDTH_2D = "8.0";
 const SELECTED_NODE_OUTLINE_MIN_WIDTH_3D = "3.0";
 const SELECTED_NODE_OUTLINE_MAX_WIDTH_3D = "7.0";
-// Fraction of the node diameter used as the highlight outline width before
-// clamping to the min/max above. Nodes are small (~5-6px), so this mostly hits
-// the min for typical nodes and scales up the ring for larger nodes.
+// Outline width as a fraction of node diameter, before the min/max clamp.
 const SELECTED_NODE_OUTLINE_DIAMETER_FRACTION = "0.5";
 
 // Saturation adjustment factor and threshold for the highlighted (hovered) node border: each
@@ -1279,13 +1276,11 @@ function getSkeletonNodeDiameter(
   return lineWidth;
 }
 
-// A selected/hovered node highlight to draw as a DOM ring overlay.  `diameter`
-// and `borderWidth` are in render-viewport device px (matching the node's
-// on-screen size); the overlay converts them to CSS px.
+// `diameter` and `borderWidth` are in render-viewport device pixels.
 interface HighlightMarker {
   position: Float32Array; // global coordinate space
   kind: "selected" | "hovered";
-  color: string; // CSS ring color, derived from the node's segment color
+  color: string; // CSS ring color
   outlineColor: string; // CSS halo color, contrasting with `color`
   diameter: number;
   borderWidth: number;
@@ -1320,7 +1315,6 @@ class SkeletonNodeHighlightOverlay extends RefCounted implements PanelOverlay {
     );
     const { width, logicalWidth } = panel.renderViewport;
     const cssPerDevicePixel = width > 0 ? logicalWidth / width : 1;
-    // Marker positions are in the global coordinate space.
     const coordinateSpace = panel.navigationState.coordinateSpace.value;
     let count = 0;
     for (const marker of this.layer.computeHighlightMarkers(
@@ -1355,9 +1349,7 @@ class SkeletonNodeHighlightOverlay extends RefCounted implements PanelOverlay {
   }
 }
 
-// On-screen size (render-viewport device px) of a node's selection ring,
-// matching the old in-shader outline: a band of `borderWidth` sitting just
-// outside the node, so the outer `diameter` = nodeDiameter + 2 * outline.
+// The ring sits just outside the node, so it never covers the node point.
 function getSkeletonNodeHighlightRing(
   renderMode: SkeletonRenderMode,
   lineWidth: number,
@@ -2289,8 +2281,6 @@ export class SpatiallyIndexedSkeletonLayer
   private resolveGlobalPosition:
     | ((modelPosition: ArrayLike<number>) => Float32Array | undefined)
     | undefined;
-  // Fires when the set of highlighted nodes (selected/hovered) changes, so panels
-  // can reposition their DOM node-highlight markers without a full canvas redraw.
   readonly highlightMarkersChanged = new NullarySignal();
   private inspectionState: SpatiallyIndexedSkeletonInspectionState | undefined;
   private overlayChunk: SkeletonOverlayChunk | undefined;
@@ -2329,8 +2319,6 @@ export class SpatiallyIndexedSkeletonLayer
   private readonly highlightedNodeOutlineColor = vec3.clone(
     SELECTED_NODE_OUTLINE_FALLBACK_COLOR,
   );
-  // The selected and hovered outline colors are derived together from a single
-  // source segment color, so they share one cache generation.
   private nodeOutlineColorGeneration = 0;
   private cachedNodeOutlineColorGeneration = -1;
 
@@ -2438,9 +2426,7 @@ export class SpatiallyIndexedSkeletonLayer
     return segmentIds;
   }
 
-  // Segment fill color a node's outline should contrast against, or undefined
-  // when no segment can be resolved. Falls back to the currently selected
-  // segment when the node carries no segment id.
+  // Falls back to the selected segment's color when the node has no segment id.
   private getNodeSegmentColor(
     nodeInfo: SelectedSkeletonNodeInfo,
   ): Float32Array | undefined {
@@ -2454,13 +2440,7 @@ export class SpatiallyIndexedSkeletonLayer
     return getBaseObjectColor(this.displayState, segmentId);
   }
 
-  // Updates `selectedNodeOutlineColor` and `highlightedNodeOutlineColor` in
-  // place. Each outline is chosen, independently of the other, for high contrast
-  // against its own node's segment color: the selected node uses the muted
-  // palette, and the hovered node uses its own segment color pushed away from
-  // (or, if already very saturated, towards) grey. Because the two are computed
-  // independently, a given segment color always yields the same selected color
-  // and the same hovered color.
+  // Each outline contrasts with its own node's segment color.
   private updateNodeOutlineColorPair() {
     const currentGeneration = this.nodeOutlineColorGeneration;
     if (this.cachedNodeOutlineColorGeneration === currentGeneration) {
@@ -2869,12 +2849,10 @@ export class SpatiallyIndexedSkeletonLayer
       skeletonShaderParameters: this.browsePassSkeletonShaderParameters,
     };
     const requestRedraw = () => this.redrawNeeded.dispatch();
-    // Node highlights are DOM overlays, so a selected/hovered change repositions
-    // the markers without a canvas redraw.
+    // Node highlights are DOM overlays, so they update without a redraw.
     if (this.selectedNodeInfo?.changed) {
       this.registerDisposer(
         this.selectedNodeInfo.changed.add(() => {
-          // Recompute the marker's contrast color for the new node.
           invalidateNodeOutlineColors();
           this.highlightMarkersChanged.dispatch();
         }),
@@ -2882,8 +2860,6 @@ export class SpatiallyIndexedSkeletonLayer
     }
     if (this.suppressSelectedNodeHighlight?.changed) {
       this.registerDisposer(
-        // The selected-node ring is a DOM overlay, so toggling suppression must
-        // refresh the markers (not just request a canvas redraw).
         this.suppressSelectedNodeHighlight.changed.add(() => {
           this.highlightMarkersChanged.dispatch();
         }),
@@ -2901,7 +2877,6 @@ export class SpatiallyIndexedSkeletonLayer
     if (pendingNodePositionVersion?.changed) {
       this.registerDisposer(
         pendingNodePositionVersion.changed.add(() => {
-          // A node's position moved: redraw geometry and reposition markers.
           requestRedraw();
           this.highlightMarkersChanged.dispatch();
         }),
@@ -2918,9 +2893,6 @@ export class SpatiallyIndexedSkeletonLayer
         }),
       );
     }
-    // A marker is emitted only when its node's skeleton would be drawn (see
-    // computeHighlightMarkers), so its visibility depends on the object alphas
-    // and the visible-segment set. Refresh the overlay when any of those change.
     const refreshHighlightVisibility = () => {
       this.highlightMarkersChanged.dispatch();
     };
@@ -3019,27 +2991,15 @@ export class SpatiallyIndexedSkeletonLayer
     };
   }
 
-  /**
-   * Builds highlight markers for the selected/hovered nodes.  `diameter` and
-   * `borderWidth` are the node's on-screen ring size (device px) for the calling
-   * view, so the marker matches the node's size — the old in-shader outline sat
-   * just outside the node with the same thickness.  Positions are resolved from
-   * the stored info (model space) or the node cache, then transformed to global
-   * space; entries whose position is unavailable are omitted.
-   */
+  /** Omits a node whose position is unavailable. */
   computeHighlightMarkers(
     diameter: number,
     borderWidth: number,
   ): HighlightMarker[] {
     const { resolveGlobalPosition } = this;
     if (resolveGlobalPosition === undefined) return [];
-    // Refresh the per-node contrast colors (selected uses the muted palette,
-    // hovered uses its saturated segment color) so markers match the previous
-    // in-shader outline colors.
     this.updateNodeOutlineColorPair();
-    // Mirror the shader's per-segment visibility so a ring is never drawn over a
-    // skeleton that isn't rendered: a segment draws at `objectAlpha` when it is
-    // visible/selected and at `hiddenObjectAlpha` otherwise.
+    // Mirrors the shader, so a ring never marks a skeleton that is not drawn.
     const visibleSegments = getVisibleSegments(
       this.displayState.segmentationGroupState.value,
     );
@@ -3060,19 +3020,15 @@ export class SpatiallyIndexedSkeletonLayer
           : hiddenObjectAlpha;
         if (effectiveAlpha <= 0) return;
       } else if (objectAlpha <= 0 && hiddenObjectAlpha <= 0) {
-        // Unknown segment: fall back to the whole-layer invisibility test.
         return;
       }
-      // Prefer the live cached position (which applies any pending move) so the
-      // marker stays in sync when the node moves; fall back to the position
-      // captured at selection time if the node isn't currently cached.
+      // The cached position includes any pending move.
       const modelPosition =
         this.getCachedNodeSnapshot(nodeId)?.position ?? info?.position;
       if (modelPosition === undefined) return;
       const global = resolveGlobalPosition(modelPosition);
       if (global === undefined) return;
-      // Halo contrasts with the ring color: white around a dark ring, black
-      // around a light one (WCAG black/white crossover luminance ~0.179).
+      // Relative luminance at which black and white contrast equally.
       const outlineColor =
         getRelativeLuminance(color) < 0.179
           ? "rgba(255, 255, 255, 0.85)"
@@ -3090,9 +3046,7 @@ export class SpatiallyIndexedSkeletonLayer
       ? undefined
       : this.selectedNodeInfo?.value?.nodeId;
     const hoveredNodeId = this.hoveredNodeInfo?.value?.nodeId;
-    // When the same node is both selected and hovered, show only the hovered
-    // marker (as the old shader did — hovered won over selected), avoiding an
-    // overlapping ring.
+    // Hovered wins over selected, so one node never shows two rings.
     if (selectedNodeId !== undefined && selectedNodeId !== hoveredNodeId) {
       add(
         this.selectedNodeInfo?.value,
