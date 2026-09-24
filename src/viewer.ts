@@ -130,7 +130,7 @@ import { AutomaticallyFocusedElement } from "#src/util/automatic_focus.js";
 import { setClipboard } from "#src/util/clipboard.js";
 import { TrackableRGB } from "#src/util/color.js";
 import type { Borrowed, Owned } from "#src/util/disposable.js";
-import { RefCounted, registerEventListener } from "#src/util/disposable.js";
+import { RefCounted } from "#src/util/disposable.js";
 import { removeFromParent } from "#src/util/dom.js";
 import type { ActionEvent } from "#src/util/event_action_map.js";
 import { registerActionListener } from "#src/util/event_action_map.js";
