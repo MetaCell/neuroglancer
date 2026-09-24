@@ -1144,8 +1144,9 @@ highp float nodeRadius = getRaycastModelRadiusForPixels(vertexPosition, uNodePix
       gl.disableVertexAttribArray(aVertexIndex);
     }
 
-    // Draw nodes: circles (slice) or raycast spheres (perspective).  Position
-    // is pulled per-instance from the position texture by gl_InstanceID.
+    // Draw nodes - this is performed also in line render mode
+    // so that there are no visible gaps between the edges
+    // as the point size is set to the line width.
     {
       nodeShader.bind();
       if (raycast) {

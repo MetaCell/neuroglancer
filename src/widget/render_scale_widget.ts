@@ -22,9 +22,6 @@ import type { RenderScaleHistogram } from "#src/render_scale_statistics.js";
 import {
   getRenderScaleFromHistogramOffset,
   getRenderScaleHistogramOffset,
-  numRenderScaleHistogramBins,
-  renderScaleHistogramBinSize,
-  renderScaleHistogramOrigin,
 } from "#src/render_scale_statistics.js";
 import type { TrackableValueInterface } from "#src/trackable_value.js";
 import { WatchableValue } from "#src/trackable_value.js";
@@ -73,8 +70,6 @@ export class RenderScaleWidget extends RefCounted {
   legendRenderScale = document.createElement("div");
   legendSpatialScale = document.createElement("div");
   legendChunks = document.createElement("div");
-  protected logScaleOrigin = renderScaleHistogramOrigin;
-  protected logScaleBinSize = renderScaleHistogramBinSize;
   protected unitOfTarget = "px";
   private ctx = this.canvas.getContext("2d")!;
   hoverTarget = new WatchableValue<[number, number] | undefined>(undefined);
@@ -95,10 +90,11 @@ export class RenderScaleWidget extends RefCounted {
     }
     this.hoverTarget.value = undefined;
     const logScaleMax = Math.round(
-      this.logScaleOrigin + numRenderScaleHistogramBins * this.logScaleBinSize,
+      this.histogram.logScaleOrigin +
+        this.histogram.numBins * this.histogram.binSize,
     );
     const targetValue = clampToInterval(
-      [2 ** this.logScaleOrigin, 2 ** (logScaleMax - 1)],
+      [2 ** this.histogram.logScaleOrigin, 2 ** (logScaleMax - 1)],
       this.target.value * 2 ** Math.sign(deltaY),
     ) as number;
     this.target.value = targetValue;
@@ -143,12 +139,11 @@ export class RenderScaleWidget extends RefCounted {
     );
 
     const getTargetValue = (event: MouseEvent) => {
-      const position =
-        (event.offsetX / canvas.width) * numRenderScaleHistogramBins;
+      const position = (event.offsetX / canvas.width) * this.histogram.numBins;
       return getRenderScaleFromHistogramOffset(
         position,
-        this.logScaleOrigin,
-        this.logScaleBinSize,
+        this.histogram.logScaleOrigin,
+        this.histogram.binSize,
       );
     };
     this.registerEventListener(canvas, "pointermove", (event: MouseEvent) => {
@@ -221,8 +216,10 @@ export class RenderScaleWidget extends RefCounted {
       legendRenderScale.textContent = valueString + " " + this.unitOfTarget;
     }
 
+    const { numBins } = this.histogram;
+
     function binToCanvasX(bin: number) {
-      return (bin * width) / numRenderScaleHistogramBins;
+      return (bin * width) / numBins;
     }
 
     ctx.clearRect(0, 0, width, height);
@@ -244,13 +241,12 @@ export class RenderScaleWidget extends RefCounted {
     const numRows = spatialScales.size;
     let totalPresent = 0;
     let totalNotPresent = 0;
-    for (let bin = 0; bin < numRenderScaleHistogramBins; ++bin) {
+    for (let bin = 0; bin < numBins; ++bin) {
       let count = 0;
       for (let row = 0; row < numRows; ++row) {
-        const index = row * numRenderScaleHistogramBins * 2 + bin;
+        const index = row * numBins * 2 + bin;
         const presentCount = histogramData[index];
-        const notPresentCount =
-          histogramData[index + numRenderScaleHistogramBins];
+        const notPresentCount = histogramData[index + numBins];
         totalPresent += presentCount;
         totalNotPresent += notPresentCount;
         count += presentCount + notPresentCount;
@@ -272,11 +268,11 @@ export class RenderScaleWidget extends RefCounted {
       const i = Math.floor(
         getRenderScaleHistogramOffset(
           hoverValue[0],
-          this.logScaleOrigin,
-          this.logScaleBinSize,
+          this.histogram.logScaleOrigin,
+          this.histogram.binSize,
         ),
       );
-      if (i >= 0 && i < numRenderScaleHistogramBins) {
+      if (i >= 0 && i < numBins) {
         let sum = 0;
         const hoverY = hoverValue[1];
         for (
@@ -286,10 +282,8 @@ export class RenderScaleWidget extends RefCounted {
         ) {
           const spatialScale = sortedSpatialScales[spatialScaleIndex];
           const row = spatialScales.get(spatialScale)!;
-          const index = 2 * row * numRenderScaleHistogramBins + i;
-          const count =
-            histogramData[index] +
-            histogramData[index + numRenderScaleHistogramBins];
+          const index = 2 * row * numBins + i;
+          const count = histogramData[index] + histogramData[index + numBins];
           if (count === 0) continue;
           const yStart = Math.round(countToCanvasY(sum));
           sum += count;
@@ -305,11 +299,11 @@ export class RenderScaleWidget extends RefCounted {
       totalPresent = 0;
       totalNotPresent = 0;
       const row = spatialScales.get(hoverSpatialScale)!;
-      const baseIndex = 2 * row * numRenderScaleHistogramBins;
-      for (let bin = 0; bin < numRenderScaleHistogramBins; ++bin) {
+      const baseIndex = 2 * row * numBins;
+      for (let bin = 0; bin < numBins; ++bin) {
         const index = baseIndex + bin;
         totalPresent += histogramData[index];
-        totalNotPresent += histogramData[index + numRenderScaleHistogramBins];
+        totalNotPresent += histogramData[index + numBins];
       }
       if (Number.isFinite(hoverSpatialScale)) {
         this.legendSpatialScale.textContent = formatScaleWithUnitAsString(
@@ -343,7 +337,7 @@ export class RenderScaleWidget extends RefCounted {
       return [presentColor, notPresentColor];
     });
 
-    for (let i = 0; i < numRenderScaleHistogramBins; ++i) {
+    for (let i = 0; i < numBins; ++i) {
       let sum = 0;
       for (
         let spatialScaleIndex = numRows - 1;
@@ -352,10 +346,9 @@ export class RenderScaleWidget extends RefCounted {
       ) {
         const spatialScale = sortedSpatialScales[spatialScaleIndex];
         const row = spatialScales.get(spatialScale)!;
-        const index = row * numRenderScaleHistogramBins * 2 + i;
+        const index = row * numBins * 2 + i;
         const presentCount = histogramData[index];
-        const notPresentCount =
-          histogramData[index + numRenderScaleHistogramBins];
+        const notPresentCount = histogramData[index + numBins];
         const count = presentCount + notPresentCount;
         if (count === 0) continue;
         const xStart = Math.round(binToCanvasX(i));
@@ -377,8 +370,8 @@ export class RenderScaleWidget extends RefCounted {
       const startOffset = binToCanvasX(
         getRenderScaleHistogramOffset(
           value,
-          this.logScaleOrigin,
-          this.logScaleBinSize,
+          this.histogram.logScaleOrigin,
+          this.histogram.binSize,
         ),
       );
       const lineWidth = 1;
@@ -391,8 +384,8 @@ export class RenderScaleWidget extends RefCounted {
       const startOffset = binToCanvasX(
         getRenderScaleHistogramOffset(
           value,
-          this.logScaleOrigin,
-          this.logScaleBinSize,
+          this.histogram.logScaleOrigin,
+          this.histogram.binSize,
         ),
       );
       const lineWidth = 1;
@@ -403,7 +396,6 @@ export class RenderScaleWidget extends RefCounted {
 
 export class VolumeRenderingRenderScaleWidget extends RenderScaleWidget {
   protected unitOfTarget = "samples";
-  protected logScaleOrigin = 1;
 
   getWheelMoveValue(event: WheelEvent) {
     return -event.deltaY;

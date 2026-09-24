@@ -35,10 +35,12 @@ import { TrackableBasedStatusMessages } from "#src/python_integration/remote_sta
 import { ScreenshotHandler } from "#src/python_integration/screenshots.js";
 import { VolumeRequestHandler } from "#src/python_integration/volume.js";
 import { TrackableValue } from "#src/trackable_value.js";
+import { bindCommandPalette } from "#src/ui/command_palette.js";
 import {
   bindDefaultCopyHandler,
   bindDefaultPasteHandler,
 } from "#src/ui/default_clipboard_handling.js";
+import { registerDefaultCommands } from "#src/ui/default_commands.js";
 import { setDefaultInputEventBindings } from "#src/ui/default_input_event_bindings.js";
 import { makeDefaultViewer } from "#src/ui/default_viewer.js";
 import { bindTitle } from "#src/ui/title.js";
@@ -228,4 +230,6 @@ volumeHandler.sendVolumeChunkResponseRequested.add((requestId, info) =>
 
 bindDefaultCopyHandler(viewer);
 bindDefaultPasteHandler(viewer);
+registerDefaultCommands(viewer.commandRegistry);
+bindCommandPalette(viewer);
 viewer.registerDisposer(bindTitle(viewer.title));

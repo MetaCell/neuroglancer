@@ -63,15 +63,13 @@ export function trackableRenderScaleTarget(
 export class RenderScaleHistogram {
   visibility = new VisibilityPriorityAggregator();
   changed = new NullarySignal();
-  logScaleOrigin: number;
-  logScaleBinSize: number;
 
   constructor(
-    origin: number = renderScaleHistogramOrigin,
-    binSize: number = renderScaleHistogramBinSize,
+    readonly logScaleOrigin: number = renderScaleHistogramOrigin,
+    readonly numBins: number = numRenderScaleHistogramBins,
+    readonly binSize: number = renderScaleHistogramBinSize,
   ) {
-    this.logScaleOrigin = origin;
-    this.logScaleBinSize = binSize;
+    this.value = new Uint32Array(numBins * this.numHistogramRows * 2);
   }
 
   /**
@@ -91,11 +89,9 @@ export class RenderScaleHistogram {
   numHistogramRows = 1;
 
   /**
-   * Initially allocate one row.
+   * Histogram value array, stores both present and not-present counts.
    */
-  value = new Uint32Array(
-    numRenderScaleHistogramBins * this.numHistogramRows * 2,
-  );
+  value: Uint32Array;
 
   /**
    * Number of chunks that are indication only (not present in the data).
@@ -137,14 +133,12 @@ export class RenderScaleHistogram {
     }
     if (spatialScaleIndex >= numHistogramRows) {
       this.numHistogramRows = numHistogramRows *= 2;
-      const newValue = new Uint32Array(
-        numHistogramRows * numRenderScaleHistogramBins * 2,
-      );
+      const newValue = new Uint32Array(numHistogramRows * this.numBins * 2);
       newValue.set(value);
       this.value = value = newValue;
     }
     const index =
-      spatialScaleIndex * numRenderScaleHistogramBins * 2 +
+      spatialScaleIndex * this.numBins * 2 +
       Math.min(
         Math.max(
           0,
@@ -152,14 +146,14 @@ export class RenderScaleHistogram {
             getRenderScaleHistogramOffset(
               renderScale,
               this.logScaleOrigin,
-              this.logScaleBinSize,
+              this.binSize,
             ),
           ),
         ),
-        numRenderScaleHistogramBins - 1,
+        this.numBins - 1,
       );
     value[index] += presentCount;
-    value[index + numRenderScaleHistogramBins] += notPresentCount;
+    value[index + this.numBins] += notPresentCount;
     if (renderOnly) {
       this.fakeChunkCount = this.fakeChunkCount + notPresentCount;
     }

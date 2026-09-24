@@ -27,6 +27,7 @@ import {
   makeCoordinateSpace,
   TrackableCoordinateSpace,
 } from "#src/coordinate_transform.js";
+
 import { getDefaultCredentialsManager } from "#src/credentials_provider/default_manager.js";
 import type { CredentialsManager } from "#src/credentials_provider/index.js";
 import { SharedCredentialsManager } from "#src/credentials_provider/shared.js";
@@ -96,7 +97,8 @@ import {
   observeWatchable,
   TrackableValue,
 } from "#src/trackable_value.js";
-import { CommandPalette } from "#src/ui/command_palette.js";
+import { CommandCatalog } from "#src/ui/command_catalog.js";
+import { CommandRegistry } from "#src/ui/command_registry.js";
 import {
   LayerArchiveCountWidget,
   LayerListPanel,
@@ -120,11 +122,13 @@ import {
   MultiToolPaletteManager,
   MultiToolPaletteState,
 } from "#src/ui/tool_palette.js";
+import { encodeStateAsFragment } from "#src/ui/url_hash_binding.js";
 import {
   ViewerSettingsPanel,
   ViewerSettingsPanelState,
 } from "#src/ui/viewer_settings.js";
 import { AutomaticallyFocusedElement } from "#src/util/automatic_focus.js";
+import { setClipboard } from "#src/util/clipboard.js";
 import { TrackableRGB } from "#src/util/color.js";
 import type { Borrowed, Owned } from "#src/util/disposable.js";
 import { RefCounted, registerEventListener } from "#src/util/disposable.js";
@@ -137,6 +141,7 @@ import {
   verifyFinitePositiveFloat,
   verifyNonnegativeInt,
   verifyObject,
+  verifyOptionalBoolean,
   verifyOptionalObjectProperty,
   verifyString,
 } from "#src/util/json.js";
@@ -157,6 +162,7 @@ import type {
 import { WatchableVisibilityPriority } from "#src/visibility_priority/frontend.js";
 import { AnnotationToolStatusWidget } from "#src/widget/annotation_tool_status.js";
 import { CheckboxIcon } from "#src/widget/checkbox_icon.js";
+import { makeCopyUrlButton } from "#src/widget/copy_button.js";
 import { makeIcon } from "#src/widget/icon.js";
 import {
   MousePositionWidget,
@@ -191,6 +197,7 @@ export const VIEWER_TOP_ROW_CONFIG_OPTIONS = [
   "showLayerSidePanelButton",
   "showLocation",
   "showAnnotationToolStatus",
+  "showCopyUrlButton",
 ] as const;
 
 export const VIEWER_UI_CONTROL_CONFIG_OPTIONS = [
@@ -263,6 +270,40 @@ const defaultViewerOptions =
         resetStateWhenEmpty: true,
       };
 
+/**
+ * User overrides for the visibility of individual UI controls, persisted in the
+ * viewer state under the `uiControlVisibility` key.
+ *
+ * Each member is tri-state: `undefined` means "follow the embedder's
+ * `ViewerUIConfiguration` value", and `true`/`false` is an explicit user
+ * choice. The embedder's configuration still wins when it hides a control, so
+ * an override may hide a control the configuration permits but can never
+ * reveal one the configuration disallows.
+ *
+ * Additional `VIEWER_UI_CONTROL_CONFIG_OPTIONS` members belong here as they
+ * become user-toggleable, rather than as new top level state keys.
+ */
+class TrackableUiControlVisibility extends CompoundTrackable {
+  showLayerPanel = new TrackableValue<boolean | undefined>(
+    undefined,
+    verifyOptionalBoolean,
+  );
+
+  constructor() {
+    super();
+    this.add("showLayerPanel", this.showLayerPanel);
+  }
+
+  toJSON(): any {
+    const result = super.toJSON();
+    for (const key in result) {
+      if (result[key] !== undefined) return result;
+    }
+    // Omit the section rather than emitting an empty object in every state.
+    return undefined;
+  }
+}
+
 class TrackableViewerState extends CompoundTrackable {
   constructor(public viewer: Borrowed<Viewer>) {
     super();
@@ -319,6 +360,7 @@ class TrackableViewerState extends CompoundTrackable {
     this.add("selectedStateServer", viewer.selectedStateServer);
     this.add("toolBindings", viewer.toolBinder);
     this.add("toolPalettes", viewer.toolPalettes);
+    this.add("uiControlVisibility", viewer.uiControlVisibilityState);
   }
 
   restoreState(obj: any) {
@@ -469,6 +511,9 @@ export class Viewer extends RefCounted implements ViewerState {
   partialViewport = new TrackableWindowedViewport();
   statisticsDisplayState = new StatisticsDisplayState();
   helpPanelState = new HelpPanelState();
+  uiControlVisibilityState = this.registerDisposer(
+    new TrackableUiControlVisibility(),
+  );
   settingsPanelState = new ViewerSettingsPanelState();
   layerSelectedValues = this.registerDisposer(
     new LayerSelectedValues(this.layerManager, this.mouseState),
@@ -507,6 +552,13 @@ export class Viewer extends RefCounted implements ViewerState {
   dataSourceProvider: Borrowed<DataSourceRegistry>;
 
   uiConfiguration: ViewerUIConfiguration;
+  /** Effective layer panel visibility: the configuration and the user override combined. */
+  effectiveShowLayerPanel: WatchableValueInterface<boolean>;
+  /**
+   * Reads `effectiveShowLayerPanel` and writes the user override, for the
+   * toggle in the layer list panel.
+   */
+  layerPanelVisibility: WatchableValueInterface<boolean>;
 
   private makeUiControlVisibilityState(
     key: (typeof VIEWER_UI_CONTROL_CONFIG_OPTIONS)[number],
@@ -613,6 +665,31 @@ export class Viewer extends RefCounted implements ViewerState {
     for (const key of VIEWER_UI_CONTROL_CONFIG_OPTIONS) {
       this.uiControlVisibility[key] = this.makeUiControlVisibilityState(key);
     }
+
+    // Layer the user override on top of `uiControlVisibility.showLayerPanel`,
+    // not on `uiConfiguration.showLayerPanel`: the former also accounts for
+    // `showUIControls`, which `Viewer.screenshot` turns off to capture the data
+    // panels alone. The override may hide the panel within what the
+    // configuration permits, but can never reveal one it disallows.
+    this.effectiveShowLayerPanel = this.registerDisposer(
+      makeDerivedWatchableValue(
+        (configEnabled: boolean, override: boolean | undefined) =>
+          configEnabled && (override ?? true),
+        this.uiControlVisibility.showLayerPanel,
+        this.uiControlVisibilityState.showLayerPanel,
+      ),
+    );
+    const { effectiveShowLayerPanel } = this;
+    const showLayerPanelOverride = this.uiControlVisibilityState.showLayerPanel;
+    this.layerPanelVisibility = {
+      get value() {
+        return effectiveShowLayerPanel.value;
+      },
+      set value(newValue: boolean) {
+        showLayerPanelOverride.value = newValue;
+      },
+      changed: effectiveShowLayerPanel.changed,
+    };
     this.registerDisposer(
       this.uiConfiguration.showPanelBorders.changed.add(() => {
         this.updateShowBorders();
@@ -937,7 +1014,27 @@ export class Viewer extends RefCounted implements ViewerState {
       );
       topRow.appendChild(button);
     }
-
+    {
+      const button = makeCopyUrlButton({
+        title: "Copy URL to clipboard",
+        onClick: () => {
+          const stateString = encodeStateAsFragment(this.state.toJSON());
+          const url = new URL(window.location.href);
+          url.hash = "#!" + stateString;
+          const result = setClipboard(url.href);
+          StatusMessage.showTemporaryMessage(
+            result ? "URL copied to clipboard" : "Failed to copy URL",
+          );
+        },
+      });
+      this.registerDisposer(
+        new ElementVisibilityFromTrackableBoolean(
+          this.uiControlVisibility.showCopyUrlButton,
+          button,
+        ),
+      );
+      topRow.appendChild(button);
+    }
     {
       const { helpPanelState } = this;
       const button = this.registerDisposer(
@@ -1005,6 +1102,8 @@ export class Viewer extends RefCounted implements ViewerState {
             this.sidePanelManager,
             this.layerSpecification,
             this.layerListPanelState,
+            this.layerPanelVisibility,
+            this.uiControlVisibility.showLayerPanel,
           ),
       }),
     );
@@ -1221,33 +1320,6 @@ export class Viewer extends RefCounted implements ViewerState {
     );
     this.bindAction("toggle-show-statistics", () => this.showStatistics());
 
-    // Guard prevents double-open when both the element-level action listener and
-    // the document capture listener fire for the same keypress.
-    let openPalette: CommandPalette | undefined;
-    const openCommandPalette = () => {
-      if (openPalette !== undefined && !openPalette.wasDisposed) return;
-      const prevFocused = document.activeElement;
-      const dispatchTarget =
-        prevFocused instanceof HTMLElement && this.element.contains(prevFocused)
-          ? prevFocused
-          : this.element;
-      openPalette = new CommandPalette(this, dispatchTarget);
-    };
-    this.bindAction("open-command-palette", openCommandPalette);
-    // Document-level capture to ensure that the command palette opens even when focus is inside a tool's input element outside viewer.element.
-    this.registerDisposer(
-      registerEventListener(
-        document,
-        "keydown",
-        (event: KeyboardEvent) => {
-          if (event.code === "KeyP" && event.ctrlKey) {
-            event.preventDefault();
-            openCommandPalette();
-          }
-        },
-        { capture: true },
-      ),
-    );
     this.bindAction("deactivate-active-tool", () =>
       this.globalToolBinder.deactivate(),
     );
@@ -1281,6 +1353,20 @@ export class Viewer extends RefCounted implements ViewerState {
   public globalToolBinder = this.registerDisposer(
     new GlobalToolBinder(this.toolInputEventMapBinder, this.toolPalettes),
   );
+
+  // Binding-independent registry of the viewer's commands. Populated with the
+  // built-in commands during default viewer setup; feature code and embedding
+  // applications may register additional commands against it. It lists the
+  // commands it was told about, not every action that exists - see
+  // docs/concepts/commands.rst.
+  public commandRegistry = this.registerDisposer(new CommandRegistry());
+  private commandCatalog_: CommandCatalog | undefined;
+
+  get commandCatalog(): CommandCatalog {
+    return (this.commandCatalog_ ??= this.registerDisposer(
+      new CommandCatalog(this),
+    ));
+  }
 
   public toolBinder = this.registerDisposer(
     new LocalToolBinder(this, this.globalToolBinder),
