@@ -14,20 +14,10 @@
  * limitations under the License.
  */
 
-/* Per-panel overlay container: covers the panel, never intercepts pointer
-   events, and clips overlays to the panel bounds. */
 .neuroglancer-panel-overlay-container {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 10;
   overflow: hidden;
-}
-
-/* Per-source sub-container within a panel; z-index is set from the source's
-   overlayPriority. */
-.neuroglancer-panel-overlay-source {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
 }

@@ -19,12 +19,17 @@ import "#src/noselect.css";
 
 import type { Annotation } from "#src/annotation/index.js";
 import { getAnnotationTypeRenderHandler } from "#src/annotation/type_handler.js";
+import { coordinateSpacesEqual } from "#src/coordinate_transform.js";
 import type { DisplayContext } from "#src/display_context.js";
 import { RenderedPanel } from "#src/display_context.js";
 import { hasSpatialSkeletonNodeSelection } from "#src/layer/segmentation/selection.js";
 import type { NavigationState } from "#src/navigation_state.js";
 import { PickIDManager } from "#src/object_picking.js";
-import type { PanelOverlaySource } from "#src/panel_overlay.js";
+import type {
+  PanelOverlay,
+  PanelOverlayHost,
+  ViewportPoint,
+} from "#src/panel_overlay.js";
 import { PanelOverlayManager } from "#src/panel_overlay.js";
 import {
   displayToLayerCoordinates,
@@ -38,7 +43,7 @@ import type { SpatialSkeletonSourceState } from "#src/skeleton/api.js";
 import { StatusMessage } from "#src/status.js";
 import type { TrackableValue } from "#src/trackable_value.js";
 import { AutomaticallyFocusedElement } from "#src/util/automatic_focus.js";
-import type { Borrowed, RefCounted } from "#src/util/disposable.js";
+import type { Borrowed } from "#src/util/disposable.js";
 import type {
   ActionEvent,
   EventActionMap,
@@ -351,6 +356,33 @@ export abstract class RenderedDataPanel extends RenderedPanel {
     );
   }
 
+  protected abstract projectPosition(
+    position: Float32Array,
+  ): ViewportPoint | undefined;
+
+  private readonly overlays = this.registerDisposer(
+    new PanelOverlayManager(
+      this.element,
+      (position, coordinateSpace) =>
+        coordinateSpacesEqual(
+          coordinateSpace,
+          this.navigationState.coordinateSpace.value,
+        )
+          ? this.projectPosition(position)
+          : undefined,
+      () => {
+        this.ensureBoundsUpdated();
+        const { width, height } = this.renderViewport;
+        return this.shouldDraw && width !== 0 && height !== 0;
+      },
+    ),
+  );
+
+  /** Returns a function that removes the overlay. */
+  addOverlay(createOverlay: (host: PanelOverlayHost) => PanelOverlay) {
+    return this.overlays.add(createOverlay);
+  }
+
   draw() {
     const { width, height } = this.renderViewport;
     this.checkForPickRequestCompletion(true);
@@ -364,13 +396,10 @@ export abstract class RenderedDataPanel extends RenderedPanel {
     newPickingData.pickIDs.clear();
     if (!this.drawWithPicking(newPickingData)) {
       newPickingData.frameNumber = -1;
-      // The panel rendered nothing this frame; drop its overlays so stale
-      // markers don't linger over the cleared canvas region.
-      this.clearOverlays();
+      this.overlays.hide();
       return;
     }
-    // Reposition overlays for the new view.
-    this.updateOverlays();
+    this.overlays.update();
     // For the new frame, allow new pick requests regardless of interval since last request.
     this.nextPickRequestTime = 0;
     if (this.mouseX >= 0) {
@@ -379,39 +408,6 @@ export abstract class RenderedDataPanel extends RenderedPanel {
   }
 
   abstract drawWithPicking(pickingData: FramePickingData): boolean;
-
-  /**
-   * Projects a global-coordinate position to this panel's logical CSS pixels, or
-   * returns `undefined` if it is off-screen / behind the camera / culled by the
-   * cross-section slab.  `scale` (default 1) conveys depth (perspective);
-   * `opacity` (default 1) is the cross-section fade in slice views.  Implemented
-   * per panel using its own projection.
-   */
-  protected abstract projectGlobalPosition(
-    position: Float32Array,
-  ): { x: number; y: number; scale?: number; opacity?: number } | undefined;
-
-  /**
-   * Type tags used to target overlays (see {@link PanelOverlayTarget}), e.g.
-   * `["perspective"]` or `["cross-section"]`.
-   */
-  abstract readonly overlayPanelTypes: readonly string[];
-
-  private overlays: PanelOverlayManager;
-
-  // Called by the visible-layer tracker to bind a layer's overlay source; `owner`
-  // is the per-(layer,panel) attachment.
-  bindOverlaySource(source: PanelOverlaySource, owner: RefCounted) {
-    this.overlays.bindSource(source, owner);
-  }
-
-  override updateOverlays() {
-    this.overlays.update();
-  }
-
-  clearOverlays() {
-    this.overlays.clear();
-  }
 
   private nextPickRequestTime = 0;
   private pendingPickRequestTimerId = -1;
@@ -499,29 +495,6 @@ export abstract class RenderedDataPanel extends RenderedPanel {
   ) {
     super(context, element, viewer.visibility);
     this.inputEventMap = viewer.inputEventMap;
-
-    const self = this;
-    this.overlays = this.registerDisposer(
-      new PanelOverlayManager(
-        {
-          element,
-          get visible() {
-            return self.visible;
-          },
-          get cssPerDevicePixel() {
-            const { width, logicalWidth } = self.renderViewport;
-            return width > 0 ? logicalWidth / width : 1;
-          },
-          get panelTypes() {
-            return self.overlayPanelTypes;
-          },
-          project: (p) => self.projectGlobalPosition(p),
-        },
-        context.panelOverlays,
-        context.panelOverlaysChanged,
-        () => this.scheduleOverlayUpdate(),
-      ),
-    );
 
     element.classList.add("neuroglancer-rendered-data-panel");
     element.classList.add("neuroglancer-panel");

@@ -14,11 +14,7 @@
  * limitations under the License.
  */
 
-/* Ring outlining a selected/hovered skeleton node. A pure border around the
-   node with a single 1px contrast halo on the outside, so it never covers the
-   node point. Size, border width/color and the halo color are set per marker;
-   the halo color adapts to the ring color's luminance (white for dark rings,
-   black for light ones). */
+/* Size, border width and colors are set inline per node. */
 .neuroglancer-skeleton-node-highlight {
   position: absolute;
   left: 0;

@@ -900,10 +900,6 @@ describe("spatial_skeleton_edit_tool", () => {
       },
       updateUnconditionally: vi.fn(() => true),
       active: true,
-      // Mirrors MouseSelectionState: the edit tool suppresses the picking indicator while a node is
-      // being dragged, and dispatches `changed` when it toggles.
-      pickingIndicatorSuppressed: false,
-      changed: makeChangedSignal(),
     };
     const layer = {
       displayState: {
@@ -995,10 +991,6 @@ describe("spatial_skeleton_edit_tool", () => {
       },
       updateUnconditionally: vi.fn(() => true),
       active: true,
-      // Mirrors MouseSelectionState: the edit tool suppresses the picking indicator while a node is
-      // being dragged, and dispatches `changed` when it toggles.
-      pickingIndicatorSuppressed: false,
-      changed: makeChangedSignal(),
     };
     const selectSegment = vi.fn();
     const selectSpatialSkeletonNode = vi.fn();
@@ -1493,8 +1485,6 @@ describe("spatial_skeleton_edit_tool", () => {
       updateUnconditionally: vi.fn(() => true),
       active: true,
       unsnappedPosition: new Float32Array([1, 2, 3]),
-      pickingIndicatorSuppressed: false,
-      changed: makeChangedSignal(),
     };
     const layer = {
       displayState: {

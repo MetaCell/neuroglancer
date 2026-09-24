@@ -14,223 +14,124 @@
  * limitations under the License.
  */
 
-/**
- * DOM overlays positioned by projecting world-space positions to screen (e.g.
- * the picking indicator and skeleton node highlights), updated on a coalesced,
- * redraw-free pass independent of the WebGL render loop.
- *
- * The contract contains no neuroglancer-internal types, so render layers,
- * built-ins, and external code implement it identically.  Positions passed to
- * `PanelOverlayContext.project` are in the global coordinate space.
- */
-
 import "#src/panel_overlay.css";
 
-import type { WatchableValueInterface } from "#src/trackable_value.js";
+import type { CoordinateSpace } from "#src/coordinate_transform.js";
+import type { ProjectionParameters } from "#src/projection_parameters.js";
+import { animationFrameDebounce } from "#src/util/animation_frame_debounce.js";
+import type { Disposable } from "#src/util/disposable.js";
 import { RefCounted } from "#src/util/disposable.js";
-import type { NullarySignal } from "#src/util/signal.js";
+import { getViewFrustumDepthRange, vec4 } from "#src/util/geom.js";
 
-export interface PanelOverlayContext {
-  /**
-   * Projects a global-coordinate position to this panel's logical CSS pixels, or
-   * returns `undefined` if it is off-screen / behind the camera / culled by the
-   * cross-section slab.  `scale` (default 1) conveys depth (perspective view);
-   * `opacity` (default 1) is the cross-section fade in slice views (1 on the
-   * slice plane, falling to 0 at the slab edge).
-   */
-  project(
-    position: Float32Array,
-  ): { x: number; y: number; scale?: number; opacity?: number } | undefined;
-
-  /**
-   * The source's container for this panel; the source reconciles its children.
-   * Created and removed by the panel.
-   */
-  readonly container: HTMLElement;
-
-  /**
-   * CSS pixels per render-viewport device pixel, for sizing overlays specified in
-   * device pixels.
-   */
-  readonly cssPerDevicePixel: number;
-
-  /**
-   * The panel's type tags (e.g. `"perspective"`, `"cross-section"`), so a source
-   * can adapt its rendering to the panel it is drawing in.
-   */
-  readonly panelTypes: readonly string[];
+export interface ViewportPoint {
+  readonly viewportLeft: number;
+  readonly viewportTop: number;
+  readonly focalPlaneDepthFraction: number;
 }
 
-export interface PanelOverlaySource {
-  /** Higher draws on top of lower.  Default 0.  (Picking indicator uses 100.) */
-  readonly overlayPriority?: number;
+const tempClip = vec4.create();
 
-  /** Dispatch to reposition the overlay on the next frame without a GL redraw. */
-  readonly overlayUpdateNeeded: NullarySignal;
-
-  /**
-   * Optional runtime show/hide.  When present and `false`, the panel hides this
-   * source's container and skips its update; changes trigger a coalesced pass.
-   */
-  readonly overlayVisible?: WatchableValueInterface<boolean>;
-
-  /** Cheap, DOM-only update for one panel.  Must not touch the GL canvas. */
-  updatePanelOverlays(ctx: PanelOverlayContext): void;
+export function projectToViewport(
+  parameters: ProjectionParameters,
+  position: ArrayLike<number>,
+): ViewportPoint | undefined {
+  const {
+    projectionMat,
+    viewProjectionMat,
+    logicalWidth,
+    logicalHeight,
+    visibleLeftFraction,
+    visibleTopFraction,
+    visibleWidthFraction,
+    visibleHeightFraction,
+    displayDimensionRenderInfo: { displayDimensionIndices },
+  } = parameters;
+  const clip = tempClip;
+  for (let i = 0; i < 3; ++i) {
+    const index = displayDimensionIndices[i];
+    clip[i] = index >= 0 ? position[index] : 0;
+  }
+  clip[3] = 1;
+  vec4.transformMat4(clip, clip, viewProjectionMat);
+  const w = clip[3];
+  if (w <= 0) return undefined;
+  const normalizedDeviceZ = clip[2] / w;
+  if (normalizedDeviceZ < -1 || normalizedDeviceZ > 1) return undefined;
+  const orthographic = projectionMat[15] === 1;
+  return {
+    viewportLeft:
+      (visibleLeftFraction +
+        ((clip[0] / w) * 0.5 + 0.5) * visibleWidthFraction) *
+      logicalWidth,
+    viewportTop:
+      (visibleTopFraction +
+        (0.5 - (clip[1] / w) * 0.5) * visibleHeightFraction) *
+      logicalHeight,
+    focalPlaneDepthFraction: orthographic
+      ? normalizedDeviceZ
+      : (w - 1) / (getViewFrustumDepthRange(projectionMat) / 2),
+  };
 }
 
-export function isPanelOverlaySource(x: unknown): x is PanelOverlaySource {
-  return (
-    typeof (x as Partial<PanelOverlaySource> | null | undefined)
-      ?.updatePanelOverlays === "function"
-  );
-}
+export type ProjectOverlayPosition = (
+  position: Float32Array,
+  coordinateSpace: CoordinateSpace,
+) => ViewportPoint | undefined;
 
-/**
- * Restricts a globally-registered source to a subset of panels.  When
- * `panelTypes` is omitted the source is shown on every data panel; otherwise it
- * is shown on a panel iff one of its {@link PanelOverlayHost.panelTypes} tags is
- * listed.  (An empty `panelTypes` therefore matches no panel.)
- */
-export interface PanelOverlayTarget {
-  readonly panelTypes?: readonly string[];
-}
-
-function panelMatchesTarget(
-  target: PanelOverlayTarget,
-  panelTypes: readonly string[],
-): boolean {
-  const { panelTypes: wanted } = target;
-  return (
-    wanted === undefined || wanted.some((type) => panelTypes.includes(type))
-  );
-}
-
-/** The panel capabilities required by {@link PanelOverlayManager}. */
 export interface PanelOverlayHost {
-  readonly element: HTMLElement;
-  readonly visible: boolean;
-  readonly cssPerDevicePixel: number;
-  readonly panelTypes: readonly string[];
-  project(
-    position: Float32Array,
-  ): { x: number; y: number; scale?: number; opacity?: number } | undefined;
+  readonly container: HTMLElement;
+  readonly project: ProjectOverlayPosition;
+  /** Updates the overlays at the next animation frame without a redraw. */
+  scheduleUpdate(): void;
 }
 
-/**
- * Owns a panel's overlay DOM and drives its updates.  Holds a per-panel
- * container with one child per bound {@link PanelOverlaySource} (z-index from
- * `overlayPriority`), binds the viewer-level sources registered on the
- * DisplayContext, and repositions every source on `update()`.
- */
-export class PanelOverlayManager extends RefCounted {
-  private readonly container = document.createElement("div");
-  private readonly bindings = new Map<PanelOverlaySource, HTMLElement>();
-  private readonly globalOwners = new Map<PanelOverlaySource, RefCounted>();
+export interface PanelOverlay extends Disposable {
+  update(): void;
+}
+
+export class PanelOverlayManager
+  extends RefCounted
+  implements PanelOverlayHost
+{
+  readonly container = document.createElement("div");
+  private readonly overlays: PanelOverlay[] = [];
+  readonly scheduleUpdate = this.registerCancellable(
+    animationFrameDebounce(() => {
+      if (this.isDrawable()) this.update();
+      else this.hide();
+    }),
+  );
 
   constructor(
-    private readonly host: PanelOverlayHost,
-    // Viewer-level sources (with their optional panel-type target) applied to this
-    // panel when the target matches, and the signal fired when the map changes.
-    private readonly globalSources: ReadonlyMap<
-      PanelOverlaySource,
-      PanelOverlayTarget
-    >,
-    globalSourcesChanged: NullarySignal,
-    // Requests a coalesced, redraw-free overlay pass.
-    private readonly requestUpdate: () => void,
+    panelElement: HTMLElement,
+    readonly project: ProjectOverlayPosition,
+    private readonly isDrawable: () => boolean,
   ) {
     super();
     this.container.className = "neuroglancer-panel-overlay-container";
-    host.element.appendChild(this.container);
+    panelElement.appendChild(this.container);
     this.registerDisposer(() => this.container.remove());
-    this.registerDisposer(
-      globalSourcesChanged.add(() => this.syncGlobalSources()),
-    );
-    this.registerDisposer(() => {
-      for (const owner of this.globalOwners.values()) owner.dispose();
-      this.globalOwners.clear();
-    });
-    this.syncGlobalSources();
   }
 
-  /**
-   * Binds `source`.  `owner` scopes the binding's lifetime; the source's
-   * sub-container is removed when `owner` is disposed.
-   */
-  bindSource(source: PanelOverlaySource, owner: RefCounted) {
-    const subContainer = document.createElement("div");
-    subContainer.className = "neuroglancer-panel-overlay-source";
-    subContainer.style.zIndex = `${source.overlayPriority ?? 0}`;
-    this.container.appendChild(subContainer);
-    this.bindings.set(source, subContainer);
-    owner.registerDisposer(() => {
-      subContainer.remove();
-      this.bindings.delete(source);
-      this.requestUpdate();
-    });
-    owner.registerDisposer(source.overlayUpdateNeeded.add(this.requestUpdate));
-    const { overlayVisible } = source;
-    if (overlayVisible !== undefined) {
-      owner.registerDisposer(overlayVisible.changed.add(this.requestUpdate));
-    }
-    this.requestUpdate();
+  /** Overlays added later draw on top. Returns a function that removes the overlay. */
+  add(createOverlay: (host: PanelOverlayHost) => PanelOverlay) {
+    const overlay = this.registerDisposer(createOverlay(this));
+    this.overlays.push(overlay);
+    return () => {
+      this.unregisterDisposer(overlay);
+      this.overlays.splice(this.overlays.indexOf(overlay), 1);
+      overlay.dispose();
+    };
   }
 
-  private syncGlobalSources() {
-    const { globalSources, globalOwners, host } = this;
-    for (const [source, owner] of globalOwners) {
-      const target = globalSources.get(source);
-      if (
-        target === undefined ||
-        !panelMatchesTarget(target, host.panelTypes)
-      ) {
-        owner.dispose();
-        globalOwners.delete(source);
-      }
-    }
-    for (const [source, target] of globalSources) {
-      if (
-        !globalOwners.has(source) &&
-        panelMatchesTarget(target, host.panelTypes)
-      ) {
-        const owner = new RefCounted();
-        globalOwners.set(source, owner);
-        this.bindSource(source, owner);
-      }
-    }
-  }
-
-  /** Repositions every bound source.  DOM only; does not touch the GL canvas. */
   update() {
-    const { host } = this;
-    if (!host.visible) return;
-    const { cssPerDevicePixel, panelTypes } = host;
-    const project = (p: Float32Array) => host.project(p);
-    for (const [source, container] of this.bindings) {
-      if (source.overlayVisible?.value === false) {
-        if (container.style.display !== "none")
-          container.style.display = "none";
-        continue;
-      }
-      if (container.style.display === "none") container.style.display = "";
-      source.updatePanelOverlays({
-        project,
-        container,
-        cssPerDevicePixel,
-        panelTypes,
-      });
-    }
+    this.scheduleUpdate.cancel();
+    this.container.hidden = false;
+    for (const overlay of this.overlays) overlay.update();
   }
 
-  /**
-   * Hides every bound source's container without touching the GL canvas.  Used
-   * when the panel failed to draw (so it rendered nothing this frame) to avoid
-   * leaving stale overlays over cleared canvas content.  {@link update}
-   * restores visibility on the next successful frame.
-   */
-  clear() {
-    for (const container of this.bindings.values()) {
-      if (container.style.display !== "none") container.style.display = "none";
-    }
+  hide() {
+    this.scheduleUpdate.cancel();
+    this.container.hidden = true;
   }
 }
