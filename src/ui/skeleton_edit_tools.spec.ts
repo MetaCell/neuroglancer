@@ -753,6 +753,7 @@ describe("spatial_skeleton_edit_tool", () => {
         // Post-merge topology refresh re-fetches the surviving segments in place rather than
         // dropping them from the cache; a truthy result means the cache changed.
         refreshCachedSegments,
+        notifySegmentsChanged: vi.fn(),
       },
       getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
       selectSegment,

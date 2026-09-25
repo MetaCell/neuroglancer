@@ -180,6 +180,7 @@ export class PreprocessedSegmentPropertyMap {
   inlineIdToIndex: IndicesArray | undefined;
   tags: InlineSegmentTagsProperty | undefined;
   labels: InlineSegmentStringProperty | undefined;
+  stringProperties: InlineSegmentStringProperty[];
   numericalProperties: InlineSegmentNumericalProperty[];
 
   getSegmentInlineIndex(id: bigint): number {
@@ -203,6 +204,9 @@ export class PreprocessedSegmentPropertyMap {
     this.labels = inlineProperties?.properties.find(
       (p) => p.type === "label",
     ) as InlineSegmentStringProperty | undefined;
+    this.stringProperties = (inlineProperties?.properties.filter(
+      (p) => p.type === "string",
+    ) ?? []) as InlineSegmentStringProperty[];
     this.numericalProperties = (inlineProperties?.properties.filter(
       (p) => p.type === "number",
     ) ?? []) as InlineSegmentNumericalProperty[];
@@ -245,7 +249,7 @@ function remapArray<T>(
 
 function isIdArraySorted(ids: TypedArray): boolean {
   for (let i = 1, n = ids.length; i < n; ++i) {
-    if (ids[i] <= ids[0]) return false;
+    if (ids[i] <= ids[i - 1]) return false;
   }
   return true;
 }
@@ -528,6 +532,10 @@ export function parseSegmentQuery(
   const tagNames = tags?.tags || [];
   const lowerCaseTags = tagNames.map((x) => x.toLowerCase());
   const labels = db?.labels;
+  const hasSearchableText =
+    labels !== undefined ||
+    tagNames.length > 0 ||
+    (db?.stringProperties.length ?? 0) > 0;
   const errors: QueryParseError[] = [];
   let nextStartIndex: number;
   for (
@@ -647,7 +655,7 @@ export function parseSegmentQuery(
         });
         continue;
       }
-      if (labels === undefined && tagNames.length == 0) {
+      if (!hasSearchableText) {
         errors.push({
           begin: startIndex,
           end: endIndex,
@@ -748,7 +756,7 @@ export function parseSegmentQuery(
       });
       continue;
     }
-    if (labels === undefined && tagNames.length == 0) {
+    if (!hasSearchableText) {
       errors.push({
         begin: startIndex,
         end: endIndex,
@@ -872,21 +880,32 @@ export function executeSegmentQuery(
   // Filter by label
   if (query.regexp !== undefined || query.prefix !== undefined) {
     const { regexp, prefix } = query;
-    if (db!.labels !== undefined) {
-      const values = db!.labels!.values;
+    const { labels, stringProperties } = db!;
+    const searchedProperties =
+      labels === undefined ? stringProperties : [labels, ...stringProperties];
+    if (searchedProperties.length > 0) {
       if (regexp !== undefined) {
-        filterIndices((index) => values[index].match(regexp) !== null);
+        filterIndices((index) =>
+          searchedProperties.some(
+            (property) => property.values[index].match(regexp) !== null,
+          ),
+        );
       }
       if (prefix !== undefined) {
-        filterIndices((index) => values[index].startsWith(prefix));
+        filterIndices((index) =>
+          searchedProperties.some((property) =>
+            property.values[index].startsWith(prefix),
+          ),
+        );
       }
     }
     // if the regular expression returns nothing
     // then assudme the user wants to search through the tags
     // and/or tag descriptions
     if (
-      (indices.length == 0 && regexp !== undefined) ||
-      (db!.labels == undefined && regexp != undefined)
+      db!.tags !== undefined &&
+      regexp !== undefined &&
+      (indices.length == 0 || searchedProperties.length === 0)
     ) {
       indices = makeIndicesArray(totalIds, totalIds);
       for (let i = 0; i < totalIds; ++i) {
