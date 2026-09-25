@@ -62,10 +62,12 @@ const COMBO = {
   holdS: combo(key("hold"), key("s")),
   holdN: combo(key("hold"), key("n")),
   holdD: combo(key("hold"), key("d")),
+  holdI: combo(key("hold"), key("i")),
   releaseM: combo(key("release"), key("m")),
   releaseS: combo(key("release"), key("s")),
   releaseN: combo(key("release"), key("n")),
   releaseD: combo(key("release"), key("d")),
+  releaseI: combo(key("release"), key("i")),
   middleClick: combo(key("middle click")),
   navModifierClick: combo(key("ctrl"), key("click")),
 };
@@ -85,6 +87,10 @@ export const ADD_NODE_ACTION: SpatialSkeletonShortcut = {
 export const MERGE_ACTION: SpatialSkeletonShortcut = {
   label: "Merge",
   combos: [COMBO.holdM],
+};
+export const INSERT_ACTION: SpatialSkeletonShortcut = {
+  label: "Insert",
+  combos: [COMBO.holdI],
 };
 export const SPLIT_ACTION: SpatialSkeletonShortcut = {
   label: "Split",
@@ -113,6 +119,10 @@ export const DELETE_CLICK_ACTION: SpatialSkeletonShortcut = {
 export const EXIT_MERGE_ACTION: SpatialSkeletonShortcut = {
   label: "Exit merge",
   combos: [COMBO.releaseM],
+};
+export const EXIT_INSERT_ACTION: SpatialSkeletonShortcut = {
+  label: "Exit insert",
+  combos: [COMBO.releaseI],
 };
 export const EXIT_SPLIT_ACTION: SpatialSkeletonShortcut = {
   label: "Exit split",

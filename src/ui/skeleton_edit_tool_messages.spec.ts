@@ -7,6 +7,8 @@ import {
   getSpatialSkeletonDefaultStatusText,
   getSpatialSkeletonDeleteIdleStatusText,
   getSpatialSkeletonDeletingStatusText,
+  getSpatialSkeletonInsertingStatusText,
+  getSpatialSkeletonInsertStatusText,
   getSpatialSkeletonMergeStatusText,
   getSpatialSkeletonMergingStatusText,
   getSpatialSkeletonMovingStatusText,
@@ -21,8 +23,10 @@ import {
   DELETE_CLICK_ACTION,
   EXIT_CREATE_ACTION,
   EXIT_DELETE_ACTION,
+  EXIT_INSERT_ACTION,
   EXIT_MERGE_ACTION,
   EXIT_SPLIT_ACTION,
+  INSERT_ACTION,
   MERGE_ACTION,
   MOVE_ACTION,
   NEW_SKELETON_ACTION,
@@ -76,6 +80,7 @@ describe("spatial_skeleton_tool_messages", () => {
           SELECT_ACTION,
           MOVE_ACTION,
           MERGE_ACTION,
+          INSERT_ACTION,
           SPLIT_ACTION,
           NEW_SKELETON_ACTION,
           DELETE_ACTION,
@@ -94,6 +99,7 @@ describe("spatial_skeleton_tool_messages", () => {
           MOVE_ACTION,
           ADD_NODE_ACTION,
           MERGE_ACTION,
+          INSERT_ACTION,
           SPLIT_ACTION,
           NEW_SKELETON_ACTION,
           DELETE_ACTION,
@@ -112,6 +118,7 @@ describe("spatial_skeleton_tool_messages", () => {
           MOVE_ACTION,
           ADD_NODE_ACTION,
           MERGE_ACTION,
+          INSERT_ACTION,
           SPLIT_ACTION,
           NEW_SKELETON_ACTION,
           DELETE_ACTION,
@@ -128,6 +135,7 @@ describe("spatial_skeleton_tool_messages", () => {
         actions: [
           SHOW_SKELETON_ACTION,
           MERGE_ACTION,
+          INSERT_ACTION,
           SPLIT_ACTION,
           NEW_SKELETON_ACTION,
           DELETE_ACTION,
@@ -144,6 +152,7 @@ describe("spatial_skeleton_tool_messages", () => {
         actions: [
           SHOW_SKELETON_ACTION,
           MERGE_ACTION,
+          INSERT_ACTION,
           SPLIT_ACTION,
           NEW_SKELETON_ACTION,
           DELETE_ACTION,
@@ -156,6 +165,37 @@ describe("spatial_skeleton_tool_messages", () => {
   it("returns a static moving-node status", () => {
     expect(getSpatialSkeletonMovingStatusText()).toEqual({
       status: "Moving node",
+      actions: [SPATIAL_SKELETON_ROTATE_PAN_ACTION],
+    });
+  });
+
+  describe("getSpatialSkeletonInsertStatusText", () => {
+    it("no first node, key held", () => {
+      expect(getSpatialSkeletonInsertStatusText("no-first-node", true)).toEqual(
+        {
+          status: "Insert · click the first node",
+          actions: [
+            SELECT_ACTION,
+            EXIT_INSERT_ACTION,
+            SPATIAL_SKELETON_ROTATE_PAN_ACTION,
+          ],
+        },
+      );
+    });
+
+    it("first node picked, key not held", () => {
+      expect(
+        getSpatialSkeletonInsertStatusText("first-node-picked", false),
+      ).toEqual({
+        status: "Insert · click the parent or a child of the first node",
+        actions: [SELECT_ACTION, SPATIAL_SKELETON_ROTATE_PAN_ACTION],
+      });
+    });
+  });
+
+  it("getSpatialSkeletonInsertingStatusText", () => {
+    expect(getSpatialSkeletonInsertingStatusText()).toEqual({
+      status: "Insert · inserting node…",
       actions: [SPATIAL_SKELETON_ROTATE_PAN_ACTION],
     });
   });

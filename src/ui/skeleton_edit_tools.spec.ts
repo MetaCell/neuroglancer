@@ -21,6 +21,7 @@ import { CatmaidSpatialSkeletonEditCommands } from "#src/datasource/catmaid/spat
 import {
   SKELETON_ADD_NODE,
   SKELETON_CLEAR_SELECTION,
+  SKELETON_ENTER_INSERT_MODE,
   SKELETON_ENTER_MERGE_MODE,
   SKELETON_ENTER_SPLIT_MODE,
   SKELETON_FIND_PATH_SELECT_ENDPOINT,
@@ -1053,6 +1054,232 @@ describe("spatial_skeleton_edit_tool", () => {
       expect(splitExecute).not.toHaveBeenCalled();
     } finally {
       dispose();
+    }
+  });
+
+  // Activates the edit tool over a single visible skeleton whose nodes are
+  // all resolvable, and exposes the in-mode pick handler so tests can drive
+  // insert mode without a rendered panel.
+  function makeInsertToolHarness(nodes: SpatiallyIndexedSkeletonNode[]) {
+    suppressStatusMessages();
+    const insertExecute = vi.fn(async () => {});
+    const insertNodesCommand = makeCommandFactory(
+      SpatialSkeletonActions.insertNodes,
+      insertExecute,
+    );
+    const skeletonLayer = {
+      source: makeCommandSkeletonSource({ insertNodesCommand }),
+      getNode: vi.fn((nodeId: number) =>
+        nodes.find((node) => node.nodeId === nodeId),
+      ),
+    };
+    const mouseState = {
+      pickedRenderLayer: undefined,
+      pickedSpatialSkeleton: undefined as
+        | SpatiallyIndexedSkeletonNode
+        | undefined,
+      updateUnconditionally: vi.fn(() => true),
+      active: true,
+      pickingIndicatorSuppressed: false,
+      changed: makeChangedSignal(),
+    };
+    const selectSpatialSkeletonNode = vi.fn();
+    const layer = {
+      displayState: {
+        ...makeSkeletonRenderingOptions(),
+        segmentationGroupState: {
+          value: makeVisibleSegmentsState([11n]),
+        },
+      },
+      spatialSkeletonEditMode: makeModeWatchable(),
+      spatialSkeletonMergeMode: makeModeWatchable(),
+      spatialSkeletonSplitMode: makeModeWatchable(),
+      spatialSkeletonSuppressSelectedNodeHighlight: makeModeWatchable(),
+      selectedSpatialSkeletonNodeInfo: {
+        value: undefined,
+        changed: makeChangedSignal(),
+      },
+      spatialSkeletonState: {
+        commandHistory: new SpatialSkeletonCommandHistory(),
+        getCachedNode: vi.fn(),
+        mergeAnchorNodeId: { value: undefined, changed: makeChangedSignal() },
+        clearPendingNodePositions: vi.fn(),
+      },
+      manager: {
+        root: {
+          layerSelectedValues: { mouseState },
+          selectionState: { value: undefined, changed: makeChangedSignal() },
+          display: { panels: [] },
+        },
+      },
+      getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
+      getSpatialSkeletonActionsDisabledReason: vi.fn(() => undefined),
+      selectSegment: vi.fn(),
+      selectSpatialSkeletonNode,
+      layersChanged: makeChangedSignal(),
+    };
+    const { activation, actions, dispose } = makeToolActivation();
+    const tool = Object.assign(
+      Object.create(SpatialSkeletonEditTool.prototype),
+      { layer },
+    );
+    SpatialSkeletonEditTool.prototype.activate.call(tool, activation as any);
+    const pickNode = async (node: SpatiallyIndexedSkeletonNode) => {
+      mouseState.pickedSpatialSkeleton = node;
+      tool.handleInsertPick();
+      // Let the command execution promise chain settle.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    };
+    return {
+      actions,
+      dispose,
+      insertNodesCommand,
+      layer,
+      pickNode,
+      selectSpatialSkeletonNode,
+      tool,
+    };
+  }
+
+  it("enters insert mode without selecting a node", () => {
+    const rootNode: SpatiallyIndexedSkeletonNode = {
+      nodeId: 1,
+      segmentId: 11,
+      position: new Float32Array([0, 0, 0]),
+    };
+    const harness = makeInsertToolHarness([rootNode]);
+    try {
+      harness.actions.get(SKELETON_ENTER_INSERT_MODE)?.({});
+
+      expect(harness.layer.spatialSkeletonMergeMode.value).toBe(false);
+      expect(
+        harness.layer.spatialSkeletonSuppressSelectedNodeHighlight.value,
+      ).toBe(true);
+      expect(harness.selectSpatialSkeletonNode).not.toHaveBeenCalled();
+      expect(harness.insertNodesCommand.createCommand).not.toHaveBeenCalled();
+    } finally {
+      harness.dispose();
+    }
+  });
+
+  it.each([
+    ["parent then child", [1, 2]],
+    ["child then parent", [2, 1]],
+  ])(
+    "inserts a node at the midpoint of the picked edge (%s)",
+    async (_label, pickOrder) => {
+      const parentNode: SpatiallyIndexedSkeletonNode = {
+        nodeId: 1,
+        segmentId: 11,
+        position: new Float32Array([0, 0, 0]),
+      };
+      const childNode: SpatiallyIndexedSkeletonNode = {
+        nodeId: 2,
+        segmentId: 11,
+        parentNodeId: 1,
+        position: new Float32Array([2, 4, 6]),
+      };
+      const nodes = [parentNode, childNode];
+      const harness = makeInsertToolHarness(nodes);
+      try {
+        harness.actions.get(SKELETON_ENTER_INSERT_MODE)?.({});
+        for (const nodeId of pickOrder) {
+          await harness.pickNode(nodes.find((node) => node.nodeId === nodeId)!);
+        }
+
+        expect(harness.selectSpatialSkeletonNode).toHaveBeenCalledTimes(1);
+        expect(harness.selectSpatialSkeletonNode).toHaveBeenCalledWith(
+          pickOrder[0],
+          true,
+          expect.objectContaining({ nodeId: pickOrder[0] }),
+        );
+        expect(harness.insertNodesCommand.createCommand).toHaveBeenCalledWith(
+          harness.layer,
+          {
+            skeletonId: 11,
+            parentNodeId: 1,
+            childNodeIds: [2],
+            positionInModelSpace: new Float32Array([1, 2, 3]),
+          },
+        );
+        // After the insert the mode is re-armed for the next pair.
+        expect(harness.tool.insertFirstNode).toBeUndefined();
+      } finally {
+        harness.dispose();
+      }
+    },
+  );
+
+  it("rejects a pick on a non-visible skeleton before resolving the node", async () => {
+    const hiddenNode: SpatiallyIndexedSkeletonNode = {
+      nodeId: 9,
+      segmentId: 12,
+      position: new Float32Array([1, 1, 1]),
+    };
+    // Only skeleton 11 is visible and fully loaded; the hidden node is known
+    // solely from the pick buffer.
+    const harness = makeInsertToolHarness([]);
+    const showTemporaryMessage = vi.spyOn(
+      StatusMessage,
+      "showTemporaryMessage",
+    );
+    try {
+      harness.actions.get(SKELETON_ENTER_INSERT_MODE)?.({});
+      await harness.pickNode(hiddenNode);
+
+      expect(showTemporaryMessage).toHaveBeenCalledWith(
+        expect.stringContaining("Make skeleton 12 visible"),
+        3000,
+      );
+      expect(harness.tool.insertFirstNode).toBeUndefined();
+      expect(harness.selectSpatialSkeletonNode).not.toHaveBeenCalled();
+    } finally {
+      harness.dispose();
+    }
+  });
+
+  it("rejects insertion between nodes that are not directly connected and keeps the first pick", async () => {
+    const rootNode: SpatiallyIndexedSkeletonNode = {
+      nodeId: 1,
+      segmentId: 11,
+      position: new Float32Array([0, 0, 0]),
+    };
+    const middleNode: SpatiallyIndexedSkeletonNode = {
+      nodeId: 2,
+      segmentId: 11,
+      parentNodeId: 1,
+      position: new Float32Array([2, 2, 2]),
+    };
+    const leafNode: SpatiallyIndexedSkeletonNode = {
+      nodeId: 3,
+      segmentId: 11,
+      parentNodeId: 2,
+      position: new Float32Array([4, 4, 4]),
+    };
+    const harness = makeInsertToolHarness([rootNode, middleNode, leafNode]);
+    const showTemporaryMessage = vi.spyOn(
+      StatusMessage,
+      "showTemporaryMessage",
+    );
+    try {
+      harness.actions.get(SKELETON_ENTER_INSERT_MODE)?.({});
+      await harness.pickNode(rootNode);
+      await harness.pickNode(leafNode);
+
+      expect(harness.insertNodesCommand.createCommand).not.toHaveBeenCalled();
+      expect(showTemporaryMessage).toHaveBeenCalledWith(
+        expect.stringContaining("Node 3 is not connected to node 1"),
+      );
+      expect(harness.tool.insertFirstNode).toBe(rootNode);
+
+      // A connected neighbour of the retained first pick completes the insert.
+      await harness.pickNode(middleNode);
+      expect(harness.insertNodesCommand.createCommand).toHaveBeenCalledWith(
+        harness.layer,
+        expect.objectContaining({ parentNodeId: 1, childNodeIds: [2] }),
+      );
+    } finally {
+      harness.dispose();
     }
   });
 

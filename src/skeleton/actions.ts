@@ -40,6 +40,8 @@ export const SKELETON_ADD_NODE = "skeleton-add-node";
 export const SKELETON_ENTER_MERGE_MODE = "skeleton-enter-merge-mode";
 // Split (s): enters split mode; click the node to split.
 export const SKELETON_ENTER_SPLIT_MODE = "skeleton-enter-split-mode";
+// Insert (i): enters insert mode; click two connected nodes to insert a node between them.
+export const SKELETON_ENTER_INSERT_MODE = "skeleton-enter-insert-mode";
 export const SKELETON_ENTER_CREATE = "skeleton-enter-create";
 export const SKELETON_PIN_NODE = "skeleton-pin-node";
 export const SKELETON_ENTER_DELETE_MODE = "skeleton-enter-delete-mode";
