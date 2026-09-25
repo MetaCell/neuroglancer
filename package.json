@@ -344,6 +344,18 @@
       "neuroglancer/datasource/render:disabled": "./src/util/false.ts",
       "default": "./src/datasource/render/register_default.ts"
     },
+    "#datasource/swc/backend": {
+      "neuroglancer/datasource/swc:enabled": "./src/datasource/swc/backend.ts",
+      "neuroglancer/datasource:none_by_default": "./src/util/false.ts",
+      "neuroglancer/datasource/swc:disabled": "./src/util/false.ts",
+      "default": "./src/datasource/swc/backend.ts"
+    },
+    "#datasource/swc/register_default": {
+      "neuroglancer/datasource/swc:enabled": "./src/datasource/swc/register_default.ts",
+      "neuroglancer/datasource:none_by_default": "./src/util/false.ts",
+      "neuroglancer/datasource/swc:disabled": "./src/util/false.ts",
+      "default": "./src/datasource/swc/register_default.ts"
+    },
     "#datasource/vtk/backend": {
       "neuroglancer/datasource/vtk:enabled": "./src/datasource/vtk/backend.ts",
       "neuroglancer/datasource:none_by_default": "./src/util/false.ts",
