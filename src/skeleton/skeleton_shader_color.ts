@@ -14,56 +14,11 @@
  * limitations under the License.
  */
 
-/**
- * @file GLSL for the skeleton color paths, shared by the billboard and raycast
- * primitives so the color logic is defined once.
- */
-
 // `dynamic`: per-segment appearance resolved in the shader (spatial skeletons).
 // `legacy`: one skeleton drawn per call with a CPU-supplied `uColor`.
 export type SkeletonColorPath = "dynamic" | "legacy";
 
-// Per-primitive substitutions for the edge color paths.  Filling in the
-// billboard values reproduces the original line GLSL exactly.
-export interface EdgeShadingGlsl {
-  // Multiplied into the coverage alpha: ` * getLineAlpha() * ...` (billboard) or
-  // `` (raycast, whose silhouette is already exact).
-  coverageAlpha: string;
-  // Multiplied into the emitted rgb: `` (billboard) or ` * raycastLightingFactor`.
-  shadeColor: string;
-  // Extra premultiply for the legacy `emitDefault` rgb: `` (billboard emits
-  // un-premultiplied) or ` * uColor.a` (raycast).
-  legacyDefaultPremultiply: string;
-}
-
-// GLSL run at the top of the fragment shader before the user's main: intersect
-// the raycast surface, discard on a miss, publish the surface depth (for
-// gl_FragDepth and the OIT emit depth) and the lighting factor, and cull against
-// the chunk bounds using the true surface point.  The primitive defines
-// `intersectFunction`.
-export function raycastFragmentSetup(
-  intersectFunction: string,
-  spatialChunkCulling: boolean,
-): string {
-  return (
-    `
-RaycastHit raycastHit = ${intersectFunction}();
-if (!raycastHit.hit) discard;
-// Discard hits outside the frustum depth range (positive-form test, so it also
-// rejects any residual NaN) before they can influence the OIT weight.
-if (!(raycastHit.windowDepth >= 0.0 && raycastHit.windowDepth <= 1.0)) discard;
-gl_FragDepth = raycastHit.windowDepth;
-emitDepthOverride = raycastHit.windowDepth;
-raycastLightingFactor = raycastHit.lightingFactor;
-` + (spatialChunkCulling ? `spatialChunkCull(raycastHit.surfacePoint);\n` : "")
-  );
-}
-
-export function edgeColorPathsGlsl(
-  path: SkeletonColorPath,
-  shading: EdgeShadingGlsl,
-): string {
-  const { coverageAlpha, shadeColor, legacyDefaultPremultiply } = shading;
+export function edgeColorPathsGlsl(path: SkeletonColorPath): string {
   if (path === "dynamic") {
     return `
 vec4 segmentColor() {
@@ -71,15 +26,15 @@ vec4 segmentColor() {
 }
 void emitRGB(vec3 color) {
   vec4 baseColor = segmentColor();
-  highp float alpha = baseColor.a${coverageAlpha};
+  highp float alpha = baseColor.a * getLineAlpha() * getCrossSectionFade();
   if (alpha <= 0.0) discard;
-  emit(vec4(color${shadeColor} * alpha, alpha), vPickID);
+  emit(vec4(color * alpha, alpha), vPickID);
 }
 void emitDefault() {
   vec4 baseColor = segmentColor();
-  highp float alpha = baseColor.a${coverageAlpha};
+  highp float alpha = baseColor.a * getLineAlpha() * getCrossSectionFade();
   if (alpha <= 0.0) discard;
-  emit(vec4(baseColor.rgb${shadeColor} * alpha, alpha), vPickID);
+  emit(vec4(baseColor.rgb * alpha, alpha), vPickID);
 }
 `;
   }
@@ -88,18 +43,15 @@ vec4 segmentColor() {
   return uColor;
 }
 void emitRGB(vec3 color) {
-  emit(vec4(color${shadeColor} * uColor.a, uColor.a${coverageAlpha}), vPickID);
+  emit(vec4(color * uColor.a, uColor.a * getLineAlpha() * getCrossSectionFade()), vPickID);
 }
 void emitDefault() {
-  emit(vec4(uColor.rgb${shadeColor}${legacyDefaultPremultiply}, uColor.a${coverageAlpha}), vPickID);
+  emit(vec4(uColor.rgb, uColor.a * getLineAlpha() * getCrossSectionFade()), vPickID);
 }
 `;
 }
 
-export function nodeColorPathsGlsl(
-  path: SkeletonColorPath,
-  legacyPremultiply: boolean,
-): string {
+export function nodeColorPathsGlsl(path: SkeletonColorPath): string {
   if (path === "dynamic") {
     return `
 vec4 segmentColor() {
@@ -109,7 +61,8 @@ void emitRGBA(vec4 color) {
   vec4 baseColor = segmentColor();
   highp float alpha = color.a * baseColor.a;
   if (alpha <= 0.0) discard;
-  vec4 finished = finishNodeColor(vec4(color.rgb, alpha));
+  vec4 nodeColor = vec4(color.rgb, alpha);
+  vec4 finished = getCircleColor(nodeColor, nodeColor);
   emit(vec4(finished.rgb * finished.a, finished.a), vPickID);
 }
 void emitRGB(vec3 color) {
@@ -120,16 +73,12 @@ void emitDefault() {
 }
 `;
   }
-  const legacyEmit = legacyPremultiply
-    ? "emit(vec4(finished.rgb * finished.a, finished.a), vPickID);"
-    : "emit(finished, vPickID);";
   return `
 vec4 segmentColor() {
   return uColor;
 }
 void emitRGBA(vec4 color) {
-  vec4 finished = finishNodeColor(color);
-  ${legacyEmit}
+  emit(getCircleColor(color, color), vPickID);
 }
 void emitRGB(vec3 color) {
   emitRGBA(vec4(color, 1.0));

@@ -112,31 +112,15 @@ enum TransparentRenderingState {
   MAX_PROJECTION = 2,
 }
 
-// Fragment depth used by `emit` for the Z buffer / OIT weight.  Defaults to a
-// sentinel (< 0) meaning "use gl_FragCoord.z".  Raycast render layers (which
-// draw an analytic surface on a flat quad and write gl_FragDepth themselves)
-// set `emitDepthOverride` to the true surface depth so the Z texture and OIT
-// weight are consistent with the written gl_FragDepth rather than the flat quad
-// depth.
-export const glsl_perspectivePanelEmitDepth = `
-highp float emitDepthOverride = -1.0;
-highp float getEmitDepth() {
-  return emitDepthOverride < 0.0 ? gl_FragCoord.z : emitDepthOverride;
-}
-`;
-
-export const glsl_perspectivePanelEmit = [
-  glsl_perspectivePanelEmitDepth,
-  `
+export const glsl_perspectivePanelEmit = `
 void emit(vec4 color, highp uint pickId) {
   out_color = color;
-  float zValue = 1.0 - getEmitDepth();
+  float zValue = 1.0 - gl_FragCoord.z;
   out_z = vec4(zValue, zValue, zValue, 1.0);
   float pickIdFloat = float(pickId);
   out_pickId = vec4(pickIdFloat, pickIdFloat, pickIdFloat, 1.0);
 }
-`,
-];
+`;
 
 /**
  * http://jcgt.org/published/0002/02/09/paper.pdf
@@ -154,14 +138,13 @@ float computeOITWeight(float alpha, float depth) {
 // Can use emitAccumAndRevealage() to emit a pre-weighted OIT result.
 export const glsl_perspectivePanelEmitOIT = [
   glsl_computeOITWeight,
-  glsl_perspectivePanelEmitDepth,
   `
 void emitAccumAndRevealage(vec4 accum, float revealage, highp uint pickId) {
   v4f_fragData0 = vec4(accum.rgb, revealage);
   v4f_fragData1 = vec4(accum.a, 0.0, 0.0, 0.0);
 }
 void emit(vec4 color, highp uint pickId) {
-  float weight = computeOITWeight(color.a, getEmitDepth());
+  float weight = computeOITWeight(color.a, gl_FragCoord.z);
   vec4 accum = color * weight;
   emitAccumAndRevealage(accum, color.a, pickId);
 }
@@ -1372,12 +1355,10 @@ export class PerspectivePanel extends RenderedDataPanel {
       );
       gl.stencilMask(2);
       if (hasVolumeRenderingPick) {
-        gl.depthMask(false);
         this.maxProjectionPickCopyHelper.draw(
           this.maxProjectionPickConfiguration.colorBuffers[0].texture /*depth*/,
           this.maxProjectionPickConfiguration.colorBuffers[1].texture /*pick*/,
         );
-        gl.depthMask(true);
       }
       for (const [renderLayer, attachment] of visibleLayers) {
         if (

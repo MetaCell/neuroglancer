@@ -93,10 +93,8 @@ import {
   mergeSpatiallyIndexedSkeletonOverlaySegmentIds,
   retainSpatiallyIndexedSkeletonOverlaySegment,
 } from "#src/skeleton/segment_overlay.js";
-import type { EdgeShadingGlsl } from "#src/skeleton/skeleton_shader_color.js";
 import {
   edgeColorPathsGlsl,
-  raycastFragmentSetup,
   nodeColorPathsGlsl,
 } from "#src/skeleton/skeleton_shader_color.js";
 import type { SpatiallyIndexedSkeletonView } from "#src/skeleton/source_selection.js";
@@ -124,6 +122,7 @@ import { SliceViewPanelRenderLayer } from "#src/sliceview/renderlayer.js";
 import { TrackableBoolean } from "#src/trackable_boolean.js";
 import type { WatchableValueInterface } from "#src/trackable_value.js";
 import {
+  constantWatchableValue,
   makeCachedDerivedWatchableValue,
   makeCachedLazyDerivedWatchableValue,
   TrackableValue,
@@ -163,7 +162,10 @@ import {
 } from "#src/webgl/circles.js";
 import { glsl_COLORMAPS } from "#src/webgl/colormaps.js";
 import type { GL } from "#src/webgl/context.js";
-import type { WatchableShaderError } from "#src/webgl/dynamic_shader.js";
+import type {
+  ParameterizedEmitterDependentShaderGetter,
+  WatchableShaderError,
+} from "#src/webgl/dynamic_shader.js";
 import {
   makeTrackableFragmentMain,
   parameterizedEmitterDependentShaderGetter,
@@ -174,15 +176,11 @@ import {
   drawLines,
   initializeLineShader,
 } from "#src/webgl/lines.js";
-import { drawQuads } from "#src/webgl/quad.js";
-import { defineRaycastCylinderShader } from "#src/webgl/raycast_cylinder.js";
-import { defineRaycastSphereShader } from "#src/webgl/raycast_sphere.js";
 import type {
-  ShaderModule,
+  ShaderBuilder,
   ShaderProgram,
   ShaderSamplerType,
 } from "#src/webgl/shader.js";
-import { ShaderBuilder } from "#src/webgl/shader.js";
 import {
   dataTypeShaderDefinition,
   getShaderType,
@@ -206,8 +204,6 @@ import {
 import { defineVertexId, VertexIdHelper } from "#src/webgl/vertex_id.js";
 import type { RPC } from "#src/worker_rpc.js";
 
-const DEBUG_SPATIAL_SKELETON_OVERLAY = false;
-const DEBUG_EXCLUDED_SEGMENTS = false;
 const DEBUG_SPATIAL_SKELETON_CHUNKS = false;
 
 const DEFAULT_FRAGMENT_MAIN = `void main() {
@@ -248,11 +244,6 @@ const SELECTED_NODE_HIGHLIGHT_COLORS: readonly vec3[] = [
 // Used for debugging chunks via a different color for each chunk
 const tempChunkKeyToColorMap = new Map<string, Float32Array>();
 const tempMat4 = mat4.create();
-// Scratch matrices/vectors for raycast uniform computation in beginLayer.
-const tempInvProjection = mat4.create();
-const tempInvModel = mat4.create();
-const tempNormalTransform = mat4.create();
-const tempLightVec = new Float32Array(4);
 
 interface VertexAttributeRenderInfo extends VertexAttributeInfo {
   name: string;
@@ -329,18 +320,9 @@ type SpatiallyIndexedSkeletonPickData =
       chunk: SpatiallyIndexedSkeletonChunk;
     };
 
-interface EdgeGeometry {
+interface SkeletonGeometry {
   vertexMain: string;
   fragmentSetup: string;
-  shading: EdgeShadingGlsl;
-}
-
-interface NodeGeometry {
-  vertexMain: string;
-  fragmentSetup: string;
-  // Whether the legacy path premultiplies rgb by alpha before emitting (raycast
-  // does; the billboard preserves its original un-premultiplied behavior).
-  legacyPremultiply: boolean;
 }
 
 class RenderHelper extends RefCounted {
@@ -399,34 +381,16 @@ highp vec3 applyNodePositionOverride(highp uint vertexIndex, highp vec3 position
     if (skeletonParams.dynamicSegmentAppearance) {
       this.defineDynamicSegmentAppearance(builder, skeletonParams);
     }
-    // Perspective (3D) views render cylinders/spheres as raycasts; slice (2D)
-    // views keep the screen-space line/circle billboards.
-    const raycast = !this.targetIsSliceView;
-    if (raycast) {
-      builder.addUniform("highp mat4", "uInvProjection");
-      builder.addUniform("highp mat4", "uNormalTransform");
-      builder.addUniform("highp vec4", "uLightDirection");
-      builder.addUniform("highp vec2", "uViewportSize");
-      // Set per-fragment by the raycast setup; the emit bodies multiply the
-      // color by it.
-      builder.addFragmentCode("highp float raycastLightingFactor = 1.0;\n");
-    }
     if (skeletonParams.spatialChunkCulling) {
       builder.addUniform("highp vec3", "uChunkOrigin");
       builder.addUniform("highp vec3", "uChunkBound");
+      builder.addVarying("highp vec3", "vCullPos");
       builder.addFragmentCode(`
-void spatialChunkCull(highp vec3 cullPos) {
-  if (any(lessThan(cullPos, uChunkOrigin)) ||
-      any(greaterThanEqual(cullPos, uChunkBound))) discard;
+void spatialChunkCull() {
+  if (any(lessThan(vCullPos, uChunkOrigin)) ||
+      any(greaterThanEqual(vCullPos, uChunkBound))) discard;
 }
 `);
-      if (!raycast) {
-        // Billboard path culls using the interpolated per-fragment position.
-        builder.addVarying("highp vec3", "vCullPos");
-        builder.addFragmentCode(`
-void spatialChunkCull() { spatialChunkCull(vCullPos); }
-`);
-      }
     }
   }
 
@@ -478,8 +442,6 @@ void spatialChunkCull() { spatialChunkCull(vCullPos); }
         shaderCodeWithLineDirective(shaderBuilderState.parseResult.code) +
         "\n#undef main\n",
     );
-    // `fragmentSetup` runs the raycast intersection (writing gl_FragDepth /
-    // lighting) or the billboard chunk cull before the user's fragment main.
     builder.setFragmentMain(fragmentSetup + "userMain();");
   }
 
@@ -494,21 +456,6 @@ void spatialChunkCull() { spatialChunkCull(vCullPos); }
     builder: ShaderBuilder,
     params: SkeletonShaderParameters,
   ) {
-    let colorExpression = `return ${this.segmentColorShaderManager.prefix}(segmentId);`;
-    let alphaExpression = `return isVisible ? uVisibleAlpha : uHiddenAlpha;`;
-    let excludedSegmentAlpha = "0.0";
-
-    if (DEBUG_EXCLUDED_SEGMENTS) {
-      colorExpression = `
-        if (${this.excludedSegmentsShaderManager.hasFunctionName}(segmentId)) {
-          return vec3(0.0, 0.0, 1.0);
-        }
-        ${colorExpression}
-      `;
-      if (!DEBUG_SPATIAL_SKELETON_OVERLAY) alphaExpression = `return 0.0;`;
-      excludedSegmentAlpha = "1.0";
-    }
-
     this.visibleSegmentsShaderManager.defineShader(builder);
     this.excludedSegmentsShaderManager.defineShader(builder);
     this.segmentColorShaderManager.defineShader(builder);
@@ -536,7 +483,7 @@ void spatialChunkCull() { spatialChunkCull(vCullPos); }
 
     const defaultColorFragment = params.hasSegmentDefaultColor
       ? "  return uSegmentDefaultColor;"
-      : `  ${colorExpression}`;
+      : `  return ${this.segmentColorShaderManager.prefix}(segmentId);`;
 
     const hoverAdjustFragment = params.hoverHighlight
       ? `
@@ -561,10 +508,10 @@ ${hoverAdjustFragment}
 }
 float getSegmentLookupAlpha(uint64_t segmentId) {
   if (${this.excludedSegmentsShaderManager.hasFunctionName}(segmentId)) {
-    return ${excludedSegmentAlpha};
+    return 0.0;
   }
   bool isVisible = ${this.visibleSegmentsShaderManager.hasFunctionName}(segmentId);
-  ${alphaExpression}
+  return isVisible ? uVisibleAlpha : uHiddenAlpha;
 }
 vec4 getSegmentAppearance(highp uint segmentValue) {
   uint64_t segmentId = getSegmentAppearanceId(segmentValue);
@@ -618,9 +565,6 @@ vec4 getSegmentAppearance(highp uint segmentValue) {
           shader.uniform("uSegmentDefaultColor"),
           segmentDefaultColor,
         );
-      }
-      if (DEBUG_SPATIAL_SKELETON_OVERLAY && excludedGPUTable === undefined) {
-        gl.uniform3f(shader.uniform("uSegmentDefaultColor"), 1.0, 0.0, 0.0);
       }
     }
 
@@ -761,11 +705,14 @@ vec4 getSegmentAppearance(highp uint segmentValue) {
     skeletonParams: SkeletonShaderParameters,
   ) {
     this.defineCommonShader(builder, shaderBuilderState, skeletonParams);
-    const geometry = this.targetIsSliceView
-      ? this.defineEdgeLineBillboard(builder, skeletonParams)
-      : this.defineEdgeRaycastCylinder(builder, skeletonParams);
+    const geometry = this.defineEdgeLineBillboard(builder, skeletonParams);
     const path = this.dynamicColorPath(skeletonParams) ? "dynamic" : "legacy";
-    builder.addFragmentCode(edgeColorPathsGlsl(path, geometry.shading));
+    builder.addFragmentCode(`
+float getCrossSectionFade() {
+  return ${this.getCrossSectionFadeFactor()};
+}
+`);
+    builder.addFragmentCode(edgeColorPathsGlsl(path));
     builder.addFragmentCode(glsl_string);
     this.finalizeShaderBuilder(
       builder,
@@ -782,13 +729,9 @@ vec4 getSegmentAppearance(highp uint segmentValue) {
     skeletonParams: SkeletonShaderParameters,
   ) {
     this.defineCommonShader(builder, shaderBuilderState, skeletonParams);
-    const geometry = this.targetIsSliceView
-      ? this.defineNodeCircleBillboard(builder, skeletonParams)
-      : this.defineNodeRaycastSphere(builder, skeletonParams);
+    const geometry = this.defineNodeCircleBillboard(builder, skeletonParams);
     const path = this.dynamicColorPath(skeletonParams) ? "dynamic" : "legacy";
-    builder.addFragmentCode(
-      nodeColorPathsGlsl(path, geometry.legacyPremultiply),
-    );
+    builder.addFragmentCode(nodeColorPathsGlsl(path));
     builder.addFragmentCode(glsl_string);
     this.finalizeShaderBuilder(
       builder,
@@ -799,11 +742,10 @@ vec4 getSegmentAppearance(highp uint segmentValue) {
     );
   }
 
-  // Slice view: screen-space anti-aliased line billboard (constant pixel width).
   private defineEdgeLineBillboard(
     builder: ShaderBuilder,
     skeletonParams: SkeletonShaderParameters,
-  ): EdgeGeometry {
+  ): SkeletonGeometry {
     defineLineShader(builder);
     builder.addAttribute("highp uvec2", "aVertexIndex");
     builder.addUniform("highp float", "uLineWidth");
@@ -822,68 +764,15 @@ highp uint vertexIndex = aVertexIndex.x * (1u - lineEndpointIndex) + aVertexInde
       fragmentSetup = `spatialChunkCull();\n`;
     }
     vertexMain += this.readSegmentValueGlsl(skeletonParams, "aVertexIndex.x");
-    return {
-      vertexMain,
-      fragmentSetup,
-      shading: {
-        coverageAlpha: ` * getLineAlpha() * ${this.getCrossSectionFadeFactor()}`,
-        shadeColor: "",
-        legacyDefaultPremultiply: "",
-      },
-    };
+    return { vertexMain, fragmentSetup };
   }
 
-  // Perspective view: raycast cylinder (2 triangles).  Each end is
-  // clipped by the node radius so it does not overlap the node sphere (which
-  // would double-blend under order-independent transparency).
-  private defineEdgeRaycastCylinder(
-    builder: ShaderBuilder,
-    skeletonParams: SkeletonShaderParameters,
-  ): EdgeGeometry {
-    defineRaycastCylinderShader(builder, { capped: false });
-    builder.addAttribute("highp uvec2", "aVertexIndex");
-    builder.addUniform("highp float", "uEdgePixelRadius");
-    builder.addUniform("highp float", "uNodePixelRadius");
-    let vertexMain = `
-highp uint pickOffset = uint(gl_InstanceID) * uPickInstanceStride;
-vPickID = uPickID + pickOffset;
-highp vec3 vertexA = applyNodePositionOverride(aVertexIndex.x, readAttribute0(aVertexIndex.x));
-highp vec3 vertexB = applyNodePositionOverride(aVertexIndex.y, readAttribute0(aVertexIndex.y));
-highp uint vertexIndex = aVertexIndex.x;
-highp vec3 edgeMidpoint = mix(vertexA, vertexB, 0.5);
-highp float edgeRadius = getRaycastModelRadiusForPixels(edgeMidpoint, uEdgePixelRadius);
-highp float clipRadiusA = getRaycastModelRadiusForPixels(vertexA, uNodePixelRadius);
-highp float clipRadiusB = getRaycastModelRadiusForPixels(vertexB, uNodePixelRadius);
-`;
-    vertexMain += this.readSegmentValueGlsl(skeletonParams, "aVertexIndex.x");
-    vertexMain += `emitRaycastCylinder(vertexA, vertexB, edgeRadius, clipRadiusA, clipRadiusB);\n`;
-    return {
-      vertexMain,
-      fragmentSetup: raycastFragmentSetup(
-        "intersectRaycastCylinder",
-        skeletonParams.spatialChunkCulling,
-      ),
-      shading: {
-        coverageAlpha: "",
-        shadeColor: " * raycastLightingFactor",
-        legacyDefaultPremultiply: " * uColor.a",
-      },
-    };
-  }
-
-  // Slice view: screen-space anti-aliased circle billboard (constant pixel
-  // diameter).  Feather/border are applied by `getCircleColor`.
   private defineNodeCircleBillboard(
     builder: ShaderBuilder,
     skeletonParams: SkeletonShaderParameters,
-  ): NodeGeometry {
+  ): SkeletonGeometry {
     defineCircleShader(builder, /*crossSectionFade=*/ this.targetIsSliceView);
     builder.addUniform("highp float", "uNodeDiameter");
-    builder.addFragmentCode(`
-vec4 finishNodeColor(vec4 color) {
-  return getCircleColor(color, color);
-}
-`);
     let vertexMain = `
 highp uint vertexIndex = uint(gl_InstanceID);
 highp uint pickOffset = vertexIndex * uPickInstanceStride;
@@ -897,39 +786,7 @@ highp vec3 vertexPosition = applyNodePositionOverride(vertexIndex, readAttribute
     }
     vertexMain += this.readSegmentValueGlsl(skeletonParams, "vertexIndex");
     vertexMain += `emitCircle(uProjection * vec4(vertexPosition, 1.0), uNodeDiameter, 0.0);\n`;
-    // The legacy path emits the circle color un-premultiplied (preserved).
-    return { vertexMain, fragmentSetup, legacyPremultiply: false };
-  }
-
-  // Perspective view: raycast sphere (2 triangles).
-  private defineNodeRaycastSphere(
-    builder: ShaderBuilder,
-    skeletonParams: SkeletonShaderParameters,
-  ): NodeGeometry {
-    defineRaycastSphereShader(builder);
-    builder.addUniform("highp float", "uNodePixelRadius");
-    builder.addFragmentCode(`
-vec4 finishNodeColor(vec4 color) {
-  return vec4(color.rgb * raycastLightingFactor, color.a);
-}
-`);
-    let vertexMain = `
-highp uint vertexIndex = uint(gl_InstanceID);
-highp uint pickOffset = vertexIndex * uPickInstanceStride;
-vPickID = uPickID + pickOffset;
-highp vec3 vertexPosition = applyNodePositionOverride(vertexIndex, readAttribute0(vertexIndex));
-highp float nodeRadius = getRaycastModelRadiusForPixels(vertexPosition, uNodePixelRadius);
-`;
-    vertexMain += this.readSegmentValueGlsl(skeletonParams, "vertexIndex");
-    vertexMain += `emitRaycastSphere(vertexPosition, nodeRadius);\n`;
-    return {
-      vertexMain,
-      fragmentSetup: raycastFragmentSetup(
-        "intersectRaycastSphere",
-        skeletonParams.spatialChunkCulling,
-      ),
-      legacyPremultiply: true,
-    };
+    return { vertexMain, fragmentSetup };
   }
 
   defineAttributeAccess(builder: ShaderBuilder) {
@@ -976,40 +833,6 @@ highp float nodeRadius = getRaycastModelRadiusForPixels(vertexPosition, uNodePix
     const { viewProjectionMat } = renderContext.projectionParameters;
     const mat = mat4.multiply(tempMat4, viewProjectionMat, modelMatrix);
     gl.uniformMatrix4fv(shader.uniform("uProjection"), false, mat);
-    if (!this.targetIsSliceView) {
-      // Raycast uniforms (perspective view).  Intersection is done in model
-      // space, so we provide clip->model and the model-normal->display normal
-      // transform (inverse-transpose of the model matrix), plus the light and
-      // viewport size.  Mirrors src/annotation/ellipsoid.ts.
-      const invProjection = mat4.invert(tempInvProjection, mat);
-      if (invProjection !== null) {
-        gl.uniformMatrix4fv(
-          shader.uniform("uInvProjection"),
-          false,
-          invProjection,
-        );
-      }
-      const invModel = mat4.invert(tempInvModel, modelMatrix);
-      if (invModel !== null) {
-        const normalTransform = mat4.transpose(tempNormalTransform, invModel);
-        gl.uniformMatrix4fv(
-          shader.uniform("uNormalTransform"),
-          false,
-          normalTransform,
-        );
-      }
-      const { width, height } = renderContext.projectionParameters;
-      gl.uniform2f(shader.uniform("uViewportSize"), width, height);
-      const perspectiveContext = renderContext as PerspectiveViewRenderContext;
-      const lightVec = tempLightVec as unknown as vec3;
-      vec3.scale(
-        lightVec,
-        perspectiveContext.lightDirection,
-        perspectiveContext.directionalLighting,
-      );
-      tempLightVec[3] = perspectiveContext.ambientLighting;
-      gl.uniform4fv(shader.uniform("uLightDirection"), tempLightVec);
-    }
     // Default: no live-drag position override. Must be set for every pass —
     // including the shared browse pass — since a uniform left at its 0 default
     // would wrongly override vertex 0. The overlay pass sets a real value below.
@@ -1058,37 +881,12 @@ highp float nodeRadius = getRaycastModelRadiusForPixels(vertexPosition, uNodePix
     gl.uniform3fv(shader.uniform("uChunkBound"), upperBound);
   }
 
-  // Sets the edge-size uniforms for whichever edge shader variant is active:
-  // the billboard line width (slice view) or the raycast-cylinder pixel radius
-  // (perspective view).
-  setEdgeSizeUniforms(
-    gl: GL,
-    shader: ShaderProgram,
-    lineWidth: number,
-    pointDiameter: number,
-  ) {
-    if (this.targetIsSliceView) {
-      gl.uniform1f(shader.uniform("uLineWidth"), lineWidth);
-      gl.uniform1f(
-        shader.uniform("uLineEndpointClipRadius"),
-        pointDiameter / 2,
-      );
-    } else {
-      gl.uniform1f(shader.uniform("uEdgePixelRadius"), lineWidth * 0.5);
-      // Node radius, used to clip the cylinder ends against the node spheres.
-      gl.uniform1f(shader.uniform("uNodePixelRadius"), pointDiameter * 0.5);
-    }
+  setLineWidth(gl: GL, shader: ShaderProgram, lineWidth: number) {
+    gl.uniform1f(shader.uniform("uLineWidth"), lineWidth);
   }
 
-  // Sets the node-size uniforms for whichever node shader variant is active:
-  // the billboard circle diameter (slice view) or the raycast-sphere pixel
-  // radius (perspective view).
-  setNodeSizeUniforms(gl: GL, shader: ShaderProgram, pointDiameter: number) {
-    if (this.targetIsSliceView) {
-      gl.uniform1f(shader.uniform("uNodeDiameter"), pointDiameter);
-    } else {
-      gl.uniform1f(shader.uniform("uNodePixelRadius"), pointDiameter * 0.5);
-    }
+  setNodeDiameter(gl: GL, shader: ShaderProgram, pointDiameter: number) {
+    gl.uniform1f(shader.uniform("uNodeDiameter"), pointDiameter);
   }
 
   drawSkeletons(
@@ -1116,10 +914,6 @@ highp float nodeRadius = getRaycastModelRadiusForPixels(vertexPosition, uNodePix
       );
     }
 
-    const raycast = !this.targetIsSliceView;
-
-    // Draw edges: lines (slice) or raycast cylinders (perspective).  Both are
-    // instanced quads whose per-instance endpoint pair comes from `aVertexIndex`.
     {
       edgeShader.bind();
       const aVertexIndex = edgeShader.attribute("aVertexIndex");
@@ -1129,12 +923,8 @@ highp float nodeRadius = getRaycastModelRadiusForPixels(vertexPosition, uNodePix
         WebGL2RenderingContext.UNSIGNED_INT,
       );
       gl.vertexAttribDivisor(aVertexIndex, 1);
-      if (raycast) {
-        drawQuads(gl, 1, skeletonGpuGeometry.numIndices / 2);
-      } else {
-        initializeLineShader(edgeShader, projectionParameters, 1.0);
-        drawLines(gl, 1, skeletonGpuGeometry.numIndices / 2);
-      }
+      initializeLineShader(edgeShader, projectionParameters, 1.0);
+      drawLines(gl, 1, skeletonGpuGeometry.numIndices / 2);
       gl.vertexAttribDivisor(aVertexIndex, 0);
       gl.disableVertexAttribArray(aVertexIndex);
     }
@@ -1144,14 +934,10 @@ highp float nodeRadius = getRaycastModelRadiusForPixels(vertexPosition, uNodePix
     // as the point size is set to the line width.
     {
       nodeShader.bind();
-      if (raycast) {
-        drawQuads(gl, 1, skeletonGpuGeometry.numVertices);
-      } else {
-        initializeCircleShader(nodeShader, projectionParameters, {
-          featherWidthInPixels: 1.0,
-        });
-        drawCircles(nodeShader.gl, 1, skeletonGpuGeometry.numVertices);
-      }
+      initializeCircleShader(nodeShader, projectionParameters, {
+        featherWidthInPixels: 1.0,
+      });
+      drawCircles(nodeShader.gl, 1, skeletonGpuGeometry.numVertices);
     }
   }
 
@@ -1172,68 +958,6 @@ highp float nodeRadius = getRaycastModelRadiusForPixels(vertexPosition, uNodePix
       }
     }
     this.vertexIdHelper.disable();
-  }
-}
-
-// Draws the spatial bounds of each chunk as a box overlay, for debugging.
-// One shader is compiled per emitter so the emitter can inject the correct
-// output-buffer declarations and `emit(color, pickID)` function.
-class ChunkWireframeHelper extends RefCounted {
-  private shaderCache = new Map<ShaderModule, ShaderProgram>();
-
-  constructor(private gl: GL) {
-    super();
-  }
-
-  disposed() {
-    for (const shader of this.shaderCache.values()) {
-      shader.dispose();
-    }
-    this.shaderCache.clear();
-    super.disposed();
-  }
-
-  getShader(emitter: ShaderModule): ShaderProgram {
-    let shader = this.shaderCache.get(emitter);
-    if (shader === undefined) {
-      const builder = new ShaderBuilder(this.gl);
-      builder.require(emitter);
-      builder.addUniform("highp mat4", "uChunkToClip");
-      builder.addUniform("highp vec3", "uTranslation");
-      builder.addUniform("highp vec3", "uChunkDataSize");
-      builder.addVertexCode(glsl_getBoxEdgeVertexPosition);
-      builder.setVertexMain(`
-vec3 boxVertex = getBoxEdgeVertexPosition(gl_VertexID);
-gl_Position = uChunkToClip * vec4(uTranslation + boxVertex * uChunkDataSize, 1.0);
-`);
-      builder.setFragmentMain(`emit(vec4(1.0, 1.0, 1.0, 1.0), 0u);`);
-      shader = builder.build();
-      this.shaderCache.set(emitter, shader);
-    }
-    return shader;
-  }
-
-  setChunkUniforms(
-    gl: GL,
-    shader: ShaderProgram,
-    chunkLayout: ChunkLayout,
-    chunkGridPosition: Float32Array,
-  ) {
-    const { size } = chunkLayout;
-    gl.uniform3f(
-      shader.uniform("uTranslation"),
-      chunkGridPosition[0] * size[0],
-      chunkGridPosition[1] * size[1],
-      chunkGridPosition[2] * size[2],
-    );
-    gl.uniform3fv(shader.uniform("uChunkDataSize"), size);
-  }
-
-  static get(gl: GL) {
-    return gl.memoize.get(
-      "skeleton/ChunkWireframeHelper",
-      () => new ChunkWireframeHelper(gl),
-    );
   }
 }
 
@@ -1586,11 +1310,11 @@ export class SkeletonLayer extends RefCounted implements SkeletonShaderContext {
       shaderControlState,
       edgeShaderParameters.parseResult,
     );
-    renderHelper.setEdgeSizeUniforms(gl, edgeShader, lineWidth!, pointDiameter);
+    renderHelper.setLineWidth(gl, edgeShader, lineWidth!);
 
     nodeShader.bind();
     renderHelper.beginLayer(gl, nodeShader, renderContext, modelMatrix);
-    renderHelper.setNodeSizeUniforms(gl, nodeShader, pointDiameter);
+    renderHelper.setNodeDiameter(gl, nodeShader, pointDiameter);
     renderHelper.setPickInstanceStride(gl, nodeShader, 0);
     setControlsInShader(
       gl,
@@ -3397,7 +3121,7 @@ export class SpatiallyIndexedSkeletonLayer
 
     edgeShader.bind();
     renderHelper.beginLayer(gl, edgeShader, renderContext, modelMatrix);
-    renderHelper.setEdgeSizeUniforms(gl, edgeShader, lineWidth, pointDiameter);
+    renderHelper.setLineWidth(gl, edgeShader, lineWidth);
     renderHelper.setPickInstanceStride(gl, edgeShader, 0);
     setControlsInShader(
       gl,
@@ -3415,7 +3139,7 @@ export class SpatiallyIndexedSkeletonLayer
 
     nodeShader.bind();
     renderHelper.beginLayer(gl, nodeShader, renderContext, modelMatrix);
-    renderHelper.setNodeSizeUniforms(gl, nodeShader, pointDiameter);
+    renderHelper.setNodeDiameter(gl, nodeShader, pointDiameter);
     renderHelper.setPickInstanceStride(gl, nodeShader, 0);
     setControlsInShader(
       gl,
@@ -3931,11 +3655,31 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
   // Reused across frames to avoid allocating a fresh array plus one object per
   // visible chunk on every draw. Consumed synchronously within draw().
   private readonly visibleChunksScratch: VisibleChunk[] = [];
+  private readonly wireframeShaderGetter: ParameterizedEmitterDependentShaderGetter<undefined>;
   backend: ChunkRenderLayerFrontend;
 
   constructor(public base: SpatiallyIndexedSkeletonLayer) {
     super();
     this.backend = base.backend;
+    this.wireframeShaderGetter = parameterizedEmitterDependentShaderGetter(
+      this,
+      base.gl,
+      {
+        memoizeKey: "skeleton/SpatiallyIndexedSkeletonChunkWireframe",
+        parameters: constantWatchableValue(undefined),
+        defineShader: (builder) => {
+          builder.addUniform("highp mat4", "uChunkToClip");
+          builder.addUniform("highp vec3", "uTranslation");
+          builder.addUniform("highp vec3", "uChunkDataSize");
+          builder.addVertexCode(glsl_getBoxEdgeVertexPosition);
+          builder.setVertexMain(`
+vec3 boxVertex = getBoxEdgeVertexPosition(gl_VertexID);
+gl_Position = uChunkToClip * vec4(uTranslation + boxVertex * uChunkDataSize, 1.0);
+`);
+          builder.setFragmentMain(`emit(vec4(1.0, 1.0, 1.0, 1.0), 0u);`);
+        },
+      },
+    );
     this.renderHelper = this.registerDisposer(new RenderHelper(base, false));
     this.browseRenderHelper = this.registerDisposer(
       new RenderHelper(base.browsePassLayerView, false),
@@ -4063,18 +3807,13 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
   private drawChunkBoundsWireframe(
     renderContext: PerspectiveViewRenderContext,
     visibleChunks: VisibleChunk[],
-    modelMatrix?: mat4,
+    modelMatrix: mat4,
   ) {
-    if (
-      visibleChunks.length === 0 ||
-      !renderContext.emitColor ||
-      modelMatrix === undefined
-    )
-      return;
+    if (visibleChunks.length === 0 || !renderContext.emitColor) return;
 
+    const { shader } = this.wireframeShaderGetter(renderContext.emitter);
+    if (shader === null) return;
     const { gl } = this.base;
-    const wireframeHelper = ChunkWireframeHelper.get(gl);
-    const shader = wireframeHelper.getShader(renderContext.emitter);
     shader.bind();
     const { viewProjectionMat } = renderContext.projectionParameters;
 
@@ -4082,12 +3821,15 @@ export class PerspectiveViewSpatiallyIndexedSkeletonLayer extends PerspectiveVie
     gl.uniformMatrix4fv(shader.uniform("uChunkToClip"), false, tempMat4);
 
     for (const { chunk, chunkLayout } of visibleChunks) {
-      wireframeHelper.setChunkUniforms(
-        gl,
-        shader,
-        chunkLayout,
-        chunk.chunkGridPosition,
+      const { size } = chunkLayout;
+      const { chunkGridPosition } = chunk;
+      gl.uniform3f(
+        shader.uniform("uTranslation"),
+        chunkGridPosition[0] * size[0],
+        chunkGridPosition[1] * size[1],
+        chunkGridPosition[2] * size[2],
       );
+      gl.uniform3fv(shader.uniform("uChunkDataSize"), size);
       drawBoxEdges(gl, 1, 1);
     }
   }
