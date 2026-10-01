@@ -17,6 +17,7 @@
 import { registerEventListener } from "#src/util/disposable.js";
 import type { HierarchicalMapInterface } from "#src/util/hierarchical_map.js";
 import { HierarchicalMap } from "#src/util/hierarchical_map.js";
+import { isMacPlatform } from "#src/util/platform.js";
 
 /**
  * @file Facilities for dispatching user-defined actions in response to input events.
@@ -311,7 +312,7 @@ export function normalizeEventAction(
 // Strips the phase and optional modifiers.
 export function friendlyEventIdentifier(identifier: string): string {
   identifier = identifier.replace(
-    /^(?:at|bubble|capture)|(?:(?:shift|control|alt|meta)\?\+)/g,
+    /^(?:at|bubble|capture):|(?:(?:shift|control|alt|meta)\?\+)/g,
     "",
   );
   return identifier;
@@ -457,19 +458,60 @@ export function dispatchEvent(
   dispatchEventAction(originalEvent, detail, eventAction);
 }
 
+function replaceModifier(
+  modifiers: ModifierMask,
+  removed: Modifiers,
+  added: Modifiers,
+) {
+  return (modifiers & ~removed) | added;
+}
+
+/**
+ * Whether `eventMap` has its own `meta+` binding for a `control+` stroke. On
+ * Mac, Command otherwise falls back to the `control+` binding.
+ */
+export function hasMetaCounterpart(
+  eventMap: EventActionMapInterface,
+  normalizedIdentifier: NormalizedEventIdentifier,
+) {
+  const { phase, keyName, modifiers } =
+    parseEventIdentifier(normalizedIdentifier);
+  if (!(modifiers & Modifiers.CONTROL) || modifiers & Modifiers.META) {
+    return false;
+  }
+  const metaStroke = getStrokeIdentifier(
+    keyName,
+    replaceModifier(modifiers, Modifiers.CONTROL, Modifiers.META),
+  );
+  return eventMap.get(`${phase}:${metaStroke}`) !== undefined;
+}
+
 export function dispatchEventWithModifiers(
   baseIdentifier: EventIdentifier,
   originalEvent: Event & EventModifierKeyState,
   detail: any,
   eventMap: EventActionMapInterface,
 ) {
-  dispatchEvent(
-    getStrokeIdentifier(baseIdentifier, getEventModifierMask(originalEvent)),
-    originalEvent,
-    originalEvent.eventPhase,
-    detail,
-    eventMap,
+  const phase = eventPhaseNames[originalEvent.eventPhase];
+  const modifiers = getEventModifierMask(originalEvent);
+  let eventAction = eventMap.get(
+    `${phase}:${getStrokeIdentifier(baseIdentifier, modifiers)}`,
   );
+  if (
+    eventAction === undefined &&
+    modifiers & Modifiers.META &&
+    !(modifiers & Modifiers.CONTROL) &&
+    isMacPlatform()
+  ) {
+    // An explicit `meta+` binding matches above and so takes priority.
+    eventAction = eventMap.get(
+      `${phase}:${getStrokeIdentifier(
+        baseIdentifier,
+        replaceModifier(modifiers, Modifiers.META, Modifiers.CONTROL),
+      )}`,
+    );
+  }
+  dispatchEventAction(originalEvent, detail, eventAction);
 }
 
 /**

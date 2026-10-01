@@ -51,9 +51,21 @@ afterEach(() => {
   while (activeRegistries.length > 0) activeRegistries.pop()!.dispose();
 });
 
+function makeLayer(name: string) {
+  return {
+    name,
+    archived: false,
+    visible: true,
+    pickEnabled: true,
+    supportsPickOption: true,
+    setVisible: () => {},
+  };
+}
+
 function makeContext(
   inputEventBindings = makeInputEventBindings(new EventActionMap()),
   commandRegistry = new CommandRegistry(),
+  managedLayers: unknown[] = [],
 ): CommandCatalogContext {
   activeRegistries.push(commandRegistry);
   return {
@@ -66,7 +78,7 @@ function makeContext(
     toolBinder: { context: {} },
     layerManager: {
       layersChanged: noopSignal,
-      managedLayers: [],
+      managedLayers,
       getLayerByName: () => undefined,
     },
     selectedLayer: {},
@@ -109,6 +121,24 @@ describe("collectActionBindings", () => {
     const forAction = bindings.filter((b) => b.actionId === "shared-action");
     expect(forAction).toHaveLength(1);
     expect(forAction[0].eventAction.originalEventIdentifier).toBe("keya");
+  });
+});
+
+describe("collectActionBindings control and Command", () => {
+  it("marks Control as separate only when the key has its own meta binding", () => {
+    const map = new EventActionMap();
+    map.set("control+keya", "shared-action");
+    map.set("control+keyb", "separate-action");
+    map.set("meta+keyb", "command-action");
+    const bindings = collectActionBindings(makeInputEventBindings(map));
+    const separateByAction = new Map(
+      bindings.map((binding) => [
+        binding.actionId,
+        binding.controlIsSeparateFromCommand,
+      ]),
+    );
+    expect(separateByAction.get("shared-action")).toBe(false);
+    expect(separateByAction.get("separate-action")).toBe(true);
   });
 });
 
@@ -243,6 +273,29 @@ describe("CommandCatalog reactivity", () => {
       expect(rebuildCount).toBe(0);
       await nextAnimationFrame();
       expect(rebuildCount).toBe(1);
+    } finally {
+      catalog.dispose();
+    }
+  });
+});
+
+describe("layer command shortcuts", () => {
+  it("reads the shortcut labels from the installed bindings", () => {
+    const map = new EventActionMap();
+    map.set("control+digit1", "select-layer-1");
+    map.set("alt+digit1", "toggle-pick-layer-1");
+    const catalog = new CommandCatalog(
+      makeContext(makeInputEventBindings(map), new CommandRegistry(), [
+        makeLayer("first"),
+      ]),
+    );
+    try {
+      expect(
+        catalog.groups.map((group) => [group.label, group.shortcut]),
+      ).toContainEqual(["Select Layer", "control+1–9"]);
+      expect(
+        catalog.commands.map((entry) => [entry.command.id, entry.shortcut]),
+      ).toContainEqual(["toggle-pick-layer-1", "alt+1"]);
     } finally {
       catalog.dispose();
     }
