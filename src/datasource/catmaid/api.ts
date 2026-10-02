@@ -829,6 +829,18 @@ function getComparableCatmaidRevisionTime(value: unknown) {
   return Number.isFinite(parsedValue) ? parsedValue : undefined;
 }
 
+function requireCatmaidRecordResponse(
+  response: unknown,
+  endpoint: string,
+): Record<string, any> {
+  if (!response || typeof response !== "object" || Array.isArray(response)) {
+    throw new Error(
+      `CATMAID ${endpoint} endpoint returned an unexpected response format.`,
+    );
+  }
+  return response as Record<string, any>;
+}
+
 function parseCatmaidSkeletonRootTarget(
   response: any,
 ): SpatiallyIndexedSkeletonNavigationTarget {
@@ -1358,6 +1370,75 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
 
   async listSkeletons(): Promise<number[]> {
     return this.fetchProjectEndpoint("skeletons/");
+  }
+
+  async fetchNeuronNames(
+    skeletonIds: readonly number[],
+  ): Promise<Map<number, string>> {
+    const neuronNames = new Map<number, string>();
+    if (skeletonIds.length === 0) {
+      return neuronNames;
+    }
+    const body = new URLSearchParams({ "skids[]": skeletonIds.join(",") });
+    const response = await this.fetchProjectEndpoint("skeleton/neuronnames", {
+      method: "POST",
+      body,
+    });
+    for (const [skeletonIdKey, neuronName] of Object.entries(
+      requireCatmaidRecordResponse(response, "neuronnames"),
+    )) {
+      const skeletonId = Number(skeletonIdKey);
+      if (Number.isSafeInteger(skeletonId) && typeof neuronName === "string") {
+        neuronNames.set(skeletonId, neuronName);
+      }
+    }
+    return neuronNames;
+  }
+
+  async fetchSkeletonAnnotations(
+    skeletonIds: readonly number[],
+  ): Promise<Map<number, string[]>> {
+    const annotationNamesBySkeletonId = new Map<number, string[]>();
+    if (skeletonIds.length === 0) {
+      return annotationNamesBySkeletonId;
+    }
+    const body = new URLSearchParams({
+      "skeleton_ids[]": skeletonIds.join(","),
+    });
+    const response = requireCatmaidRecordResponse(
+      await this.fetchProjectEndpoint("annotations/forskeletons", {
+        method: "POST",
+        body,
+      }),
+      "annotations/forskeletons",
+    );
+    const annotationNamesById = requireCatmaidRecordResponse(
+      response.annotations,
+      "annotations/forskeletons",
+    );
+    for (const [skeletonIdKey, annotationLinks] of Object.entries(
+      requireCatmaidRecordResponse(
+        response.skeletons,
+        "annotations/forskeletons",
+      ),
+    )) {
+      const skeletonId = Number(skeletonIdKey);
+      if (
+        !Number.isSafeInteger(skeletonId) ||
+        !Array.isArray(annotationLinks)
+      ) {
+        continue;
+      }
+      const annotationNames: string[] = [];
+      for (const annotationLink of annotationLinks) {
+        const annotationName = annotationNamesById[String(annotationLink?.id)];
+        if (typeof annotationName === "string") {
+          annotationNames.push(annotationName);
+        }
+      }
+      annotationNamesBySkeletonId.set(skeletonId, annotationNames);
+    }
+    return annotationNamesBySkeletonId;
   }
 
   async validateServerVersion(): Promise<void> {

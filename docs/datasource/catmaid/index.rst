@@ -55,6 +55,21 @@ Tokens configured with ``set_catmaid_token`` take precedence over the
 environment. If neither is present, the Python provider attempts anonymous
 access.
 
+Segment properties
+------------------
+
+Each skeleton carries two segment properties: the CATMAID neuron name as the
+segment label, and the neuron's annotations as a ``string`` property named
+``annotations``, sorted and joined by single spaces. They are read once per
+project with ``skeleton/neuronnames`` and ``annotations/forskeletons``, and
+read again for the affected skeletons after a merge or a split.
+
+The segment search matches free text as a prefix of the label or of the
+annotations, and a leading ``/`` as a regular expression over both. A query
+made only of digits is a segment id lookup, so search for an annotation such
+as ``0000001`` with ``/0000001``. The annotations of the selected segment are
+listed in the selection details panel.
+
 Server requirements
 -------------------
 

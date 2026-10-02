@@ -24,12 +24,14 @@ import {
   getSkeletonRootNode,
 } from "#src/skeleton/navigation_graph.js";
 import {
+  bindSegmentPropertySource,
   editableSpatiallyIndexedSkeletonSourceSupportsAction,
   getEditableSpatiallyIndexedSkeletonSource,
   getSpatialSkeletonEditCommandFactoryForAction,
   isSpatiallyIndexedSkeletonSourceReadOnly,
   SpatialSkeletonState,
 } from "#src/skeleton/spatial_skeleton_manager.js";
+import { WatchableValue } from "#src/trackable_value.js";
 
 function makeCommandFactory(action: string) {
   return {
@@ -1342,5 +1344,31 @@ describe("skeleton/spatial_skeleton_manager", () => {
     resolvers[0]([]);
     await first;
     expect(getSkeleton).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes both segments of a merge and of a split", () => {
+    const state = new SpatialSkeletonState();
+    const refreshSegmentProperties = vi.fn().mockResolvedValue(undefined);
+    bindSegmentPropertySource(
+      state,
+      {
+        segmentPropertyMap: new WatchableValue(undefined),
+        refreshSegmentProperties,
+      },
+      () => {},
+    );
+
+    state.notifySegmentsChanged({
+      kind: "merged",
+      resultSegmentId: 1,
+      deletedSegmentId: 2,
+    });
+    state.notifySegmentsChanged({
+      kind: "split",
+      existingSegmentId: 1,
+      newSegmentId: 3,
+    });
+
+    expect(refreshSegmentProperties.mock.calls).toEqual([[[1, 2]], [[1, 3]]]);
   });
 });

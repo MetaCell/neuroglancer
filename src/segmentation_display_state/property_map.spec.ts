@@ -16,6 +16,7 @@
 
 import { describe, test, expect } from "vitest";
 import {
+  executeSegmentQuery,
   mergeSegmentPropertyMaps,
   parseSegmentQuery,
   PreprocessedSegmentPropertyMap,
@@ -412,5 +413,58 @@ describe("parseSegmentQuery", () => {
         ],
       }
     `);
+  });
+});
+
+describe("segment query over string properties", () => {
+  const map = new PreprocessedSegmentPropertyMap({
+    inlineProperties: {
+      ids: BigUint64Array.of(10n, 20n, 30n),
+      properties: [
+        { type: "label", id: "label", values: ["alpha", "beta", "gamma"] },
+        {
+          type: "string",
+          id: "annotations",
+          values: ["0000001", "0000002 0000001", "review"],
+        },
+      ],
+    },
+  });
+
+  test("finds a segment by a regexp on a string property", () => {
+    const query = parseSegmentQuery(map, "/0000002");
+    const result = executeSegmentQuery(map, query);
+    expect(Array.from(result.indices!)).toEqual([1]);
+  });
+
+  test("finds a segment by a prefix of a string property", () => {
+    const query = parseSegmentQuery(map, "rev");
+    const result = executeSegmentQuery(map, query);
+    expect(Array.from(result.indices!)).toEqual([2]);
+  });
+
+  test("still finds a segment by label prefix when string properties exist", () => {
+    const query = parseSegmentQuery(map, "gam");
+    const result = executeSegmentQuery(map, query);
+    expect(Array.from(result.indices!)).toEqual([2]);
+  });
+
+  test("searches a map that has only string properties", () => {
+    const stringOnlyMap = new PreprocessedSegmentPropertyMap({
+      inlineProperties: {
+        ids: BigUint64Array.of(10n, 20n, 30n),
+        properties: [
+          {
+            type: "string",
+            id: "annotations",
+            values: ["", "0000002", "0000001"],
+          },
+        ],
+      },
+    });
+    const query = parseSegmentQuery(stringOnlyMap, "/0000001");
+    expect(query.errors).toBeUndefined();
+    const result = executeSegmentQuery(stringOnlyMap, query);
+    expect(Array.from(result.indices!)).toEqual([2]);
   });
 });

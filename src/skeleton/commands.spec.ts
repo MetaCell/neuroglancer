@@ -3449,6 +3449,7 @@ describe("spatial_skeleton_commands", () => {
           cacheBySegment.get(segmentId),
         getFullSegmentNodes,
         refreshCachedSegments: makeCachedSegmentRefresher(getFullSegmentNodes),
+        notifySegmentsChanged: vi.fn(),
         invalidateCachedSegments,
       },
       getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
@@ -3615,6 +3616,7 @@ describe("spatial_skeleton_commands", () => {
           cacheBySegment.get(segmentId),
         getFullSegmentNodes,
         refreshCachedSegments: makeCachedSegmentRefresher(getFullSegmentNodes),
+        notifySegmentsChanged: vi.fn(),
         invalidateCachedSegments,
       },
       getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
@@ -3835,6 +3837,7 @@ describe("spatial_skeleton_commands", () => {
           cacheBySegment.get(segmentId),
         getFullSegmentNodes,
         refreshCachedSegments: makeCachedSegmentRefresher(getFullSegmentNodes),
+        notifySegmentsChanged: vi.fn(),
         invalidateCachedSegments,
       },
       getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
@@ -4086,6 +4089,7 @@ describe("spatial_skeleton_commands", () => {
           cacheBySegment.get(segmentId),
         getFullSegmentNodes,
         refreshCachedSegments: makeCachedSegmentRefresher(getFullSegmentNodes),
+        notifySegmentsChanged: vi.fn(),
         invalidateCachedSegments,
       },
       getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
@@ -4378,6 +4382,7 @@ describe("spatial_skeleton_commands", () => {
           cacheBySegment.get(segmentId),
         getFullSegmentNodes,
         refreshCachedSegments: makeCachedSegmentRefresher(getFullSegmentNodes),
+        notifySegmentsChanged: vi.fn(),
         invalidateCachedSegments: vi.fn((segmentIds: Iterable<number>) => {
           for (const segmentId of segmentIds) {
             setSegmentNodes(cacheBySegment, cacheByNode, segmentId, []);
@@ -4579,6 +4584,7 @@ describe("spatial_skeleton_commands", () => {
           cacheBySegment.get(segmentId),
         getFullSegmentNodes,
         refreshCachedSegments: makeCachedSegmentRefresher(getFullSegmentNodes),
+        notifySegmentsChanged: vi.fn(),
         invalidateCachedSegments: vi.fn((segmentIds: Iterable<number>) => {
           for (const segmentId of segmentIds) {
             setSegmentNodes(cacheBySegment, cacheByNode, segmentId, []);
@@ -4716,6 +4722,7 @@ describe("spatial_skeleton_commands", () => {
           cacheBySegment.get(segmentId),
         getFullSegmentNodes,
         refreshCachedSegments: makeCachedSegmentRefresher(getFullSegmentNodes),
+        notifySegmentsChanged: vi.fn(),
         invalidateCachedSegments: vi.fn((segmentIds: Iterable<number>) => {
           for (const segmentId of segmentIds) {
             setSegmentNodes(cacheBySegment, cacheByNode, segmentId, []);
@@ -4836,6 +4843,7 @@ describe("spatial_skeleton_commands", () => {
         }),
         getFullSegmentNodes: vi.fn(async () => []),
         refreshCachedSegments: vi.fn(async () => true),
+        notifySegmentsChanged: vi.fn(),
         invalidateCachedSegments: vi.fn(),
       },
       getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,

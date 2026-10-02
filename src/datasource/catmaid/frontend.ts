@@ -40,16 +40,13 @@ import {
   makeCatmaidClient,
   makeCatmaidSkeletonMetadata,
 } from "#src/datasource/catmaid/base.js";
+import { CatmaidSkeletonPropertyProvider } from "#src/datasource/catmaid/skeleton_properties.js";
 import { CatmaidSpatialSkeletonEditCommands } from "#src/datasource/catmaid/spatial_skeleton_commands.js";
 import type {
   DataSource,
   DataSourceProvider,
   GetDataSourceOptions,
 } from "#src/datasource/index.js";
-import {
-  SegmentPropertyMap,
-  normalizeInlineSegmentPropertyMap,
-} from "#src/segmentation_display_state/property_map.js";
 import type {
   SpatialSkeletonConfidenceConfiguration,
   SpatialSkeletonGridCellIndex,
@@ -80,6 +77,18 @@ import "#src/datasource/catmaid/register_credentials_provider.js";
 const CATMAID_SPATIAL_SKELETON_CONFIDENCE_CONFIGURATION = {
   values: CATMAID_SPATIAL_SKELETON_CONFIDENCE_VALUES,
 } satisfies SpatialSkeletonConfidenceConfiguration;
+
+function getCatmaidSkeletonPropertyProvider(
+  chunkManager: ChunkManager,
+  catmaidParameters: Pick<CatmaidDataSourceParameters, "url" | "projectId">,
+  client: CatmaidClient,
+): CatmaidSkeletonPropertyProvider {
+  const { url: baseUrl, projectId } = catmaidParameters;
+  return chunkManager.memoize.getUncounted(
+    { type: "catmaid:skeleton-properties", baseUrl, projectId },
+    () => new CatmaidSkeletonPropertyProvider(client),
+  );
+}
 
 export class CatmaidSpatiallyIndexedSkeletonSource extends WithParameters(
   WithCredentialsProvider<CatmaidToken>()(SpatiallyIndexedSkeletonSource),
@@ -156,6 +165,14 @@ export class CatmaidSpatiallyIndexedSkeletonSource extends WithParameters(
       this.parameters.catmaidParameters,
       this.credentialsProvider,
     ));
+  }
+
+  get segmentProperties(): CatmaidSkeletonPropertyProvider {
+    return getCatmaidSkeletonPropertyProvider(
+      this.chunkManager,
+      this.parameters.catmaidParameters,
+      this.client,
+    );
   }
 
   getSkeleton(
@@ -370,28 +387,27 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
     );
 
     // Fetch metadata-derived values through the generic source interface.
-    const [spatialIndexMetadata, cacheProvider, skeletonIds] =
-      await Promise.all([
-        options.registry.chunkManager.memoize.getAsync(
-          { type: "catmaid:spatial-index-metadata", baseUrl, projectId },
-          options,
-          () => client.getSpatialIndexMetadata(),
-        ),
-        options.registry.chunkManager.memoize.getAsync(
-          { type: "catmaid:cache-provider", baseUrl, projectId },
-          options,
-          () => client.getCacheProvider(),
-        ),
-        options.registry.chunkManager.memoize.getAsync(
-          { type: "catmaid:skeletons", baseUrl, projectId },
-          options,
-          () => client.listSkeletons(),
-        ),
-      ]);
+    const [spatialIndexMetadata, cacheProvider] = await Promise.all([
+      options.registry.chunkManager.memoize.getAsync(
+        { type: "catmaid:spatial-index-metadata", baseUrl, projectId },
+        options,
+        () => client.getSpatialIndexMetadata(),
+      ),
+      options.registry.chunkManager.memoize.getAsync(
+        { type: "catmaid:cache-provider", baseUrl, projectId },
+        options,
+        () => client.getCacheProvider(),
+      ),
+    ]);
 
     if (spatialIndexMetadata === null) {
       throw new Error("Failed to fetch CATMAID spatial index metadata");
     }
+    await getCatmaidSkeletonPropertyProvider(
+      options.registry.chunkManager,
+      { url: baseUrl, projectId },
+      client,
+    ).load();
 
     const {
       lowerBounds: projectLowerBounds,
@@ -466,19 +482,6 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
       { parameters: completeSkeletonParameters, credentialsProvider },
     );
 
-    // Create SegmentPropertyMap
-    const ids = new BigUint64Array(skeletonIds.length);
-    for (let i = 0; i < skeletonIds.length; ++i) {
-      ids[i] = BigInt(skeletonIds[i]);
-    }
-
-    const propertyMap = new SegmentPropertyMap({
-      inlineProperties: normalizeInlineSegmentPropertyMap({
-        ids,
-        properties: [],
-      }),
-    });
-
     const subsources = [
       {
         id: "skeletons-chunked",
@@ -492,11 +495,6 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
         id: "skeletons",
         default: false,
         subsource: { mesh: completeSkeletonSource },
-      },
-      {
-        id: "properties",
-        default: true,
-        subsource: { segmentPropertyMap: propertyMap },
       },
       {
         id: "bounds",
