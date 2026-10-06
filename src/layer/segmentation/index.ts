@@ -922,6 +922,36 @@ export class SegmentationUserLayer extends Base {
     };
   }
 
+  private reconcileSpatialSkeletonSelectionOwnership() {
+    const selectionState = this.manager.root.selectionState;
+    const selection = selectionState.value;
+    if (selection === undefined) return;
+    const entry = selection.layers.find((entry) => entry.layer === this);
+    const nodeId = getNodeIdFromLayerSelectionState(entry?.state);
+    if (entry === undefined || nodeId === undefined) return;
+    const node =
+      this.getSpatiallyIndexedSkeletonLayer()?.getNode(nodeId) ??
+      this.spatialSkeletonState.getCachedNode(nodeId);
+    if (
+      node === undefined ||
+      node.segmentId === getSegmentIdFromLayerSelectionValue(entry.state)
+    )
+      return;
+    // Ownership can change after a merge, split, or rollback without an ID
+    // remapping. Preserve the pin, position, and selections in other layers.
+    selectionState.value = {
+      ...selection,
+      layers: selection.layers.map((candidate) =>
+        candidate === entry
+          ? {
+              ...candidate,
+              state: { ...candidate.state, value: BigInt(node.segmentId) },
+            }
+          : candidate,
+      ),
+    };
+  }
+
   private getGlobalSelectionPositionFromModelPosition(
     modelPosition: ArrayLike<number> | undefined,
   ) {
@@ -1277,6 +1307,7 @@ export class SegmentationUserLayer extends Base {
       this,
     );
     const syncSelectedSpatialSkeletonNodeIdFromGlobalSelection = () => {
+      this.reconcileSpatialSkeletonSelectionOwnership();
       const nextLayerSelectionState =
         this.manager.root.selectionState.value?.layers.find(
           (entry) => entry.layer === this,
@@ -1308,6 +1339,11 @@ export class SegmentationUserLayer extends Base {
     };
     this.registerDisposer(
       this.manager.root.selectionState.changed.add(
+        syncSelectedSpatialSkeletonNodeIdFromGlobalSelection,
+      ),
+    );
+    this.registerDisposer(
+      this.spatialSkeletonNodeDataVersion.changed.add(
         syncSelectedSpatialSkeletonNodeIdFromGlobalSelection,
       ),
     );

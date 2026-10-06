@@ -530,6 +530,45 @@ describe("layer/segmentation spatial skeleton selection serialization", () => {
     expect(layer.selectionStateToJson(state, false)).toEqual({});
   });
 
+  it("reconciles a retired skeleton ID with the selected node owner", () => {
+    const layer = Object.create(SegmentationUserLayer.prototype);
+    const otherEntry = { layer: {}, state: { value: 42n } };
+    const position = new Float32Array([1, 2, 3]);
+    const selectionState = {
+      pin: { value: true },
+      value: {
+        position,
+        layers: [
+          { layer, state: { nodeId: "210701784", value: 6369475n } },
+          otherEntry,
+        ],
+      },
+    };
+    Object.defineProperty(layer, "manager", {
+      value: { root: { selectionState } },
+    });
+    layer.getSpatiallyIndexedSkeletonLayer = () => undefined;
+    const getCachedNode = vi.fn(() => ({
+      nodeId: 210701784,
+      segmentId: 6368977,
+    }));
+    layer.spatialSkeletonState = { getCachedNode };
+    layer.reconcileSpatialSkeletonSelectionOwnership();
+    expect(selectionState.value.layers[0].state).toEqual({
+      nodeId: "210701784",
+      value: 6368977n,
+    });
+    expect(selectionState.value.layers[1]).toBe(otherEntry);
+    expect(selectionState.value.position).toBe(position);
+    expect(selectionState.pin.value).toBe(true);
+    const reconciled = selectionState.value;
+    layer.reconcileSpatialSkeletonSelectionOwnership();
+    expect(selectionState.value).toBe(reconciled);
+    getCachedNode.mockReturnValue(undefined as any);
+    layer.reconcileSpatialSkeletonSelectionOwnership();
+    expect(selectionState.value).toBe(reconciled);
+  });
+
   it("captures and clears spatial skeleton nodes using nodeId and segment value", () => {
     const selectionState = {
       pin: { value: false },
