@@ -455,6 +455,8 @@ function makeDragHarness() {
   const source = makeCommandSkeletonSource();
   const skeletonLayer = {
     source,
+    getNode: (id: number) =>
+      id === currentNode.nodeId ? currentNode : undefined,
     beginTemporaryBrowseExclusion: vi.fn(() => releaseBrowseExclusion),
   };
   const state = {
@@ -702,7 +704,7 @@ describe("spatial_skeleton_edit_tool", () => {
     }
   });
 
-  it("enters merge mode, then uses the hovered node on the first pick", () => {
+  it("uses inspected ownership when a merge source pick has a retired skeleton ID", () => {
     suppressStatusMessages();
     const hoveredNode = {
       nodeId: 101,
@@ -733,7 +735,7 @@ describe("spatial_skeleton_edit_tool", () => {
       pickedRenderLayer: undefined,
       pickedSpatialSkeleton: {
         nodeId: hoveredNode.nodeId,
-        segmentId: hoveredNode.segmentId,
+        segmentId: 6368542,
         position: hoveredNode.position,
       },
       updateUnconditionally: vi.fn(() => true),
@@ -2437,7 +2439,7 @@ describe("spatial_skeleton_edit_tool", () => {
     }
   });
 
-  it("allows an uninspected merge target when the from skeleton is inspected", async () => {
+  it("uses inspected ownership when a merge target pick has a retired skeleton ID", async () => {
     suppressStatusMessages();
     const fromNode: SpatiallyIndexedSkeletonNode = {
       nodeId: 101,
@@ -2474,7 +2476,7 @@ describe("spatial_skeleton_edit_tool", () => {
       pickedRenderLayer: undefined,
       pickedSpatialSkeleton: {
         nodeId: toNode.nodeId,
-        segmentId: toNode.segmentId,
+        segmentId: 6368542,
         position: toNode.position,
       },
       updateUnconditionally: vi.fn(() => true),
@@ -2533,6 +2535,35 @@ describe("spatial_skeleton_edit_tool", () => {
     );
     await vi.waitFor(() => expect(mergeExecute).toHaveBeenCalledTimes(1));
   });
+
+  it.each([false, true])(
+    "resolves merge targets with cached ownership when available (%s)",
+    (cached) => {
+      const node = makeFindPathNode(210684811, 6368977);
+      const picked = { ...node, segmentId: 6368542 };
+      const mouseState = {
+        active: true,
+        updateUnconditionally: () => true,
+        pickedSpatialSkeleton: picked,
+      };
+      const skeletonLayer = { getNode: () => undefined };
+      const layer = {
+        manager: { root: { layerSelectedValues: { mouseState } } },
+        spatialSkeletonState: {
+          getCachedNode: () => (cached ? node : undefined),
+        },
+      };
+      const tool = Object.assign(
+        Object.create(SpatialSkeletonEditTool.prototype),
+        { layer },
+      );
+      expect(tool.resolvePickedNodeSelectionForMerge(skeletonLayer)).toEqual({
+        nodeId: node.nodeId,
+        segmentId: cached ? node.segmentId : picked.segmentId,
+        position: node.position,
+      });
+    },
+  );
 
   it("keeps root creation independent of the inspection cache", async () => {
     suppressStatusMessages();

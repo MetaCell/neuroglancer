@@ -3463,10 +3463,13 @@ export class SpatiallyIndexedSkeletonLayer
       return undefined;
     }
     const baseOffset = pickedOffset * 3;
+    const cachedNode = this.getCachedNodeSnapshot(nodeId);
     return {
       nodeId,
-      segmentId,
-      position: data.positions.subarray(baseOffset, baseOffset + 3),
+      segmentId: cachedNode?.segmentId ?? segmentId,
+      position:
+        cachedNode?.position ??
+        data.positions.subarray(baseOffset, baseOffset + 3),
     };
   }
 
@@ -4066,14 +4069,17 @@ function updateSpatiallyIndexedSkeletonMouseState(
     mouseState.pickedSpatialSkeleton = { segmentId };
     const nodeId = data.nodeIds[pickedOffset];
     if (!Number.isSafeInteger(nodeId) || nodeId <= 0) return;
-    const nodePosition = data.nodePositions.subarray(
-      pickedOffset * 3,
-      pickedOffset * 3 + 3,
+    // A pick buffer can outlive a topology update or come from a stale
+    // spatial cell. Use the complete node snapshot whenever it is available.
+    const cachedNode = base.getNode(nodeId);
+    const nodePosition = new Float32Array(
+      cachedNode?.position ??
+        data.nodePositions.subarray(pickedOffset * 3, pickedOffset * 3 + 3),
     );
     mouseState.pickedSpatialSkeleton = {
       nodeId,
-      segmentId,
-      position: new Float32Array(nodePosition),
+      segmentId: cachedNode?.segmentId ?? segmentId,
+      position: nodePosition,
     };
     const transform = base.displayState.transform.value;
     if (transform.error === undefined) {

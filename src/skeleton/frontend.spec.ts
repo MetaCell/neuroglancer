@@ -40,6 +40,8 @@ const {
   commitSpatiallyIndexedSkeletonOverlayReplacement,
   getActiveProvisionalSpatialSkeletonSegmentIds,
   SpatiallyIndexedSkeletonLayer,
+  PerspectiveViewSpatiallyIndexedSkeletonLayer,
+  SliceViewPanelSpatiallyIndexedSkeletonLayer,
   resolveSpatiallyIndexedSkeletonSegmentPick,
 } = await import("#src/skeleton/frontend.js");
 
@@ -549,6 +551,85 @@ describe("SpatiallyIndexedSkeletonLayer browse node picks", () => {
       segmentId: 17,
       position: new Float32Array([4, 5, 6]),
     });
+  });
+});
+
+describe("spatial node picks after a skeleton ownership change", () => {
+  it.each([
+    PerspectiveViewSpatiallyIndexedSkeletonLayer,
+    SliceViewPanelSpatiallyIndexedSkeletonLayer,
+  ])("uses inspected ownership for both pick formats in %s", (RenderLayer) => {
+    const nodeId = 210684811;
+    const oldSegmentId = 6368542;
+    const node = {
+      nodeId,
+      segmentId: 6368977,
+      position: new Float32Array([7, 8, 9]),
+    };
+    const getCachedNodeInfo = vi.fn(() => node);
+    const base = Object.assign(
+      Object.create(SpatiallyIndexedSkeletonLayer.prototype),
+      {
+        getCachedNodeInfo,
+        displayState: { transform: { value: { error: "no transform" } } },
+      },
+    );
+    const rawPosition = new Float32Array([1, 2, 3]);
+    const rawSegmentIds = new Uint32Array([oldSegmentId]);
+    const vertexAttributes = new Uint8Array(
+      rawPosition.byteLength + rawSegmentIds.byteLength,
+    );
+    vertexAttributes.set(new Uint8Array(rawPosition.buffer), 0);
+    vertexAttributes.set(
+      new Uint8Array(rawSegmentIds.buffer),
+      rawPosition.byteLength,
+    );
+    const chunk = {
+      vertexAttributes,
+      vertexAttributeOffsets: new Uint32Array([0, rawPosition.byteLength]),
+      numVertices: 1,
+      nodeIds: new Int32Array([nodeId]),
+    };
+    const pickFormats = [
+      {
+        kind: "node",
+        nodeIds: new Int32Array([nodeId]),
+        segmentIds: rawSegmentIds,
+        nodePositions: rawPosition,
+      },
+      { kind: "segment-node", chunk },
+    ];
+    for (const data of pickFormats) {
+      const mouseState: any = {};
+      RenderLayer.prototype.updateMouseState.call(
+        { base } as any,
+        mouseState,
+        0n,
+        0,
+        data,
+      );
+      expect(mouseState.pickedSpatialSkeleton).toEqual(node);
+      expect(mouseState.pickedSpatialSkeleton.position).not.toBe(node.position);
+    }
+    // The correction must not mutate browse cells or old pick buffers.
+    expect(rawSegmentIds[0]).toBe(oldSegmentId);
+    expect(rawPosition).toEqual(new Float32Array([1, 2, 3]));
+    getCachedNodeInfo.mockReturnValue(undefined as any);
+    for (const data of pickFormats) {
+      const mouseState: any = {};
+      RenderLayer.prototype.updateMouseState.call(
+        { base } as any,
+        mouseState,
+        0n,
+        0,
+        data,
+      );
+      expect(mouseState.pickedSpatialSkeleton).toEqual({
+        nodeId,
+        segmentId: oldSegmentId,
+        position: rawPosition,
+      });
+    }
   });
 });
 

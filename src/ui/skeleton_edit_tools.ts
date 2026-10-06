@@ -332,8 +332,8 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
     const resolvedNodeInfo = skeletonLayer.getNode(nodeHit.nodeId);
     return {
       nodeId: nodeHit.nodeId,
-      segmentId: nodeHit.segmentId ?? resolvedNodeInfo?.segmentId,
-      position: nodeHit.position ?? resolvedNodeInfo?.position,
+      segmentId: resolvedNodeInfo?.segmentId ?? nodeHit.segmentId,
+      position: resolvedNodeInfo?.position ?? nodeHit.position,
       parentNodeId: resolvedNodeInfo?.parentNodeId,
     };
   }
@@ -356,8 +356,8 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
       this.layer.spatialSkeletonState.getCachedNode(nodeHit.nodeId);
     return {
       nodeId: nodeHit.nodeId,
-      segmentId: nodeHit.segmentId ?? resolvedNodeInfo?.segmentId,
-      position: nodeHit.position ?? resolvedNodeInfo?.position,
+      segmentId: resolvedNodeInfo?.segmentId ?? nodeHit.segmentId,
+      position: resolvedNodeInfo?.position ?? nodeHit.position,
     };
   }
 
@@ -541,9 +541,12 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
     segmentId: number | undefined,
   ) {
     const resolvedSegmentId =
-      segmentId ??
+      // Spatial browse cells may still describe a node's pre-edit owner.
+      // Complete inspected data owns topology; the pick is only a fallback
+      // for nodes whose skeleton has not been inspected yet.
       skeletonLayer.getNode(nodeId)?.segmentId ??
-      this.layer.spatialSkeletonState.getCachedNode(nodeId)?.segmentId;
+      this.layer.spatialSkeletonState.getCachedNode(nodeId)?.segmentId ??
+      segmentId;
     if (resolvedSegmentId === undefined) {
       return {
         segmentId: undefined,
