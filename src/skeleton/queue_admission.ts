@@ -21,18 +21,17 @@ import type {
   SpatialSkeletonQueueInput,
   SpatialSkeletonQueueInputRequirement,
   SpatialSkeletonQueueInputRequirements,
+  SpatialSkeletonQueueInputPreparation,
+  SpatialSkeletonPreparedQueueInput,
 } from "#src/skeleton/command_protocol.js";
 import { SpatialSkeletonInspectionRequiredError } from "#src/skeleton/edit_errors.js";
-import {
-  type SpatialSkeletonOptimisticEditSettlement,
-  unchangedSpatialSkeletonOptimisticEditSettlement,
-} from "#src/skeleton/optimistic_edit/lifecycle.js";
+import { unchangedSpatialSkeletonOptimisticEditSettlement } from "#src/skeleton/optimistic_edit/lifecycle.js";
 import type {
   SpatialSkeletonInputReference,
   SpatialSkeletonLayerContext,
   SpatialSkeletonOptimisticEditExecution,
 } from "#src/skeleton/spatial_skeleton_manager.js";
-import { createDeferred, withPromiseProperties } from "#src/util/promise.js";
+import { withPromiseProperties } from "#src/util/promise.js";
 
 /** A queue input requirement paired with a reference to its complete snapshot. */
 interface QueueInputBinding {
@@ -57,16 +56,23 @@ function releaseInputReferences(bindings: readonly QueueInputBinding[]) {
 function captureQueueInputRequirements(
   command: SpatialSkeletonEditCommand,
   context: SpatialSkeletonCommandContext,
+  layer: SpatialSkeletonLayerContext,
 ) {
   const { required, loadable = [] } =
     command.getQueueInputRequirements(context);
+  const resolveOwner = (requirement: SpatialSkeletonQueueInputRequirement) => {
+    const node =
+      requirement.nodeId === undefined
+        ? undefined
+        : layer.spatialSkeletonState.getCachedNode(requirement.nodeId);
+    return Object.freeze({
+      ...requirement,
+      segmentId: node?.segmentId ?? requirement.segmentId,
+    });
+  };
   return Object.freeze({
-    required: Object.freeze(
-      required.map((requirement) => Object.freeze({ ...requirement })),
-    ),
-    loadable: Object.freeze(
-      loadable.map((requirement) => Object.freeze({ ...requirement })),
-    ),
+    required: Object.freeze(required.map(resolveOwner)),
+    loadable: Object.freeze(loadable.map(resolveOwner)),
   });
 }
 
@@ -97,6 +103,7 @@ function prepareRequiredInputBindings(
 async function loadQueueInputRequirement(
   layer: SpatialSkeletonLayerContext,
   requirement: SpatialSkeletonQueueInputRequirement,
+  signal: AbortSignal,
 ) {
   const skeletonLayer = layer.getSpatiallyIndexedSkeletonLayer();
   if (skeletonLayer === undefined) {
@@ -104,19 +111,33 @@ async function loadQueueInputRequirement(
       "No active spatial skeleton layer is available to load queue inputs.",
     );
   }
+  signal.throwIfAborted();
   const requestOwner = {};
+  let rejectAbort!: (reason: unknown) => void;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    rejectAbort = reject;
+  });
+  const onAbort = () => {
+    layer.spatialSkeletonState.releaseFullSegmentNodeFetchOwner(requestOwner);
+    rejectAbort(signal.reason);
+  };
+  signal.addEventListener("abort", onAbort, { once: true });
   try {
-    await layer.spatialSkeletonState.getFullSegmentNodes(
-      skeletonLayer,
-      requirement.segmentId,
-      {
-        // The edit still needs this read if the pointer leaves the skeleton.
-        // Its owner joins any existing fetch without taking sole ownership.
-        retainWhileInactive: true,
-        requestOwner,
-      },
-    );
+    await Promise.race([
+      layer.spatialSkeletonState.getFullSegmentNodes(
+        skeletonLayer,
+        requirement.segmentId,
+        {
+          // The edit still needs this read if the pointer leaves the skeleton.
+          // Its owner joins any existing fetch without taking sole ownership.
+          retainWhileInactive: true,
+          requestOwner,
+        },
+      ),
+      aborted,
+    ]);
   } finally {
+    signal.removeEventListener("abort", onAbort);
     layer.spatialSkeletonState.releaseFullSegmentNodeFetchOwner(requestOwner);
   }
 }
@@ -173,9 +194,20 @@ function prepareQueueInputBindings(
   layer: SpatialSkeletonLayerContext,
   command: SpatialSkeletonEditCommand,
   context: SpatialSkeletonCommandContext,
-  action?: SpatialSkeletonAction,
+  action: SpatialSkeletonAction | undefined,
+  signal: AbortSignal,
+  intent: "execute" | "redo",
 ): readonly QueueInputBinding[] | Promise<readonly QueueInputBinding[]> {
-  const requirements = captureQueueInputRequirements(command, context);
+  const declared = captureQueueInputRequirements(command, context, layer);
+  // A canceled, unprepared history entry has no retained exact recipe. Redo
+  // may reacquire its previously validated source after visual cache eviction.
+  const requirements =
+    intent === "execute"
+      ? declared
+      : {
+          required: [],
+          loadable: [...declared.required, ...declared.loadable],
+        };
   const requiredBindings = prepareRequiredInputBindings(
     layer,
     requirements.required,
@@ -212,12 +244,13 @@ function prepareQueueInputBindings(
         // An earlier endpoint may have loaded this same complete skeleton.
         let reference = state.tryAcquireInputReference(requirement);
         if (reference === undefined) {
-          await loadQueueInputRequirement(layer, requirement);
+          await loadQueueInputRequirement(layer, requirement, signal);
+          signal.throwIfAborted();
           state.assertOptimisticEditingAllowed();
           assertInputReferencesCurrent(getBindings(), action);
           assertQueueInputRequirementsUnchanged(
-            requirements,
-            captureQueueInputRequirements(command, context),
+            declared,
+            captureQueueInputRequirements(command, context, layer),
             action,
           );
           reference = state.acquireInputReference(requirement, action);
@@ -264,118 +297,121 @@ function createQueueInput(
   return Object.freeze({ segments: Object.freeze([...segments.values()]) });
 }
 
-function submitEdit<T>(
-  layer: SpatialSkeletonLayerContext,
-  bindings: readonly QueueInputBinding[],
-  submitToQueue: (
-    queueInput: SpatialSkeletonQueueInput,
-  ) => SpatialSkeletonOptimisticEditExecution<T>,
-  action?: SpatialSkeletonAction,
-) {
-  try {
-    // A fatal state can be latched while a queue input read is in flight.
-    // Recheck at the last synchronous boundary before queue admission.
-    layer.spatialSkeletonState.assertOptimisticEditingAllowed();
-    assertInputReferencesCurrent(bindings, action);
-    return submitToQueue(createQueueInput(bindings));
-  } catch (error) {
-    releaseInputReferences(bindings);
-    throw error;
-  }
-}
-
-/**
- * Prepares the complete snapshots declared by a new edit, then submits it to
- * the queue while preserving acceptance, exact-preview, and settlement promises.
- */
-export function prepareAndSubmitSpatialSkeletonEdit<T>(
+/** Validate inspection synchronously, acquire fresh inputs at the ordered frontier. */
+export function createSpatialSkeletonQueueInputPreparation(
   layer: SpatialSkeletonLayerContext,
   command: SpatialSkeletonEditCommand,
-  submitToQueue: (
-    queueInput: SpatialSkeletonQueueInput,
-  ) => SpatialSkeletonOptimisticEditExecution<T>,
   action?: SpatialSkeletonAction,
-): SpatialSkeletonOptimisticEditExecution<T> {
+): SpatialSkeletonQueueInputPreparation {
   const context = {
     identities:
       layer.spatialSkeletonState.getOptimisticEditingIdentityService(),
   };
-  // Expose the promise now so callers can wait for acceptance. It stays pending
-  // while inputs load, then follows the queue's acceptance or rejection.
-  const acceptedByQueue = createDeferred<void>();
-  const settled = createDeferred<SpatialSkeletonOptimisticEditSettlement>();
-  // Keep the independent admission rejection observed for callers that only
-  // await the exact-preview/execution promise.
-  void acceptedByQueue.promise.catch(() => undefined);
-  let inputBindings:
-    | readonly QueueInputBinding[]
-    | Promise<readonly QueueInputBinding[]>;
+  return Object.freeze({
+    getProtectedSegmentIds() {
+      const requirements = captureQueueInputRequirements(
+        command,
+        context,
+        layer,
+      );
+      return Object.freeze([
+        ...new Set(
+          [...requirements.required, ...requirements.loadable].map(
+            ({ segmentId }) => segmentId,
+          ),
+        ),
+      ]);
+    },
+    validate(intent: "execute" | "redo") {
+      layer.spatialSkeletonState.assertOptimisticEditingAllowed();
+      const requirements = captureQueueInputRequirements(
+        command,
+        context,
+        layer,
+      );
+      const bindings =
+        intent === "execute"
+          ? prepareRequiredInputBindings(layer, requirements.required, action)
+          : requirements.required.flatMap((requirement) => {
+              const reference =
+                layer.spatialSkeletonState.tryAcquireInputReference(
+                  requirement,
+                );
+              return reference === undefined
+                ? []
+                : [{ requirement, reference }];
+            });
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        releaseInputReferences(bindings);
+      };
+    },
+    async acquire(
+      signal: AbortSignal,
+      intent: "execute" | "redo",
+    ): Promise<SpatialSkeletonPreparedQueueInput> {
+      signal.throwIfAborted();
+      layer.spatialSkeletonState.assertOptimisticEditingAllowed();
+      const bindings = await prepareQueueInputBindings(
+        layer,
+        command,
+        context,
+        action,
+        signal,
+        intent,
+      );
+      let released = false;
+      const release = () => {
+        if (released) return;
+        released = true;
+        releaseInputReferences(bindings);
+      };
+      try {
+        signal.throwIfAborted();
+        layer.spatialSkeletonState.assertOptimisticEditingAllowed();
+        assertInputReferencesCurrent(bindings, action);
+        return Object.freeze({
+          input: createQueueInput(bindings),
+          assertCurrent: () => {
+            signal.throwIfAborted();
+            layer.spatialSkeletonState.assertOptimisticEditingAllowed();
+            assertInputReferencesCurrent(bindings, action);
+          },
+          release,
+        });
+      } catch (error) {
+        release();
+        throw error;
+      }
+    },
+  });
+}
+
+/** Registers before any input read; the queue owns preparation and cancellation. */
+export function prepareAndSubmitSpatialSkeletonEdit<T>(
+  layer: SpatialSkeletonLayerContext,
+  command: SpatialSkeletonEditCommand,
+  submitToQueue: (
+    inputs: SpatialSkeletonQueueInputPreparation,
+  ) => SpatialSkeletonOptimisticEditExecution<T>,
+  action?: SpatialSkeletonAction,
+): SpatialSkeletonOptimisticEditExecution<T> {
   try {
-    // Do not start even bounded admission hydration after the layer has
-    // entered Reload required.
-    layer.spatialSkeletonState.assertOptimisticEditingAllowed();
-    inputBindings = prepareQueueInputBindings(layer, command, context, action);
-  } catch (error) {
-    acceptedByQueue.reject(error);
-    settled.resolve(
-      unchangedSpatialSkeletonOptimisticEditSettlement("not-started", error),
+    return submitToQueue(
+      createSpatialSkeletonQueueInputPreparation(layer, command, action),
     );
-    return withPromiseProperties(Promise.reject(error), {
-      acceptedByQueue: acceptedByQueue.promise,
-      settled: settled.promise,
+  } catch (error) {
+    const acceptedByQueue = Promise.reject<void>(error);
+    void acceptedByQueue.catch(() => undefined);
+    const execution = Promise.reject<T>(error);
+    void execution.catch(() => undefined);
+    return withPromiseProperties(execution, {
+      acceptedByQueue,
+      settled: Promise.resolve(
+        unchangedSpatialSkeletonOptimisticEditSettlement("not-started", error),
+      ),
     });
   }
-
-  if (!(inputBindings instanceof Promise)) {
-    let inner: SpatialSkeletonOptimisticEditExecution<T>;
-    try {
-      inner = submitEdit(layer, inputBindings, submitToQueue, action);
-    } catch (error) {
-      acceptedByQueue.reject(error);
-      settled.resolve(
-        unchangedSpatialSkeletonOptimisticEditSettlement("not-started", error),
-      );
-      return withPromiseProperties(Promise.reject(error), {
-        acceptedByQueue: acceptedByQueue.promise,
-        settled: settled.promise,
-      });
-    }
-    inner.acceptedByQueue.then(acceptedByQueue.resolve, acceptedByQueue.reject);
-    return withPromiseProperties(
-      inner.finally(() => releaseInputReferences(inputBindings)),
-      { acceptedByQueue: acceptedByQueue.promise, settled: inner.settled },
-    );
-  }
-
-  const execution = (async () => {
-    let bindings: readonly QueueInputBinding[];
-    let inner: SpatialSkeletonOptimisticEditExecution<T>;
-    try {
-      bindings = await inputBindings;
-      inner = submitEdit(layer, bindings, submitToQueue, action);
-    } catch (error) {
-      // No execution was returned, so this wrapper reports the failure.
-      acceptedByQueue.reject(error);
-      settled.resolve(
-        unchangedSpatialSkeletonOptimisticEditSettlement("not-started", error),
-      );
-      throw error;
-    }
-
-    // An execution now exists. Forward its outcome independently of whether
-    // the preview succeeds, fails, or finishes before settlement.
-    inner.acceptedByQueue.then(acceptedByQueue.resolve, acceptedByQueue.reject);
-    inner.settled.then(settled.resolve, settled.reject);
-    try {
-      return await inner;
-    } finally {
-      releaseInputReferences(bindings);
-    }
-  })();
-  // A caller may observe only acceptance while the asynchronous read fails.
-  void execution.catch(() => undefined);
-  return withPromiseProperties(execution, {
-    acceptedByQueue: acceptedByQueue.promise,
-    settled: settled.promise,
-  });
 }

@@ -54,6 +54,7 @@ import {
   committedSpatialSkeletonOptimisticEditSettlement,
   type SpatialSkeletonOptimisticEditSettlement,
 } from "#src/skeleton/optimistic_edit/lifecycle.js";
+import { SpatialSkeletonOptimisticProjectionRuntime } from "#src/skeleton/optimistic_edit/projection_runtime.js";
 import { SpatialSkeletonState } from "#src/skeleton/spatial_skeleton_manager.js";
 import { StatusMessage } from "#src/status.js";
 import { SpatialSkeletonOptimisticAuthorityNotificationController } from "#src/ui/skeleton_optimistic_edit_queue_tab.js";
@@ -629,7 +630,9 @@ describe("spatial_skeleton_commands", () => {
     });
     expect(ensureOptimisticEditingEngine).toHaveBeenCalledTimes(1);
     expect(executeOptimisticEdit).toHaveBeenCalledWith(command, {
-      segments: [],
+      getProtectedSegmentIds: expect.any(Function),
+      validate: expect.any(Function),
+      acquire: expect.any(Function),
     });
     expect(command).not.toHaveProperty("execute");
     expect(command).not.toHaveProperty("undo");
@@ -5885,8 +5888,17 @@ describe("spatial_skeleton_commands", () => {
       firstSegmentId,
       expect.anything(),
     );
-    expect(spatialSkeletonState.getOptimisticEditQueueSnapshot()).toEqual([]);
-    expect(spatialSkeletonState.commandHistory.canUndo.value).toBe(false);
+    await execution.acceptedByQueue;
+    expect(spatialSkeletonState.getOptimisticEditQueueSnapshot()).toMatchObject(
+      [
+        {
+          intent: "execute",
+          operationId: 1,
+          lifecycle: { preview: "preparing", authority: "queued" },
+        },
+      ],
+    );
+    expect(spatialSkeletonState.commandHistory.canUndo.value).toBe(true);
     expect(mergeSkeletons).not.toHaveBeenCalled();
     expect(
       spatialSkeletonState.evictInactiveSegmentNodes([firstSegmentId]),
@@ -5907,6 +5919,316 @@ describe("spatial_skeleton_commands", () => {
       firstNode.nodeId,
       secondNode.nodeId,
     );
+  });
+
+  it("orders a cold merge, a warm merge, and a property edit using the preceding projected ownership", async () => {
+    suppressStatusMessages();
+    const first = {
+      nodeId: 101,
+      segmentId: 11,
+      position: new Float32Array([1, 2, 3]),
+    };
+    const target = {
+      nodeId: 201,
+      segmentId: 17,
+      position: new Float32Array([4, 5, 6]),
+    };
+    const warm = {
+      nodeId: 301,
+      segmentId: 23,
+      position: new Float32Array([7, 8, 9]),
+    };
+    let resolveRead!: (nodes: SpatiallyIndexedSkeletonNode[]) => void;
+    const getSkeleton = vi.fn(
+      () =>
+        new Promise<SpatiallyIndexedSkeletonNode[]>((resolve) => {
+          resolveRead = resolve;
+        }),
+    );
+    const mergeSkeletons = vi
+      .fn()
+      .mockResolvedValueOnce({
+        resultSegmentId: 11,
+        deletedSegmentId: 17,
+        directionAdjusted: false,
+      })
+      .mockResolvedValueOnce({
+        resultSegmentId: 11,
+        deletedSegmentId: 23,
+        directionAdjusted: false,
+      });
+    const updateRadius = vi.fn().mockResolvedValue(undefined);
+    const { layer, spatialSkeletonState } = makeOptimisticAddNodeTestLayer({
+      initialNodes: [first, warm],
+      segmentId: 11,
+      getSkeleton,
+      mergeSkeletons,
+      updateRadius,
+    });
+    const coldMerge = executeSpatialSkeletonMerge(layer as any, first, target);
+    const warmMerge = executeSpatialSkeletonMerge(layer as any, first, warm);
+    const radius = executeSpatialSkeletonNodeRadiusUpdate(layer as any, {
+      node: first,
+      nextRadius: 50,
+    });
+    await Promise.all([
+      coldMerge.acceptedByQueue,
+      warmMerge.acceptedByQueue,
+      radius.acceptedByQueue,
+    ]);
+    await waitForMicrotasks(12);
+    expect(
+      spatialSkeletonState
+        .getOptimisticEditQueueSnapshot()
+        .map(({ operationId }) => operationId),
+    ).toEqual([1, 2, 3]);
+    expect(spatialSkeletonState.getCachedNode(first.nodeId)?.segmentId).toBe(
+      11,
+    );
+    expect(mergeSkeletons).not.toHaveBeenCalled();
+    expect(updateRadius).not.toHaveBeenCalled();
+    expect(getSkeleton).toHaveBeenCalledOnce();
+    resolveRead([target]);
+    await Promise.all([coldMerge, warmMerge, radius]);
+    await Promise.all([coldMerge.settled, warmMerge.settled, radius.settled]);
+    expect(mergeSkeletons.mock.calls).toEqual([
+      [101, 201],
+      [101, 301],
+    ]);
+    expect(updateRadius).toHaveBeenCalledWith(101, 50);
+    expect(mergeSkeletons.mock.invocationCallOrder[1]).toBeLessThan(
+      updateRadius.mock.invocationCallOrder[0],
+    );
+    expect(
+      spatialSkeletonState
+        .getCachedSegmentNodes(11)
+        ?.map(({ nodeId }) => nodeId)
+        .sort(),
+    ).toEqual([101, 201, 301]);
+    expect(spatialSkeletonState.getCachedNode(101)?.radius).toBe(50);
+  });
+
+  it("reacquires a cold merge source when an earlier save reverses skeleton ownership", async () => {
+    suppressStatusMessages();
+    const nodes = makeRootRestorationNodesForTest();
+    nodes[2].confidence = 25;
+    const target = {
+      nodeId: 301,
+      segmentId: 23,
+      position: new Float32Array([301, 302, 303]),
+    };
+    let resolveFirst!: (result: {
+      resultSegmentId: number;
+      deletedSegmentId: number;
+      directionAdjusted: boolean;
+    }) => void;
+    let resolveRead!: (nodes: SpatiallyIndexedSkeletonNode[]) => void;
+    const mergeSkeletons = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({
+        resultSegmentId: 17,
+        deletedSegmentId: 23,
+        directionAdjusted: false,
+      });
+    const getSkeleton = vi.fn(
+      () =>
+        new Promise<SpatiallyIndexedSkeletonNode[]>((resolve) => {
+          resolveRead = resolve;
+        }),
+    );
+    const splitSkeleton = vi
+      .fn()
+      .mockResolvedValue({ existingSegmentId: 17, newSegmentId: 29 });
+    const rerootSkeleton = vi.fn().mockResolvedValue(undefined);
+    const updateConfidence = vi.fn().mockResolvedValue(undefined);
+    const { layer, spatialSkeletonState: state } =
+      makeOptimisticAddNodeTestLayer({
+        initialNodes: nodes,
+        segmentId: 11,
+        segmentIds: [11, 17],
+        mergeSkeletons,
+        getSkeleton,
+        splitSkeleton,
+        rerootSkeleton,
+        updateConfidence,
+      });
+    const first = executeSpatialSkeletonMerge(layer as any, nodes[1], nodes[4]);
+    await first;
+    const waiting = executeSpatialSkeletonMerge(
+      layer as any,
+      state.getCachedNode(102)!,
+      target,
+    );
+    await waiting.acceptedByQueue;
+    await waitForMicrotasks(12);
+    expect(getSkeleton).toHaveBeenCalledOnce();
+    resolveFirst({
+      resultSegmentId: 17,
+      deletedSegmentId: 11,
+      directionAdjusted: true,
+    });
+    await first.settled;
+    expect(state.getCachedNode(102)?.segmentId).toBe(17);
+    resolveRead([target]);
+    await waiting;
+    await expect(waiting.settled).resolves.toMatchObject({
+      outcome: "committed",
+    });
+    expect(getSkeleton).toHaveBeenCalledOnce();
+    expect(mergeSkeletons).toHaveBeenLastCalledWith(102, 301);
+    expect(cachedTopologyForTest(state, [17])).toEqual([
+      [101, 17, 102],
+      [102, 17, 203],
+      [201, 17, null],
+      [202, 17, 201],
+      [203, 17, 202],
+      [204, 17, 202],
+      [205, 17, 203],
+      [301, 17, 102],
+    ]);
+    await undoSpatialSkeletonCommand(layer as any).settled;
+    expect(state.getCachedNode(201)).toMatchObject({
+      segmentId: 17,
+      confidence: 25,
+    });
+    expect(state.getCachedNode(301)).toMatchObject({
+      segmentId: 29,
+      parentNodeId: undefined,
+    });
+    expect(state.getOptimisticEditFatalState()).toBeUndefined();
+  });
+
+  it("redos a cold merge canceled before recipe construction using retained complete inputs", async () => {
+    suppressStatusMessages();
+    const first = {
+      nodeId: 101,
+      segmentId: 11,
+      position: new Float32Array([1, 2, 3]),
+    };
+    const target = {
+      nodeId: 201,
+      segmentId: 17,
+      position: new Float32Array([4, 5, 6]),
+    };
+    let resolveOldRead!: (nodes: SpatiallyIndexedSkeletonNode[]) => void;
+    const getSkeleton = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<SpatiallyIndexedSkeletonNode[]>((resolve) => {
+            resolveOldRead = resolve;
+          }),
+      )
+      .mockResolvedValue([target]);
+    const mergeSkeletons = vi.fn().mockResolvedValue({
+      resultSegmentId: 11,
+      deletedSegmentId: 17,
+      directionAdjusted: false,
+    });
+    const { layer, spatialSkeletonState } = makeOptimisticAddNodeTestLayer({
+      initialNodes: [first],
+      segmentId: 11,
+      getSkeleton,
+      mergeSkeletons,
+    });
+    const original = executeSpatialSkeletonMerge(layer as any, first, target);
+    await original.acceptedByQueue;
+    await waitForMicrotasks(12);
+    const undo = undoSpatialSkeletonCommand(layer as any);
+    await Promise.all([original, undo]);
+    expect(mergeSkeletons).not.toHaveBeenCalled();
+    expect(spatialSkeletonState.commandHistory.canRedo.value).toBe(true);
+    const redo = redoSpatialSkeletonCommand(layer as any);
+    await redo;
+    await redo.settled;
+    expect(mergeSkeletons).toHaveBeenCalledWith(101, 201);
+    expect(spatialSkeletonState.getCachedNode(201)).toMatchObject({
+      segmentId: 11,
+      parentNodeId: 101,
+    });
+    resolveOldRead([target]);
+    await waitForMicrotasks(12);
+    expect(spatialSkeletonState.getCachedNode(201)?.segmentId).toBe(11);
+    expect(mergeSkeletons).toHaveBeenCalledOnce();
+  });
+
+  it("redos a merge canceled after compilation but before exact-preview publication", async () => {
+    suppressStatusMessages();
+    const first = {
+      nodeId: 101,
+      segmentId: 11,
+      position: new Float32Array([1, 2, 3]),
+    };
+    const target = {
+      nodeId: 201,
+      segmentId: 17,
+      position: new Float32Array([4, 5, 6]),
+    };
+    let releasePreview!: () => void;
+    const barrier = new Promise<void>((resolve) => {
+      releasePreview = resolve;
+    });
+    const prepare =
+      SpatialSkeletonOptimisticProjectionRuntime.prototype.prepareExact;
+    const projectionPort: {
+      prepareExact: (
+        ...args: Parameters<typeof prepare>
+      ) => ReturnType<typeof prepare> | Promise<ReturnType<typeof prepare>>;
+    } = SpatialSkeletonOptimisticProjectionRuntime.prototype;
+    const prepareSpy = vi
+      .spyOn(projectionPort, "prepareExact")
+      .mockImplementationOnce(async function (
+        this: SpatialSkeletonOptimisticProjectionRuntime,
+        ...args
+      ) {
+        const prepared = prepare.apply(this, args);
+        await barrier;
+        return prepared;
+      });
+    const mergeSkeletons = vi.fn().mockResolvedValue({
+      resultSegmentId: 11,
+      deletedSegmentId: 17,
+      directionAdjusted: false,
+    });
+    const { layer, spatialSkeletonState: state } =
+      makeOptimisticAddNodeTestLayer({
+        initialNodes: [first, target],
+        segmentId: 11,
+        segmentIds: [11, 17],
+        mergeSkeletons,
+      });
+    try {
+      const original = executeSpatialSkeletonMerge(layer as any, first, target);
+      await original.acceptedByQueue;
+      await waitForMicrotasks(12);
+      expect(prepareSpy).toHaveBeenCalledOnce();
+      expect(mergeSkeletons).not.toHaveBeenCalled();
+      await undoSpatialSkeletonCommand(layer as any);
+      await original;
+      const redo = redoSpatialSkeletonCommand(layer as any);
+      await redo;
+      await expect(redo.settled).resolves.toMatchObject({
+        outcome: "committed",
+      });
+      expect(state.getCachedNode(201)).toMatchObject({
+        segmentId: 11,
+        parentNodeId: 101,
+      });
+      releasePreview();
+      await waitForMicrotasks(12);
+      expect(mergeSkeletons).toHaveBeenCalledOnce();
+      expect(state.getCachedNode(201)?.segmentId).toBe(11);
+      expect(state.getOptimisticEditFatalState()).toBeUndefined();
+    } finally {
+      releasePreview();
+      prepareSpy.mockRestore();
+    }
   });
 
   it("rejects a cold merge source without loading either participant", async () => {

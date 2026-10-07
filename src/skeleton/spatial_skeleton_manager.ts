@@ -34,6 +34,7 @@ import {
   type SpatialSkeletonAction,
   type SpatialSkeletonEditCommand,
   type SpatialSkeletonQueueInput,
+  type SpatialSkeletonQueueInputPreparation,
   type SpatialSkeletonQueueInputRequirement,
 } from "#src/skeleton/command_protocol.js";
 import {
@@ -203,7 +204,7 @@ export interface SpatialSkeletonCachedSegmentSnapshotHandle {
  *
  * Its exact complete snapshot is retained against visual cache eviction.
  * Any explicit cache invalidation or replacement makes it stale; callers must
- * check `isCurrent` before queue submission. `release` removes only this
+ * check `isCurrent` before exact-preview publication. `release` removes only this
  * reference's cache-retention registration and is idempotent.
  */
 export interface SpatialSkeletonInputReference {
@@ -761,7 +762,9 @@ type StateOwnedSpatialSkeletonOptimisticEngine =
     getRecentActivity(): readonly SpatialSkeletonOptimisticEditActivityEntry[];
     submitExecute(
       command: SpatialSkeletonEditCommand,
-      queueInput: SpatialSkeletonQueueInput,
+      queueInput:
+        | SpatialSkeletonQueueInput
+        | SpatialSkeletonQueueInputPreparation,
     ): SpatialSkeletonOptimisticEditExecution<boolean>;
     submitUndo(): SpatialSkeletonOptimisticEditExecution<boolean>;
     submitRedo(): SpatialSkeletonOptimisticEditExecution<boolean>;
@@ -967,7 +970,7 @@ export class SpatialSkeletonState
       preparation: {
         publish: (intentId, intent, descriptor) => {
           const { lastKnownPositions, ...preparation } = descriptor;
-          this.addSpatialSkeletonPreparation({
+          this.setSpatialSkeletonPreparation({
             ...preparation,
             intentId,
             sequence: intentId,
@@ -1063,7 +1066,9 @@ export class SpatialSkeletonState
 
   executeOptimisticEdit(
     command: SpatialSkeletonEditCommand,
-    queueInput: SpatialSkeletonQueueInput,
+    queueInput:
+      | SpatialSkeletonQueueInput
+      | SpatialSkeletonQueueInputPreparation,
   ) {
     this.assertOptimisticEditingAllowed();
     const engine = this.optimisticEditQueue;
@@ -1424,6 +1429,15 @@ export class SpatialSkeletonState
     this.spatialSkeletonPreparationsById.set(normalized.intentId, normalized);
     this.requestSpatialSkeletonPresentationPublication();
     return true;
+  }
+
+  /** Atomically replaces the cue as a queued intent acquires complete inputs. */
+  private setSpatialSkeletonPreparation(
+    preparation: SpatialSkeletonPreparationIntent,
+  ) {
+    const normalized = normalizeSpatialSkeletonPreparationIntent(preparation);
+    this.spatialSkeletonPreparationsById.set(normalized.intentId, normalized);
+    this.requestSpatialSkeletonPresentationPublication();
   }
 
   removeSpatialSkeletonPreparation(intentId: number) {
@@ -2578,7 +2592,10 @@ export class SpatialSkeletonState
     segmentId: number,
     options: {
       retainWhileInactive?: boolean;
-      /** Opaque lease owner that can release this pending read on disposal. */
+      /**
+       * Opaque lease owner that can release this pending read on disposal.
+       * An owned read starts before unowned reads waiting for a slot.
+       */
       requestOwner?: object;
     } = {},
   ): Promise<SpatiallyIndexedSkeletonNode[]> {
@@ -2691,7 +2708,18 @@ export class SpatialSkeletonState
           }
           return normalizedNodes;
         },
-        { signal: abortController.signal },
+        {
+          signal: abortController.signal,
+          isPrioritized: () => {
+            const pendingEntry =
+              this.pendingFullSegmentNodeFetches.get(segmentId);
+            return (
+              pendingEntry !== undefined &&
+              pendingEntry.promise === pendingFetch.promise &&
+              pendingEntry.requestOwners.size > 0
+            );
+          },
+        },
       )
       .finally(() => {
         if (

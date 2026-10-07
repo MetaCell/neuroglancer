@@ -175,6 +175,77 @@ test("split previews the complete branch, then Undo and Redo restore topology", 
   ]);
 });
 
+test("a cold merge appears in Queue immediately and can be undone before its target loads", async ({
+  page,
+  server,
+}) => {
+  let releaseReads!: () => void;
+  const readBarrier = new Promise<void>((resolve) => {
+    releaseReads = resolve;
+  });
+  let blocked = true;
+  await page.route("**/20/compact-detail*", async (route) => {
+    if (blocked) await readBarrier;
+    await route.continue().catch(() => {});
+  });
+  const ui = new SkeletonEditPage(page);
+  try {
+    await ui.open(server.sourceUrl, [10, 20], false, [2000, 2000, 1000], [10]);
+    await ui.selectNode(103);
+    const center = await ui.panelCenter();
+    const scale = await page.evaluate(
+      () =>
+        (window as unknown as { viewer: Viewer }).viewer.crossSectionScale
+          .value,
+    );
+    await page.mouse.move(center.x, center.y);
+    await ui.runEdit(async () => {
+      await page.keyboard.down("m");
+      try {
+        await page.mouse.click(center.x, center.y);
+        await page.mouse.click(center.x, center.y + 2000 / scale);
+      } finally {
+        await page.keyboard.up("m");
+      }
+    });
+    const pending = await readQueue(page);
+    expect(pending.entries).toMatchObject([
+      {
+        intent: "execute",
+        lifecycle: { authority: "queued", preview: "preparing" },
+      },
+    ]);
+    expect(pending.canUndo).toBe(true);
+    expect(server.mutations).toHaveLength(0);
+    await ui.showQueue();
+    await expect(page.getByText("Preparing", { exact: true })).toBeVisible();
+    await ui.showSkeleton();
+    await ui.undo();
+    expect(server.mutations).toHaveLength(0);
+    await expect.poll(async () => (await readQueue(page)).canRedo).toBe(true);
+    await ui.redo();
+    blocked = false;
+    releaseReads();
+    await ui.waitSaved();
+    expect(server.mutations.map(({ path }) => path)).toEqual(["skeleton/join"]);
+    await expect
+      .poll(async () =>
+        parentMap(await readGraph(page, IDS, "Skeletons", true)),
+      )
+      .toEqual([
+        [101, null],
+        [102, 101],
+        [103, 102],
+        [201, 202],
+        [202, 203],
+        [203, 103],
+      ]);
+  } finally {
+    blocked = false;
+    releaseReads();
+  }
+});
+
 test("merge through a non-root node restores the original root after repeated Undo and reload", async ({
   page,
   server,

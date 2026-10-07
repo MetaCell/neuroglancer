@@ -105,6 +105,7 @@ import {
   renderSpatialSkeletonShortcut,
   SPATIAL_SKELETON_EDIT_TOOL_NAME,
 } from "#src/ui/skeleton_edit_tool_shortcuts.js";
+import { SpatialSkeletonMergeTargetPrefetch } from "#src/ui/skeleton_merge_target_prefetch.js";
 import type { ToolActivation } from "#src/ui/tool.js";
 import {
   LayerTool,
@@ -495,6 +496,10 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
   private readonly dragModelSpacePosition = vec3.create();
   private readonly dragGlobalAnchorPosition = vec3.create();
   private readonly dragGlobalPosition = vec3.create();
+  private readonly mergeTargetPrefetch = new SpatialSkeletonMergeTargetPrefetch(
+    this.layer.spatialSkeletonState,
+  );
+  private mergeTargetHoverRelease: (() => boolean) | undefined = undefined;
 
   private handleRankChanged(rank: number) {
     if (rank === this.curChunkRank) return;
@@ -885,6 +890,50 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
     this.renderStatus();
   }
 
+  private handleMergeAnchorChanged() {
+    if (
+      this.currentMode !== SkeletonEditMode.Merge ||
+      this.layer.spatialSkeletonState.mergeAnchorNodeId.value === undefined
+    ) {
+      this.stopMergeTargetPrefetch();
+      return;
+    }
+    this.mergeTargetHoverRelease ??= this.mouseState.changed.add(() =>
+      this.prefetchHoveredMergeTarget(),
+    );
+    this.prefetchHoveredMergeTarget();
+  }
+
+  private stopMergeTargetPrefetch() {
+    this.mergeTargetHoverRelease?.();
+    this.mergeTargetHoverRelease = undefined;
+    this.mergeTargetPrefetch.clear();
+  }
+
+  /** Hovering empty space or the anchor's own skeleton keeps the last target. */
+  private prefetchHoveredMergeTarget() {
+    if (this.pending) return;
+    // Forcing a pick update here would re-dispatch the mouse-state signal.
+    const { mouseState } = this;
+    if (!mouseState.active) return;
+    const { spatialSkeletonState } = this.layer;
+    const anchorNodeId = spatialSkeletonState.mergeAnchorNodeId.value;
+    const hoveredSegmentId = mouseState.pickedSpatialSkeleton?.segmentId;
+    if (
+      anchorNodeId === undefined ||
+      typeof hoveredSegmentId !== "number" ||
+      !Number.isSafeInteger(hoveredSegmentId) ||
+      hoveredSegmentId <= 0 ||
+      hoveredSegmentId ===
+        spatialSkeletonState.getCachedNode(anchorNodeId)?.segmentId
+    ) {
+      return;
+    }
+    const skeletonLayer = this.layer.getSpatiallyIndexedSkeletonLayer();
+    if (skeletonLayer === undefined) return;
+    this.mergeTargetPrefetch.setTarget(skeletonLayer, hoveredSegmentId);
+  }
+
   private enterMerge() {
     this.advanceInteractionGeneration();
     // Merge always starts without an active anchor — it can never begin with a
@@ -903,6 +952,7 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
     if (this.currentMode !== SkeletonEditMode.Merge) return;
     this.advanceInteractionGeneration();
     this.pending = false;
+    this.stopMergeTargetPrefetch();
     this.layer.clearSpatialSkeletonMergeAnchor();
     this.layer.spatialSkeletonMergeMode.value = false;
     this.layer.spatialSkeletonSuppressSelectedNodeHighlight.value = false;
@@ -1861,6 +1911,7 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
       this.setStatusText = undefined;
       this.currentMode = SkeletonEditMode.Default;
       this.pending = false;
+      this.stopMergeTargetPrefetch();
       this.dragInProgress = false;
       this.activeDragBrowseExclusionRelease?.();
       this.activeDragBrowseExclusionRelease = undefined;
@@ -1894,9 +1945,10 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
       layer.manager.root.selectionState.changed.add(() => this.renderStatus()),
     );
     activation.registerDisposer(
-      layer.spatialSkeletonState.mergeAnchorNodeId.changed.add(() =>
-        this.renderStatus(),
-      ),
+      layer.spatialSkeletonState.mergeAnchorNodeId.changed.add(() => {
+        this.handleMergeAnchorChanged();
+        this.renderStatus();
+      }),
     );
     activation.registerDisposer(
       layer.displayState.segmentationGroupState.value.visibleSegments.changed.add(

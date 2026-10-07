@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import type { SpatialSkeletonQueueInputPreparation } from "#src/skeleton/command_protocol.js";
 import type { SpatialSkeletonMutationAuthorityLease } from "#src/skeleton/optimistic_edit/authority_lease_coordinator.js";
 import {
   SpatialSkeletonOptimisticReloadRequiredError,
@@ -126,7 +127,8 @@ export interface ProjectionValue<T> {
 
 export interface EngineMetadata<TInput, TWorkflow, THistoryTicket> {
   readonly input: TInput;
-  readonly workflow: TWorkflow;
+  readonly workflow?: TWorkflow;
+  readonly inputPreparation?: SpatialSkeletonQueueInputPreparation;
   readonly historyTicket: THistoryTicket;
   readonly historyEntryId: string | number;
   readonly kind: string;
@@ -175,6 +177,8 @@ export interface EngineIntentRuntime<TResult> {
   readonly settled: PromiseResolver<
     SpatialSkeletonOptimisticEditSettlement<TResult>
   >;
+  inputAbortController?: AbortController;
+  releaseAdmissionInputs?: () => void;
   lease?: SpatialSkeletonMutationAuthorityLease;
   submission?: SpatialSkeletonMutationAttemptSubmission<TResult>;
 }
@@ -231,7 +235,9 @@ type EngineIntentRuntimeAllowedField =
   | "exact"
   | "settled"
   | "submission"
-  | "lease";
+  | "lease"
+  | "inputAbortController"
+  | "releaseAdmissionInputs";
 const engineIntentRuntimeFieldGuard: {
   [Field in keyof EngineIntentRuntime<unknown>]-?: Field extends EngineIntentRuntimeAllowedField
     ? true
@@ -241,5 +247,7 @@ const engineIntentRuntimeFieldGuard: {
   settled: true,
   submission: true,
   lease: true,
+  inputAbortController: true,
+  releaseAdmissionInputs: true,
 };
 void engineIntentRuntimeFieldGuard;

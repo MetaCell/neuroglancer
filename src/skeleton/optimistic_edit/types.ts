@@ -39,8 +39,8 @@ export interface SpatialSkeletonOptimisticEditExecution<
   TSettlementResult = unknown,
 > extends Promise<T> {
   /**
-   * Available immediately; may remain pending while input data loads.
-   * Resolves when the local queue accepts the action, before its exact preview.
+   * Resolves when the local queue registers the action, before input loading
+   * and exact-preview preparation. Admission failures reject this promise.
    */
   readonly acceptedByQueue: Promise<void>;
   /** Resolves only after authority has a definitive, reconciled outcome. */

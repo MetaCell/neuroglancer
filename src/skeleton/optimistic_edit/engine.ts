@@ -14,8 +14,16 @@
  * limitations under the License.
  */
 
-import type { SpatialSkeletonQueueInput } from "#src/skeleton/command_protocol.js";
-import { SpatialSkeletonOptimisticQueueCapacityError } from "#src/skeleton/edit_errors.js";
+import type {
+  SpatialSkeletonQueueInput,
+  SpatialSkeletonQueueInputPreparation,
+  SpatialSkeletonPreparedQueueInput,
+} from "#src/skeleton/command_protocol.js";
+import {
+  SpatialSkeletonOptimisticQueueCapacityError,
+  SpatialSkeletonInspectionRequiredError,
+} from "#src/skeleton/edit_errors.js";
+import { spatialSkeletonLogicalSegment } from "#src/skeleton/logical_identity.js";
 import type { SpatialSkeletonMutationOutcome } from "#src/skeleton/optimistic_edit/api.js";
 import { SpatialSkeletonOptimisticEngineHistory } from "#src/skeleton/optimistic_edit/engine_history.js";
 import {
@@ -30,7 +38,6 @@ import {
   SpatialSkeletonOptimisticQueueEngineDisposedError,
   type EngineIntentJournal,
   type EngineIntentRuntime,
-  type ProjectionValue,
   type SpatialSkeletonOptimisticQueueEngineOptions,
 } from "#src/skeleton/optimistic_edit/engine_runtime.js";
 import {
@@ -44,6 +51,7 @@ import {
 } from "#src/skeleton/optimistic_edit/lifecycle.js";
 import type {
   SpatialSkeletonLogicalIntent,
+  SpatialSkeletonIntentDescription,
   SpatialSkeletonProjectionIntentArtifact,
 } from "#src/skeleton/optimistic_edit/ports.js";
 import type { SpatialSkeletonMutationAttemptSettlement } from "#src/skeleton/optimistic_edit/scheduler.js";
@@ -122,6 +130,7 @@ export class SpatialSkeletonOptimisticQueueEngine<
   private projectionArtifactSubscriptionCleanup?: () => void;
   private readonly disposalCompletionResolver = createPromiseResolver<void>();
   private activeWorkflowCount = 0;
+  private authorityGeneration = 0;
   private disposed = false;
 
   constructor(
@@ -152,7 +161,9 @@ export class SpatialSkeletonOptimisticQueueEngine<
 
   submitExecute(
     input: TInput,
-    queueInput: SpatialSkeletonQueueInput,
+    queueInput:
+      | SpatialSkeletonQueueInput
+      | SpatialSkeletonQueueInputPreparation,
   ): SpatialSkeletonOptimisticEditExecution<boolean, TResult> {
     return this.submitTransition(input, "execute", queueInput);
   }
@@ -168,7 +179,9 @@ export class SpatialSkeletonOptimisticQueueEngine<
   private submitTransition(
     input: TInput | undefined,
     intent: SpatialSkeletonIntentKind,
-    queueInput?: SpatialSkeletonQueueInput,
+    queueInput?:
+      | SpatialSkeletonQueueInput
+      | SpatialSkeletonQueueInputPreparation,
   ): SpatialSkeletonOptimisticEditExecution<boolean, TResult> {
     this.requireActive();
     this.requireEditingAllowed();
@@ -181,6 +194,11 @@ export class SpatialSkeletonOptimisticQueueEngine<
         this.journal.capacity,
       );
     }
+    let inputPreparation =
+      queueInput !== undefined && "acquire" in queueInput
+        ? queueInput
+        : undefined;
+    let releaseAdmissionInputs = inputPreparation?.validate("execute");
     const reservation = this.journal.reserveSequence();
     let historyTicket: THistoryTicket | undefined;
     try {
@@ -192,15 +210,18 @@ export class SpatialSkeletonOptimisticQueueEngine<
             : this.options.history.stageRedo();
     } catch (error) {
       this.journal.cancelSequenceReservation(reservation);
+      releaseAdmissionInputs?.();
       throw error;
     }
     if (historyTicket === undefined) {
       this.journal.cancelSequenceReservation(reservation);
+      releaseAdmissionInputs?.();
       return createSpatialSkeletonNoOpExecution<TResult>(false);
     }
     let historyTicketId: string | number;
     let historyEntryId: string | number;
-    let descriptor: SpatialSkeletonLogicalIntent<TWorkflow, TProjection>;
+    let descriptor: SpatialSkeletonIntentDescription &
+      Partial<SpatialSkeletonLogicalIntent<TWorkflow, TProjection>>;
     let historyDependencySequences: number[];
     let transitionInput: TInput;
     let coalescesSequence: number | undefined;
@@ -224,70 +245,59 @@ export class SpatialSkeletonOptimisticQueueEngine<
           ? input!
           : this.historyOperations.getCanonicalHistoryInput(historyEntryId)!;
       if (transitionInput === undefined) {
-        throw new Error(
-          `Command-history entry ${historyEntryId} has no canonical queue intent recipe.`,
-        );
+        throw new Error("Command history lost its canonical intent.");
       }
-      const coalescingTarget =
+      if (intent !== "execute") {
+        inputPreparation =
+          this.historyOperations.getCanonicalInputPreparation(historyEntryId);
+      }
+      const target =
         coalescesSequence === undefined
           ? undefined
           : this.journal.get(coalescesSequence);
-      if (coalescingTarget !== undefined) {
-        const projection = coalescingTarget.requestedResult.value;
-        if (projection === undefined) {
-          throw new Error(
-            `Queued optimistic intent ${coalescesSequence} has no projection recipe.`,
-          );
-        }
-        // A queued opposite cancels before either transport starts. It needs
-        // no second datasource workflow/inverse construction; copying the
-        // fixed logical description lets the generic journal settle the pair
-        // even when the predecessor is still preparing its exact preview.
+      if (target !== undefined) {
         descriptor = {
-          kind: coalescingTarget.metadata.kind,
-          commandLabel: coalescingTarget.metadata.commandLabel,
-          authorityPresentation:
-            coalescingTarget.metadata.authorityPresentation,
-          logicalResources: coalescingTarget.resources,
-          projection,
-          workflow: coalescingTarget.metadata.workflow,
+          kind: target.metadata.kind,
+          commandLabel: target.metadata.commandLabel,
+          authorityPresentation: target.metadata.authorityPresentation,
+          logicalResources: target.resources,
+          projection: target.requestedResult.value,
+          workflow: target.metadata.workflow,
         };
+      } else if (intent === "execute") {
+        if (queueInput === undefined)
+          throw new Error("Execute is missing its input policy.");
+        descriptor =
+          inputPreparation !== undefined
+            ? this.options.driver.describeIntent(transitionInput)
+            : this.options.driver.createLogicalIntent(transitionInput, {
+                intentId: reservation.sequence,
+                intent,
+                queueInput: queueInput as SpatialSkeletonQueueInput,
+              });
       } else {
-        if (intent === "execute") {
-          if (queueInput === undefined) {
-            throw new Error("Execute admission is missing queue input.");
-          }
-          descriptor = this.options.driver.createLogicalIntent(
-            transitionInput,
-            {
-              intentId: reservation.sequence,
-              intent,
-              queueInput,
-            },
-          );
+        const recipe =
+          this.historyOperations.getHistoryRecipeByEntryId(historyEntryId);
+        if (
+          (recipe === undefined || recipe.inverseProjection === undefined) &&
+          intent === "redo" &&
+          inputPreparation !== undefined
+        ) {
+          releaseAdmissionInputs = inputPreparation.validate("redo");
+          descriptor = this.options.driver.describeIntent(transitionInput);
         } else {
-          const recipe =
-            this.historyOperations.getHistoryRecipeByEntryId(historyEntryId);
           if (
             recipe === undefined ||
             (intent === "undo" && recipe.inverseProjection === undefined)
           ) {
-            throw new Error(
-              `Optimistic ${intent} is missing its engine-owned exact history recipe.`,
-            );
+            throw new Error("History is missing its exact recipe.");
           }
           descriptor = this.options.driver.createLogicalIntent(
             transitionInput,
             {
               intentId: reservation.sequence,
               intent,
-              recipe: {
-                workflow: recipe.workflow,
-                projection: recipe.projection,
-                ...(recipe.inverseProjection === undefined
-                  ? {}
-                  : { inverseProjection: recipe.inverseProjection }),
-              },
+              recipe,
             },
           );
         }
@@ -295,31 +305,42 @@ export class SpatialSkeletonOptimisticQueueEngine<
     } catch (error) {
       this.journal.cancelSequenceReservation(reservation);
       this.options.history.abandonLatest(historyTicket);
+      releaseAdmissionInputs?.();
       throw error;
     }
-    // The immutable preview recipe is part of the canonical intent from
-    // admission onward.  `prepareExact` later replaces it with the validated
-    // artifact used for publication and history replay.
-    const requestedResult: ProjectionValue<TProjection> = {
-      value: descriptor.projection,
-    };
-    const inverseDelta: ProjectionValue<TInverseProjection> = {};
     let admitted;
     try {
       admitted = this.journal.admit(
         {
           kind: intent,
           historyTicketId,
-          resources: descriptor.logicalResources,
+          resources: descriptor.logicalResources ?? [
+            {
+              handle: spatialSkeletonLogicalSegment("queue-input-preparation"),
+              access: "write" as const,
+            },
+          ],
           semanticDependencySequences: [
             ...historyDependencySequences,
             ...(descriptor.semanticDependencies ?? []),
+            // Unknown preparation resources form a conservative layer barrier.
+            // New intents acquire their inputs against the preceding exact state.
+            ...this.journal
+              .getEntries({ includeTerminal: false })
+              .filter(
+                (entry) =>
+                  (intent === "execute" && inputPreparation !== undefined) ||
+                  descriptor.workflow === undefined ||
+                  entry.metadata.workflow === undefined,
+              )
+              .map((entry) => entry.sequence),
           ],
-          requestedResult,
-          inverseDelta,
+          requestedResult: { value: descriptor.projection },
+          inverseDelta: {},
           metadata: {
             input: transitionInput,
             workflow: descriptor.workflow,
+            inputPreparation,
             historyTicket,
             historyEntryId,
             kind: descriptor.kind,
@@ -333,18 +354,18 @@ export class SpatialSkeletonOptimisticQueueEngine<
     } catch (error) {
       this.journal.cancelSequenceReservation(reservation);
       this.options.history.abandonLatest(historyTicket);
+      releaseAdmissionInputs?.();
       throw error;
     }
-
     const runtime: EngineIntentRuntime<TResult> = {
       exact: createPromiseResolver<boolean>(),
       settled:
         createPromiseResolver<
           SpatialSkeletonOptimisticEditSettlement<TResult>
         >(),
+      releaseAdmissionInputs,
     };
-    // The main exact-preview promise may be all a command caller observes.
-    // Keep the independent settlement rejection handled until explicitly read.
+    void runtime.exact.promise.catch(() => undefined);
     void runtime.settled.promise.catch(() => undefined);
     this.runtimes.set(admitted.sequence, runtime);
     this.historyOperations.syncRetainedHistoryResources();
@@ -360,7 +381,6 @@ export class SpatialSkeletonOptimisticQueueEngine<
       }
     }
     this.notifyChanged();
-
     if (coalescesSequence !== undefined) {
       this.coalesceQueuedOpposite(
         admitted.sequence,
@@ -419,7 +439,17 @@ export class SpatialSkeletonOptimisticQueueEngine<
   }
 
   getProtectedProjectionSegmentIds() {
-    return this.options.projection.getProtectedSegmentIds();
+    return [
+      ...new Set([
+        ...this.options.projection.getProtectedSegmentIds(),
+        ...this.journal
+          .getEntries({ includeTerminal: false })
+          .flatMap(
+            (entry) =>
+              entry.metadata.inputPreparation?.getProtectedSegmentIds() ?? [],
+          ),
+      ]),
+    ];
   }
 
   ownsAuthoritativeReadSegment(segmentId: number) {
@@ -559,76 +589,161 @@ export class SpatialSkeletonOptimisticQueueEngine<
     runtime: EngineIntentRuntime<TResult>,
   ): Promise<void> {
     try {
-      const entry = this.requireJournalEntry(intentId);
+      let entry = this.requireJournalEntry(intentId);
       if (this.disposed || this.isTerminal(intentId)) return;
-      const historyRecipe =
-        entry.kind === "execute"
-          ? undefined
-          : this.historyOperations.getHistoryRecipeByEntryId(
-              entry.metadata.historyEntryId,
-            );
-      const descriptor =
-        historyRecipe === undefined || entry.kind === "execute"
-          ? undefined
-          : this.options.driver.createLogicalIntent(entry.metadata.input, {
+      let acquired: SpatialSkeletonPreparedQueueInput | undefined;
+      const generation = this.authorityGeneration;
+      try {
+        const compilingInputs = entry.metadata.workflow === undefined;
+        if (compilingInputs) {
+          const inputs = entry.metadata.inputPreparation;
+          if (inputs === undefined)
+            throw new Error("Preparing intent lost its input policy.");
+          const controller = new AbortController();
+          runtime.inputAbortController = controller;
+          acquired = await inputs.acquire(
+            controller.signal,
+            entry.kind === "redo" ? "redo" : "execute",
+          );
+          if (this.disposed || this.isTerminal(intentId)) return;
+          acquired.assertCurrent();
+          const compiled = this.options.driver.createLogicalIntent(
+            entry.metadata.input,
+            {
               intentId,
-              intent: entry.kind,
-              recipe: historyRecipe,
-            });
-      const projectionValue =
-        descriptor?.projection ?? entry.requestedResult.value;
-      if (projectionValue === undefined) {
-        throw new Error(
-          `Optimistic intent ${intentId} has no projection recipe.`,
+              intent: "execute",
+              queueInput: acquired.input,
+            },
+          );
+          this.journal.refreshExactProjectionArtifacts([
+            {
+              sequence: intentId,
+              requestedResult: { value: compiled.projection },
+              inverseDelta: {},
+              metadata: { ...entry.metadata, workflow: compiled.workflow },
+            },
+          ]);
+          entry = this.requireJournalEntry(intentId);
+          if (compiled.preparation !== undefined) {
+            this.options.preparation?.publish(
+              intentId,
+              entry.kind,
+              compiled.preparation,
+            );
+          }
+        }
+        const historyRecipe =
+          entry.kind === "execute" || compilingInputs
+            ? undefined
+            : this.historyOperations.getHistoryRecipeByEntryId(
+                entry.metadata.historyEntryId,
+              );
+        const descriptor =
+          historyRecipe === undefined || entry.kind === "execute"
+            ? undefined
+            : this.options.driver.createLogicalIntent(entry.metadata.input, {
+                intentId,
+                intent: entry.kind,
+                recipe: historyRecipe,
+              });
+        const projectionValue =
+          descriptor?.projection ?? entry.requestedResult.value;
+        if (projectionValue === undefined) {
+          throw new Error(
+            `Optimistic intent ${intentId} has no projection recipe.`,
+          );
+        }
+        const prepared = await this.options.projection.prepareExact(
+          intentId,
+          projectionValue,
         );
-      }
-      const prepared = await this.options.projection.prepareExact(
-        intentId,
-        projectionValue,
-      );
-      if (this.disposed || this.isTerminal(intentId)) {
-        this.options.projection.discardPrepared(intentId);
-        return;
-      }
-      if (historyRecipe !== undefined) {
-        const latest = this.historyOperations.getHistoryRecipeByEntryId(
-          entry.metadata.historyEntryId,
-        );
-        if (
-          latest?.projection !== historyRecipe.projection ||
-          latest?.inverseProjection !== historyRecipe.inverseProjection
-        ) {
-          // Authority may finish while an asynchronous history preview is
-          // preparing. Discard that candidate and use the corrected recipe.
+        if (this.disposed || this.isTerminal(intentId)) {
           this.options.projection.discardPrepared(intentId);
+          return;
+        }
+        if (historyRecipe !== undefined) {
+          const latest = this.historyOperations.getHistoryRecipeByEntryId(
+            entry.metadata.historyEntryId,
+          );
+          if (
+            latest?.projection !== historyRecipe.projection ||
+            latest?.inverseProjection !== historyRecipe.inverseProjection
+          ) {
+            // Authority may finish while an asynchronous history preview is
+            // preparing. Discard that candidate and use the corrected recipe.
+            this.options.projection.discardPrepared(intentId);
+            return this.prepareExact(intentId, runtime);
+          }
+        }
+        // Store the initially prepared pair before publication. If publication
+        // rebuilds against a newer retained/read generation, its synchronous
+        // artifact notification must remain the last writer of the inverse.
+        this.journal.refreshExactProjectionArtifacts([
+          {
+            sequence: intentId,
+            requestedResult: { value: prepared.projection },
+            inverseDelta: { value: prepared.inverseProjection },
+            metadata:
+              descriptor === undefined
+                ? undefined
+                : { ...entry.metadata, workflow: descriptor.workflow },
+          },
+        ]);
+        acquired?.assertCurrent();
+        this.options.projection.publishExact(intentId, prepared.projection);
+        // A Redo whose Execute was canceled before input compilation publishes
+        // its inspection seed once, then becomes the canonical history recipe.
+        if (compilingInputs && entry.kind === "redo") {
+          const published = this.requireJournalEntry(intentId);
+          this.historyOperations.refreshCanonicalRecipeFromRedo(published, {
+            intentId,
+            projection: published.requestedResult.value!,
+            inverseProjection: published.inverseDelta.value!,
+          });
+        }
+        this.historyOperations.syncRetainedHistoryResources();
+        this.removePreparation(intentId);
+        this.journal.setPreviewState(intentId, "exact");
+        this.notifyChanged();
+        this.pumpPreparations();
+        this.pump();
+        // Start any now-unblocked workflow before exposing exact-preview
+        // completion. The promise still means only "preview is exact", but a
+        // caller that immediately observes a synchronous adapter does not race
+        // the queue's own pump microtask.
+        runtime.exact.resolve(true);
+      } catch (error) {
+        if (
+          !this.disposed &&
+          !this.isTerminal(intentId) &&
+          generation !== this.authorityGeneration &&
+          error instanceof SpatialSkeletonInspectionRequiredError &&
+          (error.reason === "snapshot-changed" ||
+            error.reason === "requirements-changed")
+        ) {
+          this.options.projection.discardPrepared(intentId);
+          runtime.inputAbortController?.abort(
+            new DOMException("Input versions changed.", "AbortError"),
+          );
+          this.journal.refreshExactProjectionArtifacts([
+            {
+              sequence: intentId,
+              requestedResult: {},
+              inverseDelta: {},
+              metadata: {
+                ...this.requireJournalEntry(intentId).metadata,
+                workflow: undefined,
+              },
+            },
+          ]);
+          acquired?.release();
+          acquired = undefined;
           return this.prepareExact(intentId, runtime);
         }
+        throw error;
+      } finally {
+        acquired?.release();
       }
-      // Store the initially prepared pair before publication. If publication
-      // rebuilds against a newer retained/read generation, its synchronous
-      // artifact notification must remain the last writer of the inverse.
-      this.journal.refreshExactProjectionArtifacts([
-        {
-          sequence: intentId,
-          requestedResult: { value: prepared.projection },
-          inverseDelta: { value: prepared.inverseProjection },
-          metadata:
-            descriptor === undefined
-              ? undefined
-              : { ...entry.metadata, workflow: descriptor.workflow },
-        },
-      ]);
-      this.options.projection.publishExact(intentId, prepared.projection);
-      this.removePreparation(intentId);
-      this.journal.setPreviewState(intentId, "exact");
-      this.notifyChanged();
-      this.pumpPreparations();
-      this.pump();
-      // Start any now-unblocked workflow before exposing exact-preview
-      // completion. The promise still means only "preview is exact", but a
-      // caller that immediately observes a synchronous adapter does not race
-      // the queue's own pump microtask.
-      runtime.exact.resolve(true);
     } catch (error) {
       this.options.projection.discardPrepared(intentId);
       if (this.isTerminal(intentId) || this.disposed) return;
@@ -709,7 +824,7 @@ export class SpatialSkeletonOptimisticQueueEngine<
         }
         if (this.handleDisposedWorkflow(intentId, runtime)) return;
         const attempt = await this.options.driver.nextAttempt(
-          entry.metadata.workflow,
+          this.requirePreparedWorkflow(entry),
           context(),
         );
         if (this.isTerminal(intentId) || this.getFatalState() !== undefined) {
@@ -802,7 +917,7 @@ export class SpatialSkeletonOptimisticQueueEngine<
       try {
         this.journal.setReconciliationState(intentId, "applying");
         reconciliation = await this.options.driver.createReconciliation(
-          entry.metadata.workflow,
+          this.requirePreparedWorkflow(entry),
           context(),
         );
         if (this.getFatalState() !== undefined) {
@@ -847,7 +962,7 @@ export class SpatialSkeletonOptimisticQueueEngine<
                 recipe: {
                   workflow:
                     rebasedWorkflows.get(canonical.intentId) ??
-                    prior.metadata.workflow,
+                    this.requirePreparedWorkflow(prior),
                   projection: canonical.projection,
                   inverseProjection: canonical.inverseProjection,
                 },
@@ -857,6 +972,7 @@ export class SpatialSkeletonOptimisticQueueEngine<
             return descriptor.projection;
           },
         });
+        ++this.authorityGeneration;
         this.journal.refreshExactProjectionArtifacts([
           {
             sequence: intentId,
@@ -1413,7 +1529,25 @@ export class SpatialSkeletonOptimisticQueueEngine<
     }
   }
 
+  private requirePreparedWorkflow(entry: {
+    readonly metadata: { readonly workflow?: TWorkflow };
+  }): TWorkflow {
+    if (entry.metadata.workflow === undefined) {
+      throw new Error("An unprepared intent cannot start a server mutation.");
+    }
+    return entry.metadata.workflow;
+  }
+
   private removePreparation(intentId: number) {
+    const runtime = this.runtimes.get(intentId);
+    runtime?.inputAbortController?.abort(
+      new DOMException("Intent preparation ended.", "AbortError"),
+    );
+    runtime?.releaseAdmissionInputs?.();
+    if (runtime !== undefined) {
+      runtime.inputAbortController = undefined;
+      runtime.releaseAdmissionInputs = undefined;
+    }
     try {
       this.options.preparation?.remove(intentId);
     } catch (error) {

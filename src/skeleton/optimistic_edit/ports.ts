@@ -56,17 +56,21 @@ export interface SpatialSkeletonOptimisticPreparationPort {
   remove(intentId: number): void;
 }
 
-export interface SpatialSkeletonLogicalIntent<TWorkflow, TProjection> {
+/** Immutable intent presentation available before complete inputs are acquired. */
+export interface SpatialSkeletonIntentDescription {
   readonly kind: string;
   readonly commandLabel?: string;
   /** Immutable wording only; generic queue/UI code owns all feedback state. */
   readonly authorityPresentation?: SpatialSkeletonOptimisticAuthorityPresentation;
+  readonly preparation?: SpatialSkeletonOptimisticPreparationDescriptor;
+}
+
+export interface SpatialSkeletonLogicalIntent<TWorkflow, TProjection>
+  extends SpatialSkeletonIntentDescription {
   readonly logicalResources: readonly SpatialSkeletonIntentResource[];
   readonly semanticDependencies?: readonly number[];
-  readonly preparation?: SpatialSkeletonOptimisticPreparationDescriptor;
   /**
-   * Immutable exact-preview recipe derived only from retained, pre-admission
-   * inspection.  It is engine-owned alongside the datasource workflow rather
+   * Immutable exact-preview recipe derived only from complete ordered inputs.  It is engine-owned alongside the datasource workflow rather
    * than embedded in provider workflow state.
    */
   readonly projection: TProjection;
@@ -163,7 +167,10 @@ export interface SpatialSkeletonIntentDriver<
   TReconciliation,
   TInverseProjection = TProjection,
 > {
-  /** Creates fixed logical resources from already-inspected command input. */
+  /** Describes a complete user intent without fetching or reading topology. */
+  describeIntent(input: TInput): SpatialSkeletonIntentDescription;
+
+  /** Creates the exact recipe from complete inputs acquired inside the queue. */
   createLogicalIntent(
     input: TInput,
     context: SpatialSkeletonIntentCreationContext<

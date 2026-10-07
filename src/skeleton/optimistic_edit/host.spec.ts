@@ -46,6 +46,7 @@ function makeRegistration(
 ): SpatialSkeletonOptimisticDriverRegistration {
   return {
     driver: {
+      describeIntent: () => ({ kind: "test", commandLabel: "Test" }),
       createLogicalIntent: (_command, context) => ({
         kind: "test",
         commandLabel: "Test",
@@ -93,6 +94,7 @@ function controlledProvider(cleanup = vi.fn()) {
       const node = identities.getOrCreateNodeHandle(21);
       return {
         driver: {
+          describeIntent: () => ({ kind: "test", commandLabel: "Test" }),
           createLogicalIntent: () => ({
             kind: "test",
             commandLabel: "Controlled edit",

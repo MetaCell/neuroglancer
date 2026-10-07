@@ -2801,6 +2801,49 @@ describe("skeleton/spatial_skeleton_manager", () => {
     await pending[3];
   });
 
+  it("starts a skeleton read an edit awaits before queued display reads", async () => {
+    const state = new SpatialSkeletonState();
+    const { skeletonLayer, getSkeleton, resolvers } = makeLimiterTestLayer(1);
+
+    const first = state.getFullSegmentNodes(skeletonLayer, 11);
+    void state.getFullSegmentNodes(skeletonLayer, 12).catch(() => undefined);
+    void state.getFullSegmentNodes(skeletonLayer, 13).catch(() => undefined);
+    void state
+      .getFullSegmentNodes(skeletonLayer, 13, {
+        retainWhileInactive: true,
+        requestOwner: {},
+      })
+      .catch(() => undefined);
+
+    expect(getSkeleton).toHaveBeenCalledTimes(1);
+    resolvers[0]([]);
+    await first;
+    expect(getSkeleton).toHaveBeenCalledTimes(2);
+    expect(getSkeleton.mock.calls[1][0]).toBe(13);
+  });
+
+  it("starts queued display reads in order again once an edit stops awaiting one", async () => {
+    const state = new SpatialSkeletonState();
+    const { skeletonLayer, getSkeleton, resolvers } = makeLimiterTestLayer(1);
+    const requestOwner = {};
+
+    const first = state.getFullSegmentNodes(skeletonLayer, 11);
+    void state.getFullSegmentNodes(skeletonLayer, 12).catch(() => undefined);
+    void state.getFullSegmentNodes(skeletonLayer, 13).catch(() => undefined);
+    void state
+      .getFullSegmentNodes(skeletonLayer, 13, {
+        retainWhileInactive: true,
+        requestOwner,
+      })
+      .catch(() => undefined);
+    state.releaseFullSegmentNodeFetchOwner(requestOwner);
+
+    resolvers[0]([]);
+    await first;
+    expect(getSkeleton).toHaveBeenCalledTimes(2);
+    expect(getSkeleton.mock.calls[1][0]).toBe(12);
+  });
+
   it("releases a limiter slot when a non-cooperative source times out", async () => {
     vi.useFakeTimers();
     try {

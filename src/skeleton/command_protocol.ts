@@ -50,17 +50,17 @@ export interface SpatialSkeletonQueueInputRequirement {
 }
 
 /**
- * Complete-snapshot requirements for queue admission of a new Execute intent.
+ * Complete-snapshot requirements for preparing a queued Execute intent.
  *
  * Inputs in `required` must already be cached. Inputs in `loadable` may be
- * fetched before admission. Both groups must be complete before Execute starts.
+ * fetched during Preparing. Both groups must be complete before exact preview.
  */
 export interface SpatialSkeletonQueueInputRequirements {
   readonly required: readonly SpatialSkeletonQueueInputRequirement[];
   readonly loadable?: readonly SpatialSkeletonQueueInputRequirement[];
 }
 
-/** One complete, revision-fenced input admitted for an Execute intent. */
+/** One complete, revision-fenced input acquired for an Execute intent. */
 export interface SpatialSkeletonQueueSegmentInput {
   readonly segmentId: number;
   readonly snapshot: CompleteSkeletonSnapshotHandle;
@@ -73,6 +73,28 @@ export interface SpatialSkeletonQueueSegmentInput {
  */
 export interface SpatialSkeletonQueueInput {
   readonly segments: readonly SpatialSkeletonQueueSegmentInput[];
+}
+
+/** Inputs acquired inside the queue's Preparing phase, pinned until publication. */
+export interface SpatialSkeletonPreparedQueueInput {
+  readonly input: SpatialSkeletonQueueInput;
+  assertCurrent(): void;
+  release(): void;
+}
+
+/** Reusable input policy retained with the original intent for an unprepared Redo. */
+export interface SpatialSkeletonQueueInputPreparation {
+  /** Current physical inputs that a live intent protects from visual eviction. */
+  getProtectedSegmentIds(): readonly number[];
+
+  /** Synchronous inspection gate and admission-lifetime cache retention. */
+  validate(intent: "execute" | "redo"): () => void;
+  acquire(
+    signal: AbortSignal,
+    intent: "execute" | "redo",
+  ):
+    | SpatialSkeletonPreparedQueueInput
+    | Promise<SpatialSkeletonPreparedQueueInput>;
 }
 
 export const SpatialSkeletonHistoryActions = {

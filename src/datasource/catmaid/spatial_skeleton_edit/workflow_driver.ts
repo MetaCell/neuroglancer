@@ -20,6 +20,7 @@ import type {
   CatmaidOptimisticMutation,
   CatmaidOptimisticMutationResult,
 } from "#src/datasource/catmaid/spatial_skeleton_edit/mutation_adapter.js";
+import { resolveCatmaidPreparedCommand } from "#src/datasource/catmaid/spatial_skeleton_edit/prepared_command.js";
 import { CatmaidWorkflowAuthorityDriverBase } from "#src/datasource/catmaid/spatial_skeleton_edit/workflow_authority.js";
 import type {
   CatmaidAttributeSemantic,
@@ -206,6 +207,45 @@ export class CatmaidSpatialSkeletonWorkflowDriver
     super(identity);
   }
 
+  describeIntent(input: CatmaidSpatialSkeletonCommandDescriptor) {
+    const payload = input.payload;
+    return Object.freeze({
+      kind: this.getQueueKind(payload.kind),
+      commandLabel: input.label,
+      authorityPresentation: getCatmaidOptimisticAuthorityPresentation(
+        payload.kind,
+      ),
+      ...(payload.kind === "merge"
+        ? {
+            preparation: Object.freeze({
+              kind: "merge" as const,
+              segmentIds: Object.freeze([
+                payload.options.firstNode.segmentId,
+                payload.options.secondNode.segmentId,
+              ]),
+              endpointNodeIds: Object.freeze([
+                payload.options.firstNode.nodeId,
+                payload.options.secondNode.nodeId,
+              ]),
+              lastKnownPositions: Object.freeze(
+                [payload.options.firstNode, payload.options.secondNode].flatMap(
+                  (node) =>
+                    node.position === undefined
+                      ? []
+                      : [
+                          Object.freeze({
+                            nodeId: node.nodeId,
+                            position: node.position,
+                          }),
+                        ],
+                ),
+              ),
+            }),
+          }
+        : {}),
+    });
+  }
+
   createLogicalIntent(
     input: CatmaidSpatialSkeletonCommandDescriptor,
     context: SpatialSkeletonIntentCreationContext<
@@ -274,6 +314,7 @@ export class CatmaidSpatialSkeletonWorkflowDriver
     intentId: number,
     queueInput: SpatialSkeletonQueueInput,
   ): CatmaidSemanticRecipe {
+    command = resolveCatmaidPreparedCommand(command, queueInput, this.identity);
     switch (command.payload.kind) {
       case "add-node":
         return this.createAddSemantic(command, intentId, queueInput);

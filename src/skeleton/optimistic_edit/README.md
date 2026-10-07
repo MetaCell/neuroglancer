@@ -25,7 +25,7 @@ SpatialSkeletonState (one per layer)
                        |
                        v
 SpatialSkeletonOptimisticQueueEngine
-  inspect -> admit -> prepare -> adopt exact preview
+  validate inspected source -> admit -> acquire inputs -> prepare exact preview
           -> acquire scope lane -> mutate authority
           -> adopt authority -> settle history -> release lane
                        |
@@ -72,23 +72,19 @@ and rejection functions. It has no skeleton dependencies. The queue admission
 boundary observes independent acceptance rejections; the message wrapper does
 not add a duplicate handler.
 
-`prepareAndSubmitSpatialSkeletonEdit` prepares queue input for a new edit before
-calling its `submitToQueue` callback. The command's `getQueueInputRequirements`
-declares the complete skeleton snapshots and node membership needed for admission.
-`prepareQueueInputBindings` first calls `captureQueueInputRequirements`, then
-uses `prepareRequiredInputBindings` to pair required inputs with acquired cached
-references. It also acquires references to loadable inputs, downloading missing
-snapshots as needed, and returns the complete list of `QueueInputBinding` records.
-After a download, `assertQueueInputRequirementsUnchanged` throws if the command's
-endpoints or loading policies changed; `assertInputReferencesCurrent` separately
-checks the versions already acquired. Each `QueueInputBinding` pairs `requirement`
-with `reference`, its acquired `SpatialSkeletonInputReference`. For example,
-`{ segmentId: 23, nodeId: 5 }` requires a complete snapshot containing that node;
-the reference provides access to a specific cached version of skeleton 23 and
-keeps it available during preparation. `createQueueInput` bundles the exact snapshots
-and cache revisions into a `SpatialSkeletonQueueInput`. `submitEdit` checks the
-final editing gate and input references, builds that bundle, and calls
-`submitToQueue`.
+`prepareAndSubmitSpatialSkeletonEdit` submits a reusable input policy immediately.
+The engine checks capacity and synchronously validates/pins required inspected
+inputs, then registers the journal record, history transition, sequence, and
+Preparing state before starting any read. `describeIntent` supplies the label
+and optional preparation cue without reading topology.
+
+At the ordered preparation frontier, the policy resolves current logical IDs and
+node ownership, then acquires fresh complete snapshots. `prepareQueueInputBindings`
+pins cached inputs, loads missing permitted inputs, and validates endpoints,
+cache revisions, and the fatal gate after every read. `createQueueInput` deduplicates
+the resulting snapshot bundle. The driver compiles its exact projection and
+workflow exclusively from that bundle. Required-source validation is an admission
+gate; it does not freeze the old source version for a later queued action.
 
 An input reference keeps its current snapshot available against inactive-cache
 eviction, without locking it or copying it for each consumer. Replacement or
@@ -119,16 +115,13 @@ one token leaves the other registration in place. A registration protects only
 its exact current version from inactivity eviction; it does not prevent another
 edit from replacing that version.
 
-Deferred promises expose acceptance and settlement before asynchronous reads
-finish. Receiving `acceptedByQueue` means receiving a promise to await; it does
-not mean the queue has already accepted the edit. While a missing input loads,
-that promise remains pending. Once the queue accepts the edit, it resolves so
-the tool can release its interaction and allow the next action while preview
-preparation and saving continue. The wrapper catches preparation and submission
-failures before an execution is returned, reporting `unchanged` / `not-started`.
-After submission returns an execution, the wrapper forwards its promises independently. A
-preview rejection cannot overwrite the queue's settlement or turn a still
-pending settlement into a definitive result.
+Acceptance and settlement are exposed independently of the exact-preview
+promise. `acceptedByQueue` resolves once registration succeeds, before input
+loading begins, so tools can release their interaction and admit the next action.
+Synchronous admission failures reject acceptance and the preview promise with an
+unchanged / not-started settlement. After registration, the queue owns input
+preparation failure, suffix cancellation, and final settlement. The wrapper
+forwards those promises independently.
 
 ## Snapshot, delta, and history
 
@@ -247,20 +240,41 @@ snapshot rebasing. There is no selective Undo that skips edit 64.
 
 ## Generic inspected-input boundary
 
-Every existing Execute input must be represented by a complete inspected
-snapshot before admission. A node visible only through a spatial-index chunk
-is insufficient. Undo and Redo use retained history recipes synchronously and
-do not inspect or fetch topology.
+Commands declare two input groups: `required` must already have a complete
+inspected snapshot at admission, while `loadable` may be fetched inside the
+queue's Preparing phase. A node visible only through a spatial-index chunk is
+insufficient for a required input. Every listed input is needed.
 
-Commands declare two input groups: `required` must already be inspected, while
-`loadable` is an optional array of inputs that may be fetched before admission.
-Every listed input is needed; `loadable` does not mean an input may be skipped.
-The generic admission code applies this policy without checking the action kind.
-It pins all cached inputs first, loads missing inputs sequentially, and rechecks
-input references, endpoint declarations, and the fatal gate after each read. Repeated
-endpoints in a loaded skeleton reuse its cache. Failure releases all input references;
-when everything is cached, admission stays synchronous. The resulting bundle
-follows `required` then `loadable` order and deduplicates skeletons.
+All public Execute actions use this policy. Capacity, inspection validation,
+sequence allocation, journal registration, and projected history happen before
+asynchronous input loading. `acceptedByQueue` therefore resolves without waiting
+for topology reads; the execution promise still waits for the exact preview.
+
+An action with deferred inputs conservatively depends on all earlier active
+layer intents. Preparation waits for their exact previews, then captures the
+current projected snapshots and owning skeletons. Later actions cannot overtake
+a loading action, even when their own inputs are cached. This barrier orders
+preparation within a layer; it does not change the shared project mutation lane
+or serialize preparation across layers. Warm previews still run on microtasks
+without waiting for earlier server responses.
+
+The generic preparation policy pins cached inputs, loads missing inputs
+sequentially, and rechecks references, endpoint declarations, and the fatal gate
+after each read. Repeated endpoints in a loaded skeleton reuse its cache. The
+bundle follows `required` then `loadable` order and deduplicates skeletons.
+Cancellation releases the intent's read owners and references; shared consumers
+keep their own ownership. Late canceled read results cannot revive the intent.
+An unexpected revision or endpoint change fails preparation. If an earlier
+queued save publishes its authoritative correction during loading, the engine
+reacquires inputs from that corrected state before compiling the preview.
+
+Undo and Redo normally use retained history recipes without fetching topology.
+Undo can also cancel an admitted action before it has a recipe or inverse, with
+no mutation request. Redo of that unprepared action reacquires complete inputs
+through the original policy, including a previously inspected source evicted
+while the action was canceled. Its first exact publication retains the recipe
+for subsequent Undo/Redo. Input failure rolls back the failed transition and
+cancels the later queue suffix under the existing failure policy.
 
 The TypeScript command descriptor is trusted. There is no runtime assertion
 rejecting old callback names or validating its action/label/payload shape.
@@ -290,15 +304,23 @@ receives an explicit frozen empty bundle.
 
 Input references remain held until the exact-preview promise resolves or
 rejects, then release before authority settlement. Preview preparation must
-use only the retained bundle. There is no post-admission hydration or direct
+use only the retained bundle. Hydration is owned by the generic queue input policy; there is no direct
 manager/cache lookup in a datasource driver.
 
 CATMAID declares only the destination of a newly requested Merge as `loadable`.
-The source must already be inspected. The destination is loaded before
-admission with one shared attempt and a 120-second deadline. While it loads
-there is no intent, history transition, preparation cue, preview, or POST.
-Both endpoints and revisions are revalidated before admission. A failed or
-timed-out attempt is cleared so a later user action may make one new attempt.
+The source must already be inspected. The destination uses a shared fetch with
+a 120-second deadline. While it loads, the intent is visible as Preparing, its
+history transition is available to Undo, and the coarse merge preparation cue
+is shown. A complete exact preview and mutation wait for validated inputs.
+Failed or timed-out reads are cleared so a later user action can try again.
+
+While an edit or the merge-target prefetch awaits a full-skeleton read, that
+read starts before display reads waiting in the concurrency limiter, including
+a display read it joined while queued. Once nothing awaits it, it waits its
+turn again. While a merge anchor is set, the edit tool also
+prefetches the skeleton under the pointer (`skeleton_merge_target_prefetch.ts`)
+and protects the loaded snapshot from eviction until the target changes, so the
+second pick usually admits synchronously.
 
 Root creation has no existing input. Restoration of a deleted one-node
 skeleton is root-like. Other CATMAID Execute actions use only `required` inputs.
@@ -383,12 +405,13 @@ history ticket or history lookup callback.
 
 The high-level order is:
 
-1. Check fatal state, capacity, and complete queue input requirements.
+1. Check fatal state, capacity, and required-source inspection; pin cached sources.
 2. Reserve an intent ID and stage the projected history transition.
-3. Create fixed logical identities, workflow, projection, resources, and
-   dependencies.
-4. Finalize the canonical intent and publish any truthful preparation cue.
-5. Resolve `.acceptedByQueue`.
+3. Register the description, input policy, conservative resources/dependencies,
+   and any truthful preparation cue in the canonical journal.
+4. Resolve `.acceptedByQueue`.
+5. Wait for preceding exact previews, acquire current complete inputs, and compile
+   the workflow, fixed logical identities, and projection recipe.
 6. Reduce and atomically adopt the exact preview.
 7. Resolve the exact-preview execution promise and release input references.
 8. Wait for the intent's layer order and acquire its mutation-scope lease.
@@ -396,10 +419,11 @@ The high-level order is:
 10. Adopt the authoritative result, settle history, release the lease, and
     resolve `.settled`.
 
-A touching edit waits for an earlier exact projection, not its server reply.
-A later independent exact preview may appear while earlier work is preparing
-or waiting for authority. Physical transport nevertheless follows strict
-intent order within each layer.
+Public Execute actions use a conservative layer preparation barrier while their
+resources are unknown. They wait for earlier exact previews, then use current
+projected inputs, without waiting for server replies. Retained history recipes
+can prepare independently once their dependencies have exact previews. Physical
+transport still follows strict intent order within each layer.
 
 Every local publication follows one failure-atomic strategy: build the complete
 candidate off-screen; check the action's local preconditions, cache revisions,
@@ -703,7 +727,7 @@ Important focused files are:
 | File                          | Responsibility                                                                            |
 | ----------------------------- | ----------------------------------------------------------------------------------------- |
 | `command_payloads.ts`         | Command payload union, individual payload types, and datasource payload validation.       |
-| `queue_input_requirements.ts` | Resolved skeleton/node requirements and loading policy before queue admission.            |
+| `queue_input_requirements.ts` | Resolved skeleton/node requirements and loading policy for ordered queue preparation.     |
 | `mutation_adapter.ts`         | Mutation scope, transport invocation, endpoint policy, and finite failure classification. |
 | `mutation_scope.ts`           | Stable scope identity for normalized base URL/project.                                    |
 | `workflow_recipe.ts`          | Immutable semantic recipes and forward/inverse step derivation.                           |
@@ -716,7 +740,7 @@ Important focused files are:
 | -------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `api.ts`                         | Required provider registration, mutation adapter, and finite outcomes.                                     |
 | `engine.ts`                      | Canonical intent lifecycle, history coupling, projection, scheduling, failure rollback, and fatal fencing. |
-| `engine_runtime.ts`              | Promise, submission, lease, and disposal sidecars only.                                                    |
+| `engine_runtime.ts`              | Promise, input cancellation/retention, submission, lease, and disposal sidecars only.                      |
 | `engine_history.ts`              | Projected history operations over generic records.                                                         |
 | `engine_read_model.ts`           | Queue and Recent activity presentation, including failure-reason formatting.                               |
 | `ports.ts`                       | Datasource-neutral driver, projection, and history contracts.                                              |
@@ -952,7 +976,7 @@ optional fallbacks for mandatory queue/projection/history capabilities.
 For every operation family, verify together:
 
 1. Execute, Undo, Redo, and queued-opposite behavior;
-2. exact queue input and no post-admission hydration;
+2. immediate ordered admission, complete fenced inputs, and queue-owned hydration;
 3. logical dependencies and strict per-layer authority order;
 4. mutation-scope FIFO and provisional-ID resolution under lease;
 5. failure-atomic preview and authoritative adoption;

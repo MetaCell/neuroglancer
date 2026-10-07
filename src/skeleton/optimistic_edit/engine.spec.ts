@@ -20,7 +20,10 @@ import {
   SpatialSkeletonCommandHistory,
   type SpatialSkeletonCommandHistoryTransitionTicket as Ticket,
 } from "#src/skeleton/command_history.js";
-import type { SpatialSkeletonQueueInput } from "#src/skeleton/command_protocol.js";
+import type {
+  SpatialSkeletonQueueInput,
+  SpatialSkeletonQueueInputPreparation,
+} from "#src/skeleton/command_protocol.js";
 import { spatialSkeletonLogicalSegment } from "#src/skeleton/logical_identity.js";
 import type {
   SpatialSkeletonMutationContext,
@@ -227,6 +230,7 @@ function makeHarness(
     string,
     string
   > = {
+    describeIntent: (input) => ({ kind: "test", commandLabel: input.name }),
     createLogicalIntent: (input, context) => ({
       kind: "test",
       commandLabel: input.name,
@@ -289,6 +293,25 @@ function makeHarness(
     rollbackFrom,
     getFatal: () => fatal,
   };
+}
+
+function pendingInputs(read = deferred<void>()) {
+  const released = vi.fn();
+  const signals: AbortSignal[] = [];
+  const policy: SpatialSkeletonQueueInputPreparation = {
+    getProtectedSegmentIds: () => [],
+    validate: vi.fn(() => released),
+    acquire: vi.fn(async (signal) => {
+      signals.push(signal);
+      await read.promise;
+      return {
+        input: queueInput,
+        assertCurrent: () => signal.throwIfAborted(),
+        release: vi.fn(),
+      };
+    }),
+  };
+  return { read, policy, signals, released };
 }
 
 describe("SpatialSkeletonOptimisticQueueEngine", () => {
@@ -1046,5 +1069,147 @@ describe("SpatialSkeletonOptimisticQueueEngine", () => {
     expect(commits[2]!.context.intent).toBe("redo");
     commits[2]!.resolve({ value: "redone" });
     await expect(redo.settled).resolves.toMatchObject({ outcome: "committed" });
+  });
+  it("admits loading and ready inputs in call order, before either recipe is built", async () => {
+    const { engine, events, commits } = makeHarness();
+    const cold = pendingInputs();
+    const warm = pendingInputs();
+    warm.read.resolve();
+    const first = engine.submitExecute(
+      { name: "cold", segment: 1 },
+      cold.policy,
+    );
+    const second = engine.submitExecute(
+      { name: "warm", segment: 2 },
+      warm.policy,
+    );
+    await Promise.all([first.acceptedByQueue, second.acceptedByQueue]);
+    expect(engine.getSnapshot().map(({ operationId }) => operationId)).toEqual([
+      1, 2,
+    ]);
+    expect(engine.canUndo()).toBe(true);
+    await flush();
+    expect(cold.policy.acquire).toHaveBeenCalledOnce();
+    expect(warm.policy.acquire).not.toHaveBeenCalled();
+    expect(events.filter((event) => event.startsWith("preview:"))).toEqual([]);
+    expect(commits).toHaveLength(0);
+    cold.read.resolve();
+    await Promise.all([first, second]);
+    await flush();
+    expect(events.filter((event) => event.startsWith("preview:"))).toEqual([
+      "preview:1",
+      "preview:2",
+    ]);
+    expect(commits[0].mutation.name).toBe("cold:0");
+    commits[0].resolve({ value: "saved" });
+    await first.settled;
+    await flush();
+    expect(commits[1].mutation.name).toBe("warm:0");
+    commits[1].resolve({ value: "saved" });
+    await second.settled;
+    expect(cold.released).toHaveBeenCalledOnce();
+    expect(warm.released).toHaveBeenCalledOnce();
+  });
+
+  it.each([false, true])(
+    "undoes an unprepared action and redoes it with fresh preparation (read started: %s)",
+    async (started) => {
+      const { engine, events, commits } = makeHarness();
+      const cold = pendingInputs();
+      const first = engine.submitExecute(
+        { name: "cold", segment: 1 },
+        cold.policy,
+      );
+      await first.acceptedByQueue;
+      if (started) await flush();
+      const undo = engine.submitUndo();
+      await Promise.all([first, undo]);
+      expect(commits).toHaveLength(0);
+      expect(engine.canRedo()).toBe(true);
+      expect(events.filter((event) => event.startsWith("preview:"))).toEqual(
+        [],
+      );
+      expect(cold.released).toHaveBeenCalledOnce();
+      if (started) expect(cold.signals[0].aborted).toBe(true);
+      const redo = engine.submitRedo();
+      await redo.acceptedByQueue;
+      cold.read.resolve();
+      await redo;
+      await flush();
+      expect(commits).toHaveLength(1);
+      expect(commits[0].context.intent).toBe("redo");
+      commits[0].resolve({ value: "redone" });
+      await redo.settled;
+      expect(engine.canUndo()).toBe(true);
+    },
+  );
+
+  it("rolls back a failed input read and cancels its queued suffix before transport", async () => {
+    const { engine, commits, commandHistory } = makeHarness();
+    const cold = pendingInputs();
+    const warm = pendingInputs();
+    warm.read.resolve();
+    const first = engine.submitExecute(
+      { name: "cold", segment: 1 },
+      cold.policy,
+    );
+    const second = engine.submitExecute(
+      { name: "warm", segment: 2 },
+      warm.policy,
+    );
+    const results = Promise.allSettled([first, second]);
+    await flush();
+    cold.read.reject(new Error("read failed"));
+    const result = await results;
+    expect(result.every(({ status }) => status === "rejected")).toBe(true);
+    await Promise.all([first.settled, second.settled]);
+    expect(warm.policy.acquire).not.toHaveBeenCalled();
+    expect(commits).toHaveLength(0);
+    expect(commandHistory.canUndo.value).toBe(false);
+    expect(engine.getSnapshot()).toMatchObject([
+      {
+        canceledLaterIntentCount: 1,
+        lifecycle: { authorityReason: "not-started" },
+      },
+      { lifecycle: { authorityReason: "not-started" } },
+    ]);
+    expect(cold.released).toHaveBeenCalledOnce();
+    expect(warm.released).toHaveBeenCalledOnce();
+  });
+
+  it("counts preparing intents against capacity before running validation or reads", async () => {
+    const { engine } = makeHarness({ capacity: 1 });
+    const cold = pendingInputs();
+    const rejected = pendingInputs();
+    const first = engine.submitExecute(
+      { name: "cold", segment: 1 },
+      cold.policy,
+    );
+    expect(() =>
+      engine.submitExecute({ name: "later", segment: 2 }, rejected.policy),
+    ).toThrow("safety limit");
+    expect(rejected.policy.validate).not.toHaveBeenCalled();
+    expect(rejected.policy.acquire).not.toHaveBeenCalled();
+    await engine.dispose();
+    await expect(first).rejects.toThrow("disposed");
+    expect(cold.released).toHaveBeenCalledOnce();
+  });
+
+  it("disposes pending acquisition without allowing a late response to publish or save", async () => {
+    const { engine, events, commits } = makeHarness();
+    const cold = pendingInputs();
+    const first = engine.submitExecute(
+      { name: "cold", segment: 1 },
+      cold.policy,
+    );
+    await flush();
+    await engine.dispose();
+    await expect(first).rejects.toThrow("disposed");
+    expect(cold.signals[0].aborted).toBe(true);
+    cold.read.resolve();
+    await flush();
+    expect(commits).toHaveLength(0);
+    expect(events.filter((event) => event.startsWith("preview:"))).toEqual([]);
+    expect(cold.released).toHaveBeenCalledOnce();
   });
 });

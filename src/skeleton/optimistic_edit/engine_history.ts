@@ -194,6 +194,16 @@ export class SpatialSkeletonOptimisticEngineHistory<
     )?.metadata.input;
   }
 
+  getCanonicalInputPreparation(historyEntryId: string | number) {
+    return this.options.journal
+      .getEntries()
+      .find(
+        (entry) =>
+          entry.kind === "execute" &&
+          entry.metadata.historyEntryId === historyEntryId,
+      )?.metadata.inputPreparation;
+  }
+
   private createHistoryRecipe(
     entry:
       | EngineIntentRecord<
@@ -208,7 +218,9 @@ export class SpatialSkeletonOptimisticEngineHistory<
       | undefined,
   ) {
     const projection = entry?.requestedResult.value;
-    return entry === undefined || projection === undefined
+    return entry === undefined ||
+      projection === undefined ||
+      entry.metadata.workflow === undefined
       ? undefined
       : {
           workflow: entry.metadata.workflow,

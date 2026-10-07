@@ -252,6 +252,7 @@ export function assertSpatialSkeletonOptimisticDriverRegistration(
   }
   const driver = (value as { driver: Record<string, unknown> }).driver;
   for (const method of [
+    "describeIntent",
     "createLogicalIntent",
     "nextAttempt",
     "createReconciliation",

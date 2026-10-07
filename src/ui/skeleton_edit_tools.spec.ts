@@ -43,6 +43,7 @@ import { StatusMessage } from "#src/status.js";
 import { WatchableValue } from "#src/trackable_value.js";
 import { getDefaultSkeletonFindPathToolBindings } from "#src/ui/default_input_event_bindings.js";
 import * as mouseDrag from "#src/util/mouse_drag.js";
+import { NullarySignal } from "#src/util/signal.js";
 
 if (!("WebGL2RenderingContext" in globalThis)) {
   Object.defineProperty(globalThis, "WebGL2RenderingContext", {
@@ -94,10 +95,78 @@ function suppressStatusMessages() {
   );
 }
 
+function completedEditExecution() {
+  return Object.assign(Promise.resolve(), {
+    acceptedByQueue: Promise.resolve(),
+    settled: Promise.resolve({ outcome: "committed" as const }),
+  });
+}
+
 function makeChangedSignal() {
   return {
     add: vi.fn((_listener: () => void) => () => {}),
     dispatch: vi.fn(),
+  };
+}
+
+function makeMergeTargetPrefetch() {
+  return { setTarget: vi.fn(), clear: vi.fn() };
+}
+
+function makeMergeHoverTool(options: {
+  hoveredSegmentId: number;
+  anchorSegmentId: number;
+  pointerActive?: boolean;
+  pending?: boolean;
+}) {
+  const {
+    hoveredSegmentId,
+    anchorSegmentId,
+    pointerActive = true,
+    pending = false,
+  } = options;
+  const anchorNodeId = 5;
+  const skeletonLayer = {};
+  const mergeTargetPrefetch = makeMergeTargetPrefetch();
+  const mouseState = {
+    active: pointerActive,
+    pickedSpatialSkeleton: { segmentId: hoveredSegmentId },
+    changed: new NullarySignal(),
+  };
+  const mergeAnchorNodeId: { value: number | undefined } = {
+    value: anchorNodeId,
+  };
+  const tool = Object.assign(Object.create(SpatialSkeletonEditTool.prototype), {
+    layer: {
+      spatialSkeletonState: {
+        mergeAnchorNodeId,
+        getCachedNode: (nodeId: number) =>
+          nodeId === anchorNodeId
+            ? { nodeId, segmentId: anchorSegmentId }
+            : undefined,
+      },
+      getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
+      manager: { root: { layerSelectedValues: { mouseState } } },
+    },
+    // SkeletonEditMode.Merge is a non-exported const enum.
+    currentMode: 1,
+    pending,
+    mergeTargetPrefetch,
+  });
+  const movePointerTo = (segmentId: number) => {
+    mouseState.pickedSpatialSkeleton = { segmentId };
+    mouseState.changed.dispatch();
+  };
+  const clearAnchor = () => {
+    mergeAnchorNodeId.value = undefined;
+    (tool as any).handleMergeAnchorChanged();
+  };
+  return {
+    tool: tool as any,
+    mergeTargetPrefetch,
+    skeletonLayer,
+    movePointerTo,
+    clearAnchor,
   };
 }
 
@@ -198,6 +267,7 @@ function makeEditToolHarness() {
     makeToolActivation();
   const tool = Object.assign(Object.create(SpatialSkeletonEditTool.prototype), {
     layer,
+    mergeTargetPrefetch: makeMergeTargetPrefetch(),
   });
   SpatialSkeletonEditTool.prototype.activate.call(tool, activation as any);
   return { layer, actions, dispose, statusMessage: readStatusElement() };
@@ -450,7 +520,7 @@ function makeDragHarness({ inspected = true } = {}) {
     getOrCreateNodeHandle: () => handle,
     resolveNode: (node: typeof handle) => mappings.resolveNode(node),
   };
-  const executeOptimistically = vi.fn(async () => {});
+  const executeOptimistically = vi.fn(completedEditExecution);
   const releaseBrowseExclusion = vi.fn();
   const source = makeCommandSkeletonSource();
   const skeletonLayer = {
@@ -507,6 +577,7 @@ function makeDragHarness({ inspected = true } = {}) {
   };
   const tool = Object.assign(Object.create(SpatialSkeletonEditTool.prototype), {
     layer,
+    mergeTargetPrefetch: makeMergeTargetPrefetch(),
     dragModelSpacePosition: new Float32Array(3),
     dragGlobalAnchorPosition: new Float32Array(3),
     dragGlobalPosition: new Float32Array(3),
@@ -787,7 +858,7 @@ describe("spatial_skeleton_edit_tool", () => {
     const { activation, actions, dispose } = makeToolActivation();
     const tool = Object.assign(
       Object.create(SpatialSkeletonEditTool.prototype),
-      { layer },
+      { layer, mergeTargetPrefetch: makeMergeTargetPrefetch() },
     );
 
     try {
@@ -825,7 +896,7 @@ describe("spatial_skeleton_edit_tool", () => {
       parentNodeId: 76,
       position: new Float32Array([7, 8, 9]),
     };
-    const splitExecute = vi.fn(async () => {});
+    const splitExecute = vi.fn(completedEditExecution);
     const splitSkeletonsCommand = makeCommandFactory(
       SpatialSkeletonActions.splitSkeletons,
     );
@@ -894,7 +965,7 @@ describe("spatial_skeleton_edit_tool", () => {
     const { activation, actions, dispose } = makeToolActivation();
     const tool = Object.assign(
       Object.create(SpatialSkeletonEditTool.prototype),
-      { layer },
+      { layer, mergeTargetPrefetch: makeMergeTargetPrefetch() },
     );
 
     try {
@@ -982,7 +1053,7 @@ describe("spatial_skeleton_edit_tool", () => {
     };
     const tool = Object.assign(
       Object.create(SpatialSkeletonEditTool.prototype),
-      { layer, pending: false },
+      { layer, pending: false, mergeTargetPrefetch: makeMergeTargetPrefetch() },
     );
 
     (tool as any).executeSplitOnNode({
@@ -1010,11 +1081,81 @@ describe("spatial_skeleton_edit_tool", () => {
     await exactPreview;
   });
 
+  it("prefetches the skeleton hovered after picking a merge anchor", () => {
+    const { tool, mergeTargetPrefetch, skeletonLayer, movePointerTo } =
+      makeMergeHoverTool({ hoveredSegmentId: 11, anchorSegmentId: 11 });
+
+    tool.handleMergeAnchorChanged();
+    movePointerTo(22);
+
+    expect(mergeTargetPrefetch.setTarget).toHaveBeenCalledExactlyOnceWith(
+      skeletonLayer,
+      22,
+    );
+  });
+
+  it("does not prefetch the merge anchor's own skeleton", () => {
+    const { tool, mergeTargetPrefetch } = makeMergeHoverTool({
+      hoveredSegmentId: 11,
+      anchorSegmentId: 11,
+    });
+
+    tool.handleMergeAnchorChanged();
+
+    expect(mergeTargetPrefetch.setTarget).not.toHaveBeenCalled();
+  });
+
+  it("keeps the merge target prefetch while the pointer is outside the view", () => {
+    const { tool, mergeTargetPrefetch } = makeMergeHoverTool({
+      hoveredSegmentId: 22,
+      anchorSegmentId: 11,
+      pointerActive: false,
+    });
+
+    tool.handleMergeAnchorChanged();
+
+    expect(mergeTargetPrefetch.clear).not.toHaveBeenCalled();
+    expect(mergeTargetPrefetch.setTarget).not.toHaveBeenCalled();
+  });
+
+  it("keeps the merge target while a merge is waiting for the queue", () => {
+    const { tool, mergeTargetPrefetch, movePointerTo } = makeMergeHoverTool({
+      hoveredSegmentId: 11,
+      anchorSegmentId: 11,
+      pending: true,
+    });
+
+    tool.handleMergeAnchorChanged();
+    movePointerTo(22);
+
+    expect(mergeTargetPrefetch.setTarget).not.toHaveBeenCalled();
+    expect(mergeTargetPrefetch.clear).not.toHaveBeenCalled();
+  });
+
+  it("stops prefetching hovered skeletons once the merge anchor is cleared", () => {
+    const { tool, mergeTargetPrefetch, movePointerTo, clearAnchor } =
+      makeMergeHoverTool({ hoveredSegmentId: 22, anchorSegmentId: 11 });
+
+    tool.handleMergeAnchorChanged();
+    clearAnchor();
+    movePointerTo(33);
+
+    expect(mergeTargetPrefetch.clear).toHaveBeenCalledTimes(1);
+    expect(mergeTargetPrefetch.setTarget).toHaveBeenCalledExactlyOnceWith(
+      expect.anything(),
+      22,
+    );
+  });
+
   it("releases a pending interaction when action construction throws", () => {
     suppressStatusMessages();
     const tool = Object.assign(
       Object.create(SpatialSkeletonEditTool.prototype),
-      { pending: false, interactionGeneration: 1 },
+      {
+        pending: false,
+        interactionGeneration: 1,
+        mergeTargetPrefetch: makeMergeTargetPrefetch(),
+      },
     );
     const release = vi.fn();
 
@@ -1049,7 +1190,11 @@ describe("spatial_skeleton_edit_tool", () => {
     execution.settled = Promise.resolve({ outcome: "committed" });
     const tool = Object.assign(
       Object.create(SpatialSkeletonEditTool.prototype),
-      { pending: false, interactionGeneration: 1 },
+      {
+        pending: false,
+        interactionGeneration: 1,
+        mergeTargetPrefetch: makeMergeTargetPrefetch(),
+      },
     );
     const release = vi.fn();
 
@@ -1151,7 +1296,7 @@ describe("spatial_skeleton_edit_tool", () => {
     const { activation, actions, dispose } = makeToolActivation();
     const tool = Object.assign(
       Object.create(SpatialSkeletonEditTool.prototype),
-      { layer },
+      { layer, mergeTargetPrefetch: makeMergeTargetPrefetch() },
     );
     SpatialSkeletonEditTool.prototype.activate.call(tool, activation as any);
     const activate = () => {
@@ -1560,7 +1705,7 @@ describe("spatial_skeleton_edit_tool", () => {
     const { activation, actions, dispose } = makeToolActivation();
     const tool = Object.assign(
       Object.create(SpatialSkeletonEditTool.prototype),
-      { layer },
+      { layer, mergeTargetPrefetch: makeMergeTargetPrefetch() },
     );
     SpatialSkeletonEditTool.prototype.activate.call(tool, activation as any);
     const pick = (nodeId: number, handlePick: () => void) => {
@@ -2140,7 +2285,7 @@ describe("spatial_skeleton_edit_tool", () => {
     const { activation, actions, dispose } = makeToolActivation();
     const tool = Object.assign(
       Object.create(SpatialSkeletonEditTool.prototype),
-      { layer },
+      { layer, mergeTargetPrefetch: makeMergeTargetPrefetch() },
     );
 
     try {
@@ -2217,7 +2362,7 @@ describe("spatial_skeleton_edit_tool", () => {
     };
     const tool = Object.assign(
       Object.create(SpatialSkeletonEditTool.prototype),
-      { layer, pending: false },
+      { layer, pending: false, mergeTargetPrefetch: makeMergeTargetPrefetch() },
     );
 
     expect(
@@ -2347,8 +2492,15 @@ describe("spatial_skeleton_edit_tool", () => {
         tool.activate(first.activation);
         const stale = start();
         if (startMoving) stale.move(event, 10, 20);
+        const prefetchClears = tool.mergeTargetPrefetch.clear.mock.calls.length;
+        const releaseMergeHover = vi.fn();
+        tool.mergeTargetHoverRelease = releaseMergeHover;
         first.dispose();
         expect(tool.dragInProgress).toBe(false);
+        expect(releaseMergeHover).toHaveBeenCalledOnce();
+        expect(tool.mergeTargetPrefetch.clear).toHaveBeenCalledTimes(
+          prefetchClears + 1,
+        );
         expect(releaseBrowseExclusion).toHaveBeenCalledTimes(
           startMoving ? 1 : 0,
         );
@@ -2447,7 +2599,7 @@ describe("spatial_skeleton_edit_tool", () => {
     const { activation, actions, dispose } = makeToolActivation();
     const tool = Object.assign(
       Object.create(SpatialSkeletonEditTool.prototype),
-      { layer },
+      { layer, mergeTargetPrefetch: makeMergeTargetPrefetch() },
     );
 
     try {
@@ -2481,7 +2633,7 @@ describe("spatial_skeleton_edit_tool", () => {
       position: new Float32Array([4, 5, 6]),
       isTrueEnd: false,
     };
-    const mergeExecute = vi.fn(async () => {});
+    const mergeExecute = vi.fn(completedEditExecution);
     const mergeSkeletonsCommand = makeCommandFactory(
       SpatialSkeletonActions.mergeSkeletons,
     );
@@ -2542,7 +2694,7 @@ describe("spatial_skeleton_edit_tool", () => {
     };
     const tool = Object.assign(
       Object.create(SpatialSkeletonEditTool.prototype),
-      { layer, pending: false },
+      { layer, pending: false, mergeTargetPrefetch: makeMergeTargetPrefetch() },
     );
 
     (tool as any).handleMergeSecondPick();
@@ -2583,7 +2735,7 @@ describe("spatial_skeleton_edit_tool", () => {
       };
       const tool = Object.assign(
         Object.create(SpatialSkeletonEditTool.prototype),
-        { layer },
+        { layer, mergeTargetPrefetch: makeMergeTargetPrefetch() },
       );
       expect(tool.resolvePickedNodeSelectionForMerge(skeletonLayer)).toEqual({
         nodeId: node.nodeId,
@@ -2595,7 +2747,7 @@ describe("spatial_skeleton_edit_tool", () => {
 
   it("keeps root creation independent of the inspection cache", async () => {
     suppressStatusMessages();
-    const addExecute = vi.fn(async () => {});
+    const addExecute = vi.fn(completedEditExecution);
     const addNodesCommand = makeCommandFactory(SpatialSkeletonActions.addNodes);
     const source = makeCommandSkeletonSource({ addNodesCommand });
     const skeletonLayer = { source };
@@ -2623,6 +2775,7 @@ describe("spatial_skeleton_edit_tool", () => {
       Object.create(SpatialSkeletonEditTool.prototype),
       {
         layer,
+        mergeTargetPrefetch: makeMergeTargetPrefetch(),
         pending: false,
         createPlacedThisHold: false,
         getMousePositionInSkeletonCoordinates: vi.fn(
