@@ -4471,6 +4471,54 @@ describe("spatial_skeleton_commands", () => {
     ).toHaveLength(2);
   });
 
+  it("restores a rejected sole-root deletion without reloading", async () => {
+    suppressStatusMessages();
+    const node: SpatiallyIndexedSkeletonNode = {
+      nodeId: 725,
+      segmentId: 87,
+      position: new Float32Array([4, 5, 6]),
+    };
+    let rejectDelete!: (error: unknown) => void;
+    const deleteNode = vi.fn(
+      () =>
+        new Promise<never>((_, reject) => {
+          rejectDelete = reject;
+        }),
+    );
+    const { layer, spatialSkeletonState } = makeOptimisticAddNodeTestLayer({
+      deleteNode,
+      initialNodes: [node],
+      segmentId: node.segmentId,
+    });
+    layer.selectSpatialSkeletonNode(node.nodeId, true, node);
+    const execution = executeSpatialSkeletonDeleteNode(layer as any, node);
+    await execution;
+    await waitForMicrotasks();
+    expect(spatialSkeletonState.getCachedNode(node.nodeId)).toBeUndefined();
+    expect(layer.selectedSpatialSkeletonNodeInfo.value).toBeUndefined();
+    rejectDelete(
+      new HttpError(
+        "https://catmaid.example.test/1/treenode/delete",
+        409,
+        "Conflict",
+      ),
+    );
+    expect(await execution.settled).toMatchObject({
+      outcome: "unchanged",
+      reason: "rejected",
+    });
+    expect(spatialSkeletonState.getCachedNode(node.nodeId)).toMatchObject(node);
+    expect(
+      spatialSkeletonState.spatialSkeletonPresentation.value.removedSegmentIds,
+    ).not.toContain(node.segmentId);
+    expect(layer.selectedSpatialSkeletonNodeInfo.value).toMatchObject({
+      nodeId: node.nodeId,
+      segmentId: node.segmentId,
+    });
+    expect(spatialSkeletonState.getOptimisticEditFatalState()).toBeUndefined();
+    expect(spatialSkeletonState.commandHistory.canUndo.value).toBe(false);
+  });
+
   it("restores a pending delete rollback with a remapped real parent id", async () => {
     suppressStatusMessages();
 

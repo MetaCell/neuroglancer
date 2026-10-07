@@ -26,11 +26,23 @@ import { HttpError } from "#src/util/http_request.js";
 
 const ACTIVITY_REASON_LIMIT = 240;
 
-function formatActivityReason(error: unknown) {
+export function formatSpatialSkeletonOptimisticEditFailureReason(
+  error: unknown,
+) {
+  let reason: string;
   if (error instanceof HttpError) {
-    return `Request failed with HTTP ${error.status}${error.statusText === "" ? "" : ` (${error.statusText})`}.`;
+    reason = `Request failed with HTTP ${error.status}${error.statusText === "" ? "" : ` (${error.statusText})`}.`;
+    const httpMessage = new HttpError(error.url, error.status, error.statusText)
+      .message;
+    // Keep the provider's explanation without retaining request URLs in activity.
+    if (error.message.startsWith(httpMessage)) {
+      const providerMessage = error.message.slice(httpMessage.length).trim();
+      if (providerMessage.length !== 0) reason += ` ${providerMessage}`;
+    }
+  } else {
+    reason = formatErrorMessage(error);
   }
-  const reason = formatErrorMessage(error).replace(/\s+/g, " ").trim();
+  reason = reason.replace(/\s+/g, " ").trim();
   if (reason.length <= ACTIVITY_REASON_LIMIT) return reason;
   return `${reason.slice(0, ACTIVITY_REASON_LIMIT - 1)}…`;
 }
@@ -55,7 +67,9 @@ function getRejectedActivityReason(
   entry: SpatialSkeletonOptimisticEngineReadModelEntry,
 ) {
   if (entry.rejectionReason === undefined) return undefined;
-  const reason = formatActivityReason(entry.rejectionReason);
+  const reason = formatSpatialSkeletonOptimisticEditFailureReason(
+    entry.rejectionReason,
+  );
   return entry.canceledLaterIntentCount !== undefined &&
     entry.lifecycle.authorityReason === "not-started"
     ? `The edit could not be submitted: ${reason}`

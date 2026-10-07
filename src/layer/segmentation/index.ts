@@ -111,6 +111,7 @@ import {
   SKELETON_UNDO,
 } from "#src/skeleton/actions.js";
 import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
+import type { SpatialSkeletonCommandPayload } from "#src/skeleton/command_factories.js";
 import {
   DEFAULT_SPATIAL_SKELETON_EDIT_ACTIONS,
   getSpatialSkeletonActionSupportLabel,
@@ -120,6 +121,7 @@ import {
   type SpatialSkeletonAction,
 } from "#src/skeleton/command_protocol.js";
 import {
+  executeSpatialSkeletonAddNode,
   executeSpatialSkeletonDeleteNode,
   executeSpatialSkeletonNodeConfidenceUpdate,
   executeSpatialSkeletonNodeDescriptionUpdate,
@@ -834,8 +836,9 @@ function copyOptionalSpatialSkeletonPosition(
 
 function spatialSkeletonUiHintPin(
   pin: SpatialSkeletonProjectionSelectionPin,
+  currentPin: boolean,
 ): boolean | "force-unpin" {
-  return pin === "pin" ? true : pin === "unpin" ? "force-unpin" : false;
+  return pin === "pin" ? true : pin === "unpin" ? "force-unpin" : currentPin;
 }
 
 function remapSpatialSkeletonSegmentSet(
@@ -1142,6 +1145,11 @@ export class SegmentationUserLayer extends Base {
     }, pin);
   };
 
+  /** Embedding applications use the same queue and milestones as canvas edits. */
+  executeSpatialSkeletonAddNode(options: SpatialSkeletonCommandPayload) {
+    return executeSpatialSkeletonAddNode(this, options);
+  }
+
   /**
    * Applies the queue runtime's one post-adoption, best-effort UI batch.
    * This owns no skeleton topology: every logical identity was already
@@ -1162,7 +1170,41 @@ export class SegmentationUserLayer extends Base {
       remapSpatialSkeletonSegmentSet(set, hints.segmentIdRemappings);
     }
 
+    // The pinned Selection panel is independent of the transient hover value.
+    // Remap its stored layer entry directly, retaining other layers and position.
     const selectedBeforeRemap = this.selectedSpatialSkeletonNodeInfo.value;
+    const selectionState = this.manager.root.selectionState;
+    const storedSelection = selectionState.value;
+    if (storedSelection !== undefined) {
+      let changed = false;
+      const layers = storedSelection.layers.map((entry) => {
+        if (entry.layer !== this) return entry;
+        const nodeId = getNodeIdFromLayerSelectionState(entry.state);
+        const segmentId = getSegmentIdFromLayerSelectionValue(entry.state);
+        const nextNodeId =
+          nodeId === undefined
+            ? undefined
+            : (hints.nodeIdRemappings.get(nodeId) ?? nodeId);
+        const nextSegmentId =
+          segmentId === undefined
+            ? undefined
+            : (hints.segmentIdRemappings.get(segmentId) ?? segmentId);
+        if (nextNodeId === nodeId && nextSegmentId === segmentId) return entry;
+        changed = true;
+        return {
+          ...entry,
+          state: {
+            ...entry.state,
+            ...(nextNodeId === undefined ? {} : { nodeId: String(nextNodeId) }),
+            ...(nextSegmentId === undefined
+              ? {}
+              : { value: BigInt(nextSegmentId) }),
+          },
+        };
+      });
+      if (changed) selectionState.value = { ...storedSelection, layers };
+    }
+
     if (selectedBeforeRemap !== undefined) {
       const nextNodeId =
         hints.nodeIdRemappings.get(selectedBeforeRemap.nodeId) ??
@@ -1176,26 +1218,11 @@ export class SegmentationUserLayer extends Base {
         nextNodeId !== selectedBeforeRemap.nodeId ||
         nextSegmentId !== selectedBeforeRemap.segmentId
       ) {
-        this.selectSpatialSkeletonNode(
-          nextNodeId,
-          this.manager.root.selectionState.pin.value,
-          {
-            segmentId: nextSegmentId,
-            position: selectedBeforeRemap.position,
-          },
-        );
-      }
-    } else {
-      const selectedSegment =
-        this.displayState.segmentSelectionState.baseValue ?? undefined;
-      if (selectedSegment !== undefined) {
-        const remapped = hints.segmentIdRemappings.get(Number(selectedSegment));
-        if (remapped !== undefined && remapped !== Number(selectedSegment)) {
-          this.selectSegment(
-            BigInt(remapped),
-            this.manager.root.selectionState.pin.value,
-          );
-        }
+        this.selectedSpatialSkeletonNodeInfo.value = {
+          ...selectedBeforeRemap,
+          nodeId: nextNodeId,
+          segmentId: nextSegmentId,
+        };
       }
     }
 
@@ -1212,7 +1239,7 @@ export class SegmentationUserLayer extends Base {
       if (visibility.select !== undefined) {
         this.selectSegment(
           segmentId,
-          spatialSkeletonUiHintPin(visibility.select),
+          spatialSkeletonUiHintPin(visibility.select, selectionState.pin.value),
         );
       }
     }
@@ -1230,7 +1257,7 @@ export class SegmentationUserLayer extends Base {
       const cached = this.spatialSkeletonState.getCachedNode(selection.nodeId);
       this.selectSpatialSkeletonNode(
         selection.nodeId,
-        spatialSkeletonUiHintPin(selection.pin),
+        spatialSkeletonUiHintPin(selection.pin, selectionState.pin.value),
         {
           segmentId: selection.segmentId ?? cached?.segmentId,
           position: selection.position ?? cached?.position,

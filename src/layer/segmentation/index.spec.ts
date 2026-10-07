@@ -49,6 +49,98 @@ const { SegmentSelectionState } = await import(
   "#src/segmentation_display_state/frontend.js"
 );
 
+const { TrackableDataSelectionState } = await import("#src/layer/index.js");
+const { CatmaidSpatialSkeletonEditCommands } = await import(
+  "#src/datasource/catmaid/spatial_skeleton_commands.js"
+);
+const { SpatialSkeletonState } = await import(
+  "#src/skeleton/spatial_skeleton_manager.js"
+);
+const { executeSpatialSkeletonDeleteNode } = await import(
+  "#src/skeleton/commands.js"
+);
+
+function makeQueuedSelectionLayer(pin = true) {
+  const layer = Object.create(SegmentationUserLayer.prototype);
+  const selectionState: any = {
+    value: undefined,
+    pin: new WatchableValue(pin),
+    coordinateSpace: { value: {} },
+    location: { visible: true },
+    captureSingleLayerState:
+      TrackableDataSelectionState.prototype.captureSingleLayerState,
+  };
+  const state = new SpatialSkeletonState();
+  const group = {
+    visibleSegments: new Set<bigint>(),
+    temporaryVisibleSegments: new Set<bigint>(),
+    selectedSegments: new Set<bigint>(),
+    useTemporaryVisibleSegments: { value: false },
+  };
+  Object.defineProperty(layer, "manager", {
+    value: { root: { selectionState } },
+  });
+  const commands = new CatmaidSpatialSkeletonEditCommands({
+    getClient: () => client as any,
+  });
+  const client = {
+    baseUrl: "https://catmaid.example.test",
+    projectId: 1,
+    addNode: vi.fn(),
+    deleteNode: vi.fn(),
+    getSkeleton: vi.fn(async () => []),
+  };
+  const source = {
+    readonly: false,
+    optimisticEditing: commands.optimisticEditing,
+    addNodesCommand: commands.addNodesCommand,
+    deleteNodesCommand: commands.deleteNodesCommand,
+    getSkeleton: client.getSkeleton,
+  };
+  const skeletonLayer = {
+    source,
+    getNode: (id: number) => state.getCachedNode(id),
+    retainOverlaySegment: vi.fn(),
+    remapOverlaySegments: vi.fn(),
+  };
+  Object.assign(layer, {
+    spatialSkeletonState: state,
+    displayState: {
+      segmentationGroupState: { value: group },
+      segmentSelectionState: { baseValue: 999n },
+    },
+    selectedSpatialSkeletonNodeInfo: new WatchableValue(undefined),
+    getSpatiallyIndexedSkeletonLayer: () => skeletonLayer,
+    initializeSelectionState: (value: any) => {
+      value.nodeId = undefined;
+      value.value = undefined;
+    },
+    selectSegment: (id: bigint, pin: boolean) =>
+      selectionState.captureSingleLayerState(
+        layer,
+        (value: any) => {
+          value.value = id;
+          return true;
+        },
+        pin,
+      ),
+    selectSpatialSkeletonNode: (nodeId: number, pin: boolean, options: any) => {
+      layer.selectedSpatialSkeletonNodeInfo.value = { nodeId, ...options };
+      (layer as any).captureSpatialSkeletonSelectionState((value: any) => {
+        value.nodeId = String(nodeId);
+        value.value = BigInt(options.segmentId);
+        return true;
+      }, pin);
+    },
+    clearSpatialSkeletonNodeSelection: (pin: boolean) => {
+      layer.selectedSpatialSkeletonNodeInfo.value = undefined;
+      (layer as any).captureSpatialSkeletonSelectionState(() => true, pin);
+    },
+    moveViewToSpatialSkeletonNodePosition: vi.fn(),
+  });
+  return { layer, selectionState, state, group, client, skeletonLayer };
+}
+
 function makeEditableSpatialSkeletonSource(
   options: {
     confidenceConfiguration?: boolean;
@@ -261,13 +353,145 @@ describe("layer/segmentation optimistic projection UI hints", () => {
       expect(set.has(100n)).toBe(false);
       expect(set.has(200n)).toBe(true);
     }
-    expect(selectSpatialSkeletonNode).toHaveBeenCalledWith(20, true, {
+    expect(selectedSpatialSkeletonNodeInfo.value).toEqual({
+      nodeId: 20,
       segmentId: 200,
       position: [1, 2, 3],
     });
+    expect(selectSpatialSkeletonNode).not.toHaveBeenCalled();
     expect(remapPendingNodePositions).toHaveBeenCalledWith(new Map([[10, 20]]));
     expect(remapOverlaySegments).toHaveBeenCalledWith(new Map([[100, 200]]));
     expect(retainOverlaySegment).toHaveBeenCalledWith(200);
+  });
+
+  it.each([true, false])(
+    "remaps a stored segment-only selection while preserving pin %s, position, and other layers",
+    (pin) => {
+      const { layer, selectionState } = makeQueuedSelectionLayer(pin);
+      const otherEntry = { layer: {}, state: { value: 42n } };
+      const position = new Float32Array([1, 2, 3]);
+      selectionState.value = {
+        layers: [{ layer, state: { value: 4294967290n } }, otherEntry],
+        position,
+      };
+      layer.applySpatialSkeletonProjectionUiHints({
+        nodeIdRemappings: new Map(),
+        segmentIdRemappings: new Map([[4294967290, 114]]),
+        segmentVisibility: [],
+        retainSegmentIds: [],
+      });
+      expect(selectionState.value.layers[0].state.value).toBe(114n);
+      expect(selectionState.value.layers[1]).toBe(otherEntry);
+      expect(selectionState.value.position).toBe(position);
+      expect(selectionState.pin.value).toBe(pin);
+    },
+  );
+
+  it.each([true, false])(
+    "applies restored node hints while preserving pin %s",
+    (pin) => {
+      const { layer, selectionState } = makeQueuedSelectionLayer(pin);
+      layer.applySpatialSkeletonProjectionUiHints({
+        nodeIdRemappings: new Map(),
+        segmentIdRemappings: new Map(),
+        segmentVisibility: [
+          { segmentId: 87, visible: true, deselect: false, select: "preserve" },
+        ],
+        selectedNode: {
+          kind: "select",
+          nodeId: 725,
+          segmentId: 87,
+          pin: "preserve",
+          moveView: false,
+        },
+        retainSegmentIds: [87],
+      });
+      expect(selectionState.value.layers[0].state).toEqual({
+        nodeId: "725",
+        value: 87n,
+      });
+      expect(selectionState.pin.value).toBe(pin);
+    },
+  );
+
+  it("restores visibility and the pinned node after a final-node rejection through the real queue", async () => {
+    const { layer, state, selectionState, group, client } =
+      makeQueuedSelectionLayer();
+    const node = {
+      nodeId: 725,
+      segmentId: 87,
+      position: new Float32Array([4, 5, 6]),
+    };
+    state.replaceCachedSegmentSnapshots([[87, [node]]]);
+    group.visibleSegments.add(87n);
+    layer.selectSpatialSkeletonNode(node.nodeId, true, node);
+    let rejectDelete!: (error: Error) => void;
+    client.deleteNode.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectDelete = reject;
+        }),
+    );
+    const execution = executeSpatialSkeletonDeleteNode(layer, node);
+    await execution;
+    for (let i = 0; i < 20 && rejectDelete === undefined; i++)
+      await Promise.resolve();
+    expect(selectionState.value.layers[0].state.nodeId).toBeUndefined();
+    expect(group.visibleSegments.has(87n)).toBe(false);
+    // A plain provider rejection must be classified as definitive, as HTTP 409 is.
+    const { HttpError } = await import("#src/util/http_request.js");
+    rejectDelete(
+      new HttpError(
+        "https://catmaid.example.test/1/treenode/delete",
+        409,
+        "Conflict",
+      ),
+    );
+    expect(await execution.settled).toMatchObject({
+      outcome: "unchanged",
+      reason: "rejected",
+    });
+    expect(selectionState.value.layers[0].state).toEqual({
+      nodeId: "725",
+      value: 87n,
+    });
+    expect(group.visibleSegments.has(87n)).toBe(true);
+    expect(state.getCachedNode(725)).toMatchObject(node);
+    expect(
+      state.spatialSkeletonPresentation.value.removedSegmentIds,
+    ).not.toContain(87);
+    expect(state.getOptimisticEditFatalState()).toBeUndefined();
+    state.dispose();
+  });
+
+  it("exposes queued creation milestones and its saved ID to embedding applications", async () => {
+    const { layer, state, client } = makeQueuedSelectionLayer();
+    let finish!: (result: any) => void;
+    client.addNode.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const execution = layer.executeSpatialSkeletonAddNode({
+      skeletonId: 0,
+      positionInModelSpace: [4, 5, 6],
+    });
+    await execution.acceptedByQueue;
+    await execution;
+    for (let i = 0; i < 20 && finish === undefined; i++)
+      await Promise.resolve();
+    const settled = vi.fn();
+    execution.settled.then(settled);
+    await Promise.resolve();
+    expect(settled).not.toHaveBeenCalled();
+    finish({ nodeId: 20, segmentId: 99 });
+    expect(await execution.settled).toEqual({
+      outcome: "committed",
+      result: { nodeId: 20, segmentId: 99 },
+    });
+    expect(state.getCachedNode(20)?.segmentId).toBe(99);
+    state.dispose();
   });
 });
 

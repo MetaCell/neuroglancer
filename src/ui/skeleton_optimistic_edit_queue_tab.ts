@@ -17,6 +17,7 @@
 import "#src/ui/skeleton_tab.css";
 
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
+import { formatSpatialSkeletonOptimisticEditFailureReason } from "#src/skeleton/optimistic_edit/engine_read_model.js";
 import { SPATIAL_SKELETON_RELOAD_REQUIRED_EDIT_REASON } from "#src/skeleton/optimistic_edit/fatal.js";
 import type { SpatialSkeletonOptimisticIntentLifecycle } from "#src/skeleton/optimistic_edit/lifecycle.js";
 import type {
@@ -44,18 +45,10 @@ function getAuthorityFailureCause(
     "lifecycle" | "reason" | "error"
   >,
 ) {
-  let reason = entry.reason?.trim();
-  if (entry.error instanceof HttpError) {
-    const error = entry.error;
-    const httpMessage = new HttpError(error.url, error.status, error.statusText)
-      .message;
-    if (error.message.startsWith(httpMessage)) {
-      const providerMessage = error.message.slice(httpMessage.length).trim();
-      if (providerMessage.length !== 0) {
-        reason = `${reason ?? httpMessage} ${providerMessage}`;
-      }
-    }
-  }
+  const reason =
+    entry.error instanceof HttpError
+      ? formatSpatialSkeletonOptimisticEditFailureReason(entry.error)
+      : entry.reason?.trim();
   if (reason === undefined || reason.length === 0) {
     return "The edit was not saved.";
   }
