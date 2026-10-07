@@ -434,7 +434,7 @@ function makeCommandSkeletonSource(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function makeDragHarness() {
+function makeDragHarness({ inspected = true } = {}) {
   suppressStatusMessages();
   const original: SpatiallyIndexedSkeletonNode = {
     nodeId: 2147483647,
@@ -466,9 +466,9 @@ function makeDragHarness() {
     getOptimisticEditingIdentityService: () => identities,
     executeOptimisticEdit: executeOptimistically,
     getCachedNode: (id: number) =>
-      id === currentNode.nodeId ? currentNode : undefined,
+      inspected && id === currentNode.nodeId ? currentNode : undefined,
     getCachedSegmentSnapshotHandle: () =>
-      makeCachedSegmentSnapshot([currentNode]),
+      inspected ? makeCachedSegmentSnapshot([currentNode]) : undefined,
     mergeAnchorNodeId: { value: undefined, changed: makeChangedSignal() },
     clearPendingNodePositions: vi.fn(),
     setPendingNodePosition: vi.fn(() => true),
@@ -2159,7 +2159,7 @@ describe("spatial_skeleton_edit_tool", () => {
     }
   });
 
-  it("rejects cold move, add-child, delete, split, and merge-from interactions", () => {
+  it("rejects cold add-child, delete, split, and merge-from interactions", () => {
     suppressStatusMessages();
     const node: SpatiallyIndexedSkeletonNode = {
       nodeId: 101,
@@ -2220,13 +2220,6 @@ describe("spatial_skeleton_edit_tool", () => {
       { layer, pending: false },
     );
 
-    (tool as any).handleDefaultMousedown(
-      {
-        stopPropagation: vi.fn(),
-        preventDefault: vi.fn(),
-      },
-      {},
-    );
     expect(
       (tool as any).getSelectedParentNodeForAdd(skeletonLayer, node.nodeId),
     ).toBeUndefined();
@@ -2234,7 +2227,6 @@ describe("spatial_skeleton_edit_tool", () => {
     (tool as any).handleSplitPick();
     (tool as any).handleMergeFirstPick();
 
-    expect(source.moveNodesCommand.createCommand).not.toHaveBeenCalled();
     expect(source.addNodesCommand.createCommand).not.toHaveBeenCalled();
     expect(source.deleteNodesCommand.createCommand).not.toHaveBeenCalled();
     expect(source.splitSkeletonsCommand.createCommand).not.toHaveBeenCalled();
@@ -2245,6 +2237,42 @@ describe("spatial_skeleton_edit_tool", () => {
     expect(StatusMessage.showTemporaryMessage).toHaveBeenCalledWith(
       `Inspect skeleton ${node.segmentId} before editing it.`,
     );
+  });
+
+  it("selects a node of an uninspected skeleton without asking to inspect it", () => {
+    const { layer, start, original } = makeDragHarness({ inspected: false });
+    start();
+
+    expect(layer.selectSpatialSkeletonNode).toHaveBeenCalledWith(
+      original.nodeId,
+      true,
+      original,
+    );
+    expect(StatusMessage.showTemporaryMessage).not.toHaveBeenCalled();
+  });
+
+  it("does not ask to inspect an uninspected skeleton when the pointer barely moves", () => {
+    const { start, event } = makeDragHarness({ inspected: false });
+    const { move } = start();
+    // Below the 2 px drag threshold.
+    move(event, 1, 0);
+
+    expect(StatusMessage.showTemporaryMessage).not.toHaveBeenCalled();
+  });
+
+  it("asks once to inspect the skeleton when one of its nodes is dragged", () => {
+    const { state, source, start, event, original } = makeDragHarness({
+      inspected: false,
+    });
+    const { move } = start();
+    move(event, 10, 20);
+    move(event, 10, 20);
+
+    expect(StatusMessage.showTemporaryMessage).toHaveBeenCalledExactlyOnceWith(
+      `Inspect skeleton ${original.segmentId} before editing it.`,
+    );
+    expect(state.setPendingNodePosition).not.toHaveBeenCalled();
+    expect(source.moveNodesCommand.createCommand).not.toHaveBeenCalled();
   });
 
   for (const remapNodeId of [true, false]) {

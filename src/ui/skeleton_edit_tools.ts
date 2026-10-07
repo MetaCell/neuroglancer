@@ -1021,11 +1021,11 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
         SpatialSkeletonActions.moveNodes,
       ) === undefined;
     const nodeInfo = canMove
-      ? this.requireInspectedNode(
+      ? this.resolveInspectedNode(
           skeletonLayer,
           pickedNode.nodeId,
           pickedNode.segmentId,
-        )
+        ).node
       : undefined;
 
     const pickedPosition = this.mouseState.position;
@@ -1042,8 +1042,17 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
     }
     this.layer.selectSpatialSkeletonNode(pickedNode.nodeId, true, pickedNode);
 
-    if (nodeInfo === undefined || !hasPickedPosition) {
+    if (!canMove || !hasPickedPosition) {
       return; // Can't drag: done after the select above.
+    }
+    if (nodeInfo === undefined) {
+      this.reportUninspectedNodeOnDrag(
+        event,
+        skeletonLayer,
+        pickedNode.nodeId,
+        pickedNode.segmentId,
+      );
+      return;
     }
 
     // Arm drag: if threshold exceeded, move the node.
@@ -1181,6 +1190,29 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
         releaseBrowseExclusion?.();
       },
     );
+  }
+
+  private reportUninspectedNodeOnDrag(
+    event: MouseEvent,
+    skeletonLayer: SpatiallyIndexedSkeletonLayer,
+    nodeId: number,
+    segmentId: number | undefined,
+  ) {
+    const generation = this.interactionGeneration;
+    let dragDistanceSquared = 0;
+    let reported = false;
+    startRelativeMouseDrag(event, (_dragEvent, deltaX, deltaY) => {
+      if (reported || this.interactionGeneration !== generation) return;
+      dragDistanceSquared += deltaX * deltaX + deltaY * deltaY;
+      if (
+        dragDistanceSquared <
+        DRAG_START_DISTANCE_PX * DRAG_START_DISTANCE_PX
+      ) {
+        return;
+      }
+      reported = true;
+      this.requireInspectedNode(skeletonLayer, nodeId, segmentId);
+    });
   }
 
   private executeSplitOnNode(pickedNode: {
