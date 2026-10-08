@@ -20,94 +20,116 @@
 
 import type { SkeletonChunk } from "#src/skeleton/backend.js";
 
-export function decodeSwcSkeletonChunk(chunk: SkeletonChunk, swcStr: string) {
-  const swcObjects: Array<PointObj> = parseSwc(swcStr);
+// https://swc-specification.readthedocs.io/en/latest/swc.html
+interface SwcNode {
+  readonly id: number;
+  readonly type: number;
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly radius: number;
+  readonly parent: number;
+}
 
-  if (swcObjects.length < 1) {
-    throw new Error("ERROR parsing swc data");
+const swcRootParent = -1;
+
+export enum SwcValidation {
+  STRICT,
+  // Skips each problem item and warns once for each file.
+  LENIENT,
+}
+
+class SwcProblemLog {
+  private readonly countByProblem = new Map<string, number>();
+
+  constructor(private readonly validation: SwcValidation) {}
+
+  report(problem: string, detail: string) {
+    if (this.validation === SwcValidation.STRICT) throw new Error(detail);
+    this.countByProblem.set(
+      problem,
+      (this.countByProblem.get(problem) ?? 0) + 1,
+    );
   }
 
-  const indexMap = new Uint32Array(swcObjects.length);
-
-  let nodeCount = 0;
-  let edgeCount = 0;
-  swcObjects.forEach((swcObj, i) => {
-    if (swcObj) {
-      indexMap[i] = nodeCount++;
-      if (swcObj.parent >= 0) {
-        ++edgeCount;
-      }
-    }
-  });
-
-  const glVertices = new Float32Array(3 * nodeCount);
-  const glIndices = new Uint32Array(2 * edgeCount);
-
-  let nodeIndex = 0;
-  let edgetIndex = 0;
-  swcObjects.forEach((swcObj) => {
-    if (swcObj) {
-      glVertices[3 * nodeIndex] = swcObj.x;
-      glVertices[3 * nodeIndex + 1] = swcObj.y;
-      glVertices[3 * nodeIndex + 2] = swcObj.z;
-
-      if (swcObj.parent >= 0) {
-        glIndices[2 * edgetIndex] = nodeIndex;
-        glIndices[2 * edgetIndex + 1] = indexMap[swcObj.parent];
-        ++edgetIndex;
-      }
-      ++nodeIndex;
-    }
-  });
-
-  chunk.indices = glIndices;
-  chunk.vertexPositions = glVertices;
+  warnIfAny(objectId: bigint) {
+    if (this.countByProblem.size === 0) return;
+    const summary = Array.from(
+      this.countByProblem,
+      ([problem, count]) => `${count} ${problem}`,
+    ).join(", ");
+    console.warn(`SWC skeleton ${objectId}: ${summary}`);
+  }
 }
 
-/*
- * Parses a standard SWC file into an array of point objects
- * modified from
- * https://github.com/JaneliaSciComp/SharkViewer/blob/d9969a7c513beee32ff9650b00bf79cda8f3c76a/html/js/sharkviewer_loader.js
- */
-function parseSwc(swcStr: string) {
-  const swcInputAr = swcStr.split("\n");
-  const swcObjectsAr: Array<PointObj> = [];
-  const float = "-?\\d*(?:\\.\\d+)?";
-  const pattern = new RegExp(
-    "^[ \\t]*(" +
-      [
-        "\\d+", // index
-        "\\d+", // type
-        float, // x
-        float, // y
-        float, // z
-        float, // radius
-        "-1|\\d+", // parent
-      ].join(")[ \\t]+(") +
-      ")[ \\t]*$",
+export function decodeSwcSkeletonChunk(
+  chunk: SkeletonChunk,
+  swcText: string,
+  options: { validation: SwcValidation },
+) {
+  const problems = new SwcProblemLog(options.validation);
+  const nodeById = new Map<number, SwcNode>();
+  for (const node of parseSwc(swcText, problems)) {
+    if (nodeById.has(node.id)) {
+      problems.report(
+        "duplicate nodes replaced by a later line",
+        `SWC node ${node.id} is defined more than once`,
+      );
+    }
+    nodeById.set(node.id, node);
+  }
+  const nodes = Array.from(nodeById.values());
+  if (nodes.length === 0) {
+    throw new Error("SWC file contains no nodes");
+  }
+
+  const vertexIndexById = new Map(
+    nodes.map((node, vertexIndex) => [node.id, vertexIndex]),
   );
-
-  swcInputAr.forEach((e) => {
-    // if line meets swc point criteria, add it to the array
-    const match = e.match(pattern);
-    if (match) {
-      const point = (swcObjectsAr[parseInt(match[1], 10)] = new PointObj());
-      point.type = parseInt(match[2], 10);
-      point.x = parseFloat(match[3]);
-      point.y = parseFloat(match[4]);
-      point.z = parseFloat(match[5]);
-      point.radius = parseFloat(match[6]);
-      point.parent = parseInt(match[7], 10);
+  const vertexPositions = new Float32Array(3 * nodes.length);
+  const radii = new Float32Array(nodes.length);
+  const types = new Float32Array(nodes.length);
+  const edges: number[] = [];
+  nodes.forEach((node, vertexIndex) => {
+    vertexPositions[3 * vertexIndex] = node.x;
+    vertexPositions[3 * vertexIndex + 1] = node.y;
+    vertexPositions[3 * vertexIndex + 2] = node.z;
+    radii[vertexIndex] = node.radius;
+    types[vertexIndex] = node.type;
+    if (node.parent === swcRootParent) return;
+    const parentVertexIndex = vertexIndexById.get(node.parent);
+    if (parentVertexIndex === undefined) {
+      problems.report(
+        "edges dropped because the parent is not in the file",
+        `SWC node ${node.id} has parent ${node.parent}, which is not in the file`,
+      );
+      return;
     }
+    edges.push(vertexIndex, parentVertexIndex);
   });
-  return swcObjectsAr;
+  problems.warnIfAny(chunk.objectId);
+
+  chunk.vertexPositions = vertexPositions;
+  chunk.indices = Uint32Array.from(edges);
+  // In the order of `swcVertexAttributes`.
+  chunk.vertexAttributes = [radii, types];
 }
 
-class PointObj {
-  type: number;
-  x: number;
-  y: number;
-  z: number;
-  radius: number;
-  parent: number;
+function parseSwc(swcText: string, problems: SwcProblemLog): SwcNode[] {
+  const nodes: SwcNode[] = [];
+  swcText.split(/\r?\n/).forEach((line, lineIndex) => {
+    const content = line.trim();
+    if (content === "" || content.startsWith("#")) return;
+    const columns = content.split(/\s+/).map(Number);
+    if (columns.length !== 7 || !columns.every(Number.isFinite)) {
+      problems.report(
+        "lines skipped because they are not seven numbers",
+        `SWC line ${lineIndex + 1} is not seven numbers: ${JSON.stringify(line)}`,
+      );
+      return;
+    }
+    const [id, type, x, y, z, radius, parent] = columns;
+    nodes.push({ id, type, x, y, z, radius, parent });
+  });
+  return nodes;
 }
