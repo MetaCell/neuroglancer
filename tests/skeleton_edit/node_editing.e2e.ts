@@ -542,7 +542,9 @@ test.describe("creation", () => {
       // Span animation frames between press and release to catch lost clicks.
       await ui.runEdit(() =>
         ui.page
-          .getByRole("button", { name: "Delete node", exact: true })
+          .locator(
+            '.neuroglancer-selection-details-skeleton-action[title="Delete node"]',
+          )
           .click({ delay: 150 }),
       );
       const described = change(created, permanentId, {

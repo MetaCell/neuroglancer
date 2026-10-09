@@ -746,7 +746,9 @@ for (const action of ["Delete", "Split", "Confidence"] as const) {
       await ui.runEdit(async () => {
         if (action === "Delete") {
           await page
-            .getByRole("button", { name: "Delete node", exact: true })
+            .locator(
+              '.neuroglancer-selection-details-skeleton-action[title="Delete node"]',
+            )
             .click();
         } else {
           await page

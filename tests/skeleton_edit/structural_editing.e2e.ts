@@ -269,7 +269,7 @@ test.describe("branched merge", () => {
   });
 });
 
-test("[E2E-17] cold Merge target is prepared before preview and queue admission", async ({
+test("[E2E-17] cold Merge target is prepared before preview and before the CATMAID request", async ({
   real,
 }) => {
   const { ui, ids, original, transport } = real;
@@ -301,7 +301,12 @@ test("[E2E-17] cold Merge target is prepared before preview and queue admission"
   await expect(
     ui.page.getByText("Merging skeletons...", { exact: true }),
   ).toBeVisible();
-  expect((await readQueue(ui.page)).entries).toHaveLength(0);
+  const { entries } = await readQueue(ui.page);
+  expect(entries).toHaveLength(1);
+  expect(entries[0].lifecycle).toMatchObject({
+    preview: "preparing",
+    authority: "queued",
+  });
   expect(transport.mutations).toHaveLength(0);
   await real.preview(
     original.filter(

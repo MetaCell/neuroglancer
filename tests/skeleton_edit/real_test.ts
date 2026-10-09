@@ -147,7 +147,9 @@ export class RealSkeletonPage extends SkeletonEditPage {
     await this.selectNode(id);
     await this.runEdit(() =>
       this.page
-        .getByRole("button", { name: "Delete node", exact: true })
+        .locator(
+          '.neuroglancer-selection-details-skeleton-action[title="Delete node"]',
+        )
         .click(),
     );
   }

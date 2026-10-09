@@ -89,9 +89,13 @@ for (const trigger of ["description blur", "save acknowledgement"] as const) {
       // A real press spans frames. Blur must save first without replacing the
       // pressed button before its click can submit Delete.
       await ui.runEdit(() =>
-        page.getByRole("button", { name: "Delete node", exact: true }).click({
-          delay: 150,
-        }),
+        page
+          .locator(
+            '.neuroglancer-selection-details-skeleton-action[title="Delete node"]',
+          )
+          .click({
+            delay: 150,
+          }),
       );
       await expect
         .poll(() => backend.mutations.map(({ path }) => path))
@@ -123,10 +127,9 @@ test("Delete survives a Move acknowledgement during a press without a focused ed
     await expect(
       page.getByRole("textbox", { name: "Description", exact: true }),
     ).not.toBeFocused();
-    const button = page.getByRole("button", {
-      name: "Delete node",
-      exact: true,
-    });
+    const button = page.locator(
+      '.neuroglancer-selection-details-skeleton-action[title="Delete node"]',
+    );
     await ui.runEdit(async () => {
       await button.hover();
       await page.mouse.down();
@@ -798,7 +801,11 @@ test("deleting a leaf restores its parent and position under a fresh ID on Undo"
     const [original] = await readGraph(page, [103]);
     const held = backend.holdNextMutation("treenode/delete");
     await ui.runEdit(() =>
-      page.getByRole("button", { name: "Delete node", exact: true }).click(),
+      page
+        .locator(
+          '.neuroglancer-selection-details-skeleton-action[title="Delete node"]',
+        )
+        .click(),
     );
     await held.received;
     expect(await readGraph(page, [103])).toEqual([]);
