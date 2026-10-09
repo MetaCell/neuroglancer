@@ -39,7 +39,6 @@ import type {
   SpatialSkeletonVector,
 } from "#src/skeleton/api.js";
 import {
-  SpatialSkeletonActions,
   type SpatialSkeletonAction,
   type SpatialSkeletonEditCommand,
   type SpatialSkeletonQueueInput,
@@ -107,29 +106,12 @@ const CATMAID_OPTIMISTIC_OPERATION_NOUNS = Object.freeze({
   Record<CatmaidSpatialSkeletonCommandPayload["kind"], string>
 >;
 
-const CATMAID_OPTIMISTIC_ERROR_OPERATIONS = {
-  "add-node": SpatialSkeletonActions.addNodes,
-  "move-node": SpatialSkeletonActions.moveNodes,
-  "delete-node": SpatialSkeletonActions.deleteNodes,
-  reroot: SpatialSkeletonActions.reroot,
-  split: SpatialSkeletonActions.splitSkeletons,
-  merge: SpatialSkeletonActions.mergeSkeletons,
-  description: SpatialSkeletonActions.editNodeDescription,
-  "true-end": SpatialSkeletonActions.editNodeTrueEnd,
-  radius: SpatialSkeletonActions.editNodeRadius,
-  confidence: SpatialSkeletonActions.editNodeConfidence,
-} satisfies Record<
-  CatmaidSpatialSkeletonCommandPayload["kind"],
-  SpatialSkeletonAction
->;
-
 export function getCatmaidOptimisticAuthorityPresentation(
   kind: CatmaidSpatialSkeletonCommandPayload["kind"],
 ): SpatialSkeletonOptimisticAuthorityPresentation {
   return Object.freeze({
     authorityLabel: "CATMAID",
     operationNoun: CATMAID_OPTIMISTIC_OPERATION_NOUNS[kind],
-    operation: CATMAID_OPTIMISTIC_ERROR_OPERATIONS[kind],
     stalledWarning: CATMAID_OPTIMISTIC_STALLED_WARNING,
   });
 }

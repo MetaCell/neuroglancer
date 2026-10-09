@@ -463,36 +463,6 @@ describe("layer/segmentation optimistic projection UI hints", () => {
     expect(state.getOptimisticEditFatalState()).toBeUndefined();
     state.dispose();
   });
-
-  it("exposes queued creation milestones and its saved ID to embedding applications", async () => {
-    const { layer, state, client } = makeQueuedSelectionLayer();
-    let finish!: (result: any) => void;
-    client.addNode.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-    );
-    const execution = layer.executeSpatialSkeletonAddNode({
-      skeletonId: 0,
-      positionInModelSpace: [4, 5, 6],
-    });
-    await execution.acceptedByQueue;
-    await execution;
-    for (let i = 0; i < 20 && finish === undefined; i++)
-      await Promise.resolve();
-    const settled = vi.fn();
-    execution.settled.then(settled);
-    await Promise.resolve();
-    expect(settled).not.toHaveBeenCalled();
-    finish({ nodeId: 20, segmentId: 99 });
-    expect(await execution.settled).toEqual({
-      outcome: "committed",
-      result: { nodeId: 20, segmentId: 99 },
-    });
-    expect(state.getCachedNode(20)?.segmentId).toBe(99);
-    state.dispose();
-  });
 });
 
 describe("layer/segmentation spatial skeleton action gating", () => {

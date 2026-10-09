@@ -111,7 +111,6 @@ import {
   SKELETON_UNDO,
 } from "#src/skeleton/actions.js";
 import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
-import type { SpatialSkeletonCommandPayload } from "#src/skeleton/command_factories.js";
 import {
   DEFAULT_SPATIAL_SKELETON_EDIT_ACTIONS,
   getSpatialSkeletonActionSupportLabel,
@@ -121,7 +120,6 @@ import {
   type SpatialSkeletonAction,
 } from "#src/skeleton/command_protocol.js";
 import {
-  executeSpatialSkeletonAddNode,
   executeSpatialSkeletonDeleteNode,
   executeSpatialSkeletonNodeConfidenceUpdate,
   executeSpatialSkeletonNodeDescriptionUpdate,
@@ -1144,11 +1142,6 @@ export class SegmentationUserLayer extends Base {
       return true;
     }, pin);
   };
-
-  /** Embedding applications use the same queue and milestones as canvas edits. */
-  executeSpatialSkeletonAddNode(options: SpatialSkeletonCommandPayload) {
-    return executeSpatialSkeletonAddNode(this, options);
-  }
 
   /**
    * Applies the queue runtime's one post-adoption, best-effort UI batch.

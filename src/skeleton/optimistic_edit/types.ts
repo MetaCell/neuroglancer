@@ -69,8 +69,6 @@ export interface SpatialSkeletonOptimisticAuthorityPresentation {
   readonly authorityLabel: string;
   /** User-facing operation noun, for example `node creation`. */
   readonly operationNoun: string;
-  /** Stable operation name used by embedding applications for error feedback. */
-  readonly operation?: string;
   /** Optional diagnostic warning shown while authority remains in flight. */
   readonly stalledWarning?: {
     readonly delayMs: number;
@@ -116,7 +114,7 @@ export interface SpatialSkeletonOptimisticEditQueueEntry {
   readonly commandLabel?: string;
   readonly authorityPresentation?: SpatialSkeletonOptimisticAuthorityPresentation;
   readonly reason?: string;
-  /** Original root rejection retained for embedding application diagnostics. */
+  /** Rejection of the failed root intent. */
   readonly error?: unknown;
   /** Defined on the failed root, including zero. */
   readonly canceledLaterIntentCount?: number;
