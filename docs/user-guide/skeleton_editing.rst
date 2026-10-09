@@ -213,32 +213,6 @@ Here are examples of when they appear:
   **Preview** in place of its ID while its save is pending. It is already
   available for further editing, such as adding another child.
 
-These screenshots use demonstration skeletons. Preview preparation and server
-replies were paused during capture so these brief states are easy to see.
-
-**Split preparing:** the dashed yellow markers identify the connection between
-nodes 101 and 102. The branch is still attached, and **Updating** labels the
-existing three-node skeleton in the panel.
-
-.. image:: images/optimistic-split-preparing.png
-   :alt: Split preparation with yellow markers and the Updating label
-   :width: 100%
-
-**Split saving:** the connection has disappeared in the preview. The yellow
-markers are gone, but **Queue** still shows **Saving**.
-
-.. image:: images/optimistic-split-saving.png
-   :alt: Completed split preview while the save is still pending
-   :width: 100%
-
-**New skeleton with a child:** the node list shows **Preview** for the new
-skeleton and both nodes while the first save is pending. The child was added
-without waiting for the root's saved ID.
-
-.. image:: images/optimistic-new-skeleton-preview.png
-   :alt: New skeleton and child with red Preview labels in the node list
-   :width: 100%
-
 A visible preview or a permanent numeric ID alone does not confirm that all
 pending edits have saved. Use **Queue** to check completion.
 
