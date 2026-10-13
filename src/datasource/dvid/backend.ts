@@ -37,7 +37,10 @@ import {
 } from "#src/mesh/backend.js";
 import type { SkeletonChunk } from "#src/skeleton/backend.js";
 import { SkeletonSource } from "#src/skeleton/backend.js";
-import { decodeSwcSkeletonChunk } from "#src/skeleton/decode_swc_skeleton.js";
+import {
+  decodeSwcSkeletonChunk,
+  SwcValidation,
+} from "#src/skeleton/decode_swc_skeleton.js";
 import { decodeCompressedSegmentationChunk } from "#src/sliceview/backend_chunk_decoders/compressed_segmentation.js";
 import { decodeJpegChunk } from "#src/sliceview/backend_chunk_decoders/jpeg.js";
 import type { VolumeChunk } from "#src/sliceview/volume/backend.js";
@@ -82,7 +85,9 @@ export class DVIDSkeletonSource extends DVIDSource(
       .then((response) => response.arrayBuffer())
       .then((response) => {
         const enc = new TextDecoder("utf-8");
-        decodeSwcSkeletonChunk(chunk, enc.decode(response));
+        decodeSwcSkeletonChunk(chunk, enc.decode(response), {
+          validation: SwcValidation.LENIENT,
+        });
       });
   }
 }
