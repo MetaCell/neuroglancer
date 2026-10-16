@@ -14,11 +14,12 @@
  * limitations under the License.
  */
 
-import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
+import type { SkeletonNode } from "#src/skeleton/api.js";
 import {
   getFlatListNodeIds,
   type SpatiallyIndexedSkeletonNavigationGraph,
 } from "#src/skeleton/navigation_graph.js";
+import { isSkeletonNodeTrueEnd } from "#src/skeleton/node_attributes.js";
 import {
   classifySpatialSkeletonDisplayNodeType as classifyNodeType,
   matchesSpatialSkeletonNodeFilter,
@@ -29,7 +30,7 @@ import {
 type SkeletonNodeType = SpatialSkeletonDisplayNodeType;
 
 function nodeMatchesFilter(
-  node: SpatiallyIndexedSkeletonNode,
+  node: SkeletonNode,
   filterText: string,
   description: string | undefined,
 ) {
@@ -43,7 +44,7 @@ function hasNonEmptyNodeDescription(description: string | undefined) {
 }
 
 export interface SpatialSkeletonSegmentRenderRow {
-  node: SpatiallyIndexedSkeletonNode;
+  node: SkeletonNode;
   type: SkeletonNodeType;
   isLeaf: boolean;
 }
@@ -58,7 +59,7 @@ export interface SpatialSkeletonSegmentRenderState {
 }
 
 interface NodeClassification {
-  node: SpatiallyIndexedSkeletonNode;
+  node: SkeletonNode;
   type: SkeletonNodeType;
   isLeaf: boolean;
   description: string | undefined;
@@ -70,9 +71,7 @@ export function buildSpatialSkeletonSegmentRenderState(
   options: {
     filterText: string;
     nodeFilterType: SpatialSkeletonNodeFilterType;
-    getNodeDescription: (
-      node: SpatiallyIndexedSkeletonNode,
-    ) => string | undefined;
+    getNodeDescription: (node: SkeletonNode) => string | undefined;
   },
 ): SpatialSkeletonSegmentRenderState {
   const { nodeById, childrenByParent } = graph;
@@ -112,7 +111,7 @@ export function buildSpatialSkeletonSegmentRenderState(
       matchesSpatialSkeletonNodeFilter(options.nodeFilterType, {
         isLeaf,
         nodeHasDescription: hasNonEmptyNodeDescription(description),
-        nodeIsTrueEnd: node.isTrueEnd ?? false,
+        nodeIsTrueEnd: isSkeletonNodeTrueEnd(node),
         nodeType: type,
       }) && nodeMatchesFilter(node, options.filterText, description)
     );
@@ -158,7 +157,7 @@ export function buildSpatialSkeletonSegmentRenderState(
     if (info === undefined) return true;
     return (
       info.type === SpatialSkeletonDisplayNodeType.REGULAR &&
-      !(info.node.isTrueEnd ?? false)
+      !isSkeletonNodeTrueEnd(info.node)
     );
   };
 

@@ -40,10 +40,7 @@ import {
   SKELETON_FIND_PATH_SELECT_ENDPOINT,
   SKELETON_PIN_NODE,
 } from "#src/skeleton/actions.js";
-import type {
-  SpatiallyIndexedSkeletonNode,
-  SpatialSkeletonVector,
-} from "#src/skeleton/api.js";
+import type { SkeletonNode, SkeletonVector } from "#src/skeleton/api.js";
 import {
   SpatialSkeletonActions,
   type SpatialSkeletonAction,
@@ -72,6 +69,7 @@ import {
   getPathBetweenNodes,
   type SpatiallyIndexedSkeletonNavigationGraph,
 } from "#src/skeleton/navigation_graph.js";
+import { isSkeletonNodeTrueEnd } from "#src/skeleton/node_attributes.js";
 import {
   classifySpatialSkeletonDisplayNodeType,
   SpatialSkeletonDisplayNodeType,
@@ -296,7 +294,7 @@ abstract class SpatialSkeletonToolBase extends LayerTool<SegmentationUserLayer> 
     | {
         nodeId: bigint;
         segmentId?: bigint;
-        position?: SpatialSkeletonVector;
+        position?: SkeletonVector;
       }
     | undefined {
     const nodeHit = this.getPickedSpatialSkeletonNode();
@@ -524,7 +522,7 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
     skeletonLayer: SpatiallyIndexedSkeletonLayer,
     nodeId: bigint,
     segmentId: bigint | undefined,
-  ): SpatiallyIndexedSkeletonNode | undefined {
+  ): SkeletonNode | undefined {
     const resolved = this.resolveInspectedNode(
       skeletonLayer,
       nodeId,
@@ -1193,7 +1191,7 @@ export class SpatialSkeletonEditTool extends SpatialSkeletonToolBase {
   private executeSplitOnNode(pickedNode: {
     nodeId: bigint;
     segmentId: bigint;
-    position?: SpatialSkeletonVector;
+    position?: SkeletonVector;
     parentNodeId?: bigint;
   }) {
     this.layer.selectSegment(pickedNode.segmentId, true);
@@ -2035,7 +2033,7 @@ function getSpatialSkeletonFindPathNodeTypeLabel(
 ) {
   const node = graph.nodeById.get(nodeId);
   if (node === undefined) return undefined;
-  if (node.isTrueEnd ?? false) return "True end";
+  if (isSkeletonNodeTrueEnd(node)) return "True end";
   const parentInTree =
     node.parentNodeId !== undefined && graph.nodeById.has(node.parentNodeId);
   const type = classifySpatialSkeletonDisplayNodeType(

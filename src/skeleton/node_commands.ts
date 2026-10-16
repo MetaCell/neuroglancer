@@ -16,7 +16,7 @@
 
 import { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import { getSegmentIdFromLayerSelectionValue } from "#src/layer/segmentation/selection.js";
-import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
+import type { SkeletonNode } from "#src/skeleton/api.js";
 import {
   SpatialSkeletonActions,
   SpatialSkeletonHistoryActions,
@@ -38,6 +38,7 @@ import {
   getRandomChildNode,
   getSkeletonRootNode,
 } from "#src/skeleton/navigation_graph.js";
+import { isSkeletonNodeTrueEnd } from "#src/skeleton/node_attributes.js";
 import { SPATIAL_SKELETON_RELOAD_REQUIRED_EDIT_REASON } from "#src/skeleton/optimistic_edit/fatal.js";
 import { StatusMessage } from "#src/status.js";
 import { CallbackCommand } from "#src/ui/command.js";
@@ -50,10 +51,7 @@ type SkeletonNodeViewer = Pick<
   "commandRegistry" | "layerManager" | "selectedLayer" | "selectionDetailsState"
 >;
 
-type NavigationTarget = Pick<
-  SpatiallyIndexedSkeletonNode,
-  "nodeId" | "position"
->;
+type NavigationTarget = Pick<SkeletonNode, "nodeId" | "position">;
 
 interface NavigationContext {
   readonly graph: ReturnType<
@@ -101,7 +99,7 @@ async function runHistoryCommand(
 
 function requireSelectedInspectedNode(
   layer: SegmentationUserLayer,
-): SpatiallyIndexedSkeletonNode | undefined {
+): SkeletonNode | undefined {
   const selected = layer.selectedSpatialSkeletonNodeInfo.value;
   if (selected === undefined) {
     StatusMessage.showTemporaryMessage("No skeleton node is selected.");
@@ -323,7 +321,7 @@ const COMMAND_DEFINITIONS: readonly SkeletonNodeCommandDefinition[] = [
       try {
         await executeSpatialSkeletonNodeTrueEndUpdate(layer, {
           node,
-          nextIsTrueEnd: !(node.isTrueEnd ?? false),
+          nextIsTrueEnd: !isSkeletonNodeTrueEnd(node),
         });
       } catch (error) {
         showSpatialSkeletonActionError(

@@ -16,11 +16,16 @@
 
 import { describe, expect, it, vi } from "vitest";
 
+import {
+  type CoordinateSpace,
+  makeCoordinateSpace,
+} from "#src/coordinate_transform.js";
+import type { SkeletonSpatialIndexLevel } from "#src/skeleton/api.js";
 import { buildSpatiallyIndexedSkeletonOverlayGeometry } from "#src/skeleton/segment_overlay.js";
 import { SpatialSkeletonState } from "#src/skeleton/spatial_skeleton_manager.js";
 import { Uint64Set } from "#src/uint64_set.js";
 import { getContrastRatio } from "#src/util/color.js";
-import { vec3 } from "#src/util/geom.js";
+import { mat4, vec3 } from "#src/util/geom.js";
 
 if (!("WebGL2RenderingContext" in globalThis)) {
   Object.defineProperty(globalThis, "WebGL2RenderingContext", {
@@ -44,6 +49,7 @@ const {
   PerspectiveViewSpatiallyIndexedSkeletonLayer,
   SliceViewPanelSpatiallyIndexedSkeletonLayer,
   resolveSpatiallyIndexedSkeletonSegmentPick,
+  MultiscaleSpatiallyIndexedSkeletonSource,
 } = await import("#src/skeleton/frontend.js");
 
 describe("getActiveProvisionalSpatialSkeletonSegmentIds", () => {
@@ -1282,5 +1288,134 @@ describe("SpatiallyIndexedSkeletonLayer projected removals", () => {
     expect(state.getCachedSegmentNodes(23n)).toBe(snapshot.materialize());
     expect(layer.resolveSourceBackedOverlayChunks()).toEqual([oldChunk]);
     expect(layer.createOverlaySegmentChunk).not.toHaveBeenCalled();
+  });
+});
+
+function makeNanometerSpace(
+  lowerBounds: number[],
+  upperBounds: number[],
+  rank = 3,
+) {
+  return makeCoordinateSpace({
+    names: ["x", "y", "z", "t"].slice(0, rank),
+    units: Array(rank).fill("m"),
+    scales: Float64Array.from(Array(rank).fill(1e-9)),
+    boundingBoxes: [
+      {
+        box: {
+          lowerBounds: Float64Array.from(lowerBounds),
+          upperBounds: Float64Array.from(upperBounds),
+        },
+        transform: Float64Array.from(
+          Array.from({ length: rank * (rank + 1) }, (_, index) =>
+            index % rank === Math.floor(index / rank) ? 1 : 0,
+          ),
+        ),
+      },
+    ],
+  });
+}
+
+class LevelRecordingSource extends MultiscaleSpatiallyIndexedSkeletonSource {
+  readonly fragmentSource = {} as any;
+  readonly editableSource = undefined;
+  readonly requestedLevels: any[] = [];
+
+  getSources() {
+    return [
+      this.getLevelSpecs().map((spec) => {
+        this.requestedLevels.push({ spec });
+        return {
+          chunkSource: {} as any,
+          chunkToMultiscaleTransform: mat4.create(),
+        };
+      }),
+    ];
+  }
+}
+
+function makeMultiscaleSource(
+  coordinateSpace: CoordinateSpace,
+  spatial: SkeletonSpatialIndexLevel[],
+) {
+  const source = new LevelRecordingSource({} as any, {
+    modelSpace: coordinateSpace,
+    levels: spatial,
+  });
+  return { source, requestedLevels: source.requestedLevels };
+}
+
+describe("MultiscaleSpatiallyIndexedSkeletonSource", () => {
+  it("draws levels that share one cell size in the order the metadata gives", () => {
+    const { source, requestedLevels } = makeMultiscaleSource(
+      makeNanometerSpace([0, 0, 0], [120, 120, 120]),
+      [
+        { chunkSize: [40, 40, 40], limit: 10 },
+        { chunkSize: [40, 40, 40], limit: 100 },
+        { chunkSize: [40, 40, 40], limit: 0 },
+      ],
+    );
+
+    source.getPerspectiveSources();
+
+    expect(requestedLevels.map(({ spec }) => spec.limit)).toEqual([10, 100, 0]);
+  });
+
+  it("numbers cells from the origin, not from the lower bound", () => {
+    const { source, requestedLevels } = makeMultiscaleSource(
+      makeNanometerSpace([100, 100, 100], [220, 220, 220]),
+      [{ chunkSize: [30, 30, 30], limit: 0 }],
+    );
+
+    source.getPerspectiveSources();
+
+    const { spec } = requestedLevels[0];
+    expect(Array.from(spec.lowerChunkBound)).toEqual([3, 3, 3]);
+    expect(Array.from(spec.upperChunkBound)).toEqual([8, 8, 8]);
+  });
+
+  it("places cells in the units of the coordinate space", () => {
+    const { source, requestedLevels } = makeMultiscaleSource(
+      makeNanometerSpace([0, 0, 0], [120, 120, 120]),
+      [{ chunkSize: [30, 30, 30], limit: 0 }],
+    );
+
+    source.getPerspectiveSources();
+
+    const { transform } = requestedLevels[0].spec.chunkLayout;
+    expect([transform[0], transform[5], transform[10]]).toEqual([
+      Math.fround(1e-9),
+      Math.fround(1e-9),
+      Math.fround(1e-9),
+    ]);
+  });
+
+  it("rejects limit 0 on any level but the finest", () => {
+    expect(() =>
+      makeMultiscaleSource(makeNanometerSpace([0, 0, 0], [120, 120, 120]), [
+        { chunkSize: [40, 40, 40], limit: 0 },
+        { chunkSize: [20, 20, 20], limit: 100 },
+      ]),
+    ).toThrow(
+      "Spatial skeleton limit: 0 is only supported on the finest source level.",
+    );
+  });
+
+  it("rejects a coordinate space that is not 3-D", () => {
+    expect(() =>
+      makeMultiscaleSource(
+        makeNanometerSpace([0, 0, 0, 0], [120, 120, 120, 1], 4),
+        [{ chunkSize: [30, 30, 30, 1], limit: 0 }],
+      ),
+    ).toThrow("Spatial skeleton coordinate space must have rank 3, not 4.");
+  });
+
+  it("rejects a coordinate space with infinite bounds", () => {
+    expect(() =>
+      makeMultiscaleSource(
+        makeNanometerSpace([0, 0, 0], [120, 120, Number.POSITIVE_INFINITY]),
+        [{ chunkSize: [30, 30, 30], limit: 0 }],
+      ),
+    ).toThrow("Spatial skeleton coordinate space bounds must be finite.");
   });
 });

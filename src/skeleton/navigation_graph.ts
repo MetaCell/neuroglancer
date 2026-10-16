@@ -14,15 +14,13 @@
  * limitations under the License.
  */
 
-import type {
-  SpatiallyIndexedSkeletonNode,
-  SpatialSkeletonVector,
-} from "#src/skeleton/api.js";
+import type { SkeletonNode, SkeletonVector } from "#src/skeleton/api.js";
+import { isSkeletonNodeTrueEnd } from "#src/skeleton/node_attributes.js";
 import { bigintCompare } from "#src/util/bigint.js";
 
 export interface SpatiallyIndexedSkeletonNavigationTarget {
   nodeId: bigint;
-  position: SpatialSkeletonVector;
+  position: SkeletonVector;
 }
 
 export interface SpatiallyIndexedSkeletonOpenLeaf
@@ -31,7 +29,7 @@ export interface SpatiallyIndexedSkeletonOpenLeaf
 }
 
 export interface SpatiallyIndexedSkeletonNavigationGraph {
-  nodeById: Map<bigint, SpatiallyIndexedSkeletonNode>;
+  nodeById: Map<bigint, SkeletonNode>;
   childrenByParent: Map<bigint, bigint[]>;
   rootNodeIds: bigint[];
 }
@@ -73,16 +71,15 @@ function buildNavigationGraphDerivedState(
     const { parentNodeId } = node;
     const parentInTree =
       parentNodeId !== undefined && graph.nodeById.has(parentNodeId);
-    const sortPriority =
-      (node.isTrueEnd ?? false)
+    const sortPriority = isSkeletonNodeTrueEnd(node)
+      ? 0
+      : childCount === 0
         ? 0
-        : childCount === 0
-          ? 0
-          : !parentInTree
-            ? 3
-            : childCount > 1
-              ? 1
-              : 2;
+        : !parentInTree
+          ? 3
+          : childCount > 1
+            ? 1
+            : 2;
     sortPriorityByNodeId.set(nodeId, sortPriority);
   }
   return {
@@ -105,9 +102,9 @@ function getNavigationGraphDerivedState(
 }
 
 export function buildSpatiallyIndexedSkeletonNavigationGraph(
-  nodes: readonly SpatiallyIndexedSkeletonNode[],
+  nodes: readonly SkeletonNode[],
 ): SpatiallyIndexedSkeletonNavigationGraph {
-  const nodeById = new Map<bigint, SpatiallyIndexedSkeletonNode>();
+  const nodeById = new Map<bigint, SkeletonNode>();
   for (const node of nodes) {
     if (!nodeById.has(node.nodeId)) {
       nodeById.set(node.nodeId, node);
@@ -355,7 +352,7 @@ function isCollapsedRegularNode(
   return (
     getParentNodeId(graph, nodeId) !== undefined &&
     getChildNodeIds(graph, nodeId).length === 1 &&
-    !node.isTrueEnd
+    !isSkeletonNodeTrueEnd(node)
   );
 }
 
@@ -713,7 +710,7 @@ export function getOpenLeaves(
   for (const candidateNodeId of queue) {
     if (getChildNodeIds(graph, candidateNodeId).length !== 0) continue;
     const candidateNode = getNodeOrThrow(graph, candidateNodeId);
-    if (candidateNode.isTrueEnd) continue;
+    if (isSkeletonNodeTrueEnd(candidateNode)) continue;
     leaves.push({
       ...getNodeTarget(graph, candidateNodeId),
       distance: distances.get(candidateNodeId) ?? 0,

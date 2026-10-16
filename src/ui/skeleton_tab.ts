@@ -36,7 +36,7 @@ import {
   getVisibleSegments,
 } from "#src/segmentation_display_state/base.js";
 import { getBaseObjectColor } from "#src/segmentation_display_state/frontend.js";
-import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
+import type { SkeletonNode } from "#src/skeleton/api.js";
 import {
   SpatialSkeletonActions,
   SpatialSkeletonHistoryActions,
@@ -62,6 +62,7 @@ import {
   type SpatiallyIndexedSkeletonOpenLeaf,
   type SpatiallyIndexedSkeletonNavigationGraph,
 } from "#src/skeleton/navigation_graph.js";
+import { isSkeletonNodeTrueEnd } from "#src/skeleton/node_attributes.js";
 import {
   getSpatialSkeletonNodeFilterLabel,
   getSpatialSkeletonNodeIconFilterType,
@@ -453,10 +454,10 @@ export class SpatialSkeletonEditTab extends Tab {
     nodesSection.appendChild(nodesList.element);
     element.appendChild(nodesSection);
 
-    let allNodes: SpatiallyIndexedSkeletonNode[] = [];
+    let allNodes: SkeletonNode[] = [];
     let activeSegmentId: bigint | undefined;
     let selectedSegmentDetailsUnavailable = false;
-    let nodesBySegment = new Map<bigint, SpatiallyIndexedSkeletonNode[]>();
+    let nodesBySegment = new Map<bigint, SkeletonNode[]>();
     let inspectionAllowed = false;
     let navigationAllowed = false;
     let trueEndEditingAllowed = false;
@@ -481,7 +482,7 @@ export class SpatialSkeletonEditTab extends Tab {
     const navigationGraphCache = new Map<
       bigint,
       {
-        nodes: readonly SpatiallyIndexedSkeletonNode[];
+        nodes: readonly SkeletonNode[];
         graph: SpatiallyIndexedSkeletonNavigationGraph;
       }
     >();
@@ -566,7 +567,7 @@ export class SpatialSkeletonEditTab extends Tab {
     };
 
     const selectNode = (
-      node: SpatiallyIndexedSkeletonNode | undefined,
+      node: SkeletonNode | undefined,
       options: {
         moveView?: boolean;
         pin?: boolean;
@@ -665,7 +666,7 @@ export class SpatialSkeletonEditTab extends Tab {
       `Ctrl+right-click to pin selection\n` +
       `Ctrl+shift+right-click to unpin`;
 
-    const getNodeDescriptionText = (node: SpatiallyIndexedSkeletonNode) =>
+    const getNodeDescriptionText = (node: SkeletonNode) =>
       layer.getSpatialSkeletonNodeDisplayDescription(node);
 
     const getHoveredNodeIdFromViewer = () => {
@@ -1001,7 +1002,7 @@ export class SpatialSkeletonEditTab extends Tab {
     ): { segmentId: bigint } | undefined;
     function getSelectedNavigationContext(
       requireNode?: true,
-    ): SpatiallyIndexedSkeletonNode | undefined;
+    ): SkeletonNode | undefined;
     function getSelectedNavigationContext(requireNode: boolean = true) {
       if (!ensureTopologyControlsAvailable()) {
         return undefined;
@@ -1047,10 +1048,7 @@ export class SpatialSkeletonEditTab extends Tab {
       return selectedNode;
     }
 
-    const updateTrueEndLabel = (
-      node: SpatiallyIndexedSkeletonNode,
-      present: boolean,
-    ) => {
+    const updateTrueEndLabel = (node: SkeletonNode, present: boolean) => {
       if (!ensureTopologyControlsAvailable()) return;
       if (!ensureActionsAllowed(SpatialSkeletonActions.editNodeTrueEnd)) return;
       if (pendingTrueEndNodes.has(node.nodeId)) return;
@@ -1130,7 +1128,7 @@ export class SpatialSkeletonEditTab extends Tab {
       })();
     };
 
-    const deleteNode = (node: SpatiallyIndexedSkeletonNode) => {
+    const deleteNode = (node: SkeletonNode) => {
       if (!ensureTopologyControlsAvailable()) return;
       if (!ensureActionsAllowed(SpatialSkeletonActions.deleteNodes)) return;
       if (pendingDeleteNodes.has(node.nodeId)) {
@@ -1572,7 +1570,7 @@ export class SpatialSkeletonEditTab extends Tab {
         row.setAttribute("aria-disabled", "true");
       }
 
-      const nodeIsTrueEnd = node.isTrueEnd ?? false;
+      const nodeIsTrueEnd = isSkeletonNodeTrueEnd(node);
       const iconFilterType = getSpatialSkeletonNodeIconFilterType({
         nodeIsTrueEnd,
         nodeType: type,
@@ -1796,13 +1794,13 @@ export class SpatialSkeletonEditTab extends Tab {
     };
 
     const applyNodesBySegment = (
-      nextNodesBySegment: Map<bigint, SpatiallyIndexedSkeletonNode[]>,
+      nextNodesBySegment: Map<bigint, SkeletonNode[]>,
       summarySuffix = "",
     ) => {
       loadedNodeSummarySuffix = summarySuffix;
       navigationGraphCache.clear();
       nodesBySegment = nextNodesBySegment;
-      const allNodesById = new Map<bigint, SpatiallyIndexedSkeletonNode>();
+      const allNodesById = new Map<bigint, SkeletonNode>();
       for (const segmentNodes of nextNodesBySegment.values()) {
         for (const node of segmentNodes) {
           if (!allNodesById.has(node.nodeId)) {
@@ -1857,7 +1855,7 @@ export class SpatialSkeletonEditTab extends Tab {
       }
       skeletonState.evictInactiveSegmentNodes(cachedSegmentIds);
       applyNodesBySegment(
-        new Map<bigint, SpatiallyIndexedSkeletonNode[]>([
+        new Map<bigint, SkeletonNode[]>([
           [segmentId, cachedSelectedSegmentNodes],
         ]),
         " Using inspected full skeleton data.",

@@ -98,7 +98,7 @@ import type {
 import { SegmentationGraphSourceTab } from "#src/segmentation_graph/source.js";
 import { SharedDisjointUint64Sets } from "#src/shared_disjoint_sets.js";
 import { SharedWatchableValue } from "#src/shared_watchable_value.js";
-import type { SpatiallyIndexedSkeletonNode } from "#src/skeleton/api.js";
+import type { SkeletonNode } from "#src/skeleton/api.js";
 import {
   DEFAULT_SPATIAL_SKELETON_EDIT_ACTIONS,
   getSpatialSkeletonActionSupportLabel,
@@ -133,6 +133,11 @@ import {
 } from "#src/skeleton/frontend.js";
 import type { SpatialSkeletonLogicalNodeHandle } from "#src/skeleton/logical_identity.js";
 import {
+  getSkeletonNodeConfidence,
+  getSkeletonNodeRadius,
+  isSkeletonNodeTrueEnd,
+} from "#src/skeleton/node_attributes.js";
+import {
   findSpatiallyIndexedSkeletonNode,
   getSpatiallyIndexedSkeletonDirectChildren,
   getSpatiallyIndexedSkeletonNodeParent,
@@ -153,9 +158,6 @@ import type {
 } from "#src/skeleton/optimistic_edit/projection_runtime.js";
 import {
   editableSpatiallyIndexedSkeletonSourceSupportsAction,
-  getEditableSpatiallyIndexedSkeletonSource,
-  getSpatiallyIndexedSkeletonSource,
-  isSpatiallyIndexedSkeletonSourceReadOnly,
   SpatialSkeletonState,
 } from "#src/skeleton/spatial_skeleton_manager.js";
 import { DataType, VolumeType } from "#src/sliceview/volume/base.js";
@@ -1004,9 +1006,7 @@ export class SegmentationUserLayer extends Base {
   };
 
   selectAndMoveToSpatialSkeletonNode(
-    node:
-      | Pick<SpatiallyIndexedSkeletonNode, "nodeId" | "segmentId" | "position">
-      | undefined,
+    node: Pick<SkeletonNode, "nodeId" | "segmentId" | "position"> | undefined,
     pin: boolean | "toggle" = this.manager.root.selectionState.pin.value,
   ) {
     if (node === undefined) {
@@ -1351,7 +1351,7 @@ export class SegmentationUserLayer extends Base {
             (layer) =>
               (layer instanceof PerspectiveViewSpatiallyIndexedSkeletonLayer ||
                 layer instanceof SliceViewPanelSpatiallyIndexedSkeletonLayer) &&
-              getSpatiallyIndexedSkeletonSource(layer.base) !== undefined,
+              layer.base.fragmentSource !== undefined,
           ),
         { changed: this.layersChanged, value: this.renderLayers },
       ),
@@ -1369,8 +1369,7 @@ export class SegmentationUserLayer extends Base {
             (layer) =>
               (layer instanceof PerspectiveViewSpatiallyIndexedSkeletonLayer ||
                 layer instanceof SliceViewPanelSpatiallyIndexedSkeletonLayer) &&
-              getEditableSpatiallyIndexedSkeletonSource(layer.base) !==
-                undefined,
+              layer.base.editableSource !== undefined,
           ),
         { changed: this.layersChanged, value: this.renderLayers },
       ),
@@ -1618,9 +1617,9 @@ export class SegmentationUserLayer extends Base {
       return false;
     }
     if (action === SpatialSkeletonActions.inspect) {
-      return getSpatiallyIndexedSkeletonSource(skeletonLayer) !== undefined;
+      return skeletonLayer?.fragmentSource !== undefined;
     }
-    const source = getEditableSpatiallyIndexedSkeletonSource(skeletonLayer);
+    const source = skeletonLayer?.editableSource;
     if (source === undefined) return false;
     try {
       ensureSpatialSkeletonOptimisticEditQueue(this, source);
@@ -1645,7 +1644,7 @@ export class SegmentationUserLayer extends Base {
       requirements.some(
         (action) => action !== SpatialSkeletonActions.inspect,
       ) &&
-      isSpatiallyIndexedSkeletonSourceReadOnly(skeletonLayer)
+      skeletonLayer?.editableSource === undefined
     ) {
       return "The active spatial skeleton source is read-only.";
     }
@@ -1707,18 +1706,14 @@ export class SegmentationUserLayer extends Base {
     return segmentNodes;
   }
 
-  async getSpatialSkeletonDeleteOperationContext(
-    node: SpatiallyIndexedSkeletonNode,
-  ) {
+  async getSpatialSkeletonDeleteOperationContext(node: SkeletonNode) {
     const skeletonLayer = this.getSpatiallyIndexedSkeletonLayer();
     if (skeletonLayer === undefined) {
       throw new Error(
         "No active spatial skeleton layer found for delete action.",
       );
     }
-    if (
-      getEditableSpatiallyIndexedSkeletonSource(skeletonLayer) === undefined
-    ) {
+    if (skeletonLayer?.editableSource === undefined) {
       throw new Error(
         "Unable to resolve editable skeleton source for the active layer.",
       );
@@ -1755,13 +1750,13 @@ export class SegmentationUserLayer extends Base {
     };
   }
 
-  getSpatialSkeletonNodeDisplayDescription(node: SpatiallyIndexedSkeletonNode) {
+  getSpatialSkeletonNodeDisplayDescription(node: SkeletonNode) {
     return node.description?.length ? node.description : undefined;
   }
 
   async rerootSpatialSkeletonNode(
     node: Pick<
-      SpatiallyIndexedSkeletonNode,
+      SkeletonNode,
       "nodeId" | "segmentId" | "parentNodeId" | "position"
     >,
   ) {
@@ -1887,6 +1882,8 @@ export class SegmentationUserLayer extends Base {
                 displayState,
                 {
                   sources2d: slicePanelSources,
+                  fragmentSource: mesh.fragmentSource,
+                  editableSource: mesh.editableSource,
                   selectedNodeInfo: this.selectedSpatialSkeletonNodeInfo,
                   suppressSelectedNodeHighlight:
                     this.spatialSkeletonState.suppressSelectedNodeHighlight,
@@ -2604,7 +2601,7 @@ export class SegmentationUserLayer extends Base {
           (candidate) => candidate.parentNodeId === completeNodeInfo.nodeId,
         )
         .map((candidate) => candidate.nodeId) ?? [];
-    const nodeHasTrueEnd = completeNodeInfo.isTrueEnd ?? false;
+    const nodeHasTrueEnd = isSkeletonNodeTrueEnd(completeNodeInfo);
     const nodeType = getSpatialSkeletonDisplayNodeType(
       completeNodeInfo,
       segmentNodes === undefined ? undefined : directChildNodeIds.length,
@@ -2624,7 +2621,7 @@ export class SegmentationUserLayer extends Base {
     summaryRow.classList.add("neuroglancer-selection-details-skeleton-summary");
     container.appendChild(summaryRow);
 
-    const editSource = getEditableSpatiallyIndexedSkeletonSource(skeletonLayer);
+    const editSource = skeletonLayer?.editableSource;
     const rerootDisabledReason =
       editSource?.rerootCommand === undefined
         ? "Unable to resolve a reroot-capable skeleton source for the active layer."
@@ -2632,7 +2629,7 @@ export class SegmentationUserLayer extends Base {
           ? "Load the active skeleton in the Skeleton tab before rerooting from Selection."
           : completeNodeInfo.parentNodeId === undefined
             ? "Selected node is already root."
-            : (completeNodeInfo.isTrueEnd ?? false)
+            : isSkeletonNodeTrueEnd(completeNodeInfo)
               ? "True end nodes cannot be set as root. Clear the true end state first."
               : this.getSpatialSkeletonActionsDisabledReason(
                   SpatialSkeletonActions.reroot,
@@ -2659,7 +2656,7 @@ export class SegmentationUserLayer extends Base {
         rerootPending ||
         completeNodeInfo === undefined ||
         completeNodeInfo.parentNodeId === undefined ||
-        (completeNodeInfo.isTrueEnd ?? false)
+        isSkeletonNodeTrueEnd(completeNodeInfo)
       ) {
         return;
       }
@@ -2892,7 +2889,7 @@ export class SegmentationUserLayer extends Base {
           let previousTrueEnd = committedTrueEnd;
           try {
             const currentNode = getCachedNodeForSelectionEdit();
-            previousTrueEnd = currentNode.isTrueEnd ?? false;
+            previousTrueEnd = isSkeletonNodeTrueEnd(currentNode);
             committedTrueEnd = previousTrueEnd;
             if (committedTrueEnd === nextTrueEnd) return;
             committedTrueEnd = nextTrueEnd;
@@ -2928,8 +2925,7 @@ export class SegmentationUserLayer extends Base {
     } else {
       appendValue("Node type", nodeTypeLabel);
     }
-    const confidenceConfiguration =
-      editSource?.spatialSkeletonConfidenceConfiguration;
+    const confidenceValues = editSource?.confidenceValues;
     const setPropertyInputValidity = (
       input: HTMLInputElement | HTMLSelectElement,
       valid: boolean,
@@ -3001,9 +2997,8 @@ export class SegmentationUserLayer extends Base {
         currentNodeId !== undefined &&
         selection !== undefined &&
         getNodeIdFromLayerSelectionState(selection) === currentNodeId &&
-        getEditableSpatiallyIndexedSkeletonSource(
-          this.getSpatiallyIndexedSkeletonLayer(),
-        ) === editSource &&
+        this.getSpatiallyIndexedSkeletonLayer()?.editableSource ===
+          editSource &&
         this.spatialSkeletonState.getOptimisticEditFatalState() === undefined &&
         this.spatialSkeletonState.getCachedNode(currentNodeId) !== undefined &&
         identities ===
@@ -3023,29 +3018,27 @@ export class SegmentationUserLayer extends Base {
         ? "Unable to resolve editable skeleton source for the active layer."
         : cachedNodeInfo === undefined
           ? "Load the active skeleton in the Skeleton tab before editing confidence."
-          : confidenceConfiguration === undefined
-            ? "The active skeleton source does not provide confidence value configuration."
-            : this.getSpatialSkeletonActionsDisabledReason(
-                SpatialSkeletonActions.editNodeConfidence,
-              );
+          : this.getSpatialSkeletonActionsDisabledReason(
+              SpatialSkeletonActions.editNodeConfidence,
+            );
 
     if (radiusEditingDisabledReason() !== undefined) {
       appendValue(
         "Radius",
         formatSpatialSkeletonEditableNumber(
-          completeNodeInfo.radius,
+          getSkeletonNodeRadius(completeNodeInfo),
           "Unavailable",
         ),
       );
     } else {
-      let committedRadius = completeNodeInfo.radius ?? 0;
+      let committedRadius = getSkeletonNodeRadius(completeNodeInfo) ?? 0;
       const radiusInput = document.createElement("input");
       radiusInput.className =
         "neuroglancer-selection-details-skeleton-properties-input";
       radiusInput.type = "number";
       radiusInput.step = "any";
       radiusInput.value = formatSpatialSkeletonEditableNumber(
-        completeNodeInfo.radius,
+        getSkeletonNodeRadius(completeNodeInfo),
       );
       appendValue("Radius", radiusInput);
       let radiusSavePending = false;
@@ -3091,7 +3084,7 @@ export class SegmentationUserLayer extends Base {
           try {
             const node = getCachedNodeForSelectionEdit();
             // A deferred view may outlive both a preview and its rollback.
-            committedRadius = node.radius ?? 0;
+            committedRadius = getSkeletonNodeRadius(node) ?? 0;
             if (radius === committedRadius) return;
             radiusSavePending = true;
             updateRadiusEditorState();
@@ -3137,40 +3130,53 @@ export class SegmentationUserLayer extends Base {
       context.deferUpdatesWhileFocused(radiusInput, isPropertyEditorCurrent);
     }
 
-    const confidenceConfigurationValues = confidenceConfiguration?.values;
-    if (
-      confidenceEditingDisabledReason() !== undefined ||
-      confidenceConfigurationValues === undefined
-    ) {
+    if (confidenceEditingDisabledReason() !== undefined) {
       appendValue(
         "Confidence level",
         formatSpatialSkeletonEditableNumber(
-          completeNodeInfo.confidence,
+          getSkeletonNodeConfidence(completeNodeInfo),
           "Unavailable",
         ),
       );
     } else {
-      let committedConfidence = Number.isFinite(completeNodeInfo.confidence)
-        ? Number(completeNodeInfo.confidence)
-        : 0;
-      const confidenceSelectValues = Array.from(
-        new Set([...confidenceConfigurationValues, committedConfidence]),
-      ).filter((value): value is number => Number.isFinite(value));
-      const confidenceControl = document.createElement("select");
+      let committedConfidence =
+        getSkeletonNodeConfidence(completeNodeInfo) ?? 0;
+      const confidenceSelectValues =
+        confidenceValues === undefined
+          ? undefined
+          : Array.from(
+              new Set([...confidenceValues, committedConfidence]),
+            ).filter((value): value is number => Number.isFinite(value));
+      let confidenceControl: HTMLInputElement | HTMLSelectElement;
+      if (confidenceSelectValues === undefined) {
+        const confidenceInput = document.createElement("input");
+        confidenceInput.type = "number";
+        confidenceInput.min = "0";
+        confidenceInput.max = "100";
+        confidenceInput.step = "any";
+        confidenceControl = confidenceInput;
+      } else {
+        confidenceControl = document.createElement("select");
+        for (const value of confidenceSelectValues) {
+          const option = document.createElement("option");
+          option.value = value.toString();
+          option.textContent = formatSpatialSkeletonEditableNumber(value);
+          confidenceControl.appendChild(option);
+        }
+      }
       confidenceControl.className =
         "neuroglancer-selection-details-skeleton-properties-input";
-      for (const value of confidenceSelectValues) {
-        const option = document.createElement("option");
-        option.value = value.toString();
-        option.textContent = formatSpatialSkeletonEditableNumber(value);
-        confidenceControl.appendChild(option);
-      }
       confidenceControl.value = committedConfidence.toString();
       appendValue("Confidence level", confidenceControl);
       let confidenceSavePending = false;
       const getConfidenceValidationError = (confidence: number) => {
         if (!Number.isFinite(confidence)) {
           return "Confidence must be a finite number.";
+        }
+        if (confidenceSelectValues === undefined) {
+          return confidence >= 0 && confidence <= 100
+            ? undefined
+            : "Confidence must be from 0 to 100.";
         }
         return confidenceSelectValues.includes(confidence)
           ? undefined
@@ -3222,9 +3228,7 @@ export class SegmentationUserLayer extends Base {
         void (async () => {
           try {
             const node = getCachedNodeForSelectionEdit();
-            committedConfidence = Number.isFinite(node.confidence)
-              ? Number(node.confidence)
-              : 0;
+            committedConfidence = getSkeletonNodeConfidence(node) ?? 0;
             if (confidence === committedConfidence) return;
             confidenceSavePending = true;
             updateConfidenceEditorState();
