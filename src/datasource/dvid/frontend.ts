@@ -51,6 +51,7 @@ import type {
 } from "#src/datasource/index.js";
 import { MeshSource } from "#src/mesh/frontend.js";
 import { SkeletonSource } from "#src/skeleton/frontend.js";
+import { swcVertexAttributes } from "#src/skeleton/swc_base.js";
 import type { SliceViewSingleResolutionSource } from "#src/sliceview/frontend.js";
 import type { VolumeSourceOptions } from "#src/sliceview/volume/base.js";
 import {
@@ -126,7 +127,11 @@ class DVIDVolumeChunkSource extends WithParameters(
 class DVIDSkeletonSource extends WithParameters(
   WithCredentialsProvider<DVIDToken>()(SkeletonSource),
   SkeletonSourceParameters,
-) {}
+) {
+  get vertexAttributes() {
+    return swcVertexAttributes;
+  }
+}
 
 class DVIDMeshSource extends WithParameters(
   WithCredentialsProvider<DVIDToken>()(MeshSource),
