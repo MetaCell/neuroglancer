@@ -1,0 +1,44 @@
+name: Python volume geometry
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/python-volume-info.yml"
+      - ".github/actions/setup-firefox/**"
+      - "src/**"
+      - "python/**"
+      - "build_tools/**"
+      - "package*.json"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "noxfile.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  volume-info:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.x
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: false
+          python-version: ${{ matrix.python-version }}
+      - uses: ./.github/actions/setup-firefox
+      - name: Run volume geometry and datasource regressions
+        run: >-
+          uvx nox -s test_xvfb --
+          --browser firefox --force-reruns=0
+          local_volume_test.py zarr_test.py precomputed_test.py n5_test.py
