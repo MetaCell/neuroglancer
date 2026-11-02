@@ -26,6 +26,7 @@ import { ImageUserLayer } from "#src/layer/image/index.js";
 import type { UserLayer } from "#src/layer/index.js";
 import { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import type { RenderLayerTransform } from "#src/render_coordinate_transform.js";
+import { getChunkTransformParameters } from "#src/render_coordinate_transform.js";
 import type { SliceViewSingleResolutionSource } from "#src/sliceview/frontend.js";
 import type { UncompressedVolumeChunk } from "#src/sliceview/uncompressed_chunk_format.js";
 import { getFillValueArray } from "#src/sliceview/uncompressed_chunk_format.js";
@@ -246,33 +247,11 @@ function getChunkToRenderLayerTransform(
   renderLayerScales: Float64Array,
   requestedScales: Float64Array,
 ) {
-  const { rank, unpaddedRank } = transform;
-  const chunkToLayerTransform = new Float32Array((rank + 1) ** 2);
-  matrix.multiply(
-    chunkToLayerTransform,
-    rank + 1,
+  const { rank } = transform;
+  const { chunkToLayerTransform } = getChunkTransformParameters(
+    transform,
     source.chunkToMultiscaleTransform,
-    unpaddedRank + 1,
-    transform.modelToRenderLayerTransform,
-    rank + 1,
-    unpaddedRank + 1,
-    unpaddedRank + 1,
-    unpaddedRank + 1,
   );
-  if (unpaddedRank !== rank) {
-    matrix.copy(
-      chunkToLayerTransform.subarray(
-        rank + 1 * (unpaddedRank + 1) + unpaddedRank + 1,
-      ),
-      rank + 1,
-      transform.modelToRenderLayerTransform.subarray(
-        rank + 1 * (unpaddedRank + 1) + unpaddedRank + 1,
-      ),
-      rank + 1,
-      rank - unpaddedRank,
-      rank - unpaddedRank,
-    );
-  }
   for (let row = 0; row < rank; ++row) {
     const factor = renderLayerScales[row] / requestedScales[row];
     for (let col = 0; col <= rank; ++col) {

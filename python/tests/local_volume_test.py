@@ -79,3 +79,37 @@ def test_tensorstore_features():
         names=["x", "y", "d2"], units=units, scales=scales
     )
     assert local_volume.dimensions.to_json() == dimensions.to_json()
+
+
+def test_volume_info_preserves_padded_dimensions(webdriver):
+    viewer = webdriver.viewer
+    padded_dimensions = neuroglancer.CoordinateSpace(
+        names=["y", "x", "z"], units=["nm"] * 3, scales=[3, 5, 2]
+    )
+    with viewer.txn() as state:
+        state.layout = "3d"
+        state.show_slices = False
+        state.layers["image"] = neuroglancer.ImageLayer(
+            source=neuroglancer.LayerDataSource(
+                url=neuroglancer.LocalVolume(
+                    np.zeros((3, 5), dtype=np.uint8),
+                    dimensions=neuroglancer.CoordinateSpace(
+                        names=["y", "x"], units=["nm", "nm"], scales=[3, 5]
+                    ),
+                    voxel_offset=[2, 4],
+                ),
+                transform=neuroglancer.CoordinateSpaceTransform(
+                    input_dimensions=padded_dimensions,
+                    output_dimensions=padded_dimensions,
+                    source_rank=2,
+                    matrix=[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 7]],
+                ),
+            ),
+            volume_rendering_mode="off",
+        )
+    webdriver.sync()
+    info = viewer.volume_info("image").result(timeout=15)
+    assert info.dimensions.rank == 3
+    indices = [list(info.dimensions.names).index(axis) for axis in "xyz"]
+    np.testing.assert_array_equal(np.array(info.lower_bound)[indices], [4, 2, 7])
+    np.testing.assert_array_equal(np.array(info.upper_bound)[indices], [9, 5, 8])
