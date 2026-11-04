@@ -282,12 +282,20 @@ class ViewerCommonBase:
         layer: str,
         *,
         dimensions: coordinate_space.CoordinateSpace | None = None,
+        context: "ts.Context | None" = None,
     ) -> "Future[ts.TensorStore]":
         future: Future[ts.TensorStore] = Future()
 
         def info_done(info_future):
             try:
                 info = info_future.result()
+                chunk_request_info = viewer_config_state.VolumeInfo(
+                    {
+                        key: value
+                        for key, value in info.to_json().items()
+                        if key != "availableScales"
+                    }
+                )
                 dimension_units = [
                     f"{scale} {unit}"
                     for scale, unit in zip(
@@ -317,9 +325,9 @@ class ViewerCommonBase:
                         except Exception as e:
                             read_promise.set_exception(e)
 
-                    self._volume_chunk(layer, info, chunk_pos).add_done_callback(
-                        chunk_done
-                    )
+                    self._volume_chunk(
+                        layer, chunk_request_info, chunk_pos
+                    ).add_done_callback(chunk_done)
                     return read_future
 
                 future.set_result(
@@ -334,6 +342,7 @@ class ViewerCommonBase:
                         ),
                         dimension_units=dimension_units,
                         chunk_layout=ts.ChunkLayout(read_chunk_shape=info.chunk_shape),
+                        context=context,
                     )
                 )
             except Exception as e:
