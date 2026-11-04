@@ -81,7 +81,7 @@ def test_tensorstore_features():
     assert local_volume.dimensions.to_json() == dimensions.to_json()
 
 
-def test_volume_info_preserves_padded_dimensions(webdriver):
+def test_volume_info_preserves_offsets_with_padded_dimensions(webdriver):
     viewer = webdriver.viewer
     padded_dimensions = neuroglancer.CoordinateSpace(
         names=["y", "x", "z"], units=["nm"] * 3, scales=[3, 5, 2]
