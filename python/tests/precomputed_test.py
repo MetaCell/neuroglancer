@@ -91,3 +91,96 @@ def test_precomputed(tempdir_server: tuple[pathlib.Path, str], webdriver, spec):
         np.testing.assert_allclose(store.read().result(), b, atol=4, rtol=0)
     else:
         np.testing.assert_equal(store.read().result(), b)
+
+
+def test_reads_every_resolution_that_volume_info_lists(
+    tempdir_server: tuple[pathlib.Path, str], webdriver
+):
+    import tensorstore as ts
+
+    tmp_path, server_url = tempdir_server
+    rng = np.random.default_rng(0)
+    full = rng.integers(0, 256, size=(41, 30, 20, 1), dtype=np.uint8)
+    half = rng.integers(0, 256, size=(20, 15, 10, 1), dtype=np.uint8)
+    for resolution, data in [([1, 1, 1], full), ([2, 2, 2], half)]:
+        store = ts.open(
+            {
+                "driver": "neuroglancer_precomputed",
+                "kvstore": {"driver": "file", "path": str(tmp_path)},
+                "multiscale_metadata": {"data_type": "uint8", "num_channels": 1},
+                "scale_metadata": {
+                    "resolution": resolution,
+                    "encoding": "raw",
+                    "chunk_size": [8, 8, 8],
+                },
+                "schema": {"domain": {"shape": list(data.shape)}},
+            },
+            create=True,
+            open=True,
+        ).result()
+        store[...] = data
+
+    with webdriver.viewer.txn() as s:
+        s.layers.append(
+            name="a",
+            layer=neuroglancer.ImageLayer(source=f"precomputed://{server_url}"),
+        )
+
+    info = webdriver.viewer.volume_info("a").result()
+    assert [list(scales) for scales in info.available_scales] == [
+        [1e-9, 1e-9, 1e-9],
+        [2e-9, 2e-9, 2e-9],
+    ]
+    for scales, data in zip(info.available_scales, [full, half]):
+        dimensions = neuroglancer.CoordinateSpace(
+            names=info.dimensions.names,
+            units=info.dimensions.units,
+            scales=scales,
+        )
+        volume = webdriver.viewer.volume("a", dimensions=dimensions).result()
+        np.testing.assert_equal(volume.read().result(), data[..., 0])
+
+
+def test_a_volume_with_a_cache_reads_each_chunk_from_the_browser_once(
+    tempdir_server: tuple[pathlib.Path, str], webdriver, monkeypatch
+):
+    import tensorstore as ts
+
+    tmp_path, server_url = tempdir_server
+    data = np.random.default_rng(0).integers(0, 256, size=(8, 8, 8, 1), dtype=np.uint8)
+    store = ts.open(
+        {
+            "driver": "neuroglancer_precomputed",
+            "kvstore": {"driver": "file", "path": str(tmp_path)},
+            "multiscale_metadata": {"data_type": "uint8", "num_channels": 1},
+            "scale_metadata": {
+                "resolution": [1, 1, 1],
+                "encoding": "raw",
+                "chunk_size": [8, 8, 8],
+            },
+            "schema": {"domain": {"shape": [8, 8, 8, 1]}},
+        },
+        create=True,
+    ).result()
+    store[...] = data
+
+    with webdriver.viewer.txn() as s:
+        s.layers.append(
+            name="a",
+            layer=neuroglancer.ImageLayer(source=f"precomputed://{server_url}"),
+        )
+
+    chunk_requests = []
+    request_chunk = webdriver.viewer._volume_chunk
+
+    def count_chunk_request(layer, info, chunk_grid_position):
+        chunk_requests.append(list(chunk_grid_position))
+        return request_chunk(layer, info, chunk_grid_position)
+
+    monkeypatch.setattr(webdriver.viewer, "_volume_chunk", count_chunk_request)
+    volume = webdriver.viewer.volume(
+        "a", context=ts.Context({"cache_pool": {"total_bytes_limit": 10_000_000}})
+    ).result()
+    for z in range(8):
+        np.testing.assert_equal(volume[:, :, z].read().result(), data[:, :, z, 0])
+    assert chunk_requests == [[0, 0, 0]]

@@ -335,6 +335,37 @@ function checkSourceMatch(
   return { chunkToRequestDimension, translation };
 }
 
+function getAvailableScales(
+  sources: SliceViewSingleResolutionSource<VolumeChunkSource>[][],
+  transform: RenderLayerTransform,
+  modelToRequestDimension: readonly number[],
+  renderLayerScales: Float64Array,
+  requestScales: Float64Array,
+): number[][] {
+  const { rank } = transform;
+  return sources[0].map((source) => {
+    const chunkToLayerTransform = getChunkToRenderLayerTransform(
+      source,
+      transform,
+      renderLayerScales,
+      renderLayerScales,
+    );
+    const scales = Array.from(requestScales);
+    for (let layerDim = 0; layerDim < rank; ++layerDim) {
+      const requestDim = modelToRequestDimension[layerDim];
+      if (requestDim === -1) continue;
+      const factors: number[] = [];
+      for (let chunkDim = 0; chunkDim < rank; ++chunkDim) {
+        const factor = chunkToLayerTransform[chunkDim * (rank + 1) + layerDim];
+        if (factor !== 0) factors.push(factor);
+      }
+      if (factors.length !== 1 || factors[0] < 0) continue;
+      scales[requestDim] = renderLayerScales[layerDim] * factors[0];
+    }
+    return scales;
+  });
+}
+
 function findMatchingSource(
   sources: SliceViewSingleResolutionSource<VolumeChunkSource>[][],
   transform: RenderLayerTransform,
@@ -524,12 +555,16 @@ export class VolumeRequestHandler extends RefCounted {
       physicalToLogicalDimension[rank - chunkDim - 1] = requestDim;
       chunkShape[requestDim] = spec.chunkDataSize[chunkDim];
       gridOrigin[requestDim] += spec.baseVoxelOffset[chunkDim];
-      lowerBound[requestDim] += Math.floor(
-        (source.lowerClipBound ?? spec.lowerVoxelBound)[chunkDim],
+      lowerBound[requestDim] += Math.max(
+        Math.floor((source.lowerClipBound ?? spec.lowerVoxelBound)[chunkDim]),
+        spec.lowerVoxelBound[chunkDim],
       );
       upperBound[requestDim] =
         translation[requestDim] +
-        Math.ceil((source.upperClipBound ?? spec.upperVoxelBound)[chunkDim]);
+        Math.min(
+          Math.ceil((source.upperClipBound ?? spec.upperVoxelBound)[chunkDim]),
+          spec.upperVoxelBound[chunkDim],
+        );
     }
     const info = {
       dimensions: coordinateSpace,
@@ -542,10 +577,16 @@ export class VolumeRequestHandler extends RefCounted {
     };
 
     if (request.kind === RequestKind.VOLUME_INFO) {
-      this.sendVolumeInfoResponseRequested.dispatch(
-        request.id,
-        volumeInfoToJson(info),
-      );
+      this.sendVolumeInfoResponseRequested.dispatch(request.id, {
+        ...volumeInfoToJson(info),
+        availableScales: getAvailableScales(
+          sources,
+          transform,
+          modelToRequestDimension,
+          renderLayerCoordinateSpace.scales,
+          coordinateSpace.scales,
+        ),
+      });
       return true;
     }
 

@@ -270,6 +270,9 @@ class VolumeInfo(JsonObjectWrapper):
     grid_origin = gridOrigin = wrapped_property("gridOrigin", array_wrapper(np.int64))
     lower_bound = lowerBound = wrapped_property("lowerBound", array_wrapper(np.int64))
     upper_bound = upperBound = wrapped_property("upperBound", array_wrapper(np.int64))
+    available_scales = availableScales = wrapped_property(
+        "availableScales", typed_list(array_wrapper(np.float64))
+    )
 
     @property
     def rank(self):
