@@ -270,6 +270,26 @@ async function readSegMembership(page: Page) {
   });
 }
 
+async function holdRejectedMutation(
+  page: Page,
+  path: string,
+  response: { error: string; meta?: { code: string } },
+) {
+  const { promise: received, resolve: markReceived } =
+    Promise.withResolvers<void>();
+  const { promise: released, resolve: release } = Promise.withResolvers<void>();
+  await page.route(
+    `**/${path}`,
+    async (route) => {
+      markReceived();
+      await released;
+      await route.fulfill({ status: 409, json: response });
+    },
+    { times: 1 },
+  );
+  return { received, release };
+}
+
 test("a rejected merge removes its preview from the Seg list", async ({
   page,
   server,
@@ -279,45 +299,38 @@ test("a rejected merge removes its preview from the Seg list", async ({
   const initialSegments = await readSegMembership(page);
   const initialGraph = topology(await readGraph(page, IDS, "Skeletons", true));
 
-  const intercepted = Promise.withResolvers<void>();
-  const release = Promise.withResolvers<void>();
-  await page.route(
-    "**/skeleton/join",
-    async (route) => {
-      intercepted.resolve();
-      await release.promise;
-      await route.fulfill({
-        status: 409,
-        json: {
-          error: "This merge would remove a skeleton linked to a task.",
-          meta: { code: "task_skeleton_merge_blocked" },
-        },
-      });
+  const { received, release } = await holdRejectedMutation(
+    page,
+    "skeleton/join",
+    {
+      error: "This merge would remove a skeleton linked to a task.",
+      meta: { code: "task_skeleton_merge_blocked" },
     },
-    { times: 1 },
   );
 
   try {
     await ui.merge(103n, 203n);
-    await intercepted.promise;
+    await received;
     const [target] = await readGraph(page, [203n]);
     expect(initialSegments.visible).not.toContain(String(target.skeletonId));
     expect((await readSegMembership(page)).visible).toContain(
       String(target.skeletonId),
     );
   } finally {
-    release.resolve();
+    release();
   }
 
   await expect.poll(async () => (await readQueue(page)).pending).toBe(false);
   expect(topology(await readGraph(page, IDS, "Skeletons", true))).toEqual(
     initialGraph,
   );
-  expect(await readQueue(page)).toMatchObject({
-    canUndo: false,
-    canRedo: false,
+  const queue = await readQueue(page);
+  expect(queue).toMatchObject({ canUndo: false, canRedo: false });
+  expect(queue.recent[0]).toMatchObject({
+    intent: "execute",
+    status: "not-saved",
+    authorityReason: "rejected",
   });
-  expect(server.mutations).toHaveLength(0);
   expect(await readSegMembership(page)).toEqual(initialSegments);
 
   await ui.merge(203n, 103n);
@@ -328,11 +341,15 @@ test("a rejected merge removes its preview from the Seg list", async ({
   });
 });
 
-for (const action of ["Undo", "Redo"] as const) {
-  test(`a rejected Merge ${action} restores the saved Seg entries`, async ({
-    page,
-    server,
-  }) => {
+for (const [action, hideRestoredSegment] of [
+  ["Undo", false],
+  ["Redo", false],
+  ["Redo", true],
+] as const) {
+  const name = hideRestoredSegment
+    ? "a rejected Merge Redo keeps a restored Seg entry hidden"
+    : `a rejected Merge ${action} restores the saved Seg entries`;
+  test(name, async ({ page, server }) => {
     const ui = new SkeletonEditPage(page);
     await ui.open(server.sourceUrl);
     await ui.merge(103n, 203n);
@@ -343,29 +360,34 @@ for (const action of ["Undo", "Redo"] as const) {
       await ui.undo();
       await ui.waitSaved();
     }
+    const hiddenId = hideRestoredSegment
+      ? String((await readGraph(page, [203n]))[0].skeletonId)
+      : undefined;
+    if (hiddenId !== undefined) {
+      await page.getByText("Seg.", { exact: true }).click();
+      await page
+        .locator(`.neuroglancer-segment-list-entry[data-id="${hiddenId}"]`)
+        .getByTitle("Toggle segment visibility", { exact: true })
+        .first()
+        .click();
+      await ui.showSkeleton();
+    }
     const before = await readSegMembership(page);
+    if (hiddenId !== undefined) {
+      expect(before.visible).not.toContain(hiddenId);
+      expect(before.selected).toContain(hiddenId);
+    }
     const saved = savedTopology(server);
     const { canUndo, canRedo } = await readQueue(page);
     const path = action === "Undo" ? "skeleton/split" : "skeleton/join";
     const attempt = () => (action === "Undo" ? ui.undo() : ui.redo());
 
-    const received = Promise.withResolvers<void>();
-    const release = Promise.withResolvers<void>();
-    await page.route(
-      `**/${path}`,
-      async (route) => {
-        received.resolve();
-        await release.promise;
-        await route.fulfill({
-          status: 409,
-          json: { error: `CATMAID rejected Merge ${action}` },
-        });
-      },
-      { times: 1 },
-    );
+    const { received, release } = await holdRejectedMutation(page, path, {
+      error: `CATMAID rejected Merge ${action}`,
+    });
     try {
       await attempt();
-      await received.promise;
+      await received;
       const preview = await readSegMembership(page);
       const provisional = preview.visible.filter(
         (id) => !before.visible.includes(id),
@@ -373,7 +395,7 @@ for (const action of ["Undo", "Redo"] as const) {
       expect(provisional).toHaveLength(1);
       expect(preview.selected).toContain(provisional[0]);
     } finally {
-      release.resolve();
+      release();
     }
 
     await expect.poll(async () => (await readQueue(page)).pending).toBe(false);
@@ -382,7 +404,13 @@ for (const action of ["Undo", "Redo"] as const) {
       saved,
     );
     expect(savedTopology(server)).toEqual(saved);
-    expect(await readQueue(page)).toMatchObject({ canUndo, canRedo });
+    const queue = await readQueue(page);
+    expect(queue).toMatchObject({ canUndo, canRedo });
+    expect(queue.recent[0]).toMatchObject({
+      intent: action === "Undo" ? "undo" : "redo",
+      status: "not-saved",
+      authorityReason: "rejected",
+    });
 
     await attempt();
     await ui.waitSaved();

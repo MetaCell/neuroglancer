@@ -28,6 +28,12 @@ import type {
 
 export type SpatialSkeletonPreviewSelectionPin = "preserve" | "pin" | "unpin";
 
+export interface SpatialSkeletonSegmentMembership {
+  readonly visible: boolean;
+  readonly temporaryVisible: boolean;
+  readonly starred: boolean;
+}
+
 /**
  * Datasource-neutral, non-authoritative presentation wishes attached to one
  * exact intent. Logical handles deliberately keep provisional and remapped
@@ -42,6 +48,10 @@ export interface SpatialSkeletonPreviewUiHints {
     /** A bigint targets the exact provisional ID being removed on rollback. */
     readonly segment: SpatialSkeletonStableSegmentHandle | bigint;
     readonly visible: boolean;
+    /** Restore this segment's membership from before the preview was shown. */
+    readonly restoreMembership?: true;
+    readonly temporaryVisible?: boolean;
+    readonly starred?: boolean;
     readonly deselect?: boolean;
     readonly select?: SpatialSkeletonPreviewSelectionPin;
   }[];
@@ -73,6 +83,8 @@ export interface SpatialSkeletonResolvedPreviewUiHints {
   readonly segmentVisibility: readonly {
     readonly segmentId: bigint;
     readonly visible: boolean;
+    readonly temporaryVisible?: boolean;
+    readonly starred?: boolean;
     readonly deselect: boolean;
     readonly select?: SpatialSkeletonPreviewSelectionPin;
   }[];
@@ -92,6 +104,7 @@ export interface SpatialSkeletonResolvedPreviewUiHints {
 /** Layer-owned adapter for best-effort selection and visibility effects. */
 export interface SpatialSkeletonPreviewUiHintPort {
   apply(hints: SpatialSkeletonResolvedPreviewUiHints): void;
+  readSegmentMembership?(segmentId: bigint): SpatialSkeletonSegmentMembership;
 }
 
 export function cloneSpatialSkeletonPreviewUiHints(
@@ -227,6 +240,10 @@ function resolveSpatialSkeletonPreviewUiHints(
           ? hint.segment
           : resolveSegment(hint.segment),
       visible: hint.visible,
+      ...(hint.temporaryVisible === undefined
+        ? {}
+        : { temporaryVisible: hint.temporaryVisible }),
+      ...(hint.starred === undefined ? {} : { starred: hint.starred }),
       deselect: hint.deselect ?? !hint.visible,
       ...(hint.select === undefined ? {} : { select: hint.select }),
     }),

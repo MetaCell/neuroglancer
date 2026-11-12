@@ -1892,12 +1892,14 @@ export class CatmaidEditPlanner
     const show = (
       segment: SpatialSkeletonStableSegmentHandle,
       selection?: "preserve" | "pin" | "unpin",
+      restoreMembership = false,
     ) => {
       segmentVisibility.push(
         Object.freeze({
           segment,
           visible: true,
           ...(selection === undefined ? {} : { select: selection }),
+          ...(restoreMembership ? { restoreMembership: true as const } : {}),
         }),
       );
     };
@@ -2041,8 +2043,9 @@ export class CatmaidEditPlanner
           select(forwardSecondNode, semantic.mergedSegment);
           retainSegments.push(semantic.mergedSegment);
         } else {
-          show(forwardFirstSegment);
-          show(forwardSecondSegment);
+          const restoreMembership = rollback !== undefined && intent === "redo";
+          show(forwardFirstSegment, undefined, restoreMembership);
+          show(forwardSecondSegment, undefined, restoreMembership);
           select(forwardSecondNode, forwardSecondSegment);
           retainSegments.push(forwardFirstSegment, forwardSecondSegment);
         }

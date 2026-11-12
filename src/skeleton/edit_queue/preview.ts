@@ -242,6 +242,7 @@ interface IntentPreview {
   readonly preview: SpatialSkeletonPreviewIntentDelta;
   readonly mappingToken?: SpatialSkeletonStableIdMappingToken;
   readonly inverseDelta: SpatialSkeletonEditInverseDelta;
+  readonly rollbackSegmentVisibility?: SpatialSkeletonPreviewUiHints["segmentVisibility"];
 }
 
 interface PreparedRuntimePublication {
@@ -762,10 +763,47 @@ export class SpatialSkeletonEditPreview
         pendingEditIntentIdsToRemove: [preview.pendingEditIntentId ?? intentId],
       });
     }
+    const rollbackSegmentVisibility = this.captureRollbackSegmentVisibility(
+      preview,
+      publication.mappings,
+    );
+    if (rollbackSegmentVisibility !== undefined) {
+      publication.activeIntents.set(intentId, {
+        ...publication.activeIntents.get(intentId)!,
+        rollbackSegmentVisibility,
+      });
+    }
     this.adoptPublication(publication, {
       uiHints: preview.uiHints,
     });
     this.preparedExact.delete(intentId);
+  }
+
+  private captureRollbackSegmentVisibility(
+    preview: SpatialSkeletonPreviewIntentDelta,
+    mappings: SpatialSkeletonStableIdHandles<bigint, bigint>,
+  ): SpatialSkeletonPreviewUiHints["segmentVisibility"] {
+    const port = this.options.uiHints;
+    const visibility = preview.rollbackUiHints?.segmentVisibility;
+    if (
+      port?.readSegmentMembership === undefined ||
+      !visibility?.some((hint) => hint.restoreMembership)
+    ) {
+      return undefined;
+    }
+    try {
+      return visibility.map((hint) => {
+        if (!hint.restoreMembership || typeof hint.segment === "bigint")
+          return hint;
+        const segmentId = mappings.resolveSegment(hint.segment);
+        return segmentId === undefined
+          ? hint
+          : { ...hint, ...port.readSegmentMembership!(segmentId) };
+      });
+    } catch (error) {
+      this.reportAuxiliaryError(error);
+      return undefined;
+    }
   }
 
   rollbackAndReplay(
@@ -795,6 +833,7 @@ export class SpatialSkeletonEditPreview
         intentId,
         preview: normalizePreview(artifact.preview),
         inverseDelta: artifact.inversePreview,
+        rollbackSegmentVisibility: existing?.rollbackSegmentVisibility,
       });
     }
     if (removedIntents.length === 0 && !replayChanged) return;
@@ -815,7 +854,14 @@ export class SpatialSkeletonEditPreview
     const rollbackUiHints = mergeSpatialSkeletonPreviewUiHints(
       removedIntents
         .sort((a, b) => b.intentId - a.intentId)
-        .map(({ preview }) => preview.rollbackUiHints),
+        .map(({ preview, rollbackSegmentVisibility }) =>
+          rollbackSegmentVisibility === undefined
+            ? preview.rollbackUiHints
+            : {
+                ...preview.rollbackUiHints,
+                segmentVisibility: rollbackSegmentVisibility,
+              },
+        ),
     );
     this.adoptPublication(publication, {
       uiHints: rollbackUiHints,
@@ -913,6 +959,8 @@ export class SpatialSkeletonEditPreview
         intentId: artifact.intentId,
         preview: normalizePreview(artifact.preview),
         inverseDelta: artifact.inversePreview,
+        rollbackSegmentVisibility: this.activeIntents.get(artifact.intentId)
+          ?.rollbackSegmentVisibility,
       });
     }
     this.reconcileMappingOverlays(mappings, active);

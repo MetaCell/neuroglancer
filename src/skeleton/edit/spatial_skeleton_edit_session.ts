@@ -58,7 +58,10 @@ import {
   preparedSpatialSkeletonPreviewCachePublicationBrand,
   SpatialSkeletonEditPreview,
 } from "#src/skeleton/edit_queue/preview.js";
-import type { SpatialSkeletonResolvedPreviewUiHints } from "#src/skeleton/edit_queue/preview_ui_hints.js";
+import type {
+  SpatialSkeletonResolvedPreviewUiHints,
+  SpatialSkeletonSegmentMembership,
+} from "#src/skeleton/edit_queue/preview_ui_hints.js";
 import type {
   SpatialSkeletonQueueInput,
   SpatialSkeletonQueueInputPreparation,
@@ -512,6 +515,9 @@ export interface SpatialSkeletonLayerContext {
   applySpatialSkeletonPreviewUiHints?(
     hints: SpatialSkeletonResolvedPreviewUiHints,
   ): void;
+  readSpatialSkeletonSegmentMembership?(
+    segmentId: bigint,
+  ): SpatialSkeletonSegmentMembership;
 }
 
 export class SpatialSkeletonEditSession
@@ -629,6 +635,8 @@ export class SpatialSkeletonEditSession
           : {
               apply: (hints) =>
                 layer.applySpatialSkeletonPreviewUiHints!(hints),
+              readSegmentMembership:
+                layer.readSpatialSkeletonSegmentMembership?.bind(layer),
             },
       onAuxiliaryError: (error) => console.error(error),
     });
