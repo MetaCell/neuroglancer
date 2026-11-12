@@ -39,7 +39,8 @@ export interface SpatialSkeletonPreviewUiHints {
     readonly to: SpatialSkeletonStableSegmentHandle;
   }[];
   readonly segmentVisibility?: readonly {
-    readonly segment: SpatialSkeletonStableSegmentHandle;
+    /** A bigint targets the exact provisional ID being removed on rollback. */
+    readonly segment: SpatialSkeletonStableSegmentHandle | bigint;
     readonly visible: boolean;
     readonly deselect?: boolean;
     readonly select?: SpatialSkeletonPreviewSelectionPin;
@@ -107,7 +108,10 @@ export function cloneSpatialSkeletonPreviewUiHints(
   const segmentVisibility = hints.segmentVisibility?.map((hint) =>
     Object.freeze({
       ...hint,
-      segment: Object.freeze({ ...hint.segment }),
+      segment:
+        typeof hint.segment === "bigint"
+          ? hint.segment
+          : Object.freeze({ ...hint.segment }),
     }),
   );
   const selectedNode =
@@ -218,7 +222,10 @@ function resolveSpatialSkeletonPreviewUiHints(
 
   const segmentVisibility = (hints?.segmentVisibility ?? []).map((hint) =>
     Object.freeze({
-      segmentId: resolveSegment(hint.segment),
+      segmentId:
+        typeof hint.segment === "bigint"
+          ? hint.segment
+          : resolveSegment(hint.segment),
       visible: hint.visible,
       deselect: hint.deselect ?? !hint.visible,
       ...(hint.select === undefined ? {} : { select: hint.select }),
