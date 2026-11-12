@@ -341,14 +341,78 @@ test("a rejected merge removes its preview from the Seg list", async ({
   });
 });
 
-for (const [action, hideRestoredSegment] of [
-  ["Undo", false],
-  ["Redo", false],
-  ["Redo", true],
+test("a rejected Merge clears its previews after queued Undo and Redo", async ({
+  page,
+  server,
+}) => {
+  const ui = new SkeletonEditPage(page);
+  await ui.open(server.sourceUrl);
+  const before = await readSegMembership(page);
+  const beforeGraph = topology(await readGraph(page, IDS, "Skeletons", true));
+  const { received, release } = await holdRejectedMutation(
+    page,
+    "skeleton/join",
+    { error: "CATMAID rejected the original merge" },
+  );
+  const waitForPreview = (intent: "undo" | "redo") =>
+    expect
+      .poll(
+        async () =>
+          (await readQueue(page)).entries.find(
+            (entry) => entry.intent === intent,
+          )?.lifecycle.preview,
+      )
+      .toBe("exact");
+
+  try {
+    await ui.merge(103n, 203n);
+    await received;
+    await ui.undo();
+    await waitForPreview("undo");
+    await ui.redo();
+    await waitForPreview("redo");
+    const [target] = await readGraph(page, [203n]);
+    const redoPreviewId = String(target.skeletonId);
+    expect(before.visible).not.toContain(redoPreviewId);
+    expect((await readSegMembership(page)).visible).toContain(redoPreviewId);
+  } finally {
+    release();
+  }
+
+  await expect.poll(async () => (await readQueue(page)).pending).toBe(false);
+  const after = await readSegMembership(page);
+  const queue = await readQueue(page);
+  expect(queue).toMatchObject({ canUndo: false, canRedo: false });
+  expect(queue.recent).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        intent: "execute",
+        status: "not-saved",
+        authorityReason: "rejected",
+      }),
+      expect.objectContaining({ intent: "undo", status: "not-saved" }),
+      expect.objectContaining({ intent: "redo", status: "not-saved" }),
+    ]),
+  );
+  expect(topology(await readGraph(page, IDS, "Skeletons", true))).toEqual(
+    beforeGraph,
+  );
+
+  await ui.merge(203n, 103n);
+  await ui.waitSaved();
+  expect(after).toEqual(before);
+});
+
+for (const [action, hiddenEntry] of [
+  ["Undo", undefined],
+  ["Undo", "merged survivor"],
+  ["Redo", undefined],
+  ["Redo", "restored Seg entry"],
 ] as const) {
-  const name = hideRestoredSegment
-    ? "a rejected Merge Redo keeps a restored Seg entry hidden"
-    : `a rejected Merge ${action} restores the saved Seg entries`;
+  const name =
+    hiddenEntry === undefined
+      ? `a rejected Merge ${action} restores the saved Seg entries`
+      : `a rejected Merge ${action} keeps a ${hiddenEntry} hidden`;
   test(name, async ({ page, server }) => {
     const ui = new SkeletonEditPage(page);
     await ui.open(server.sourceUrl);
@@ -360,9 +424,10 @@ for (const [action, hideRestoredSegment] of [
       await ui.undo();
       await ui.waitSaved();
     }
-    const hiddenId = hideRestoredSegment
-      ? String((await readGraph(page, [203n]))[0].skeletonId)
-      : undefined;
+    const hiddenId =
+      hiddenEntry === undefined
+        ? undefined
+        : String((await readGraph(page, [203n]))[0].skeletonId);
     if (hiddenId !== undefined) {
       await page.getByText("Seg.", { exact: true }).click();
       await page
@@ -378,6 +443,9 @@ for (const [action, hideRestoredSegment] of [
       expect(before.selected).toContain(hiddenId);
     }
     const saved = savedTopology(server);
+    const savedSegmentIds = new Set(
+      saved.map(({ skeletonId }) => String(skeletonId)),
+    );
     const { canUndo, canRedo } = await readQueue(page);
     const path = action === "Undo" ? "skeleton/split" : "skeleton/join";
     const attempt = () => (action === "Undo" ? ui.undo() : ui.redo());
@@ -390,7 +458,7 @@ for (const [action, hideRestoredSegment] of [
       await received;
       const preview = await readSegMembership(page);
       const provisional = preview.visible.filter(
-        (id) => !before.visible.includes(id),
+        (id) => !savedSegmentIds.has(id),
       );
       expect(provisional).toHaveLength(1);
       expect(preview.selected).toContain(provisional[0]);

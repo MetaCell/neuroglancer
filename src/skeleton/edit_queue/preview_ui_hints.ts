@@ -233,21 +233,35 @@ function resolveSpatialSkeletonPreviewUiHints(
     if (fromId !== toId) resolvedSegmentRemappings.set(fromId, toId);
   }
 
-  const segmentVisibility = (hints?.segmentVisibility ?? []).map((hint) =>
-    Object.freeze({
-      segmentId:
-        typeof hint.segment === "bigint"
-          ? hint.segment
-          : resolveSegment(hint.segment),
-      visible: hint.visible,
-      ...(hint.temporaryVisible === undefined
-        ? {}
-        : { temporaryVisible: hint.temporaryVisible }),
-      ...(hint.starred === undefined ? {} : { starred: hint.starred }),
-      deselect: hint.deselect ?? !hint.visible,
-      ...(hint.select === undefined ? {} : { select: hint.select }),
-    }),
+  const visibilityHints = hints?.segmentVisibility ?? [];
+  const discardedProvisionalIds = new Set(
+    visibilityHints.flatMap(({ segment, visible }) =>
+      typeof segment === "bigint" && !visible ? [segment] : [],
+    ),
   );
+  const segmentVisibility = visibilityHints.flatMap((hint) => {
+    const { segment, visible } = hint;
+    const segmentId =
+      typeof segment === "bigint" ? segment : resolveSegment(segment);
+    const removesProvisional = typeof segment === "bigint" && !visible;
+    // An older rollback hint can resolve to a discarded preview through the
+    // fallback mappings. Its membership must not override the exact removal.
+    if (discardedProvisionalIds.has(segmentId) && !removesProvisional) {
+      return [];
+    }
+    return [
+      Object.freeze({
+        segmentId,
+        visible,
+        ...(hint.temporaryVisible === undefined
+          ? {}
+          : { temporaryVisible: hint.temporaryVisible }),
+        ...(hint.starred === undefined ? {} : { starred: hint.starred }),
+        deselect: hint.deselect ?? !visible,
+        ...(hint.select === undefined ? {} : { select: hint.select }),
+      }),
+    ];
+  });
   const selectedNode =
     hints?.selectedNode === undefined
       ? undefined
@@ -278,7 +292,11 @@ function resolveSpatialSkeletonPreviewUiHints(
                 : false,
           });
   const retainSegmentIds = Object.freeze([
-    ...new Set((hints?.retainSegments ?? []).map(resolveSegment)),
+    ...new Set(
+      (hints?.retainSegments ?? [])
+        .map(resolveSegment)
+        .filter((segmentId) => !discardedProvisionalIds.has(segmentId)),
+    ),
   ]);
   return Object.freeze({
     nodeIdRemappings: new Map(options.nodeIdRemappings ?? []),

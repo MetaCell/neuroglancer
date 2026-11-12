@@ -2026,7 +2026,8 @@ export class CatmaidEditPlanner
             ? semantic.secondNode
             : semantic.firstNode;
         if (direction === "forward") {
-          show(semantic.mergedSegment, "preserve");
+          const restoreMembership = rollback !== undefined && intent === "undo";
+          show(semantic.mergedSegment, "preserve", restoreMembership);
           if (rollback === undefined) {
             segmentMembershipRemaps.push(
               Object.freeze({
