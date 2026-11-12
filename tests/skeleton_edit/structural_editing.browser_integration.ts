@@ -180,6 +180,26 @@ test("split previews the complete branch, then Undo and Redo restore topology", 
   ]);
 });
 
+async function mergeIntoBrowseTarget(ui: SkeletonEditPage) {
+  const { page } = ui;
+  await ui.selectNode(103n);
+  const center = await ui.panelCenter();
+  const scale = await page.evaluate(
+    () =>
+      (window as unknown as { viewer: Viewer }).viewer.crossSectionScale.value,
+  );
+  await page.mouse.move(center.x, center.y);
+  await ui.runEdit(async () => {
+    await page.keyboard.down("m");
+    try {
+      await page.mouse.click(center.x, center.y);
+      await page.mouse.click(center.x, center.y + 2000 / scale);
+    } finally {
+      await page.keyboard.up("m");
+    }
+  });
+}
+
 test("a cold merge appears in Queue immediately and can be undone before its target loads", async ({
   page,
   server,
@@ -202,23 +222,7 @@ test("a cold merge appears in Queue immediately and can be undone before its tar
       [2000, 2000, 1000],
       [10n],
     );
-    await ui.selectNode(103n);
-    const center = await ui.panelCenter();
-    const scale = await page.evaluate(
-      () =>
-        (window as unknown as { viewer: Viewer }).viewer.crossSectionScale
-          .value,
-    );
-    await page.mouse.move(center.x, center.y);
-    await ui.runEdit(async () => {
-      await page.keyboard.down("m");
-      try {
-        await page.mouse.click(center.x, center.y);
-        await page.mouse.click(center.x, center.y + 2000 / scale);
-      } finally {
-        await page.keyboard.up("m");
-      }
-    });
+    await mergeIntoBrowseTarget(ui);
     const pending = await readQueue(page);
     expect(pending.entries).toMatchObject([
       {
@@ -268,6 +272,18 @@ async function readSegMembership(page: Page) {
       selected: [...group.selectedSegments].map(String).sort(),
     };
   });
+}
+
+async function toggleSegVisibility(ui: SkeletonEditPage, segmentId: string) {
+  const { page } = ui;
+  await page.getByText("Seg.", { exact: true }).click();
+  await page
+    .locator(`.neuroglancer-segment-list-entry[data-id="${segmentId}"]`)
+    .getByTitle("Toggle segment visibility", { exact: true })
+    .filter({ visible: true })
+    .first()
+    .click();
+  await ui.showSkeleton();
 }
 
 async function holdRejectedMutation(
@@ -339,6 +355,52 @@ test("a rejected merge removes its preview from the Seg list", async ({
     visible: ["20"],
     selected: ["20"],
   });
+});
+
+test("a rejected Merge keeps a hidden browse target hidden", async ({
+  page,
+  server,
+}) => {
+  const ui = new SkeletonEditPage(page);
+  await ui.open(server.sourceUrl, [10n, 20n], false, [2000, 2000, 1000], [10n]);
+  await toggleSegVisibility(ui, "20");
+  const before = await readSegMembership(page);
+  expect(before).toEqual({ visible: ["10"], selected: ["10", "20"] });
+  const saved = savedTopology(server);
+  const { received, release } = await holdRejectedMutation(
+    page,
+    "skeleton/join",
+    { error: "CATMAID rejected the merge with a hidden target" },
+  );
+
+  try {
+    await mergeIntoBrowseTarget(ui);
+    await received;
+    const [target] = await readGraph(page, [203n]);
+    const previewId = String(target.skeletonId);
+    expect(before.selected).not.toContain(previewId);
+    expect((await readSegMembership(page)).visible).toContain(previewId);
+  } finally {
+    release();
+  }
+
+  await expect.poll(async () => (await readQueue(page)).pending).toBe(false);
+  const queue = await readQueue(page);
+  expect(queue).toMatchObject({ canUndo: false, canRedo: false });
+  expect(queue.recent[0]).toMatchObject({
+    intent: "execute",
+    status: "not-saved",
+    authorityReason: "rejected",
+  });
+  expect(topology(await readGraph(page, IDS, "Skeletons", true))).toEqual(
+    saved,
+  );
+  expect(await readSegMembership(page)).toEqual(before);
+
+  await toggleSegVisibility(ui, "20");
+  await ui.inspect(20n);
+  await ui.merge(103n, 203n);
+  await ui.waitSaved();
 });
 
 test("a rejected Merge clears its previews after queued Undo and Redo", async ({
@@ -429,13 +491,7 @@ for (const [action, hiddenEntry] of [
         ? undefined
         : String((await readGraph(page, [203n]))[0].skeletonId);
     if (hiddenId !== undefined) {
-      await page.getByText("Seg.", { exact: true }).click();
-      await page
-        .locator(`.neuroglancer-segment-list-entry[data-id="${hiddenId}"]`)
-        .getByTitle("Toggle segment visibility", { exact: true })
-        .first()
-        .click();
-      await ui.showSkeleton();
+      await toggleSegVisibility(ui, hiddenId);
     }
     const before = await readSegMembership(page);
     if (hiddenId !== undefined) {

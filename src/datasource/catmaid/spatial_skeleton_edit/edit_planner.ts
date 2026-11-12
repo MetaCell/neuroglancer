@@ -2025,8 +2025,8 @@ export class CatmaidEditPlanner
           semantic.inverseOrientation === "second-from-first"
             ? semantic.secondNode
             : semantic.firstNode;
+        const restoreMembership = rollback !== undefined;
         if (direction === "forward") {
-          const restoreMembership = rollback !== undefined && intent === "undo";
           show(semantic.mergedSegment, "preserve", restoreMembership);
           if (rollback === undefined) {
             segmentMembershipRemaps.push(
@@ -2044,7 +2044,6 @@ export class CatmaidEditPlanner
           select(forwardSecondNode, semantic.mergedSegment);
           retainSegments.push(semantic.mergedSegment);
         } else {
-          const restoreMembership = rollback !== undefined && intent === "redo";
           show(forwardFirstSegment, undefined, restoreMembership);
           show(forwardSecondSegment, undefined, restoreMembership);
           select(forwardSecondNode, forwardSecondSegment);
