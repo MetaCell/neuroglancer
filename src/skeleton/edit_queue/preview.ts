@@ -45,6 +45,7 @@ import {
 import type {
   SpatialSkeletonPreviewUiHintPort,
   SpatialSkeletonPreviewUiHints,
+  SpatialSkeletonSegmentMembership,
 } from "#src/skeleton/edit_queue/preview_ui_hints.js";
 import {
   applySpatialSkeletonPreviewUiHintsAfterAdoption,
@@ -242,7 +243,10 @@ interface IntentPreview {
   readonly preview: SpatialSkeletonPreviewIntentDelta;
   readonly mappingToken?: SpatialSkeletonStableIdMappingToken;
   readonly inverseDelta: SpatialSkeletonEditInverseDelta;
-  readonly rollbackSegmentVisibility?: SpatialSkeletonPreviewUiHints["segmentVisibility"];
+  readonly rollbackSegmentMembership?: ReadonlyMap<
+    string,
+    SpatialSkeletonSegmentMembership
+  >;
 }
 
 interface PreparedRuntimePublication {
@@ -255,6 +259,30 @@ interface PreparedRuntimePublication {
   readonly previewedWorkspace: CompleteSkeletonSet;
   readonly statePublication: SpatialSkeletonPreparedPreviewCachePublication;
   readonly publishedCacheRevisions: Map<bigint, number>;
+}
+
+function getRollbackUiHints({
+  preview,
+  rollbackSegmentMembership,
+}: IntentPreview): SpatialSkeletonPreviewUiHints | undefined {
+  const hints = preview.rollbackUiHints;
+  if (
+    rollbackSegmentMembership === undefined ||
+    hints?.segmentVisibility === undefined
+  ) {
+    return hints;
+  }
+  // Use the current hints, which may have changed during a rebase.
+  return {
+    ...hints,
+    segmentVisibility: hints.segmentVisibility.map((hint) => {
+      if (!hint.restoreMembership || typeof hint.segment === "bigint") {
+        return hint;
+      }
+      const membership = rollbackSegmentMembership.get(hint.segment.stableId);
+      return membership === undefined ? hint : { ...hint, ...membership };
+    }),
+  };
 }
 
 function cloneBindings(
@@ -763,14 +791,14 @@ export class SpatialSkeletonEditPreview
         pendingEditIntentIdsToRemove: [preview.pendingEditIntentId ?? intentId],
       });
     }
-    const rollbackSegmentVisibility = this.captureRollbackSegmentVisibility(
-      preview,
+    const rollbackSegmentMembership = this.captureRollbackSegmentMembership(
+      preview.rollbackUiHints,
       publication.mappings,
     );
-    if (rollbackSegmentVisibility !== undefined) {
+    if (rollbackSegmentMembership !== undefined) {
       publication.activeIntents.set(intentId, {
         ...publication.activeIntents.get(intentId)!,
-        rollbackSegmentVisibility,
+        rollbackSegmentMembership,
       });
     }
     this.adoptPublication(publication, {
@@ -779,27 +807,28 @@ export class SpatialSkeletonEditPreview
     this.preparedExact.delete(intentId);
   }
 
-  private captureRollbackSegmentVisibility(
-    preview: SpatialSkeletonPreviewIntentDelta,
+  private captureRollbackSegmentMembership(
+    hints: SpatialSkeletonPreviewUiHints | undefined,
     mappings: SpatialSkeletonStableIdHandles<bigint, bigint>,
-  ): SpatialSkeletonPreviewUiHints["segmentVisibility"] {
+  ): IntentPreview["rollbackSegmentMembership"] {
     const port = this.options.uiHints;
-    const visibility = preview.rollbackUiHints?.segmentVisibility;
-    if (
-      port?.readSegmentMembership === undefined ||
-      !visibility?.some((hint) => hint.restoreMembership)
-    ) {
-      return undefined;
-    }
+    if (port?.readSegmentMembership === undefined) return undefined;
     try {
-      return visibility.map((hint) => {
-        if (!hint.restoreMembership || typeof hint.segment === "bigint")
-          return hint;
-        const segmentId = mappings.resolveSegment(hint.segment);
-        return segmentId === undefined
-          ? hint
-          : { ...hint, ...port.readSegmentMembership!(segmentId) };
-      });
+      let membership: Map<string, SpatialSkeletonSegmentMembership> | undefined;
+      for (const { segment, restoreMembership } of hints?.segmentVisibility ??
+        []) {
+        if (!restoreMembership || typeof segment === "bigint") continue;
+        const segmentId = mappings.resolveSegment(segment);
+        if (segmentId === undefined) continue;
+        const { visible, temporaryVisible, starred } =
+          port.readSegmentMembership(segmentId);
+        (membership ??= new Map()).set(segment.stableId, {
+          visible,
+          temporaryVisible,
+          starred,
+        });
+      }
+      return membership;
     } catch (error) {
       this.reportAuxiliaryError(error);
       return undefined;
@@ -833,7 +862,7 @@ export class SpatialSkeletonEditPreview
         intentId,
         preview: normalizePreview(artifact.preview),
         inverseDelta: artifact.inversePreview,
-        rollbackSegmentVisibility: existing?.rollbackSegmentVisibility,
+        rollbackSegmentMembership: existing?.rollbackSegmentMembership,
       });
     }
     if (removedIntents.length === 0 && !replayChanged) return;
@@ -854,14 +883,7 @@ export class SpatialSkeletonEditPreview
     const rollbackUiHints = mergeSpatialSkeletonPreviewUiHints(
       removedIntents
         .sort((a, b) => b.intentId - a.intentId)
-        .map(({ preview, rollbackSegmentVisibility }) =>
-          rollbackSegmentVisibility === undefined
-            ? preview.rollbackUiHints
-            : {
-                ...preview.rollbackUiHints,
-                segmentVisibility: rollbackSegmentVisibility,
-              },
-        ),
+        .map(getRollbackUiHints),
     );
     this.adoptPublication(publication, {
       uiHints: rollbackUiHints,
@@ -959,8 +981,8 @@ export class SpatialSkeletonEditPreview
         intentId: artifact.intentId,
         preview: normalizePreview(artifact.preview),
         inverseDelta: artifact.inversePreview,
-        rollbackSegmentVisibility: this.activeIntents.get(artifact.intentId)
-          ?.rollbackSegmentVisibility,
+        rollbackSegmentMembership: this.activeIntents.get(artifact.intentId)
+          ?.rollbackSegmentMembership,
       });
     }
     this.reconcileMappingOverlays(mappings, active);
