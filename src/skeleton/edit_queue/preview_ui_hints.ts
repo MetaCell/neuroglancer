@@ -28,7 +28,8 @@ import type {
 
 export type SpatialSkeletonPreviewSelectionPin = "preserve" | "pin" | "unpin";
 
-export interface SpatialSkeletonSegmentMembership {
+/** Normal visibility, temporary visibility, and Seg star state for one segment. */
+export interface SegmentVisibilityState {
   readonly visible: boolean;
   readonly temporaryVisible: boolean;
   readonly starred: boolean;
@@ -40,7 +41,7 @@ export interface SpatialSkeletonSegmentMembership {
  * authority out of datasource UI code.
  */
 export interface SpatialSkeletonPreviewUiHints {
-  readonly segmentMembershipRemaps?: readonly {
+  readonly segmentVisibilityStateRemaps?: readonly {
     readonly from: SpatialSkeletonStableSegmentHandle;
     readonly to: SpatialSkeletonStableSegmentHandle;
   }[];
@@ -48,8 +49,8 @@ export interface SpatialSkeletonPreviewUiHints {
     /** A bigint targets the exact provisional ID being removed on rollback. */
     readonly segment: SpatialSkeletonStableSegmentHandle | bigint;
     readonly visible: boolean;
-    /** Restore this segment's membership from before the preview was shown. */
-    readonly restoreMembership?: true;
+    /** Restore this segment's visibility and star state from before the preview. */
+    readonly restoreVisibilityState?: true;
     readonly temporaryVisible?: boolean;
     readonly starred?: boolean;
     readonly deselect?: boolean;
@@ -104,14 +105,14 @@ export interface SpatialSkeletonResolvedPreviewUiHints {
 /** Layer-owned adapter for best-effort selection and visibility effects. */
 export interface SpatialSkeletonPreviewUiHintPort {
   apply(hints: SpatialSkeletonResolvedPreviewUiHints): void;
-  readSegmentMembership?(segmentId: bigint): SpatialSkeletonSegmentMembership;
+  readSegmentVisibilityState?(segmentId: bigint): SegmentVisibilityState;
 }
 
 export function cloneSpatialSkeletonPreviewUiHints(
   hints: SpatialSkeletonPreviewUiHints | undefined,
 ): SpatialSkeletonPreviewUiHints | undefined {
   if (hints === undefined) return undefined;
-  const segmentMembershipRemaps = hints.segmentMembershipRemaps?.map(
+  const segmentVisibilityStateRemaps = hints.segmentVisibilityStateRemaps?.map(
     ({ from, to }) =>
       Object.freeze({
         from: Object.freeze({ ...from }),
@@ -154,10 +155,12 @@ export function cloneSpatialSkeletonPreviewUiHints(
     Object.freeze({ ...segment }),
   );
   return Object.freeze({
-    ...(segmentMembershipRemaps === undefined
+    ...(segmentVisibilityStateRemaps === undefined
       ? {}
       : {
-          segmentMembershipRemaps: Object.freeze(segmentMembershipRemaps),
+          segmentVisibilityStateRemaps: Object.freeze(
+            segmentVisibilityStateRemaps,
+          ),
         }),
     ...(segmentVisibility === undefined
       ? {}
@@ -177,8 +180,8 @@ export function mergeSpatialSkeletonPreviewUiHints(
   );
   if (present.length === 0) return undefined;
   return cloneSpatialSkeletonPreviewUiHints({
-    segmentMembershipRemaps: present.flatMap(
-      (value) => value.segmentMembershipRemaps ?? [],
+    segmentVisibilityStateRemaps: present.flatMap(
+      (value) => value.segmentVisibilityStateRemaps ?? [],
     ),
     segmentVisibility: present.flatMap(
       (value) => value.segmentVisibility ?? [],
@@ -227,7 +230,7 @@ function resolveSpatialSkeletonPreviewUiHints(
   };
 
   const resolvedSegmentRemappings = new Map(options.segmentIdRemappings ?? []);
-  for (const { from, to } of hints?.segmentMembershipRemaps ?? []) {
+  for (const { from, to } of hints?.segmentVisibilityStateRemaps ?? []) {
     const fromId = resolveSegment(from);
     const toId = resolveSegment(to);
     if (fromId !== toId) resolvedSegmentRemappings.set(fromId, toId);
@@ -245,7 +248,7 @@ function resolveSpatialSkeletonPreviewUiHints(
       typeof segment === "bigint" ? segment : resolveSegment(segment);
     const removesProvisional = typeof segment === "bigint" && !visible;
     // An older rollback hint can resolve to a discarded preview through the
-    // fallback mappings. Its membership must not override the exact removal.
+    // fallback mappings. The exact removal takes precedence over that hint.
     if (discardedProvisionalIds.has(segmentId) && !removesProvisional) {
       return [];
     }

@@ -1865,9 +1865,9 @@ export class CatmaidEditPlanner
     const segmentVisibility: Array<
       NonNullable<SpatialSkeletonPreviewUiHints["segmentVisibility"]>[number]
     > = [];
-    const segmentMembershipRemaps: Array<
+    const segmentVisibilityStateRemaps: Array<
       NonNullable<
-        SpatialSkeletonPreviewUiHints["segmentMembershipRemaps"]
+        SpatialSkeletonPreviewUiHints["segmentVisibilityStateRemaps"]
       >[number]
     > = [];
     const retainSegments: SpatialSkeletonStableSegmentHandle[] = [];
@@ -1892,14 +1892,16 @@ export class CatmaidEditPlanner
     const show = (
       segment: SpatialSkeletonStableSegmentHandle,
       selection?: "preserve" | "pin" | "unpin",
-      restoreMembership = false,
+      restoreVisibilityState = false,
     ) => {
       segmentVisibility.push(
         Object.freeze({
           segment,
           visible: true,
           ...(selection === undefined ? {} : { select: selection }),
-          ...(restoreMembership ? { restoreMembership: true as const } : {}),
+          ...(restoreVisibilityState
+            ? { restoreVisibilityState: true as const }
+            : {}),
         }),
       );
     };
@@ -2000,7 +2002,7 @@ export class CatmaidEditPlanner
             semantic.downstreamSegment,
           );
         } else {
-          segmentMembershipRemaps.push(
+          segmentVisibilityStateRemaps.push(
             Object.freeze({
               from: semantic.downstreamSegment,
               to: semantic.sourceSegment,
@@ -2025,11 +2027,11 @@ export class CatmaidEditPlanner
           semantic.inverseOrientation === "second-from-first"
             ? semantic.secondNode
             : semantic.firstNode;
-        const restoreMembership = rollback !== undefined;
+        const restoreVisibilityState = rollback !== undefined;
         if (direction === "forward") {
-          show(semantic.mergedSegment, "preserve", restoreMembership);
+          show(semantic.mergedSegment, "preserve", restoreVisibilityState);
           if (rollback === undefined) {
-            segmentMembershipRemaps.push(
+            segmentVisibilityStateRemaps.push(
               Object.freeze({
                 from: semantic.firstSegment,
                 to: semantic.mergedSegment,
@@ -2044,8 +2046,8 @@ export class CatmaidEditPlanner
           select(forwardSecondNode, semantic.mergedSegment);
           retainSegments.push(semantic.mergedSegment);
         } else {
-          show(forwardFirstSegment, undefined, restoreMembership);
-          show(forwardSecondSegment, undefined, restoreMembership);
+          show(forwardFirstSegment, undefined, restoreVisibilityState);
+          show(forwardSecondSegment, undefined, restoreVisibilityState);
           select(forwardSecondNode, forwardSecondSegment);
           retainSegments.push(forwardFirstSegment, forwardSecondSegment);
         }
@@ -2054,7 +2056,7 @@ export class CatmaidEditPlanner
     }
 
     return Object.freeze({
-      segmentMembershipRemaps: Object.freeze(segmentMembershipRemaps),
+      segmentVisibilityStateRemaps: Object.freeze(segmentVisibilityStateRemaps),
       segmentVisibility: Object.freeze(segmentVisibility),
       ...(selectedNode === undefined ? {} : { selectedNode }),
       retainSegments: Object.freeze(retainSegments),

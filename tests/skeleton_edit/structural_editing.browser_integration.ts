@@ -261,7 +261,7 @@ test("a cold merge appears in Queue immediately and can be undone before its tar
   }
 });
 
-async function readSegMembership(page: Page) {
+async function readSegVisibilityState(page: Page) {
   return page.evaluate(() => {
     const viewer = (window as unknown as { viewer: Viewer }).viewer;
     const layer = viewer.layerManager.getLayerByName("Skeletons")!
@@ -312,7 +312,7 @@ test("a rejected merge removes its preview from the Seg list", async ({
 }) => {
   const ui = new SkeletonEditPage(page);
   await ui.open(server.sourceUrl);
-  const initialSegments = await readSegMembership(page);
+  const initialSegments = await readSegVisibilityState(page);
   const initialGraph = topology(await readGraph(page, IDS, "Skeletons", true));
 
   const { received, release } = await holdRejectedMutation(
@@ -329,7 +329,7 @@ test("a rejected merge removes its preview from the Seg list", async ({
     await received;
     const [target] = await readGraph(page, [203n]);
     expect(initialSegments.visible).not.toContain(String(target.skeletonId));
-    expect((await readSegMembership(page)).visible).toContain(
+    expect((await readSegVisibilityState(page)).visible).toContain(
       String(target.skeletonId),
     );
   } finally {
@@ -347,11 +347,11 @@ test("a rejected merge removes its preview from the Seg list", async ({
     status: "not-saved",
     authorityReason: "rejected",
   });
-  expect(await readSegMembership(page)).toEqual(initialSegments);
+  expect(await readSegVisibilityState(page)).toEqual(initialSegments);
 
   await ui.merge(203n, 103n);
   await ui.waitSaved();
-  expect(await readSegMembership(page)).toEqual({
+  expect(await readSegVisibilityState(page)).toEqual({
     visible: ["20"],
     selected: ["20"],
   });
@@ -364,7 +364,7 @@ test("a rejected Merge keeps a hidden browse target hidden", async ({
   const ui = new SkeletonEditPage(page);
   await ui.open(server.sourceUrl, [10n, 20n], false, [2000, 2000, 1000], [10n]);
   await toggleSegVisibility(ui, "20");
-  const before = await readSegMembership(page);
+  const before = await readSegVisibilityState(page);
   expect(before).toEqual({ visible: ["10"], selected: ["10", "20"] });
   const saved = savedTopology(server);
   const { received, release } = await holdRejectedMutation(
@@ -379,7 +379,7 @@ test("a rejected Merge keeps a hidden browse target hidden", async ({
     const [target] = await readGraph(page, [203n]);
     const previewId = String(target.skeletonId);
     expect(before.selected).not.toContain(previewId);
-    expect((await readSegMembership(page)).visible).toContain(previewId);
+    expect((await readSegVisibilityState(page)).visible).toContain(previewId);
   } finally {
     release();
   }
@@ -395,7 +395,7 @@ test("a rejected Merge keeps a hidden browse target hidden", async ({
   expect(topology(await readGraph(page, IDS, "Skeletons", true))).toEqual(
     saved,
   );
-  expect(await readSegMembership(page)).toEqual(before);
+  expect(await readSegVisibilityState(page)).toEqual(before);
 
   await toggleSegVisibility(ui, "20");
   await ui.inspect(20n);
@@ -409,7 +409,7 @@ test("a rejected Merge clears its previews after queued Undo and Redo", async ({
 }) => {
   const ui = new SkeletonEditPage(page);
   await ui.open(server.sourceUrl);
-  const before = await readSegMembership(page);
+  const before = await readSegVisibilityState(page);
   const beforeGraph = topology(await readGraph(page, IDS, "Skeletons", true));
   const { received, release } = await holdRejectedMutation(
     page,
@@ -436,13 +436,15 @@ test("a rejected Merge clears its previews after queued Undo and Redo", async ({
     const [target] = await readGraph(page, [203n]);
     const redoPreviewId = String(target.skeletonId);
     expect(before.visible).not.toContain(redoPreviewId);
-    expect((await readSegMembership(page)).visible).toContain(redoPreviewId);
+    expect((await readSegVisibilityState(page)).visible).toContain(
+      redoPreviewId,
+    );
   } finally {
     release();
   }
 
   await expect.poll(async () => (await readQueue(page)).pending).toBe(false);
-  const after = await readSegMembership(page);
+  const after = await readSegVisibilityState(page);
   const queue = await readQueue(page);
   expect(queue).toMatchObject({ canUndo: false, canRedo: false });
   expect(queue.recent).toEqual(
@@ -493,7 +495,7 @@ for (const [action, hiddenEntry] of [
     if (hiddenId !== undefined) {
       await toggleSegVisibility(ui, hiddenId);
     }
-    const before = await readSegMembership(page);
+    const before = await readSegVisibilityState(page);
     if (hiddenId !== undefined) {
       expect(before.visible).not.toContain(hiddenId);
       expect(before.selected).toContain(hiddenId);
@@ -512,7 +514,7 @@ for (const [action, hiddenEntry] of [
     try {
       await attempt();
       await received;
-      const preview = await readSegMembership(page);
+      const preview = await readSegVisibilityState(page);
       const provisional = preview.visible.filter(
         (id) => !savedSegmentIds.has(id),
       );
@@ -523,7 +525,7 @@ for (const [action, hiddenEntry] of [
     }
 
     await expect.poll(async () => (await readQueue(page)).pending).toBe(false);
-    expect(await readSegMembership(page)).toEqual(before);
+    expect(await readSegVisibilityState(page)).toEqual(before);
     expect(topology(await readGraph(page, IDS, "Skeletons", true))).toEqual(
       saved,
     );
@@ -546,7 +548,7 @@ for (const [action, hiddenEntry] of [
     const savedIds = [
       ...new Set(server.snapshot().map(({ skeletonId }) => String(skeletonId))),
     ].sort();
-    expect(await readSegMembership(page)).toEqual({
+    expect(await readSegVisibilityState(page)).toEqual({
       visible: savedIds,
       selected: savedIds,
     });

@@ -59,8 +59,8 @@ import {
   SpatialSkeletonEditPreview,
 } from "#src/skeleton/edit_queue/preview.js";
 import type {
+  SegmentVisibilityState,
   SpatialSkeletonResolvedPreviewUiHints,
-  SpatialSkeletonSegmentMembership,
 } from "#src/skeleton/edit_queue/preview_ui_hints.js";
 import type {
   SpatialSkeletonQueueInput,
@@ -515,9 +515,9 @@ export interface SpatialSkeletonLayerContext {
   applySpatialSkeletonPreviewUiHints?(
     hints: SpatialSkeletonResolvedPreviewUiHints,
   ): void;
-  readSpatialSkeletonSegmentMembership?(
+  readSpatialSkeletonSegmentVisibilityState?(
     segmentId: bigint,
-  ): SpatialSkeletonSegmentMembership;
+  ): SegmentVisibilityState;
 }
 
 export class SpatialSkeletonEditSession
@@ -635,8 +635,8 @@ export class SpatialSkeletonEditSession
           : {
               apply: (hints) =>
                 layer.applySpatialSkeletonPreviewUiHints!(hints),
-              readSegmentMembership:
-                layer.readSpatialSkeletonSegmentMembership?.bind(layer),
+              readSegmentVisibilityState:
+                layer.readSpatialSkeletonSegmentVisibilityState?.bind(layer),
             },
       onAuxiliaryError: (error) => console.error(error),
     });

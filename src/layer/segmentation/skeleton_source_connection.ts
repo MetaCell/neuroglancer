@@ -168,7 +168,7 @@ export class SkeletonSourceConnection
     return this.findPathContext;
   }
 
-  readSpatialSkeletonSegmentMembership(segmentId: bigint) {
+  readSpatialSkeletonSegmentVisibilityState(segmentId: bigint) {
     const group = this.options.segmentationGroupState.value;
     return {
       visible: group.visibleSegments.has(segmentId),
