@@ -257,6 +257,70 @@ test("a cold merge appears in Queue immediately and can be undone before its tar
   }
 });
 
+test("a rejected merge removes its preview from the Seg list", async ({
+  page,
+  server,
+}) => {
+  const ui = new SkeletonEditPage(page);
+  await ui.open(server.sourceUrl);
+  const readSegments = () =>
+    page.evaluate(() => {
+      const viewer = (window as unknown as { viewer: Viewer }).viewer;
+      const layer = viewer.layerManager.getLayerByName("Skeletons")!
+        .layer as SegmentationUserLayer;
+      const group = layer.displayState.segmentationGroupState.value;
+      return {
+        visible: [...group.visibleSegments].map(String).sort(),
+        selected: [...group.selectedSegments].map(String).sort(),
+      };
+    });
+  const initialSegments = await readSegments();
+  const initialGraph = topology(await readGraph(page, IDS, "Skeletons", true));
+
+  const intercepted = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  await page.route(
+    "**/skeleton/join",
+    async (route) => {
+      intercepted.resolve();
+      await release.promise;
+      await route.fulfill({
+        status: 409,
+        json: {
+          error: "This merge would remove a skeleton linked to a task.",
+          meta: { code: "task_skeleton_merge_blocked" },
+        },
+      });
+    },
+    { times: 1 },
+  );
+
+  try {
+    await ui.merge(103n, 203n);
+    await intercepted.promise;
+    const [target] = await readGraph(page, [203n]);
+    expect(initialSegments.visible).not.toContain(String(target.skeletonId));
+    expect((await readSegments()).visible).toContain(String(target.skeletonId));
+  } finally {
+    release.resolve();
+  }
+
+  await expect.poll(async () => (await readQueue(page)).pending).toBe(false);
+  expect(topology(await readGraph(page, IDS, "Skeletons", true))).toEqual(
+    initialGraph,
+  );
+  expect(await readQueue(page)).toMatchObject({
+    canUndo: false,
+    canRedo: false,
+  });
+  expect(server.mutations).toHaveLength(0);
+  expect(await readSegments()).toEqual(initialSegments);
+
+  await ui.merge(203n, 103n);
+  await ui.waitSaved();
+  expect(await readSegments()).toEqual({ visible: ["20"], selected: ["20"] });
+});
+
 test("merge through a non-root node restores the original root after repeated Undo and reload", async ({
   page,
   server,

@@ -1860,7 +1860,7 @@ export class CatmaidEditPlanner
     semantic: CatmaidCapturedEdit,
     direction: "forward" | "inverse",
     intent: "execute" | "undo" | "redo",
-    allowNavigation = true,
+    rollingBack = false,
   ): SpatialSkeletonPreviewUiHints {
     const segmentVisibility: Array<
       NonNullable<SpatialSkeletonPreviewUiHints["segmentVisibility"]>[number]
@@ -1886,7 +1886,7 @@ export class CatmaidEditPlanner
           ? {}
           : { position: Object.freeze(Array.from(position, Number)) }),
         pin: "preserve" as const,
-        moveView: allowNavigation && moveView,
+        moveView: moveView && !rollingBack,
       });
     };
     const show = (
@@ -2035,6 +2035,7 @@ export class CatmaidEditPlanner
           select(forwardSecondNode, semantic.mergedSegment);
           retainSegments.push(semantic.mergedSegment);
         } else {
+          if (rollingBack) hide(semantic.mergedSegment);
           show(forwardFirstSegment);
           show(forwardSecondSegment);
           select(forwardSecondNode, forwardSecondSegment);
@@ -2127,7 +2128,7 @@ export class CatmaidEditPlanner
         semantic,
         direction === "forward" ? "inverse" : "forward",
         intent,
-        false,
+        true,
       ),
       pendingEditIntentId: intentId,
     });
