@@ -375,17 +375,15 @@ def test_ome_zarr_0_6_translation(static_file_server, webdriver):
     webdriver.sync()
     model_space = _assert_renders(webdriver, "translation")
 
-    # Translation: [30, 20, 10] (z, y, x) in micrometers
-    # So the origin should be at [8, 7, 5] in (z, y, x) in world coordinates.
-    # However, in neuroglancer at the chunk/model level this is reversed in order (see getSources in zarr/frontend.ts for the permutation)
+    # The returned volume uses ZYX order, matching the physical coordinate axes.
     domain = model_space["volume"].domain
-    expected_origin = (10, 20, 30)
+    expected_origin = (30, 20, 10)
     actual_origin = domain.origin
     assert (
         actual_origin == expected_origin
     ), f"Domain origin mismatch: expected {expected_origin}, got {actual_origin}"
 
-    translated_voxel = (TEST_VOXEL[0] + 10, TEST_VOXEL[1] + 20, TEST_VOXEL[2] + 30)
+    translated_voxel = (TEST_VOXEL[0] + 30, TEST_VOXEL[1] + 20, TEST_VOXEL[2] + 10)
     _verify_data_at_point(model_space["volume"], translated_voxel, EXPECTED_VALUE)
 
 
@@ -410,8 +408,8 @@ def test_ome_zarr_0_6_map_axis(static_file_server, webdriver):
     model_space = _assert_renders(webdriver, "mapAxis")
     vol = model_space["volume"]
 
-    # The real map axis transform permutes axes (0, 1, 2) -> (1, 2, 0). The inverse of this is (2, 0, 1).
-    permuted_voxel = (TEST_VOXEL[2], TEST_VOXEL[0], TEST_VOXEL[1])
+    # mapAxis [1,2,0] maps the input point to (y,x,z).
+    permuted_voxel = (TEST_VOXEL[1], TEST_VOXEL[2], TEST_VOXEL[0])
     _verify_data_at_point(vol, permuted_voxel, EXPECTED_VALUE)
 
 
@@ -429,10 +427,8 @@ def _check_sequence_result(model_space):
     # In voxel space with scale factored out:
     # - The translation/scale = [32/4, 21/3, 10/2] = [8, 7, 5] voxels
     # So the origin should be at [8, 7, 5] in (z, y, x) in world coordinates.
-    # However, in neuroglancer at the chunk/model level this is reversed in order (see getSources in zarr/frontend.ts for the permutation)
-    # so check for [5, 7, 8] as the domain
     domain = model_space["volume"].domain
-    expected_origin = (5, 7, 8)
+    expected_origin = (8, 7, 5)
     actual_origin = domain.origin
     assert (
         actual_origin == expected_origin
@@ -464,6 +460,30 @@ def test_ome_zarr_0_6_sequence(static_file_server, webdriver):
     webdriver.sync()
     model_space = _assert_renders(webdriver, "sequence")
     _check_sequence_result(model_space)
+
+
+@pytest.mark.parametrize(
+    "fixture", ["basic/sequenceScaleTranslation.zarr", "simple/affine.zarr"]
+)
+def test_volume_info_composes_ome_transforms(static_file_server, webdriver, fixture):
+    url = static_file_server(OME_ZARR_0_6_ROOT / fixture)
+    with webdriver.viewer.txn() as state:
+        state.layout = "3d"
+        state.show_slices = False
+        state.layers["image"] = neuroglancer.ImageLayer(
+            source=f"{url}|zarr3:", volume_rendering_mode="off"
+        )
+    webdriver.sync()
+    info = webdriver.viewer.volume_info("image").result(timeout=15)
+    indices = [list(info.dimensions.names).index(axis) for axis in "xyz"]
+    # Metadata in ZYX: scale [4,3,2] um, translation [32,21,10] um,
+    # and shape [27,226,186]. Preserve the translation when reordering into XYZ.
+    np.testing.assert_allclose(
+        np.array(info.dimensions.scales)[indices], [2e-6, 3e-6, 4e-6], rtol=1e-7
+    )
+    assert all(info.dimensions.units[i] == "m" for i in indices)
+    np.testing.assert_array_equal(np.array(info.lower_bound)[indices], [5, 7, 8])
+    np.testing.assert_array_equal(np.array(info.upper_bound)[indices], [191, 233, 35])
 
 
 def test_ome_zarr_0_6_affine(static_file_server, webdriver):
@@ -503,8 +523,8 @@ def test_ome_zarr_0_6_rotation(static_file_server, webdriver):
 
     model_space = _assert_renders(webdriver, "rotation")
     vol = model_space["volume"]
-    # The rotation transform permutes axes (0, 1, 2) -> (2, 0, 1). The inverse of this is (1, 2, 0).
-    rotated_voxel = (TEST_VOXEL[1], TEST_VOXEL[2], TEST_VOXEL[0])
+    # Apply the rotation matrix to the input point: (z,y,x) -> (x,z,y).
+    rotated_voxel = (TEST_VOXEL[2], TEST_VOXEL[0], TEST_VOXEL[1])
     _verify_data_at_point(vol, rotated_voxel, EXPECTED_VALUE)
 
 
