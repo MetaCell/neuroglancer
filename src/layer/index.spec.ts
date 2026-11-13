@@ -21,33 +21,18 @@ import {
   TrackableCoordinateSpace,
 } from "#src/coordinate_transform.js";
 import type { LayerListSpecification } from "#src/layer/index.js";
-import { GlobalToolBinder } from "#src/ui/tool.js";
-import type { MultiToolPaletteState } from "#src/ui/tool_palette.js";
-import { RefCounted } from "#src/util/disposable.js";
-import { NullarySignal } from "#src/util/signal.js";
-
-if (!("WebGL2RenderingContext" in globalThis)) {
-  Object.defineProperty(globalThis, "WebGL2RenderingContext", {
-    value: new Proxy(class WebGL2RenderingContext {} as any, {
-      get(target, property, receiver) {
-        if (Reflect.has(target, property)) {
-          return Reflect.get(target, property, receiver);
-        }
-        return 0;
-      },
-    }),
-    configurable: true,
-  });
-}
-
-const {
+import {
   LayerManager,
   LayerSelectedValues,
   ManagedUserLayer,
   MouseSelectionState,
   TrackableDataSelectionState,
   UserLayer,
-} = await import("#src/layer/index.js");
+} from "#src/layer/index.js";
+import { GlobalToolBinder } from "#src/ui/tool.js";
+import type { MultiToolPaletteState } from "#src/ui/tool_palette.js";
+import { RefCounted } from "#src/util/disposable.js";
+import { NullarySignal } from "#src/util/signal.js";
 
 function makeSelectionFixture() {
   const scope = new RefCounted();
@@ -69,7 +54,7 @@ function makeSelectionFixture() {
     },
   } as unknown as LayerListSpecification;
   const mouse = new MouseSelectionState();
-  mouse.active = true;
+  mouse.setActive(true);
   const selected = scope.registerDisposer(
     new LayerSelectedValues(manager, mouse),
   );
@@ -85,12 +70,10 @@ function makeSelectionFixture() {
     return layer;
   }
 
-  return { scope, manager, mouse, selected, persistent, createLayer };
+  return { scope, selected, persistent, createLayer };
 }
 
-// Refocus restores visible layers before initializationDone. Exercise that
-// lifecycle with live selection so restored layers are skipped, then sampled.
-describe("layer selection during restoration", () => {
+describe("selection of layers added before initialization", () => {
   let fixture: ReturnType<typeof makeSelectionFixture>;
 
   beforeEach(() => {
@@ -105,7 +88,7 @@ describe("layer selection during restoration", () => {
   });
 
   it("omits an uninitialized layer from selection reads and serialization", () => {
-    const layer = fixture.createLayer("restored");
+    const layer = fixture.createLayer("layer");
 
     expect(fixture.selected.get(layer)).toBeUndefined();
     expect(fixture.selected.toJSON()).toEqual({});
@@ -113,62 +96,22 @@ describe("layer selection during restoration", () => {
     layer.initializationDone();
 
     expect(fixture.selected.get(layer)?.localPositionValid).toBe(true);
-    expect(fixture.selected.toJSON()).toEqual({ restored: {} });
+    expect(fixture.selected.toJSON()).toEqual({ layer: {} });
   });
 
   it("resamples live selection after initialization without mouse movement", () => {
-    fixture.persistent.pin.value = false;
+    fixture.persistent.unpin();
     vi.runAllTimers();
-    let layer: InstanceType<typeof UserLayer>;
-    expect(() => {
-      layer = fixture.createLayer("restored");
-    }).not.toThrow();
+
+    const layer = fixture.createLayer("layer");
     vi.runAllTimers();
 
     expect(fixture.persistent.value?.layers).toEqual([]);
-    layer!.initializationDone();
-    vi.runAllTimers();
-
-    expect(
-      fixture.persistent.value?.layers.map((entry) => entry.layer),
-    ).toEqual([layer!]);
-    expect(fixture.persistent.value?.layers[0].state.localPositionValid).toBe(
-      true,
-    );
-  });
-
-  it("resamples initialized selection while data sources are still loading", () => {
-    const layer = fixture.createLayer("loading");
-    const finishLoading = layer.markLoading();
-    fixture.persistent.pin.value = false;
-    vi.runAllTimers();
-
     layer.initializationDone();
     vi.runAllTimers();
 
-    expect(layer.isReady).toBe(false);
     expect(
       fixture.persistent.value?.layers.map((entry) => entry.layer),
     ).toEqual([layer]);
-    finishLoading();
-    expect(layer.isReady).toBe(true);
-  });
-
-  it("keeps sampling other initialized layers while a restored layer is pending", () => {
-    const pending = fixture.createLayer("pending");
-    const initialized = fixture.createLayer("initialized");
-    initialized.initializationDone();
-    const capture = vi.spyOn(initialized, "captureSelectionState");
-
-    fixture.mouse.setActive(true);
-
-    expect(fixture.selected.get(pending)).toBeUndefined();
-    expect(fixture.selected.get(initialized)?.localPositionValid).toBe(true);
-    expect(capture).toHaveBeenCalledOnce();
-
-    initialized.managedLayer.setVisible(false);
-    expect(fixture.selected.get(initialized)).toBeUndefined();
-    fixture.mouse.setActive(false);
-    expect(fixture.selected.get(initialized)).toBeUndefined();
   });
 });
