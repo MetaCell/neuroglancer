@@ -61,11 +61,16 @@ export interface SpatialSkeletonQueueInput {
   readonly segments: readonly SpatialSkeletonQueueSegmentInput[];
 }
 
-/** Inputs acquired inside the queue's Preparing phase, pinned until publication. */
-export interface SpatialSkeletonPreparedQueueInput {
+/** Required inputs pinned at admission, before the intent enters the queue. */
+export interface SpatialSkeletonAdmittedQueueInput {
   readonly input: SpatialSkeletonQueueInput;
-  assertCurrent(): void;
   release(): void;
+}
+
+/** Inputs acquired inside the queue's Preparing phase, pinned until publication. */
+export interface SpatialSkeletonPreparedQueueInput
+  extends SpatialSkeletonAdmittedQueueInput {
+  assertCurrent(): void;
 }
 
 /** Reusable input policy retained with the original intent for an unprepared Redo. */
@@ -74,7 +79,7 @@ export interface SpatialSkeletonQueueInputPreparation {
   getProtectedSegmentIds(): readonly bigint[];
 
   /** Synchronous inspection gate and admission-lifetime cache retention. */
-  validate(intent: "execute" | "redo"): () => void;
+  validate(intent: "execute" | "redo"): SpatialSkeletonAdmittedQueueInput;
   acquire(
     signal: AbortSignal,
     intent: "execute" | "redo",

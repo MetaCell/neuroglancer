@@ -166,6 +166,12 @@ export interface SpatialSkeletonEditRequestAttempt<TEditRequest> {
 export type SpatialSkeletonEditRequestMaterializationContext =
   SpatialSkeletonEditRequestContext;
 
+export interface SpatialSkeletonAdmissionContext<TInput> {
+  readonly requiredInput: SpatialSkeletonQueueInput;
+  /** Earlier intents whose deltas are not yet in `requiredInput`. */
+  readonly unpreparedEarlierInputs: readonly TInput[];
+}
+
 /** Provider plan boundary for one logical optimistic intent. */
 export interface SpatialSkeletonEditPlanner<
   TInput,
@@ -178,6 +184,12 @@ export interface SpatialSkeletonEditPlanner<
 > {
   /** Describes a complete user intent without fetching or reading topology. */
   describeIntent(input: TInput): SpatialSkeletonIntentDescription;
+
+  /** Throws when the required inputs already prove that the intent cannot succeed. */
+  checkAdmission(
+    input: TInput,
+    context: SpatialSkeletonAdmissionContext<TInput>,
+  ): void;
 
   /** Creates the exact recipe from complete inputs acquired inside the queue. */
   planIntent(
@@ -583,6 +595,7 @@ export function assertSpatialSkeletonEditPlannerRegistration(
   const planner = (value as { planner: Record<string, unknown> }).planner;
   for (const method of [
     "describeIntent",
+    "checkAdmission",
     "planIntent",
     "nextAttempt",
     "createReconciliation",

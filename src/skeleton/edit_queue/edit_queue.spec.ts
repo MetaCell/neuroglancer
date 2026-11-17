@@ -224,6 +224,7 @@ function makeHarness(
     string
   > = {
     describeIntent: (input) => ({ kind: "test", commandLabel: input.name }),
+    checkAdmission: () => undefined,
     planIntent: (input, context) => ({
       kind: "test",
       commandLabel: input.name,
@@ -291,7 +292,7 @@ function pendingInputs(read = deferred<void>()) {
   const signals: AbortSignal[] = [];
   const policy: SpatialSkeletonQueueInputPreparation = {
     getProtectedSegmentIds: () => [],
-    validate: vi.fn(() => released),
+    validate: vi.fn(() => ({ input: queueInput, release: released })),
     acquire: vi.fn(async (signal) => {
       signals.push(signal);
       await read.promise;

@@ -606,6 +606,14 @@ function getSubtreeNodeIds(snapshot: CompleteSkeleton, rootNodeId: bigint) {
   return result;
 }
 
+export function assertCanMergeUnder(node: SkeletonNode) {
+  if (isSkeletonNodeTrueEnd(node)) {
+    throw new SpatialSkeletonEditValidationError(
+      "Cannot merge under a true end node. Clear the true end state first.",
+    );
+  }
+}
+
 function rerootSnapshot(snapshot: CompleteSkeleton, targetNodeId: bigint) {
   const target = snapshot.getNode(targetNodeId);
   if (target === undefined) {
@@ -1032,11 +1040,7 @@ function applyMerge(
     delta.secondNode,
     mappings,
   );
-  if (isSkeletonNodeTrueEnd(firstNode)) {
-    throw new SpatialSkeletonEditValidationError(
-      "Cannot merge under a true end node. Clear the true end state first.",
-    );
-  }
+  assertCanMergeUnder(firstNode);
   const rerooted = rerootSnapshot(secondEntry.snapshot, secondNode.nodeId);
   const resultSegmentId = requireSegmentId(mappings, delta.resultSegment);
   const snapshot = mergeCompleteSkeletons(

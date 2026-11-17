@@ -27,7 +27,11 @@ import { TrackableDataSelectionState } from "#src/layer/index.js";
 import { SkeletonNodeSelection } from "#src/layer/segmentation/skeleton_node_selection.js";
 import { SkeletonSourceConnection } from "#src/layer/segmentation/skeleton_source_connection.js";
 import type { SegmentationGroupState } from "#src/segmentation_display_state/frontend.js";
-import { SkeletonEdgeDirection, type SkeletonNode } from "#src/skeleton/api.js";
+import {
+  KnownSkeletonNodeAttribute,
+  SkeletonEdgeDirection,
+  type SkeletonNode,
+} from "#src/skeleton/api.js";
 import type { SpatialSkeletonEditCommand } from "#src/skeleton/edit/edit_commands.js";
 import { SpatialSkeletonActions } from "#src/skeleton/edit/edit_commands.js";
 import {
@@ -6307,6 +6311,114 @@ describe("skeleton edit commands", () => {
     expect(spatialSkeletonEditSession.commandHistory.canUndo.value).toBe(false);
     expect(spatialSkeletonEditSession.commandHistory.canRedo.value).toBe(false);
   });
+
+  it("a merge from a true end on an inspected skeleton is refused before the other skeleton downloads, and an edit made after it still saves", async () => {
+    suppressStatusMessages();
+    const root: SkeletonNode = {
+      nodeId: 101n,
+      segmentId: 11n,
+      position: new Float32Array([1, 2, 3]),
+    };
+    const trueEnd: SkeletonNode = {
+      nodeId: 102n,
+      segmentId: 11n,
+      parentNodeId: root.nodeId,
+      position: new Float32Array([4, 5, 6]),
+      attributes: { [KnownSkeletonNodeAttribute.IS_TRUE_END]: [1] },
+    };
+    const otherSkeletonNode: SkeletonNode = {
+      nodeId: 201n,
+      segmentId: 17n,
+      position: new Float32Array([7, 8, 9]),
+    };
+    const getSkeleton = vi.fn(async () => [otherSkeletonNode]);
+    const mergeSkeletons = vi.fn();
+    const moveNode = vi.fn().mockResolvedValue(undefined);
+    const { layer } = makeAddNodeTestLayer({
+      initialNodes: [root, trueEnd],
+      segmentId: 11n,
+      getSkeleton,
+      mergeSkeletons,
+      moveNode,
+    });
+
+    const merge = executeSpatialSkeletonMerge(
+      layer as any,
+      trueEnd,
+      otherSkeletonNode,
+    );
+    const move = executeSpatialSkeletonMoveNode(layer as any, {
+      node: root,
+      nextPositionInModelSpace: new Float32Array([10, 11, 12]),
+    });
+    await expect(merge).rejects.toThrow(
+      "Cannot merge under a true end node. Clear the true end state first.",
+    );
+    await expect(merge.acceptedByQueue).rejects.toThrow();
+    await expect(move.settled).resolves.toMatchObject({
+      outcome: "committed",
+    });
+
+    expect(getSkeleton).not.toHaveBeenCalled();
+    expect(mergeSkeletons).not.toHaveBeenCalled();
+    expect(moveNode).toHaveBeenCalledOnce();
+  });
+
+  it("a merge from a true end is accepted while an earlier edit that clears the true end is still preparing", async () => {
+    const root: SkeletonNode = {
+      nodeId: 101n,
+      segmentId: 11n,
+      position: new Float32Array([1, 2, 3]),
+    };
+    const trueEnd: SkeletonNode = {
+      nodeId: 102n,
+      segmentId: 11n,
+      parentNodeId: root.nodeId,
+      position: new Float32Array([4, 5, 6]),
+      attributes: { [KnownSkeletonNodeAttribute.IS_TRUE_END]: [1] },
+    };
+    const otherSkeletonNode: SkeletonNode = {
+      nodeId: 201n,
+      segmentId: 17n,
+      position: new Float32Array([7, 8, 9]),
+    };
+    const toggleTrueEnd = vi.fn().mockResolvedValue(undefined);
+    const mergeSkeletons = vi.fn().mockResolvedValue({
+      resultSegmentId: 11n,
+      deletedSegmentId: 17n,
+      directionAdjusted: false,
+    });
+    const { layer } = makeAddNodeTestLayer({
+      initialNodes: [root, trueEnd, otherSkeletonNode],
+      segmentId: 11n,
+      segmentIds: [11n, 17n],
+      toggleTrueEnd,
+      mergeSkeletons,
+    });
+
+    const clearTrueEnd = executeSpatialSkeletonNodeTrueEndUpdate(layer as any, {
+      node: trueEnd,
+      nextIsTrueEnd: false,
+    });
+    const merge = executeSpatialSkeletonMerge(
+      layer as any,
+      trueEnd,
+      otherSkeletonNode,
+    );
+    await merge.acceptedByQueue;
+    await expect(clearTrueEnd.settled).resolves.toMatchObject({
+      outcome: "committed",
+    });
+    await expect(merge.settled).resolves.toMatchObject({
+      outcome: "committed",
+    });
+
+    expect(toggleTrueEnd).toHaveBeenCalledWith(trueEnd.nodeId, false);
+    expect(mergeSkeletons).toHaveBeenCalledWith(
+      trueEnd.nodeId,
+      otherSkeletonNode.nodeId,
+    );
+  });
 });
 
 describe("skeleton edit failure messages", () => {
@@ -6381,7 +6493,7 @@ describe("skeletons an edit reads", () => {
         [{ segmentId: 21n }],
       ),
     );
-    const releaseAdmission = policy.validate("execute");
+    const releaseAdmission = policy.validate("execute").release;
     const prepared = await policy.acquire(
       new AbortController().signal,
       "execute",
@@ -6400,7 +6512,7 @@ describe("skeletons an edit reads", () => {
       layer,
       makeQueueInputCommand([]),
     );
-    const release = policy.validate("execute");
+    const release = policy.validate("execute").release;
     const prepared = await policy.acquire(
       new AbortController().signal,
       "execute",
@@ -6417,7 +6529,7 @@ describe("skeletons an edit reads", () => {
       layer,
       makeQueueInputCommand([{ segmentId: 11n }]),
     );
-    const release = policy.validate("execute");
+    const release = policy.validate("execute").release;
     state.replaceCachedSegmentSnapshots([[11n, []]]);
     const prepared = await policy.acquire(
       new AbortController().signal,
@@ -6437,7 +6549,7 @@ describe("skeletons an edit reads", () => {
       layer,
       makeQueueInputCommand([{ segmentId: 11n, nodeId: 12n }]),
     );
-    const release = policy.validate("execute");
+    const release = policy.validate("execute").release;
     expect(policy.getProtectedSegmentIds()).toEqual([11n]);
     state.replaceCachedSegmentSnapshots([
       [11n, []],
@@ -6602,9 +6714,9 @@ describe("skeletons an edit reads", () => {
       layer,
       makeQueueInputCommand([{ segmentId: 11n }], [{ segmentId: 21n }]),
     );
-    policy.validate("execute")();
+    policy.validate("execute").release();
     state.evictInactiveSegmentNodes([]);
-    const release = policy.validate("redo");
+    const release = policy.validate("redo").release;
     const prepared = await policy.acquire(new AbortController().signal, "redo");
     expect(getSkeleton.mock.calls.map((call) => call[0])).toEqual([11n, 21n]);
     expect(prepared.input.segments.map(({ segmentId }) => segmentId)).toEqual([

@@ -455,6 +455,8 @@ callback.
 The high-level order is:
 
 1. Check Reload-required state, capacity, and required-source inspection; pin cached sources.
+   Ask the planner's `checkAdmission` whether the pinned sources already prove
+   that the intent cannot succeed.
 2. Reserve an intent ID and stage the previewed history transition.
 3. Register the description, input policy, conservative resources/dependencies,
    and any truthful preparation cue in the canonical journal.
@@ -557,7 +559,13 @@ affected lease is released. Unknown outcomes and partial commits retain their
 existing Reload-required reset and lane-fencing behavior.
 
 A failure before canonical admission abandons only the newly staged history
-transition and creates no Queue row or preview. History exposes only the
+transition and creates no Queue row or preview. `checkAdmission` uses this to
+refuse a locally invalid Execute before it can cancel later edits. The pinned
+sources lack the deltas of earlier intents that are still Reserved or
+Preparing, so the planner receives those intents' inputs and skips any rule
+that one of them can change. For example, CATMAID refuses a merge from a true
+end unless an earlier unprepared intent edits a true end. Redo is not checked.
+History exposes only the
 operations needed by this model: `abandonLatest(ticket)`, `rollbackFrom(ticket)`,
 `confirm(ticket)`, and `reset()`. Confirming a discarded ticket is a no-op.
 

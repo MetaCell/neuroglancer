@@ -310,6 +310,7 @@ function makeRegistration(
   return {
     planner: {
       describeIntent: () => ({ kind: "test", commandLabel: "Test" }),
+      checkAdmission: () => undefined,
       planIntent: (_command, context) => ({
         kind: "test",
         commandLabel: "Test",
@@ -358,6 +359,7 @@ function makeHeldCommitProvider(cleanup = vi.fn()) {
       return {
         planner: {
           describeIntent: () => ({ kind: "test", commandLabel: "Test" }),
+          checkAdmission: () => undefined,
           planIntent: () => ({
             kind: "test",
             commandLabel: "Controlled edit",
@@ -428,6 +430,7 @@ function makeUnsavedMoveProvider(
       return {
         planner: {
           describeIntent: () => ({ kind: "move", commandLabel: "Move" }),
+          checkAdmission: () => undefined,
           planIntent: () => {
             const inspected = state.getCachedSegmentSnapshotHandle(
               move.segmentId,

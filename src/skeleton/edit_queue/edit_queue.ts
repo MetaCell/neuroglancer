@@ -667,7 +667,26 @@ export class SpatialSkeletonEditQueue<
       queueInput !== undefined && "acquire" in queueInput
         ? queueInput
         : undefined;
-    let releaseAdmissionInputs = inputPreparation?.validate("execute");
+    const admittedInput = inputPreparation?.validate("execute");
+    if (admittedInput !== undefined) {
+      try {
+        this.options.planner.checkAdmission(input!, {
+          requiredInput: admittedInput.input,
+          unpreparedEarlierInputs: this.journal
+            .getEntries({ includeTerminal: false })
+            .filter(
+              ({ lifecycle }) =>
+                lifecycle.preview === "reserved" ||
+                lifecycle.preview === "preparing",
+            )
+            .map(({ metadata }) => metadata.input),
+        });
+      } catch (error) {
+        admittedInput.release();
+        throw error;
+      }
+    }
+    let releaseAdmissionInputs = admittedInput?.release;
     const reservation = this.journal.reserveSequence();
     let historyTicket: THistoryTicket | undefined;
     try {
@@ -752,7 +771,7 @@ export class SpatialSkeletonEditQueue<
           intent === "redo" &&
           inputPreparation !== undefined
         ) {
-          releaseAdmissionInputs = inputPreparation.validate("redo");
+          releaseAdmissionInputs = inputPreparation.validate("redo").release;
           descriptor = this.options.planner.describeIntent(transitionInput);
         } else {
           if (

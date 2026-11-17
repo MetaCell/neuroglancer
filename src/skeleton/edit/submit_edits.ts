@@ -366,11 +366,20 @@ export function createSpatialSkeletonQueueInputPreparation(
                 : [{ requirement, reference }];
             });
       let released = false;
-      return () => {
+      const release = () => {
         if (released) return;
         released = true;
         releaseInputReferences(bindings);
       };
+      try {
+        return Object.freeze({
+          input: createQueueInput(intent === "execute" ? bindings : []),
+          release,
+        });
+      } catch (error) {
+        release();
+        throw error;
+      }
     },
     async acquire(
       signal: AbortSignal,

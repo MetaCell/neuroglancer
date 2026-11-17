@@ -50,6 +50,7 @@ import type {
   SpatialSkeletonEditCommand,
 } from "#src/skeleton/edit/edit_commands.js";
 import type {
+  SpatialSkeletonAdmissionContext,
   SpatialSkeletonIntentCreationContext,
   SpatialSkeletonEditPlanner,
   SpatialSkeletonIntentPlan,
@@ -64,7 +65,10 @@ import type {
   SpatialSkeletonEditDelta,
   SpatialSkeletonEditInverseDelta,
 } from "#src/skeleton/edit_queue/complete_skeleton_edits.js";
-import { getSkeletonNodeChanges } from "#src/skeleton/edit_queue/complete_skeleton_edits.js";
+import {
+  assertCanMergeUnder,
+  getSkeletonNodeChanges,
+} from "#src/skeleton/edit_queue/complete_skeleton_edits.js";
 import type { SpatialSkeletonIntentResource } from "#src/skeleton/edit_queue/edit_intent_journal.js";
 import type {
   SpatialSkeletonAuthoritativeReconciliation,
@@ -940,6 +944,31 @@ export class CatmaidEditPlanner
     private readonly provisionalIds: SpatialSkeletonProvisionalNumericIdService,
   ) {
     super(identity);
+  }
+
+  checkAdmission(
+    input: CatmaidSpatialSkeletonCommandDescriptor,
+    {
+      requiredInput,
+      unpreparedEarlierInputs,
+    }: SpatialSkeletonAdmissionContext<CatmaidSpatialSkeletonCommandDescriptor>,
+  ) {
+    if (input.payload.kind !== "merge") return;
+    if (
+      unpreparedEarlierInputs.some(({ payload }) => payload.kind === "true-end")
+    ) {
+      return;
+    }
+    const { payload } = resolveCatmaidPreparedCommand(
+      input,
+      requiredInput,
+      this.identity,
+    );
+    if (payload.kind !== "merge") return;
+    const firstNode = requiredInput.segments
+      .map(({ snapshot }) => snapshot.getNode(payload.options.firstNode.nodeId))
+      .find((node) => node !== undefined);
+    if (firstNode !== undefined) assertCanMergeUnder(firstNode);
   }
 
   describeIntent(input: CatmaidSpatialSkeletonCommandDescriptor) {
