@@ -718,7 +718,7 @@ export class ToolBindingWidget<Context extends object> extends RefCounted {
         beginToolDrag(this);
         const { toolPaletteState } = this.localBinder.globalBinder;
         const self = this;
-        toolPaletteState.viewer.sidePanelManager.startDrag(
+        toolPaletteState.viewer.sidePanelManager?.startDrag(
           {
             dropAsNewPanel: (location, dropEffect) => {
               const palette = toolPaletteState.addNew({ location });
@@ -758,7 +758,7 @@ export class ToolBindingWidget<Context extends object> extends RefCounted {
         popDragStatus(event, dragElement, "drag");
         endToolDrag(this);
         const { toolPaletteState } = this.localBinder.globalBinder;
-        toolPaletteState.viewer.sidePanelManager.endDrag();
+        toolPaletteState.viewer.sidePanelManager?.endDrag();
         event.stopPropagation();
       });
     }
@@ -906,6 +906,24 @@ export function makeToolActivationStatusMessageWithHeader(
   body.classList.add("neuroglancer-tool-status-body");
   content.appendChild(body);
   return { message, body, header };
+}
+
+export function makeToolStatusChip(
+  key: Node | string,
+  label: string,
+  active = false,
+): HTMLElement {
+  const chip = document.createElement("div");
+  chip.classList.add("neuroglancer-tool-status-chip");
+  if (active) chip.dataset.active = "";
+  const keyElement = document.createElement("span");
+  keyElement.classList.add("neuroglancer-tool-status-chip-key");
+  keyElement.append(key);
+  const labelElement = document.createElement("span");
+  labelElement.classList.add("neuroglancer-tool-status-chip-label");
+  labelElement.textContent = label;
+  chip.append(keyElement, labelElement);
+  return chip;
 }
 
 function* getToolsFromListerMatchingTerms(
