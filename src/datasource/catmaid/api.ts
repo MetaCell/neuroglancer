@@ -81,7 +81,6 @@ interface CatmaidStackInfo {
   resolution: { x: number; y: number; z: number };
   translation: { x: number; y: number; z: number };
   metadata?: {
-    cache_provider?: string;
     read_only?: boolean;
     spatial?: Array<{
       chunk_size: SkeletonVector;
@@ -955,11 +954,6 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
     };
   }
 
-  async getCacheProvider(): Promise<string | undefined> {
-    const info = await this.tryGetMetadataInfo();
-    return info?.metadata?.cache_provider;
-  }
-
   async getSkeleton(
     skeletonId: bigint,
     options: { signal?: AbortSignal } = {},
@@ -1016,12 +1010,9 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
   async fetchNodes(
     bounds: BoundingBox,
     lod: number = 0,
-    options: {
-      cacheProvider?: string;
-      signal?: AbortSignal;
-    } = {},
+    options: { signal?: AbortSignal } = {},
   ): Promise<SkeletonNode[]> {
-    const { cacheProvider, signal } = options;
+    const { signal } = options;
     const normalizedBoundingBox = normalizeBoundingBoxForNodeList(bounds);
     const params = new URLSearchParams({
       left: normalizedBoundingBox.left.toString(),
@@ -1034,11 +1025,6 @@ export class CatmaidClient implements CatmaidSpatialSkeletonEditApi {
       lod: lod.toString(),
       format: "msgpack",
     });
-
-    // Add cache provider if available
-    if (cacheProvider) {
-      params.append("src", cacheProvider);
-    }
 
     let data: any;
     try {

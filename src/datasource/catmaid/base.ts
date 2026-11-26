@@ -27,7 +27,6 @@ import { CatmaidClient } from "#src/datasource/catmaid/api.js";
 export class CatmaidDataSourceParameters {
   url!: string;
   projectId!: number;
-  cacheProvider?: string;
 }
 
 export class CatmaidSkeletonSourceParameters {

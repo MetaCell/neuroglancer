@@ -495,14 +495,15 @@ The linked stack can define spatial skeleton metadata, with one entry in
          "limit": 7000
        }
      ],
-     "cache_provider": "cached_msgpack_grid",
      "read_only": false
    }
 
 ``chunk_size`` uses CATMAID project-space nanometers. Each level requires a
 ``limit``, the maximum expected node count. A limit of ``0`` means complete,
-unlimited results and is allowed only on the finest level. The optional
-``cache_provider`` is passed to CATMAID's node-list requests.
+unlimited results and is allowed only on the finest level.
+
+For node-list requests, CATMAID uses the provider order configured in its
+``NODE_PROVIDERS`` setting.
 
 Set ``read_only`` to ``false`` to allow editing. Otherwise the source supports
 inspection only. If ``spatial`` is absent or empty, Neuroglancer derives a
