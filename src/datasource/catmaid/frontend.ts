@@ -115,7 +115,6 @@ class CatmaidSkeletonSource
 interface CatmaidLevelSourceOptions {
   readonly baseUrl: string;
   readonly projectId: number;
-  readonly cacheProvider: string | undefined;
   readonly credentialsProvider: CredentialsProvider<CatmaidToken>;
 }
 
@@ -136,8 +135,7 @@ class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleSpatiall
   }
 
   getSources() {
-    const { baseUrl, projectId, cacheProvider, credentialsProvider } =
-      this.levelSourceOptions;
+    const { baseUrl, projectId, credentialsProvider } = this.levelSourceOptions;
     const specs = this.getLevelSpecs();
     return [
       specs.map((spec, coarseToFineIndex) => {
@@ -145,7 +143,6 @@ class CatmaidMultiscaleSpatiallyIndexedSkeletonSource extends MultiscaleSpatiall
         parameters.catmaidParameters = new CatmaidDataSourceParameters();
         parameters.catmaidParameters.url = baseUrl;
         parameters.catmaidParameters.projectId = projectId;
-        parameters.catmaidParameters.cacheProvider = cacheProvider;
         parameters.gridIndex = coarseToFineIndex;
         parameters.catmaidLod = getCatmaidLodForSpatialIndexLevel(
           coarseToFineIndex,
@@ -189,25 +186,18 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
       credentialsProvider,
     );
 
-    // Fetch project metadata, cache-provider configuration, and skeleton IDs concurrently.
-    const [spatialIndexMetadata, cacheProvider, skeletonIds] =
-      await Promise.all([
-        options.registry.chunkManager.memoize.getAsync(
-          { type: "catmaid:spatial-index-metadata", baseUrl, projectId },
-          options,
-          () => client.getSpatialIndexMetadata(),
-        ),
-        options.registry.chunkManager.memoize.getAsync(
-          { type: "catmaid:cache-provider", baseUrl, projectId },
-          options,
-          () => client.getCacheProvider(),
-        ),
-        options.registry.chunkManager.memoize.getAsync(
-          { type: "catmaid:skeletons", baseUrl, projectId },
-          options,
-          () => client.listSkeletons(),
-        ),
-      ]);
+    const [spatialIndexMetadata, skeletonIds] = await Promise.all([
+      options.registry.chunkManager.memoize.getAsync(
+        { type: "catmaid:spatial-index-metadata", baseUrl, projectId },
+        options,
+        () => client.getSpatialIndexMetadata(),
+      ),
+      options.registry.chunkManager.memoize.getAsync(
+        { type: "catmaid:skeletons", baseUrl, projectId },
+        options,
+        () => client.listSkeletons(),
+      ),
+    ]);
 
     if (spatialIndexMetadata === null) {
       throw new Error("Failed to fetch CATMAID spatial index metadata");
@@ -233,7 +223,7 @@ export class CatmaidDataSourceProvider implements DataSourceProvider {
         { modelSpace, levels: spatial },
         client,
         sourceReadonly,
-        { baseUrl, projectId, cacheProvider, credentialsProvider },
+        { baseUrl, projectId, credentialsProvider },
       );
     // Create SegmentPropertyMap
     const ids = BigUint64Array.from(skeletonIds);

@@ -185,7 +185,7 @@ describe("CatmaidClient", () => {
     },
   );
 
-  it("reads the spatial index levels and cache provider from stack metadata", async () => {
+  it("reads the spatial index levels from stack metadata", async () => {
     const client = new CatmaidClient("https://example.invalid", 1);
     (client as any).listStacks = vi.fn().mockResolvedValue([{ id: 7 }]);
     (client as any).getStackInfo = vi.fn().mockResolvedValue({
@@ -193,7 +193,6 @@ describe("CatmaidClient", () => {
       resolution: { x: 2, y: 3, z: 4 },
       translation: { x: 5, y: 6, z: 7 },
       metadata: {
-        cache_provider: "cached_msgpack_grid",
         read_only: true,
         spatial: [
           {
@@ -249,9 +248,6 @@ describe("CatmaidClient", () => {
         },
       ],
     });
-    await expect(client.getCacheProvider()).resolves.toBe(
-      "cached_msgpack_grid",
-    );
   });
 
   it("lists anisotropic levels from coarsest to finest whatever order the stack metadata gives", async () => {
@@ -720,7 +716,7 @@ describe("CatmaidClient", () => {
     expect(getFetchInit(fetchMock).priority).toBe("low");
   });
 
-  it("requests node/list at the level of detail the source asks for", async () => {
+  it("requests node/list with the requested level of detail and the server's provider order", async () => {
     const client = new CatmaidClient("https://example.invalid", 1);
     const fetchMock = vi.fn().mockResolvedValue([[], [], {}, false, [], []]);
     (client as any).fetchProjectEndpoint = fetchMock;
@@ -733,9 +729,9 @@ describe("CatmaidClient", () => {
       0.5,
     );
 
-    expect(
-      new URLSearchParams(getFetchPath(fetchMock).split("?")[1]).get("lod"),
-    ).toBe("0.5");
+    const params = new URLSearchParams(getFetchPath(fetchMock).split("?")[1]);
+    expect(params.get("lod")).toBe("0.5");
+    expect(params.has("src")).toBe(false);
   });
 
   it("rejects CATMAID node-list bounds with fewer than three coordinates", async () => {

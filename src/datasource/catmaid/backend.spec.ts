@@ -30,7 +30,7 @@ describe("CatmaidSpatiallyIndexedSkeletonSourceBackend", () => {
       parameters: {
         value: {
           catmaidLod: 0.5,
-          catmaidParameters: { cacheProvider: "cached_msgpack_grid" },
+          catmaidParameters: { url: "https://example.invalid", projectId: 1 },
         },
       },
       spec: {
@@ -45,16 +45,15 @@ describe("CatmaidSpatiallyIndexedSkeletonSourceBackend", () => {
       signal,
     );
 
-    expect(fetchNodes).toHaveBeenCalledWith(
-      {
-        lowerBounds: Float64Array.of(20, 60, 120),
-        upperBounds: Float64Array.of(30, 80, 150),
-      },
-      0.5,
-      {
-        cacheProvider: "cached_msgpack_grid",
-        signal,
-      },
-    );
+    expect(fetchNodes.mock.calls).toStrictEqual([
+      [
+        {
+          lowerBounds: Float64Array.of(20, 60, 120),
+          upperBounds: Float64Array.of(30, 80, 150),
+        },
+        0.5,
+        { signal },
+      ],
+    ]);
   });
 });

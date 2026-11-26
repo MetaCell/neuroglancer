@@ -59,7 +59,6 @@ export class CatmaidSpatiallyIndexedSkeletonSourceBackend extends WithParameters
       this.spec.chunkDataSize,
     );
     return this.client.fetchNodes(bounds, this.parameters.catmaidLod ?? 0, {
-      cacheProvider: this.parameters.catmaidParameters.cacheProvider,
       signal,
     });
   }
