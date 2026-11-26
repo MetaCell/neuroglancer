@@ -251,15 +251,6 @@ class TrackableUiControlVisibility extends CompoundTrackable {
     this.add("showLayerPanel", this.showLayerPanel);
     this.add("showTopBar", this.showTopBar);
   }
-
-  toJSON(): any {
-    const result = super.toJSON();
-    for (const key in result) {
-      if (result[key] !== undefined) return result;
-    }
-    // Omit the section rather than emitting an empty object in every state.
-    return undefined;
-  }
 }
 
 export class TrackableViewerState extends CompoundTrackable {
@@ -913,11 +904,17 @@ export class Viewer extends RefCounted implements ViewerState {
         return;
       }
       const userLayer = selectedLayer.layer;
-      if (userLayer === null || userLayer.tool.value === undefined) {
+      if (userLayer === null) {
         StatusMessage.showTemporaryMessage(
           `The selected layer (${JSON.stringify(
             selectedLayer.name,
           )}) does not have an active annotation tool.`,
+        );
+        return;
+      }
+      if (userLayer.tool.value === undefined) {
+        StatusMessage.showTemporaryMessage(
+          userLayer.getMissingAnnotationToolMessage(),
         );
         return;
       }

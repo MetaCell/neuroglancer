@@ -123,6 +123,24 @@ jobs:
           path: |
             playwright-report/
             examples/*/*/dist/
+  skeleton-browser-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.x
+          package-manager-cache: false
+      - run: npm ci
+      - run: npm run test:skeleton:browser -- --reporter=html
+      - name: Upload report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: skeleton-browser-integration-results
+          path: playwright-report/
 
   # Builds Python package and runs Python tests
   #
@@ -154,7 +172,6 @@ jobs:
         with:
           enable-cache: false
           python-version: ${{ matrix.python-version }}
-      - uses: ./.github/actions/setup-firefox
       - name: Setup tmate session
         uses: mxschmitt/action-tmate@35b54afac29c97fb54faba5b513f8fbd1882f113 # v3.24
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
@@ -164,6 +181,11 @@ jobs:
       - name: Run python tests (skip browser tests)
         run: uvx nox -s test -- --skip-browser-tests
         if: ${{ runner.os != 'Linux' }}
+      - name: Log Firefox and geckodriver versions
+        run: |
+          firefox --version
+          geckodriver --version
+        if: ${{ runner.os == 'Linux' }}
       - name: Run python tests (include browser tests)
         run: uvx nox -s test_xvfb -- --browser firefox
         if: ${{ runner.os == 'Linux' }}

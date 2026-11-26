@@ -1,15 +1,27 @@
 import type { SegmentationUserLayer } from "#src/layer/segmentation/index.js";
 import * as json_keys from "#src/layer/segmentation/json_keys.js";
+import type { SkeletonRenderMode } from "#src/skeleton/frontend.js";
 import type { LayerControlDefinition } from "#src/widget/layer_control.js";
 import { registerLayerControl } from "#src/widget/layer_control.js";
 import { checkboxLayerControl } from "#src/widget/layer_control_checkbox.js";
 import { enumLayerControl } from "#src/widget/layer_control_enum.js";
 import { rangeLayerControl } from "#src/widget/layer_control_range.js";
-import { renderScaleLayerControl } from "#src/widget/render_scale_widget.js";
+import {
+  RenderScaleWidget,
+  renderScaleLayerControl,
+} from "#src/widget/render_scale_widget.js";
 import {
   colorSeedLayerControl,
   fixedColorLayerControl,
 } from "#src/widget/segmentation_color_mode.js";
+
+class SkeletonSpacingRenderScaleWidget extends RenderScaleWidget {
+  protected formatSpatialScale(spatialScale: number) {
+    return spatialScale === 0
+      ? "all nodes"
+      : super.formatSpatialScale(spatialScale);
+  }
+}
 
 export const LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
   {
@@ -85,6 +97,46 @@ export const LAYER_CONTROLS: LayerControlDefinition<SegmentationUserLayer>[] = [
     })),
   },
   {
+    label: "Spacing (cross section)",
+    toolJson: json_keys.SKELETON_CROSS_SECTION_SPACING_JSON_KEY,
+    isValid: (layer) => layer.hasSpatiallyIndexedSkeletonsLayer,
+    title:
+      "Select the node spacing for spatially indexed skeletons in cross-section views",
+    sectionKey: json_keys.SKELETON_SECTION_JSON_KEY,
+    ...renderScaleLayerControl(
+      (layer) => ({
+        histogram: layer.displayState.spatialSkeletonSpacingHistogram2d,
+        target: layer.displayState.spatialSkeletonSpacingTarget2d,
+      }),
+      SkeletonSpacingRenderScaleWidget,
+    ),
+  },
+  {
+    label: "Spacing (projection)",
+    toolJson: json_keys.SKELETON_PROJECTION_SPACING_JSON_KEY,
+    isValid: (layer) => layer.hasSpatiallyIndexedSkeletonsLayer,
+    title:
+      "Select the node spacing for spatially indexed skeletons in projection views",
+    sectionKey: json_keys.SKELETON_SECTION_JSON_KEY,
+    ...renderScaleLayerControl(
+      (layer) => ({
+        histogram: layer.displayState.spatialSkeletonSpacingHistogram3d,
+        target: layer.displayState.spatialSkeletonSpacingTarget3d,
+      }),
+      SkeletonSpacingRenderScaleWidget,
+    ),
+  },
+  {
+    label: "Hidden Opacity (3d)",
+    toolJson: json_keys.HIDDEN_OPACITY_3D_JSON_KEY,
+    isValid: (layer) => layer.hasSpatiallyIndexedSkeletonsLayer,
+    title: "Opacity of hidden (non-visible) skeleton nodes in 3D views",
+    sectionKey: json_keys.SKELETON_SECTION_JSON_KEY,
+    ...rangeLayerControl((layer) => ({
+      value: layer.displayState.hiddenObjectAlpha,
+    })),
+  },
+  {
     label: "Silhouette (3d)",
     toolJson: json_keys.MESH_SILHOUETTE_RENDERING_JSON_KEY,
     isValid: (layer) => layer.has3dLayer,
@@ -139,7 +191,7 @@ function getViewSpecificSkeletonRenderingControl(
       toolJson: `${json_keys.SKELETON_RENDERING_JSON_KEY}.mode${viewName}`,
       sectionKey: json_keys.SKELETON_SECTION_JSON_KEY,
       isValid: (layer) => layer.hasSkeletonsLayer,
-      ...enumLayerControl(
+      ...enumLayerControl<SegmentationUserLayer, SkeletonRenderMode>(
         (layer) =>
           layer.displayState.skeletonRenderingOptions[
             `params${viewName}` as const
