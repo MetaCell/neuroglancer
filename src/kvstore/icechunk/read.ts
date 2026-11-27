@@ -23,12 +23,12 @@ import type { ChunkId } from "#src/kvstore/icechunk/decode_utils.js";
 import type { ChunkPayload } from "#src/kvstore/icechunk/manifest.js";
 import { getManifest } from "#src/kvstore/icechunk/metadata_cache.js";
 import type {
+  ArrayNode,
   ManifestExtents,
-  NodeDataArray,
   NodeSnapshot,
   Snapshot,
 } from "#src/kvstore/icechunk/snapshot.js";
-import { encodeZarrJson, findNode } from "#src/kvstore/icechunk/snapshot.js";
+import { findNode } from "#src/kvstore/icechunk/snapshot.js";
 import type {
   DriverReadOptions,
   ReadResponse,
@@ -69,17 +69,17 @@ export function resolveIcechunkPath(
   if (chunk === undefined) {
     return { node };
   }
-  if (node.nodeData === "Group") {
+  if (node.array === undefined) {
     // chunk path not valid for groups
     return undefined;
   }
-  const { shape, chunkShape } = node.nodeData.Array.metadata;
-  const rank = shape.length;
+  const { numChunks } = node.array;
+  const rank = numChunks.length;
   if (rank !== chunk.length) {
     return undefined;
   }
   for (let i = 0; i < rank; ++i) {
-    if (chunk[i] * chunkShape[i] >= shape[i]) {
+    if (chunk[i] >= numChunks[i]) {
       return undefined;
     }
   }
@@ -104,7 +104,7 @@ export async function resolveChunkPayload(
   chunk: number[],
   options: Partial<ProgressOptions>,
 ): Promise<ChunkPayload | undefined> {
-  const { manifests } = (node.nodeData as NodeDataArray).Array;
+  const { manifests } = node.array as ArrayNode;
   const chunkKey = chunk.join();
   const nodeId = node.id;
   for (const manifestRef of manifests) {
@@ -112,7 +112,7 @@ export async function resolveChunkPayload(
     const manifest = await getManifest(
       sharedKvStoreContext,
       baseUrl,
-      manifestRef.objectId,
+      manifestRef.id,
       options,
     );
     const chunks = manifest.chunks.get(nodeId);
@@ -145,14 +145,8 @@ export async function stat(
     options,
   );
   if (payload === undefined) return undefined;
-  let totalSize: number;
-  if ("Inline" in payload) {
-    totalSize = payload.Inline.length;
-  } else if ("Virtual" in payload) {
-    totalSize = payload.Virtual.length;
-  } else {
-    totalSize = payload.Ref.length;
-  }
+  const totalSize =
+    payload.kind === "inline" ? payload.data.length : payload.length;
   return { totalSize };
 }
 
@@ -162,27 +156,33 @@ async function readFromChunkPayload(
   payload: ChunkPayload,
   options: DriverReadOptions,
 ): Promise<ReadResponse> {
-  if ("Inline" in payload) {
+  if (payload.kind === "inline") {
     return handleByteRangeRequestFromUint8Array(
-      payload.Inline,
+      payload.data,
       options.byteRange,
     );
   }
-  let offset: number;
-  let length: number;
-  let url: string;
-  if ("Virtual" in payload) {
-    ({ location: url, offset, length } = payload.Virtual);
-  } else {
-    const { Ref: ref } = payload;
-    ({ offset, length } = ref);
-    url = getChunkUrl(baseUrl, ref.id);
+  const { offset, length } = payload;
+  if (
+    payload.kind === "virtual" &&
+    payload.location.startsWith(VIRTUAL_CHUNK_CONTAINER_SCHEME)
+  ) {
+    throw new Error(
+      `Virtual chunk locations relative to a virtual chunk container are not supported: ${payload.location}`,
+    );
   }
+  const url =
+    payload.kind === "virtual"
+      ? payload.location
+      : getChunkUrl(baseUrl, payload.chunkId);
   return new FileByteRangeHandle(
     sharedKvStoreContext.kvStoreContext.getFileHandle(url),
     { offset, length },
   ).read(options);
 }
+
+// The container's URL prefix is in the repository config, which is not read.
+const VIRTUAL_CHUNK_CONTAINER_SCHEME = "vcc://";
 
 function getChunkUrl(baseUrl: string, id: ChunkId) {
   return pipelineUrlJoin(baseUrl, `chunks/${id}`);
@@ -199,10 +199,10 @@ export async function read(
   if (resolvedPath === undefined) return undefined;
   const { node, chunk } = resolvedPath;
   if (chunk === undefined) {
-    // zarr.json file.
-    const data = encodeZarrJson(node);
-    const encoded = new TextEncoder().encode(data);
-    return handleByteRangeRequestFromUint8Array(encoded, options.byteRange);
+    return handleByteRangeRequestFromUint8Array(
+      node.zarrJson,
+      options.byteRange,
+    );
   }
   const payload = await resolveChunkPayload(
     sharedKvStoreContext,

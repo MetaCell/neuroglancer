@@ -16,21 +16,29 @@
 
 import type { AutoDetectRegistry } from "#src/kvstore/auto_detect.js";
 
-const INITIAL_MAIN_REF = "refs/branch.main/ZZZZZZZZ.json";
-
-const EXPECTED_SUB_DIRECTORIES = new Set(["refs", "snapshots"]);
+const FORMAT_0_1_MAIN_REF = "refs/branch.main/ZZZZZZZZ.json";
+const FORMAT_1_MAIN_REF = "refs/branch.main/ref.json";
+// Icechunk 0.2.17 and later give the first commit this fixed id and never
+// delete it.
+const INITIAL_SNAPSHOT = "snapshots/1CECHNKREP0F1RSTCMT0";
+const FORMAT_2_REPO_INFO = "repo";
 
 export function registerAutoDetect(registry: AutoDetectRegistry) {
   registry.registerDirectoryFormat({
-    fileNames: new Set([INITIAL_MAIN_REF]),
-    subDirectories: EXPECTED_SUB_DIRECTORIES,
+    fileNames: new Set([
+      FORMAT_0_1_MAIN_REF,
+      FORMAT_1_MAIN_REF,
+      INITIAL_SNAPSHOT,
+    ]),
+    subDirectories: new Set(["refs", "snapshots"]),
     match: async ({ fileNames, subDirectories }) => {
-      if (!fileNames.has(INITIAL_MAIN_REF)) {
-        // Check based on sub-directories
-        for (const subDirectory of EXPECTED_SUB_DIRECTORIES) {
-          if (!subDirectories.has(subDirectory)) return [];
-        }
-      }
+      const isRepository =
+        fileNames.has(FORMAT_0_1_MAIN_REF) ||
+        fileNames.has(FORMAT_1_MAIN_REF) ||
+        fileNames.has(INITIAL_SNAPSHOT) ||
+        (subDirectories.has("snapshots") &&
+          (subDirectories.has("refs") || fileNames.has(FORMAT_2_REPO_INFO)));
+      if (!isRepository) return [];
       return [{ suffix: "icechunk:", description: "Icechunk repository" }];
     },
   });

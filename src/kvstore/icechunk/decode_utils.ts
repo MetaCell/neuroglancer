@@ -20,7 +20,7 @@ import { decodeZstd } from "#src/async_computation/decode_zstd_request.js";
 import { requestAsyncComputation } from "#src/async_computation/request.js";
 import { crockfordBase32Encode } from "#src/kvstore/icechunk/crockford_base32.js";
 
-export const LATEST_KNOWN_SPEC_VERSION = 1;
+const LATEST_KNOWN_SPEC_VERSION = 2;
 
 // "ICE🧊CHUNK" as UTF-8
 const MAGIC = Uint8Array.of(
@@ -52,12 +52,12 @@ export enum CompressionMethod {
   ZSTD = 1,
 }
 
-export async function decodeEnvelope(
+async function decodeEnvelope(
   buffer: ArrayBuffer,
   maxVersion: number,
   fileType: number,
-  signal: AbortSignal,
-): Promise<{ content: Uint8Array; specVersion: number }> {
+  signal: AbortSignal | undefined,
+): Promise<Uint8Array<ArrayBuffer>> {
   if (buffer.byteLength < ENVELOPE_HEADER_SIZE) {
     throw new Error(
       `Expected icechunk header of ${ENVELOPE_HEADER_SIZE} bytes, but received: ${buffer.byteLength} bytes`,
@@ -108,34 +108,83 @@ export async function decodeEnvelope(
       throw new Error(`Unknown compression method: ${compressionMethod}`);
   }
 
-  return { content, specVersion };
+  return content;
 }
 
-export interface DecodedIcechunkMessage {
-  content: unknown;
-  specVersion: number;
-  estimatedSize: number;
+export enum PayloadEncoding {
+  MSGPACK,
+  FLATBUFFERS,
 }
 
-export async function decodeMsgpack(
+export interface IcechunkFile {
+  readonly content: Uint8Array<ArrayBuffer>;
+  readonly encoding: PayloadEncoding;
+  readonly estimatedSize: number;
+}
+
+// Spec version 1 covers both encodings, so the file identifier decides.
+export async function decodeIcechunkFile(
   buffer: ArrayBuffer,
-  maxVersion: number,
   fileType: number,
-  signal: AbortSignal,
-): Promise<DecodedIcechunkMessage> {
-  const { content, specVersion } = await decodeEnvelope(
+  signal: AbortSignal | undefined,
+): Promise<IcechunkFile> {
+  // Read before the zstd decode transfers, and so empties, the buffer.
+  const estimatedSize = buffer.byteLength * 3;
+  const content = await decodeEnvelope(
     buffer,
-    maxVersion,
+    LATEST_KNOWN_SPEC_VERSION,
     fileType,
     signal,
   );
   return {
+    content,
+    encoding: hasFlatbuffersIdentifier(content)
+      ? PayloadEncoding.FLATBUFFERS
+      : PayloadEncoding.MSGPACK,
+    estimatedSize,
+  };
+}
+
+// "Ichk" as ASCII, after the 4-byte root table offset.
+const FLATBUFFERS_IDENTIFIER = Uint8Array.of(0x49, 0x63, 0x68, 0x6b);
+const FLATBUFFERS_IDENTIFIER_OFFSET = 4;
+
+// An Icechunk 0.1 payload starts with its 12-byte object id as msgpack bin 8.
+// These bytes would be a flatbuffers root offset of about 200 MB.
+const MSGPACK_OBJECT_ID_HEADER = Uint8Array.of(0xc4, 0x0c);
+const MSGPACK_OBJECT_ID_HEADER_OFFSET = 2;
+
+function hasBytes(content: Uint8Array, offset: number, expected: Uint8Array) {
+  if (content.length < offset + expected.length) return false;
+  for (let i = 0; i < expected.length; ++i) {
+    if (content[offset + i] !== expected[i]) return false;
+  }
+  return true;
+}
+
+function hasFlatbuffersIdentifier(content: Uint8Array) {
+  return (
+    hasBytes(content, FLATBUFFERS_IDENTIFIER_OFFSET, FLATBUFFERS_IDENTIFIER) &&
+    !hasBytes(
+      content,
+      MSGPACK_OBJECT_ID_HEADER_OFFSET,
+      MSGPACK_OBJECT_ID_HEADER,
+    )
+  );
+}
+
+export interface DecodedIcechunkMessage {
+  content: unknown;
+  estimatedSize: number;
+}
+
+export function unpackMsgpack(file: IcechunkFile): DecodedIcechunkMessage {
+  return {
     content: new Unpackr({
       mapsAsObjects: false,
       int64AsType: "bigint",
-    }).unpack(content),
-    specVersion,
-    estimatedSize: buffer.byteLength * 3,
+    }).unpack(file.content),
+    estimatedSize: file.estimatedSize,
   };
 }
 

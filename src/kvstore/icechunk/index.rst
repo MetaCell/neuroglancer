@@ -29,6 +29,12 @@ The :file:`{base-kvstore-url/}` must refer to a directory.
 - The :file:`icechunk:@{SNAPSHOT}/{path/to/array/}` syntax indicates a specific
   snapshot.
 
+Repositories written by Icechunk 0.1 and later are supported, including
+repositories migrated to the Icechunk 2 format.
+
+Virtual chunks are read from their absolute URLs. Virtual chunk locations
+relative to a virtual chunk container (:file:`vcc://`) are not supported.
+
 Currently, icechunk can only store Zarr v3 hierarchies. Therefore, it is always
 used in conjunction with the :ref:`Zarr data format driver<zarr-datasource>`.
 
@@ -60,11 +66,13 @@ Capabilities
    * - :ref:`kvstore-byte-range-reads`
      - Required.
    * - :ref:`kvstore-listing`
-     - Required when a tag or snapshot is not specified explicitly.
+     - Required to resolve a branch of a repository written by Icechunk 0.1.
 
 Auto detection
 --------------
 
 Directories containing Icechunk repositories are detected automatically based on
-the presence of the :file:`refs` and :file:`snapshots` sub-directories, and by
-the presence of the :file:`refs/branch.main/ZZZZZZZZ.json` file.
+the presence of the :file:`refs` and :file:`snapshots` sub-directories, of the
+:file:`repo` file and the :file:`snapshots` sub-directory, or of one of the
+:file:`refs/branch.main/ZZZZZZZZ.json`, :file:`refs/branch.main/ref.json` and
+:file:`snapshots/1CECHNKREP0F1RSTCMT0` files.

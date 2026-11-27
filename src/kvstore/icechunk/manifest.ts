@@ -14,87 +14,50 @@
  * limitations under the License.
  */
 
-import * as v from "valibot";
-import {
+import { decodeFlatbuffersManifest } from "#src/kvstore/icechunk/decode_flatbuffers.js";
+import { decodeMsgpackManifest } from "#src/kvstore/icechunk/decode_msgpack.js";
+import type {
   ChunkId,
-  decodeMsgpack,
-  Integer,
-  LATEST_KNOWN_SPEC_VERSION,
   ManifestId,
   NodeId,
-  parseDecodedMsgpack,
-  tupleToObject,
+} from "#src/kvstore/icechunk/decode_utils.js";
+import {
+  decodeIcechunkFile,
+  PayloadEncoding,
 } from "#src/kvstore/icechunk/decode_utils.js";
 import { pipelineUrlJoin } from "#src/kvstore/url.js";
 
+export type ChunkPayload =
+  | { readonly kind: "inline"; readonly data: Uint8Array<ArrayBuffer> }
+  | {
+      readonly kind: "native";
+      readonly chunkId: ChunkId;
+      readonly offset: number;
+      readonly length: number;
+    }
+  | {
+      readonly kind: "virtual";
+      readonly location: string;
+      readonly offset: number;
+      readonly length: number;
+    };
+
+export interface Manifest {
+  // Keyed by node, then by the chunk grid position joined with ",".
+  readonly chunks: ReadonlyMap<NodeId, ReadonlyMap<string, ChunkPayload>>;
+  readonly estimatedSize: number;
+}
+
 const MANIFEST_FILE_TYPE = 2;
-
-const InlineChunkPayload = v.strictObject({
-  Inline: v.instance(Uint8Array),
-});
-
-const Chunksum = v.any();
-
-const VirtualChunkLocation = v.string();
-
-const VirtualChunkRef = tupleToObject({
-  location: VirtualChunkLocation,
-  offset: Integer,
-  length: Integer,
-  chunksum: Chunksum,
-});
-
-const VirtualChunkRefPayload = v.strictObject({
-  Virtual: VirtualChunkRef,
-});
-
-const ChunkRef = tupleToObject({
-  id: ChunkId,
-  offset: Integer,
-  length: Integer,
-});
-
-const ChunkRefPayload = v.strictObject({
-  Ref: ChunkRef,
-});
-
-const ChunkPayload = v.pipe(
-  v.map(v.string(), v.any()),
-  v.transform<Map<string, any>, Record<string, any>>(Object.fromEntries),
-  v.union([InlineChunkPayload, VirtualChunkRefPayload, ChunkRefPayload]),
-);
-
-export type ChunkPayload = v.InferOutput<typeof ChunkPayload>;
-
-const Manifest = tupleToObject({
-  id: ManifestId,
-  chunks: v.map(
-    NodeId,
-    v.map(
-      v.pipe(
-        v.array(Integer),
-        v.transform((chunk) => chunk.join()),
-      ),
-      ChunkPayload,
-    ),
-  ),
-});
-
-export type Manifest = v.InferOutput<typeof Manifest> & {
-  estimatedSize: number;
-};
 
 export async function decodeManifest(
   buffer: ArrayBuffer,
-  signal: AbortSignal,
+  signal: AbortSignal | undefined,
 ): Promise<Manifest> {
-  const decoded = await decodeMsgpack(
-    buffer,
-    LATEST_KNOWN_SPEC_VERSION,
-    MANIFEST_FILE_TYPE,
-    signal,
-  );
-  return parseDecodedMsgpack(Manifest, "chunk manifest", decoded);
+  const file = await decodeIcechunkFile(buffer, MANIFEST_FILE_TYPE, signal);
+  return file.encoding === PayloadEncoding.MSGPACK
+    ? decodeMsgpackManifest(file)
+    : decodeFlatbuffersManifest(file, signal);
 }
 
 export function getManifestUrl(baseUrl: string, id: ManifestId): string {
