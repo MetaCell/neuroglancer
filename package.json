@@ -123,6 +123,10 @@
       "node": "./src/async_computation/decode_zstd_node.ts",
       "default": "./src/async_computation/decode_zstd.ts"
     },
+    "#src/async_computation/zstd_dictionary/fetch_wasm.js": {
+      "node": "./src/async_computation/zstd_dictionary/fetch_wasm_node.ts",
+      "default": "./src/async_computation/zstd_dictionary/fetch_wasm.ts"
+    },
     "#src/*.js": "./src/*.ts",
     "#src/*": "./src/*",
     "#tests/fixtures/msw": {

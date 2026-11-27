@@ -16,55 +16,144 @@
 
 import { SimpleAsyncCache } from "#src/chunk_manager/generic_file_source.js";
 import type { SharedKvStoreContextCounterpart } from "#src/kvstore/backend.js";
+import { decodeRepoInfo } from "#src/kvstore/icechunk/decode_flatbuffers.js";
 import type { ManifestId } from "#src/kvstore/icechunk/decode_utils.js";
 import {
   decodeManifest,
   getManifestUrl,
 } from "#src/kvstore/icechunk/manifest.js";
 import { decodeRef, isBranchRef } from "#src/kvstore/icechunk/ref.js";
+import type { RepoInfo } from "#src/kvstore/icechunk/repo_info.js";
 import type { SnapshotId } from "#src/kvstore/icechunk/snapshot.js";
 import {
   decodeSnapshot,
   getSnapshotUrl,
 } from "#src/kvstore/icechunk/snapshot.js";
 import type { RefSpec } from "#src/kvstore/icechunk/url.js";
+import { formatRefSpec } from "#src/kvstore/icechunk/url.js";
 import { pipelineUrlJoin } from "#src/kvstore/url.js";
 import {
   ProgressSpan,
   type ProgressOptions,
 } from "#src/util/progress_listener.js";
 
-function makeMetadataCache<T>(
+type DecodeMetadata<T> = (
+  response: Response,
+  signal: AbortSignal | undefined,
+) => Promise<{ data: T; size: number }>;
+
+async function readMetadata<T>(
   sharedKvStoreContext: SharedKvStoreContextCounterpart,
   description: string,
-  decode: (
-    response: Response,
-    signal: AbortSignal,
-  ) => Promise<{ data: T; size: number }>,
+  decode: DecodeMetadata<T>,
+  url: string,
+  options: Partial<ProgressOptions>,
+): Promise<{ data: T; size: number } | undefined> {
+  const readResponse = await sharedKvStoreContext.kvStoreContext.read(url, {
+    ...options,
+    throwIfMissing: false,
+  });
+  if (readResponse === undefined) return undefined;
+  try {
+    return await decode(readResponse.response, options.signal);
+  } catch (e) {
+    throw new Error(`Error reading icechunk ${description} from ${url}`, {
+      cause: e,
+    });
+  }
+}
+
+function makeCache<T>(
+  sharedKvStoreContext: SharedKvStoreContextCounterpart,
+  description: string,
+  decode: DecodeMetadata<T>,
+  handleMissing: (url: string) => { data: T; size: number },
 ) {
   const cache = new SimpleAsyncCache<string, T>(
     sharedKvStoreContext.chunkManager.addRef(),
     {
-      get: async (url: string, progressOptions: ProgressOptions) => {
-        const readResponse = await sharedKvStoreContext.kvStoreContext.read(
+      get: async (url: string, progressOptions: ProgressOptions) =>
+        (await readMetadata(
+          sharedKvStoreContext,
+          description,
+          decode,
           url,
-          {
-            ...progressOptions,
-            throwIfMissing: true,
-          },
-        );
-        try {
-          return await decode(readResponse.response, progressOptions.signal);
-        } catch (e) {
-          throw new Error(`Error reading icechunk ${description} from ${url}`, {
-            cause: e,
-          });
-        }
-      },
+          progressOptions,
+        )) ?? handleMissing(url),
     },
   );
   cache.registerDisposer(sharedKvStoreContext.addRef());
   return cache;
+}
+
+function makeMetadataCache<T>(
+  sharedKvStoreContext: SharedKvStoreContextCounterpart,
+  description: string,
+  decode: DecodeMetadata<T>,
+) {
+  return makeCache(sharedKvStoreContext, description, decode, (url) => {
+    throw new Error(`Missing icechunk ${description} at ${url}`);
+  });
+}
+
+function makeOptionalMetadataCache<T>(
+  sharedKvStoreContext: SharedKvStoreContextCounterpart,
+  description: string,
+  decode: DecodeMetadata<T>,
+) {
+  return makeCache<T | undefined>(
+    sharedKvStoreContext,
+    description,
+    decode,
+    () => ({ data: undefined, size: 0 }),
+  );
+}
+
+const decodeRepoInfoResponse: DecodeMetadata<RepoInfo> = async (
+  response,
+  signal,
+) => {
+  const repoInfo = await decodeRepoInfo(await response.arrayBuffer(), signal);
+  return { data: repoInfo, size: repoInfo.estimatedSize };
+};
+
+function getRepoInfoUrl(baseUrl: string) {
+  return pipelineUrlJoin(baseUrl, "repo");
+}
+
+// Undefined when the repository predates Icechunk 2.
+export function getRepoInfo(
+  sharedKvStoreContext: SharedKvStoreContextCounterpart,
+  baseUrl: string,
+  options: Partial<ProgressOptions>,
+): Promise<RepoInfo | undefined> {
+  const cache = sharedKvStoreContext.chunkManager.memoize.get(
+    "icechunk:repo",
+    () =>
+      makeOptionalMetadataCache(
+        sharedKvStoreContext,
+        "repo info",
+        decodeRepoInfoResponse,
+      ),
+  );
+  return cache.get(getRepoInfoUrl(baseUrl), options);
+}
+
+// Bypasses the cache, to find refs created after `getRepoInfo` cached its copy.
+async function readLatestRepoInfo(
+  sharedKvStoreContext: SharedKvStoreContextCounterpart,
+  baseUrl: string,
+  options: Partial<ProgressOptions>,
+): Promise<RepoInfo | undefined> {
+  return (
+    await readMetadata(
+      sharedKvStoreContext,
+      "repo info",
+      decodeRepoInfoResponse,
+      getRepoInfoUrl(baseUrl),
+      options,
+    )
+  )?.data;
 }
 
 export function getSnapshot(
@@ -123,14 +212,20 @@ export function getRef(
   const cache = sharedKvStoreContext.chunkManager.memoize.get(
     "icechunk:ref",
     () =>
-      makeMetadataCache(sharedKvStoreContext, "ref", async (response) => ({
-        data: decodeRef(await response.json()),
-        size: 0,
-      })),
+      makeOptionalMetadataCache(
+        sharedKvStoreContext,
+        "ref",
+        async (response) => ({
+          data: decodeRef(await response.json()),
+          size: 0,
+        }),
+      ),
   );
   return cache.get(url, options);
 }
 
+// Icechunk 0.1 writes one ref file per branch version, and the newest has
+// the lowest name.
 export function getBranch(
   sharedKvStoreContext: SharedKvStoreContextCounterpart,
   url: string,
@@ -163,6 +258,9 @@ export function getBranch(
                 pipelineUrlJoin(url, headKey.key),
                 progressOptions,
               );
+              if (snapshotId === undefined) {
+                throw new Error(`Ref ${headKey.key} is missing`);
+              }
               return { data: snapshotId, size: 0 };
             } catch (e) {
               throw new Error(`Error resolving icechunk branch at ${url}`, {
@@ -209,6 +307,9 @@ export function getTag(
               if (deletedResponse !== undefined) {
                 throw new Error(`Tag is marked as deleted`);
               }
+              if (tagResponse === undefined) {
+                throw new Error(`Tag not found`);
+              }
               return { data: tagResponse, size: 0 };
             } catch (e) {
               throw new Error(`Error resolving icechunk tag at ${url}`, {
@@ -225,25 +326,81 @@ export function getTag(
   return cache.get(url, options);
 }
 
-export function resolveRefSpec(
+// The repo info wins over ref files that a migration left behind.
+export async function resolveRefSpec(
   sharedKvStoreContext: SharedKvStoreContextCounterpart,
   url: string,
   refSpec: RefSpec,
   options: Partial<ProgressOptions>,
-): Promise<string> {
+): Promise<SnapshotId> {
   if ("snapshot" in refSpec) {
-    return Promise.resolve(refSpec.snapshot);
+    return refSpec.snapshot;
   }
-  if ("branch" in refSpec) {
-    return getBranch(
+  const branchUrl =
+    "branch" in refSpec
+      ? pipelineUrlJoin(url, `refs/branch.${refSpec.branch}/`)
+      : undefined;
+  const [repoInfo, refFile] = await Promise.allSettled([
+    getRepoInfo(sharedKvStoreContext, url, options),
+    "branch" in refSpec
+      ? getRef(
+          sharedKvStoreContext,
+          pipelineUrlJoin(branchUrl!, "ref.json"),
+          options,
+        )
+      : getTag(
+          sharedKvStoreContext,
+          pipelineUrlJoin(url, `refs/tag.${refSpec.tag}/`),
+          options,
+        ),
+  ]);
+  if (repoInfo.status === "rejected") {
+    throw repoInfo.reason;
+  }
+  if (repoInfo.value !== undefined) {
+    return resolveRefInRepoInfo(
       sharedKvStoreContext,
-      pipelineUrlJoin(url, `refs/branch.${refSpec.branch}/`),
+      url,
+      refSpec,
+      repoInfo.value,
       options,
     );
   }
-  return getTag(
-    sharedKvStoreContext,
-    pipelineUrlJoin(url, `refs/tag.${refSpec.tag}/`),
-    options,
+  if (refFile.status === "rejected") {
+    throw refFile.reason;
+  }
+  return refFile.value ?? getBranch(sharedKvStoreContext, branchUrl!, options);
+}
+
+type NamedRefSpec = Exclude<RefSpec, { snapshot: string }>;
+
+function findRef(repoInfo: RepoInfo, refSpec: NamedRefSpec) {
+  return "branch" in refSpec
+    ? repoInfo.branches.get(refSpec.branch)
+    : repoInfo.tags.get(refSpec.tag);
+}
+
+async function resolveRefInRepoInfo(
+  sharedKvStoreContext: SharedKvStoreContextCounterpart,
+  url: string,
+  refSpec: NamedRefSpec,
+  cachedRepoInfo: RepoInfo,
+  options: Partial<ProgressOptions>,
+): Promise<SnapshotId> {
+  const snapshotId = findRef(cachedRepoInfo, refSpec);
+  if (snapshotId !== undefined) return snapshotId;
+  const repoInfo =
+    (await readLatestRepoInfo(sharedKvStoreContext, url, options)) ??
+    cachedRepoInfo;
+  const latestSnapshotId = findRef(repoInfo, refSpec);
+  if (latestSnapshotId !== undefined) return latestSnapshotId;
+  const kind = "branch" in refSpec ? "branch" : "tag";
+  const reason =
+    "tag" in refSpec && repoInfo.deletedTags.has(refSpec.tag)
+      ? "Tag is marked as deleted"
+      : "Not found";
+  throw new Error(
+    `Error resolving icechunk ${kind} ${JSON.stringify(formatRefSpec(refSpec))} at ${getRepoInfoUrl(url)}`,
+    { cause: new Error(reason) },
   );
 }

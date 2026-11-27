@@ -19,14 +19,39 @@ import type {
   CompletionResult,
   KvStoreAdapterCompleteUrlOptions,
 } from "#src/kvstore/context.js";
+import { getRepoInfo } from "#src/kvstore/icechunk/metadata_cache.js";
 import { isSnapshotId } from "#src/kvstore/icechunk/ref.js";
+import type { RepoInfo } from "#src/kvstore/icechunk/repo_info.js";
 import { parseRefSpec } from "#src/kvstore/icechunk/url.js";
 import { listKvStore } from "#src/kvstore/index.js";
-import { encodePathForUrl, joinPath } from "#src/kvstore/url.js";
+import {
+  encodePathForUrl,
+  ensurePathIsDirectory,
+  joinPath,
+} from "#src/kvstore/url.js";
 import type { CompletionWithDescription } from "#src/util/completion.js";
+import { defaultStringCompare } from "#src/util/string.js";
+
+function completeRefsFromRepoInfo(
+  repoInfo: RepoInfo,
+  prefix: string,
+): CompletionWithDescription[] {
+  const completions: CompletionWithDescription[] = [];
+  for (const [kind, description, refs] of [
+    ["branch", "Branch", repoInfo.branches],
+    ["tag", "Tag", repoInfo.tags],
+  ] as const) {
+    for (const name of Array.from(refs.keys()).sort(defaultStringCompare)) {
+      const ref = `${kind}.${name}`;
+      if (!ref.startsWith(prefix)) continue;
+      completions.push({ value: encodePathForUrl(ref) + "/", description });
+    }
+  }
+  return completions;
+}
 
 export async function completeIcechunkUrl(
-  _sharedKvStoreContext: SharedKvStoreContextCounterpart,
+  sharedKvStoreContext: SharedKvStoreContextCounterpart,
   options: KvStoreAdapterCompleteUrlOptions,
 ): Promise<CompletionResult | undefined> {
   const { url } = options;
@@ -51,20 +76,34 @@ export async function completeIcechunkUrl(
       /^(?:(?:(?:t|$)(?:a|$)(?:g|$)(?:\.|$))|(?:(?:b|$)(?:r|$)(?:a|$)(?:n|$)(?:c|$)(?:h|$)(?:\.|$)))/,
     )
   ) {
-    const refsPath = joinPath(options.base.path, `refs/`);
-    refCompletionsPromise = listKvStore(
-      options.base.store,
-      refsPath + decodeURIComponent(version),
-      { signal: options.signal, progressListener: options.progressListener },
-    ).then(({ directories }) =>
-      directories.map((path) => {
+    refCompletionsPromise = (async () => {
+      const prefix = decodeURIComponent(version);
+      const progressOptions = {
+        signal: options.signal,
+        progressListener: options.progressListener,
+      };
+      const repoInfo = await getRepoInfo(
+        sharedKvStoreContext,
+        options.base.store.getUrl(ensurePathIsDirectory(options.base.path)),
+        progressOptions,
+      );
+      if (repoInfo !== undefined) {
+        return completeRefsFromRepoInfo(repoInfo, prefix);
+      }
+      const refsPath = joinPath(options.base.path, `refs/`);
+      const { directories } = await listKvStore(
+        options.base.store,
+        refsPath + prefix,
+        progressOptions,
+      );
+      return directories.map((path) => {
         const ref = path.slice(refsPath.length);
         return {
           value: encodePathForUrl(ref) + "/",
           description: ref.startsWith("tag.") ? "Tag" : "Branch",
         };
-      }),
-    );
+      });
+    })();
   }
 
   let snapshotCompletionsPromise:

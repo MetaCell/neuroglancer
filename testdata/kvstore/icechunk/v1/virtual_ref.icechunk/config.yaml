@@ -1,0 +1,19 @@
+inline_chunk_threshold_bytes: null
+get_partial_values_concurrency: null
+compression: null
+max_concurrent_requests: null
+caching: null
+storage: null
+virtual_chunk_containers:
+  s3://mybucket/:
+    name: null
+    url_prefix: s3://mybucket/
+    store: !s3
+      region: us-east-1
+      endpoint_url: null
+      anonymous: false
+      allow_http: false
+      force_path_style: false
+      network_stream_timeout_seconds: 60
+      requester_pays: false
+manifest: null
